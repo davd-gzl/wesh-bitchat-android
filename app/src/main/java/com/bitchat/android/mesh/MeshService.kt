@@ -49,6 +49,7 @@ interface MeshService {
         isVerified: Boolean
     ): Boolean
     fun getIdentityFingerprint(): String
+    fun getAuthenticatedRemoteStaticKey(peerID: String): ByteArray? = null
     fun getStaticNoisePublicKey(): ByteArray?
     fun shouldShowEncryptionIcon(peerID: String): Boolean
     fun getEncryptedPeers(): List<String>

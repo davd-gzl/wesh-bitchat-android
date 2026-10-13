@@ -68,7 +68,7 @@ fun PermissionExplanationScreen(
                     Text(
                         text = stringResource(R.string.app_name),
                         style = MaterialTheme.typography.headlineLarge.copy(
-                            fontFamily = BitchatFontFamily,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
                             fontWeight = FontWeight.Bold,
                             fontSize = 32.sp
                         ),
@@ -78,8 +78,8 @@ fun PermissionExplanationScreen(
 
                 Text(
                     text = stringResource(R.string.about_tagline),
-                    fontSize = 12.sp,
-                    fontFamily = BitchatFontFamily,
+                    fontSize = 16.sp,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
                     color = colorScheme.onBackground.copy(alpha = 0.7f)
                 )
             }
@@ -117,7 +117,7 @@ fun PermissionExplanationScreen(
                             Text(
                                 text = stringResource(R.string.privacy_bullets),
                                 style = MaterialTheme.typography.bodySmall,
-                                fontFamily = BitchatFontFamily,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
                                 color = colorScheme.onBackground.copy(alpha = 0.8f)
                             )
                         }
@@ -164,7 +164,7 @@ fun PermissionExplanationScreen(
                 Text(
                     text = stringResource(R.string.grant_permissions),
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = BitchatFontFamily,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
                         fontWeight = FontWeight.Bold
                     ),
                     modifier = Modifier.padding(vertical = 4.dp)
@@ -187,7 +187,7 @@ private fun PermissionCategoryCard(
     ) {
         Icon(
             imageVector = getPermissionIcon(category.type),
-            contentDescription = category.type.nameValue,
+            contentDescription = permissionCategoryName(category.type),
             tint = colorScheme.primary,
             modifier = Modifier
                 .padding(top = 2.dp)
@@ -196,7 +196,7 @@ private fun PermissionCategoryCard(
         Spacer(modifier = Modifier.width(16.dp))
         Column {
             Text(
-                text = category.type.nameValue,
+                text = permissionCategoryName(category.type),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Medium,
                 color = colorScheme.onBackground
@@ -223,4 +223,16 @@ private fun getPermissionIcon(permissionType: PermissionType): ImageVector {
         PermissionType.BATTERY_OPTIMIZATION -> Icons.Filled.Power
         PermissionType.OTHER -> Icons.Filled.Settings
     }
+}
+
+@Composable
+private fun permissionCategoryName(type: PermissionType): String = when (type) {
+    PermissionType.NEARBY_DEVICES -> stringResource(R.string.perm_type_nearby_devices)
+    PermissionType.PRECISE_LOCATION -> stringResource(R.string.perm_type_precise_location)
+    PermissionType.BACKGROUND_LOCATION -> stringResource(R.string.perm_type_background_location)
+    PermissionType.MICROPHONE -> stringResource(R.string.perm_type_microphone)
+    PermissionType.NOTIFICATIONS -> stringResource(R.string.perm_type_notifications)
+    PermissionType.BATTERY_OPTIMIZATION -> stringResource(R.string.perm_type_battery_optimization)
+    PermissionType.WIFI_AWARE -> "Wi-Fi Aware"
+    PermissionType.OTHER -> stringResource(R.string.perm_type_other)
 }

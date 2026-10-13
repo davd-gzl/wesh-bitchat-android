@@ -392,6 +392,7 @@ class NostrRelayManager private constructor() {
      * Connect to all configured relays
      */
     fun connect() {
+        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) return
         desiredConnected.set(true)
         Log.i(TAG, "Connecting to ${relaysList.size} Nostr relays")
         scope.launch {
@@ -838,6 +839,7 @@ class NostrRelayManager private constructor() {
         urlString: String,
         liveLocationToken: Long? = null
     ) {
+        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) return
         if (!desiredConnected.get()) return
         val connectionToken = liveLocationToken
             ?.takeIf { urlString !in nonLiveRelayUrls }

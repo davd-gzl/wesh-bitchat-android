@@ -73,22 +73,35 @@ object VerificationService {
         }
 
         companion object {
-            fun fromUrlString(urlString: String): VerificationQR? {
-                val uri = runCatching { urlString.toUri() }.getOrNull() ?: return null
-                if (uri.scheme != "bitchat" || uri.host != "verify") return null
+            fun fromUrlString(urlString: String): VerificationQR? = runCatching parser@ {
+                if (urlString.toByteArray(Charsets.UTF_8).size > 2048) return@parser null
+                val uri = runCatching { urlString.toUri() }.getOrNull() ?: return@parser null
+                if (uri.scheme != "bitchat" || uri.encodedAuthority != "verify" || uri.host != "verify" || !uri.isHierarchical ||
+                    uri.userInfo != null || uri.port != -1 || uri.fragment != null ||
+                    !uri.path.isNullOrEmpty()) return@parser null
+                val allowed = setOf("v", "noise", "sign", "nick", "ts", "nonce", "sig", "npub")
+                if (uri.queryParameterNames.any { it !in allowed || uri.getQueryParameters(it).size != 1 }) return@parser null
 
-                val vStr = uri.getQueryParameter("v") ?: return null
-                val v = vStr.toIntOrNull() ?: return null
-                val noise = uri.getQueryParameter("noise") ?: return null
-                val sign = uri.getQueryParameter("sign") ?: return null
-                val nick = uri.getQueryParameter("nick") ?: return null
-                val tsStr = uri.getQueryParameter("ts") ?: return null
-                val ts = tsStr.toLongOrNull() ?: return null
-                val nonce = uri.getQueryParameter("nonce") ?: return null
-                val sig = uri.getQueryParameter("sig") ?: return null
+                val vStr = uri.getQueryParameter("v") ?: return@parser null
+                val v = vStr.toIntOrNull() ?: return@parser null
+                val noise = uri.getQueryParameter("noise") ?: return@parser null
+                val sign = uri.getQueryParameter("sign") ?: return@parser null
+                val nick = uri.getQueryParameter("nick") ?: return@parser null
+                val tsStr = uri.getQueryParameter("ts") ?: return@parser null
+                val ts = tsStr.toLongOrNull() ?: return@parser null
+                val nonce = uri.getQueryParameter("nonce") ?: return@parser null
+                val sig = uri.getQueryParameter("sig") ?: return@parser null
                 val npub = uri.getQueryParameter("npub")
 
-                return VerificationQR(
+                if (v != 1 || !noise.matches(Regex("[0-9a-fA-F]{64}")) ||
+                    !sign.matches(Regex("[0-9a-fA-F]{64}")) || !sig.matches(Regex("[0-9a-fA-F]{128}")) ||
+                    nick.toByteArray(Charsets.UTF_8).size > 255 ||
+                    (npub?.toByteArray(Charsets.UTF_8)?.size ?: 0) > 255 || ts <= 0 ||
+                    !nonce.matches(Regex("[A-Za-z0-9_-]{22}"))) return@parser null
+                val decoded = runCatching { Base64.decode(nonce, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING) }.getOrNull() ?: return@parser null
+                if (decoded.size != 16 || Base64.encodeToString(decoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING) != nonce) return@parser null
+
+                VerificationQR(
                     v = v,
                     noiseKeyHex = noise,
                     signKeyHex = sign,
@@ -98,21 +111,21 @@ object VerificationService {
                     nonceB64 = nonce,
                     sigHex = sig
                 )
-            }
+            }.getOrNull()
         }
     }
 
     fun buildMyQRString(nickname: String, npub: String?): String? {
         val service = encryptionServiceRef?.get() ?: return null
+        val noiseKey = service.getStaticPublicKey()?.hexEncodedString() ?: return null
+        val signKey = service.getSigningPublicKey()?.hexEncodedString() ?: return null
         val cache = Cache.last
-        if (cache != null && cache.nickname == nickname && cache.npub == npub) {
+        if (cache != null && cache.nickname == nickname && cache.npub == npub && VerificationQR.fromUrlString(cache.value)?.let { it.noiseKeyHex == noiseKey && it.signKeyHex == signKey } == true) {
             if (System.currentTimeMillis() - cache.builtAtMs < 60_000L) {
                 return cache.value
             }
         }
 
-        val noiseKey = service.getStaticPublicKey()?.hexEncodedString() ?: return null
-        val signKey = service.getSigningPublicKey()?.hexEncodedString() ?: return null
         val ts = System.currentTimeMillis() / 1000L
         val nonce = ByteArray(16)
         SecureRandom().nextBytes(nonce)
@@ -141,18 +154,21 @@ object VerificationService {
 
     fun verifyScannedQR(
         urlString: String,
-        maxAgeSeconds: Long = AppConstants.Verification.QR_MAX_AGE_SECONDS
+        maxAgeSeconds: Long = 300
     ): VerificationQR? {
         val service = encryptionServiceRef?.get() ?: return null
         val qr = VerificationQR.fromUrlString(urlString) ?: return null
         val now = System.currentTimeMillis() / 1000L
-        if (now - qr.ts > maxAgeSeconds) return null
+        if (!isFresh(qr.ts, now, maxAgeSeconds)) return null
 
         val sig = qr.sigHex.dataFromHexString() ?: return null
         val signKey = qr.signKeyHex.dataFromHexString() ?: return null
         val ok = service.verifyEd25519Signature(sig, qr.canonicalBytes(), signKey)
         return if (ok) qr else null
     }
+
+    internal fun isFresh(timestamp: Long, now: Long, maxAgeSeconds: Long = 300): Boolean =
+        maxAgeSeconds in 0..300 && timestamp > 0 && timestamp >= now - maxAgeSeconds && timestamp <= now + maxAgeSeconds
 
     fun buildVerifyChallenge(noiseKeyHex: String, nonceA: ByteArray): ByteArray {
         val noiseData = noiseKeyHex.toByteArray(Charsets.UTF_8)

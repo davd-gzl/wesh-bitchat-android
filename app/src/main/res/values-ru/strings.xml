@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">bitchat</string>
+    <string name="app_name">Wesh</string>
     <string name="permission_bluetooth_rationale">Требуется разрешение Bluetooth для общения p2p без интернета.</string>
     <string name="permission_location_rationale">Требуется доступ к геопозиции для поиска ближайших устройств по Bluetooth.</string>
     <string name="permission_notification_rationale">Требуется доступ к уведомлениям для оповещения о новых сообщениях.</string>
@@ -229,15 +229,15 @@
     <string name="location_unavailable_explanation">На этом устройстве службы локации недоступны — это необычно.\n\nОни требуются Android для корректной работы сканирования Bluetooth. Иначе невозможно обнаружить ближайших пользователей.</string>
     <string name="checking_location_services">Проверка служб локации…</string>
     <string name="bluetooth_required">Требуется Bluetooth</string>
-    <string name="bluetooth_needs_for">bitchat нужен Bluetooth для:</string>
+    <string name="bluetooth_needs_for">Wesh нужен Bluetooth для:</string>
     <string name="bluetooth_needs_bullets">• Обнаружения ближайших пользователей\n• Создания mesh‑подключений\n• Отправки и получения сообщений\n• Работы без интернета/серверов</string>
     <string name="enable_bluetooth">Включить Bluetooth</string>
     <string name="bluetooth_not_supported">Bluetooth не поддерживается</string>
-    <string name="bluetooth_unsupported_explanation">Это устройство не поддерживает Bluetooth Low Energy (BLE), необходимый для работы bitchat.\n\nBLE нужен для построения mesh и обмена с ближайшими устройствами без интернета.</string>
+    <string name="bluetooth_unsupported_explanation">Это устройство не поддерживает Bluetooth Low Energy (BLE), необходимый для работы Wesh.\n\nBLE нужен для построения mesh и обмена с ближайшими устройствами без интернета.</string>
     <string name="checking_bluetooth_status">Проверка статуса Bluetooth…</string>
     <string name="battery_optimization_detected_title">обнаружена оптимизация батареи</string>
     <string name="battery_optimization_enabled_title">Оптимизация включена</string>
-    <string name="battery_optimization_explanation_short">bitchat должен работать в фоне для mesh; оптимизация может прерывать.</string>
+    <string name="battery_optimization_explanation_short">Wesh должен работать в фоне для mesh; оптимизация может прерывать.</string>
     <string name="benefits_of_disabling">Преимущества отключения</string>
     <string name="battery_benefits_short">• надёжная доставка\n• поддержка связности\n• предотвращает обрывы</string>
     <string name="disable_battery_optimization">Отключить оптимизацию</string>
@@ -250,8 +250,8 @@
     <string name="warning_emoji">⚠️</string>
     <string name="setup_not_complete">Настройка не завершена</string>
     <string name="try_again">Повторить</string>
-    <string name="privacy_protected">Ваша приватность защищена</string>
-    <string name="privacy_bullets">• без трекинга и сбора данных\n• Bluetooth‑mesh чаты полностью оффлайн\n• Geohash‑чаты используют интернет</string>
+    <string name="privacy_protected">Public salon and private contacts</string>
+    <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">разрешения</string>
     <string name="grant_permissions">Выдать разрешения</string>
     <string name="location_tracking_warning">bitchat НЕ отслеживает вашу геопозицию</string>
@@ -289,14 +289,14 @@
     <string name="cd_play_voice">Воспроизвести</string>
     <string name="cd_pause_voice">Пауза</string>
 
-    <string name="perm_nearby_devices_desc">Нужно для поиска пользователей bitchat по Bluetooth</string>
-    <string name="perm_nearby_devices_system">Разрешить bitchat подключаться к ближайшим устройствам</string>
-    <string name="perm_location_desc">Требуется Android для поиска по Bluetooth</string>
-    <string name="perm_location_system">bitchat нужно для сканирования ближайших устройств</string>
+    <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
+    <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
+    <string name="perm_location_desc">Android 11 and earlier requires this permission for Bluetooth scanning. Wesh does not use GPS coordinates.</string>
+    <string name="perm_location_system">Android permission needed for Bluetooth scanning on older phones.</string>
     <string name="perm_notifications_desc">Получать уведомления о личных сообщениях</string>
-    <string name="perm_notifications_system">Разрешить bitchat отправлять вам уведомления</string>
-    <string name="perm_battery_desc">Отключить оптимизацию, чтобы bitchat работал в фоне и поддерживал mesh‑связь</string>
-    <string name="perm_battery_system">Разрешить работу без ограничений батареи</string>
+    <string name="perm_notifications_system">Allow Wesh to send notifications.</string>
+    <string name="perm_battery_desc">Battery restrictions can interrupt mesh connections in the background.</string>
+    <string name="perm_battery_system">Allow Wesh to run without battery restrictions.</string>
 
     <string name="perm_type_nearby_devices">Ближайшие устройства</string>
     <string name="perm_type_precise_location">Точная геопозиция</string>

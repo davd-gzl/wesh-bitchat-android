@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">bitchat</string>
+    <string name="app_name">Wesh</string>
 
     <!-- Justificaciones de permisos -->
     <string name="permission_bluetooth_rationale">El permiso de Bluetooth es necesario para chatear directamente con otros sin internet.</string>
@@ -156,7 +156,7 @@
     <string name="cd_save_current_image">Guardar imagen actual</string>
     <string name="cd_close">Cerrar</string>
     <string name="cd_image_index_of">Imagen %1$d de %2$d</string>
-    <string name="cd_privacy_protected">Privacidad protegida</string>
+    <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">Grabar nota de voz</string>
     <string name="cd_offline_mesh_chat">Chat mesh sin conexión</string>
     <string name="cd_online_geohash_channels">Canales geohash en línea</string>
@@ -254,15 +254,15 @@
     <string name="location_unavailable_explanation">Los servicios de ubicación no están disponibles en este dispositivo. Esto es inusual ya que los servicios de ubicación son estándar en dispositivos Android.\n\nbitchat requiere servicios de ubicación para el funcionamiento adecuado del escaneo Bluetooth (requisito de Android). Sin esto, la app no puede descubrir usuarios cercanos.</string>
     <string name="checking_location_services">Verificando servicios de ubicación…</string>
     <string name="bluetooth_required">Bluetooth requerido</string>
-    <string name="bluetooth_needs_for">bitchat necesita Bluetooth para:</string>
+    <string name="bluetooth_needs_for">Wesh necesita Bluetooth para:</string>
     <string name="bluetooth_needs_bullets">• Descubrir usuarios cercanos\n• Crear conexiones de red mesh\n• Enviar y recibir mensajes\n• Funcionar sin internet o servidores</string>
     <string name="enable_bluetooth">Habilitar Bluetooth</string>
     <string name="bluetooth_not_supported">Bluetooth no soportado</string>
-    <string name="bluetooth_unsupported_explanation">Este dispositivo no soporta Bluetooth Low Energy (BLE), que es requerido para que bitchat funcione.\n\nbitchat requiere BLE para crear redes mesh y comunicarse con dispositivos cercanos sin internet.</string>
+    <string name="bluetooth_unsupported_explanation">Este dispositivo no soporta Bluetooth Low Energy (BLE), que es requerido para que Wesh funcione.\n\nWesh requiere BLE para crear redes mesh y comunicarse con dispositivos cercanos sin internet.</string>
     <string name="checking_bluetooth_status">Verificando estado de Bluetooth…</string>
     <string name="battery_optimization_detected_title">Optimización de batería detectada</string>
     <string name="battery_optimization_enabled_title">Optimización de batería habilitada</string>
-    <string name="battery_optimization_explanation_short">bitchat necesita funcionar en segundo plano para mantener conexiones mesh. La optimización de batería puede interrumpir estas conexiones.</string>
+    <string name="battery_optimization_explanation_short">Wesh necesita funcionar en segundo plano para mantener conexiones mesh. La optimización de batería puede interrumpir estas conexiones.</string>
     <string name="benefits_of_disabling">Beneficios de deshabilitar</string>
     <string name="battery_benefits_short">• entrega confiable de mensajes\n• mantiene conectividad mesh\n• previene desconexiones</string>
     <string name="disable_battery_optimization">Deshabilitar optimización de batería</string>
@@ -273,8 +273,8 @@
     <string name="should_take_seconds">Esto debería tomar solo unos segundos</string>
     <string name="setup_not_complete">Configuración no completada</string>
     <string name="try_again">Intentar de nuevo</string>
-    <string name="privacy_protected">Tu privacidad está protegida</string>
-    <string name="privacy_bullets">• sin rastreo o recolección de datos\n• chats mesh Bluetooth son completamente offline\n• chats geohash usan internet</string>
+    <string name="privacy_protected">Public salon and private contacts</string>
+    <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">Permisos</string>
     <string name="grant_permissions">Otorgar permisos</string>
     <string name="location_tracking_warning">bitchat NO rastrea tu ubicación</string>
@@ -299,14 +299,14 @@
     <string name="cd_pause_voice">Pausar</string>
 
     <!-- Descripciones de permisos -->
-    <string name="perm_nearby_devices_desc">Requerido para descubrir usuarios bitchat a través de Bluetooth</string>
-    <string name="perm_nearby_devices_system">Permitir que bitchat se conecte con dispositivos cercanos</string>
-    <string name="perm_location_desc">Requerido por Android para descubrir usuarios bitchat cercanos a través de Bluetooth</string>
-    <string name="perm_location_system">bitchat necesita esto para escanear dispositivos cercanos</string>
+    <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
+    <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
+    <string name="perm_location_desc">Android 11 and earlier requires this permission for Bluetooth scanning. Wesh does not use GPS coordinates.</string>
+    <string name="perm_location_system">Android permission needed for Bluetooth scanning on older phones.</string>
     <string name="perm_notifications_desc">Recibir notificaciones cuando recibas mensajes privados</string>
-    <string name="perm_notifications_system">Permitir que bitchat te envíe notificaciones</string>
-    <string name="perm_battery_desc">Deshabilitar optimización de batería para asegurar que bitchat funcione de manera confiable en segundo plano y mantenga conexiones de red mesh</string>
-    <string name="perm_battery_system">Permitir que bitchat funcione sin restricciones de batería</string>
+    <string name="perm_notifications_system">Allow Wesh to send notifications.</string>
+    <string name="perm_battery_desc">Battery restrictions can interrupt mesh connections in the background.</string>
+    <string name="perm_battery_system">Allow Wesh to run without battery restrictions.</string>
 
     <!-- Tipos de permisos -->
     <string name="perm_type_nearby_devices">Dispositivos cercanos</string>

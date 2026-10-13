@@ -27,9 +27,10 @@ android {
     buildToolsVersion = libs.versions.buildTools.get()
 
     defaultConfig {
-        applicationId = "com.bitchat.droid"
+        applicationId = "org.samouraiworld.wesh.android"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
+        buildConfigField("boolean", "WESH_LOCAL_ONLY", "true")
         versionCode = 39
         versionName = "2.0.2"
         buildConfigField(

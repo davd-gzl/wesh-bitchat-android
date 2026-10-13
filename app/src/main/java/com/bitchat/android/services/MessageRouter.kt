@@ -341,6 +341,7 @@ class MessageRouter private constructor(
     }
 
     private fun canSendViaNostr(peerID: String): Boolean {
+        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) return false
         return try {
             val resolution = ContactDirectory.resolve(peerID)
             if (resolution.isMutualFavorite && resolution.nostrPubkey != null) return true

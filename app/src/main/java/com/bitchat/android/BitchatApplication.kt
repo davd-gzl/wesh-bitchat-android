@@ -16,17 +16,12 @@ class BitchatApplication : Application() {
         // Start the single process-wide power policy before transport components are constructed.
         com.bitchat.android.mesh.PowerManager.getInstance(this).start()
 
-        // Initialize Tor first so any early network goes over Tor
-        try {
-            val torProvider = ArtiTorManager.getInstance()
-            torProvider.init(this)
-        } catch (_: Exception){}
-
-        // Initialize relay directory (loads assets/nostr_relays.csv)
-        RelayDirectory.initialize(this)
-
-        // Initialize LocationNotesManager dependencies early so sheet subscriptions can start immediately
-        try { com.bitchat.android.nostr.LocationNotesInitializer.initialize(this) } catch (_: Exception) { }
+        // Wesh's native validation product has no Internet or location route.
+        if (!BuildConfig.WESH_LOCAL_ONLY) {
+            try { ArtiTorManager.getInstance().init(this) } catch (_: Exception) { }
+            RelayDirectory.initialize(this)
+            try { com.bitchat.android.nostr.LocationNotesInitializer.initialize(this) } catch (_: Exception) { }
+        }
 
         // Initialize favorites persistence early so MessageRouter/NostrTransport can use it on startup
         try {
@@ -41,7 +36,7 @@ class BitchatApplication : Application() {
         } catch (_: Exception) { }
 
         // Warm up Nostr identity to ensure npub is available for favorite notifications
-        try {
+        if (!BuildConfig.WESH_LOCAL_ONLY) try {
             com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(this)
         } catch (_: Exception) { }
 
@@ -56,7 +51,7 @@ class BitchatApplication : Application() {
 
         // Initialize Wi‑Fi Aware controller with persisted default
         try {
-            val enabled = com.bitchat.android.ui.debug.DebugPreferenceManager.getWifiAwareEnabled(false)
+            val enabled = !BuildConfig.WESH_LOCAL_ONLY && com.bitchat.android.ui.debug.DebugPreferenceManager.getWifiAwareEnabled(false)
             com.bitchat.android.wifiaware.WifiAwareController.initialize(this, enabled)
         } catch (_: Exception) { }
 
@@ -68,7 +63,7 @@ class BitchatApplication : Application() {
 
         // Own relay connectivity, selected-channel subscriptions, and presence scheduling at the
         // process level so closing the Activity does not disconnect Nostr.
-        try { com.bitchat.android.nostr.NostrBackgroundRuntime.initialize(this) } catch (_: Exception) { }
+        if (!BuildConfig.WESH_LOCAL_ONLY) try { com.bitchat.android.nostr.NostrBackgroundRuntime.initialize(this) } catch (_: Exception) { }
 
         // Initialize mesh service preferences
         try { com.bitchat.android.service.MeshServicePreferences.init(this) } catch (_: Exception) { }

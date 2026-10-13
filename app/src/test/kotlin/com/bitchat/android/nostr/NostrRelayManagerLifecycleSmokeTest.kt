@@ -10,6 +10,17 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class NostrRelayManagerLifecycleSmokeTest {
     @Test
+    fun `Wesh local only mode cannot activate Internet relay connections`() {
+        assertTrue(com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY)
+        val manager = NostrRelayManager.shared
+        manager.disconnect()
+        manager.connect()
+        assertFalse(manager.isConnected.value)
+        assertTrue(manager.getRelayStatuses().none { it.isConnected })
+        manager.disconnect()
+    }
+
+    @Test
     fun `owner teardown is synchronous and preserves other subscription owners`() {
         val manager = NostrRelayManager.shared
         manager.disconnect()

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">bitchat</string>
+    <string name="app_name">Wesh</string>
 
     <!-- 权限说明 -->
     <string name="permission_bluetooth_rationale">需要蓝牙权限以在无网络时进行点对点聊天。</string>
@@ -245,15 +245,15 @@
     <string name="location_unavailable_explanation">此设备上定位服务不可用。这不常见，因为 Android 设备通常具备此功能。\n\n为使蓝牙扫描正常工作（Android 要求），需要定位服务。否则无法发现附近用户。</string>
     <string name="checking_location_services">正在检查定位服务…</string>
     <string name="bluetooth_required">需要 Bluetooth</string>
-    <string name="bluetooth_needs_for">bitchat 需要 Bluetooth 以：</string>
+    <string name="bluetooth_needs_for">Wesh 需要 Bluetooth 以：</string>
     <string name="bluetooth_needs_bullets">• 发现附近用户\n• 建立 mesh 连接\n• 发送和接收消息\n• 在无网络和服务器时工作</string>
     <string name="enable_bluetooth">启用 Bluetooth</string>
     <string name="bluetooth_not_supported">不支持 Bluetooth</string>
-    <string name="bluetooth_unsupported_explanation">此设备不支持 Bluetooth Low Energy (BLE)，而 bitchat 需要它。\n\nbitchat 需要 BLE 以建立 mesh 并在无网络时与附近设备通信。</string>
+    <string name="bluetooth_unsupported_explanation">此设备不支持 Bluetooth Low Energy (BLE)，而 Wesh 需要它。\n\nWesh 需要 BLE 以建立 mesh 并在无网络时与附近设备通信。</string>
     <string name="checking_bluetooth_status">正在检查 Bluetooth 状态…</string>
     <string name="battery_optimization_detected_title">检测到电池优化</string>
     <string name="battery_optimization_enabled_title">电池优化已启用</string>
-    <string name="battery_optimization_explanation_short">bitchat 需要在后台运行以维持连接；电池优化可能会中断。</string>
+    <string name="battery_optimization_explanation_short">Wesh 需要在后台运行以维持连接；电池优化可能会中断。</string>
     <string name="benefits_of_disabling">禁用的好处</string>
     <string name="battery_benefits_short">• 可靠投递\n• 维持连接\n• 避免中断</string>
     <string name="disable_battery_optimization">禁用优化</string>
@@ -266,8 +266,8 @@
     <string name="warning_emoji">⚠️</string>
     <string name="setup_not_complete">设置未完成</string>
     <string name="try_again">重试</string>
-    <string name="privacy_protected">你的隐私已受保护</string>
-    <string name="privacy_bullets">• 不跟踪不收集\n• 蓝牙 mesh 聊天完全离线\n• geohash 聊天使用互联网</string>
+    <string name="privacy_protected">Public salon and private contacts</string>
+    <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">权限</string>
     <string name="grant_permissions">授予权限</string>
     <string name="location_tracking_warning">bitchat 不会跟踪你的位置</string>
@@ -310,14 +310,14 @@
     <string name="cd_pause_voice">暂停</string>
 
     <!-- 权限描述 -->
-    <string name="perm_nearby_devices_desc">需要通过 Bluetooth 发现 bitchat 用户</string>
-    <string name="perm_nearby_devices_system">允许 bitchat 连接附近设备</string>
-    <string name="perm_location_desc">Android 要求以通过 Bluetooth 发现附近用户</string>
-    <string name="perm_location_system">bitchat 需要此权限以扫描附近设备</string>
+    <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
+    <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
+    <string name="perm_location_desc">Android 11 and earlier requires this permission for Bluetooth scanning. Wesh does not use GPS coordinates.</string>
+    <string name="perm_location_system">Android permission needed for Bluetooth scanning on older phones.</string>
     <string name="perm_notifications_desc">在收到私信时接收通知</string>
-    <string name="perm_notifications_system">允许 bitchat 向你发送通知</string>
-    <string name="perm_battery_desc">禁用电池优化以确保后台可靠运行并维持连接</string>
-    <string name="perm_battery_system">允许 bitchat 在无电池限制下运行</string>
+    <string name="perm_notifications_system">Allow Wesh to send notifications.</string>
+    <string name="perm_battery_desc">Battery restrictions can interrupt mesh connections in the background.</string>
+    <string name="perm_battery_system">Allow Wesh to run without battery restrictions.</string>
 
     <!-- 权限类型 -->
     <string name="perm_type_nearby_devices">附近设备</string>

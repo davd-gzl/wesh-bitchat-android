@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">bitchat</string>
+    <string name="app_name">Wesh</string>
     <string name="permission_bluetooth_rationale">Bluetooth-behörighet krävs för direktmeddelanden utan internet.</string>
     <string name="permission_location_rationale">Platsbehörighet krävs för att hitta enheter i närheten via Bluetooth.</string>
     <string name="permission_notification_rationale">Aviseringsbehörighet krävs för att meddela nya meddelanden.</string>
@@ -229,15 +229,15 @@
     <string name="location_unavailable_explanation">Platstjänster saknas på den här enheten. Det är ovanligt.\n\nAndroid kräver dem för att Bluetooth‑skanning ska fungera. Utan dem kan vi inte hitta användare i närheten.</string>
     <string name="checking_location_services">Kontrollerar platstjänster…</string>
     <string name="bluetooth_required">Bluetooth krävs</string>
-    <string name="bluetooth_needs_for">bitchat behöver Bluetooth för:</string>
+    <string name="bluetooth_needs_for">Wesh behöver Bluetooth för:</string>
     <string name="bluetooth_needs_bullets">• Hitta användare i närheten\n• Skapa mesh‑anslutningar\n• Skicka och ta emot meddelanden\n• Fungera utan internet/ servrar</string>
     <string name="enable_bluetooth">Aktivera Bluetooth</string>
     <string name="bluetooth_not_supported">Bluetooth stöds inte</string>
-    <string name="bluetooth_unsupported_explanation">Denna enhet stöder inte Bluetooth Low Energy (BLE), vilket krävs för bitchat.\n\nBLE behövs för att bygga mesh och kommunicera utan internet.</string>
+    <string name="bluetooth_unsupported_explanation">Denna enhet stöder inte Bluetooth Low Energy (BLE), vilket krävs för Wesh.\n\nBLE behövs för att bygga mesh och kommunicera utan internet.</string>
     <string name="checking_bluetooth_status">Kontrollerar Bluetooth‑status…</string>
     <string name="battery_optimization_detected_title">batterioptimering upptäckt</string>
     <string name="battery_optimization_enabled_title">Batterioptimering på</string>
-    <string name="battery_optimization_explanation_short">bitchat måste köra i bakgrunden för mesh; optimering kan bryta.</string>
+    <string name="battery_optimization_explanation_short">Wesh måste köra i bakgrunden för mesh; optimering kan bryta.</string>
     <string name="benefits_of_disabling">Fördelar med inaktivering</string>
     <string name="battery_benefits_short">• tillförlitlig leverans\n• håller anslutning\n• förhindrar avbrott</string>
     <string name="disable_battery_optimization">Inaktivera optimering</string>
@@ -250,8 +250,8 @@
     <string name="warning_emoji">⚠️</string>
     <string name="setup_not_complete">Slutför inte inställningen</string>
     <string name="try_again">Försök igen</string>
-    <string name="privacy_protected">Din integritet är skyddad</string>
-    <string name="privacy_bullets">• ingen spårning eller insamling\n• Bluetooth‑mesh‑chattar helt offline\n• geohash‑chattar använder internet</string>
+    <string name="privacy_protected">Public salon and private contacts</string>
+    <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">behörigheter</string>
     <string name="grant_permissions">Ge behörigheter</string>
     <string name="location_tracking_warning">bitchat spårar INTE din plats</string>
@@ -289,14 +289,14 @@
     <string name="cd_play_voice">Spela</string>
     <string name="cd_pause_voice">Pausa</string>
 
-    <string name="perm_nearby_devices_desc">Krävs för att hitta bitchat‑användare via Bluetooth</string>
-    <string name="perm_nearby_devices_system">Tillåt bitchat att ansluta till enheter i närheten</string>
-    <string name="perm_location_desc">Krävs av Android för att hitta användare via Bluetooth</string>
-    <string name="perm_location_system">bitchat behöver detta för att skanna enheter</string>
+    <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
+    <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
+    <string name="perm_location_desc">Android 11 and earlier requires this permission for Bluetooth scanning. Wesh does not use GPS coordinates.</string>
+    <string name="perm_location_system">Android permission needed for Bluetooth scanning on older phones.</string>
     <string name="perm_notifications_desc">Ta emot aviseringar vid privata meddelanden</string>
-    <string name="perm_notifications_system">Tillåt bitchat att skicka aviseringar</string>
-    <string name="perm_battery_desc">Inaktivera batterioptimering för tillförlitlig drift i bakgrunden och mesh‑anslutning</string>
-    <string name="perm_battery_system">Tillåt körning utan batteribegränsningar</string>
+    <string name="perm_notifications_system">Allow Wesh to send notifications.</string>
+    <string name="perm_battery_desc">Battery restrictions can interrupt mesh connections in the background.</string>
+    <string name="perm_battery_system">Allow Wesh to run without battery restrictions.</string>
 
     <string name="perm_type_nearby_devices">Enheter i närheten</string>
     <string name="perm_type_precise_location">Exakt plats</string>

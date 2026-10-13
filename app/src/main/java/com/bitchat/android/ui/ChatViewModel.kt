@@ -213,6 +213,7 @@ class ChatViewModel(
         onHapticFeedback = { ChatViewModelUtils.triggerHapticFeedback(application.applicationContext) },
         getMyPeerID = { mesh.myPeerID },
         getMeshService = { mesh },
+        publicNotificationsMuted = { WeshPreferences(getApplication()).publicMuted },
         markMessageReadLocally = { messageID ->
             seenMessageStore.markReadLocally(messageID)
         }
@@ -616,7 +617,7 @@ class ChatViewModel(
         }
         
         // Initialize new geohash architecture
-        geohashViewModel.initialize()
+        if (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) geohashViewModel.initialize()
 
         // Initialize favorites persistence service
         com.bitchat.android.favorites.FavoritesPersistenceService.initialize(getApplication())
@@ -635,7 +636,7 @@ class ChatViewModel(
 
 
         // Ensure NostrTransport knows our mesh peer ID for embedded packets
-        try {
+        if (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) try {
             val nostrTransport = com.bitchat.android.nostr.NostrTransport.getInstance(getApplication())
             nostrTransport.senderPeerID = mesh.myPeerID
         } catch (_: Exception) { }
@@ -1069,6 +1070,59 @@ class ChatViewModel(
                 }
             }
             onAccepted(true)
+        }
+    }
+
+    /** Explicit Wesh routes bypass slash commands, location channels and public internet relays. */
+    fun sendWeshPublic(content: String): Boolean = WeshMessagePolicy.sendPublicText(
+        content, state.getNicknameValue(), meshService.myPeerID,
+        store = messageManager::addMessage, bluetoothSend = meshService::sendMessage
+    )
+
+    fun weshBluetoothReady(): Boolean {
+        val application = getApplication<Application>()
+        if (android.os.Build.VERSION.SDK_INT >= 31 && androidx.core.content.ContextCompat.checkSelfPermission(
+                application, android.Manifest.permission.BLUETOOTH_CONNECT
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED) return false
+        return runCatching {
+            application.getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter?.isEnabled == true
+        }.getOrDefault(false)
+    }
+
+    fun weshCanSendPrivate(peerID: String): Boolean {
+        val resolution = ContactDirectory.resolve(peerID)
+        val livePeerID = resolution.meshPeerID ?: peerID
+        return !privateChatManager.isPeerBlocked(peerID) && WeshMessagePolicy.canSendPrivate(
+            meshService.getAuthenticatedRemoteStaticKey(livePeerID),
+            resolution.noisePublicKey ?: meshService.getPeerInfo(livePeerID)?.noisePublicKey,
+            verifiedFingerprints.value
+        )
+    }
+
+    fun weshIsBlocked(peerID: String): Boolean = privateChatManager.isPeerBlocked(peerID)
+
+    fun weshBlock(peerID: String): Boolean = privateChatManager.blockPeer(peerID, mesh)
+
+    fun sendWeshPrivate(content: String, peerID: String, onAccepted: (Boolean) -> Unit) {
+        if (content.isBlank() || content.toByteArray(Charsets.UTF_8).size > 2000 || !weshCanSendPrivate(peerID)) {
+            onAccepted(false)
+            return
+        }
+        viewModelScope.launch {
+            val accepted = privateChatManager.sendPrivateMessageDurably(
+                content, ContactDirectory.canonicalConversationId(peerID), nicknameForPeer(peerID),
+                state.getNicknameValue(), meshService.myPeerID
+            ) { text, destination, recipientName, messageID ->
+                // Recheck identity after durable admission before any transport effect.
+                if (weshCanSendPrivate(destination)) {
+                    val livePeer = ContactDirectory.resolve(destination).meshPeerID ?: destination
+                    meshService.sendPrivateMessage(text, livePeer, recipientName ?: "Contact", messageID)
+                } else {
+                    messageManager.updateMessageDeliveryStatus(messageID,
+                        com.bitchat.android.model.DeliveryStatus.Failed("Identity unavailable or changed"))
+                }
+            }
+            onAccepted(accepted)
         }
     }
 

@@ -91,7 +91,7 @@ class MainActivity : OrientationAwareActivity() {
             registerReceiver(
                 forceFinishReceiver,
                 filter,
-                com.bitchat.android.util.AppConstants.UI.PERMISSION_FORCE_FINISH,
+                packageName + ".permission.FORCE_FINISH",
                 null,
                 android.content.Context.RECEIVER_NOT_EXPORTED
             )
@@ -100,7 +100,7 @@ class MainActivity : OrientationAwareActivity() {
             registerReceiver(
                 forceFinishReceiver,
                 filter,
-                com.bitchat.android.util.AppConstants.UI.PERMISSION_FORCE_FINISH,
+                packageName + ".permission.FORCE_FINISH",
                 null
             )
         }
@@ -155,7 +155,7 @@ class MainActivity : OrientationAwareActivity() {
         )
         
         setContent {
-            BitchatTheme {
+            com.bitchat.android.ui.WeshTheme {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = MaterialTheme.colorScheme.background
@@ -330,7 +330,7 @@ class MainActivity : OrientationAwareActivity() {
 
                 // Add the callback - this will be automatically removed when the activity is destroyed
                 onBackPressedDispatcher.addCallback(this, backCallback)
-                ChatScreen(viewModel = chatViewModel)
+                com.bitchat.android.ui.WeshScreen(viewModel = chatViewModel)
             }
             
             OnboardingState.ERROR -> {
@@ -458,6 +458,9 @@ class MainActivity : OrientationAwareActivity() {
     /**
      * Check Location services status and proceed with onboarding flow
      */
+    private fun requiresSystemLocationForMesh(): Boolean =
+        !BuildConfig.WESH_LOCAL_ONLY || Build.VERSION.SDK_INT < 31
+
     private fun checkLocationAndProceed() {
         // For first-time users, skip location check and go straight to permissions
         // We'll check location after permissions are granted
@@ -466,6 +469,11 @@ class MainActivity : OrientationAwareActivity() {
             return
         }
         
+        if (!requiresSystemLocationForMesh()) {
+            checkBatteryOptimizationAndProceed()
+            return
+        }
+
         // For existing users, check location status
         locationStatusManager.logLocationStatus()
         mainViewModel.updateLocationStatus(locationStatusManager.checkLocationStatus())
@@ -554,7 +562,7 @@ class MainActivity : OrientationAwareActivity() {
     private fun handleOnboardingComplete() {
         // After permissions are granted, re-check Bluetooth, Location, and Battery Optimization status
         val currentBluetoothStatus = bluetoothStatusManager.checkBluetoothStatus()
-        val currentLocationStatus = locationStatusManager.checkLocationStatus()
+        val currentLocationStatus = if (requiresSystemLocationForMesh()) locationStatusManager.checkLocationStatus() else null
         val currentBatteryOptimizationStatus = when {
             !batteryOptimizationManager.isBatteryOptimizationSupported() -> BatteryOptimizationStatus.NOT_SUPPORTED
             batteryOptimizationManager.isBatteryOptimizationDisabled() -> BatteryOptimizationStatus.DISABLED
@@ -569,7 +577,7 @@ class MainActivity : OrientationAwareActivity() {
                 mainViewModel.updateOnboardingState(OnboardingState.BLUETOOTH_CHECK)
                 mainViewModel.updateBluetoothLoading(false)
             }
-            currentLocationStatus != LocationStatus.ENABLED -> {
+            currentLocationStatus != null && currentLocationStatus != LocationStatus.ENABLED -> {
                 // Location services still disabled, but now we have permissions to enable it
                 mainViewModel.updateLocationStatus(currentLocationStatus)
                 mainViewModel.updateOnboardingState(OnboardingState.LOCATION_CHECK)
@@ -747,7 +755,7 @@ class MainActivity : OrientationAwareActivity() {
     override fun onResume() {
         super.onResume()
         // Revoke stale live-location work before any resumed UI can use cached channels.
-        LocationChannelManager.getInstance(applicationContext).syncPermissionState()
+        if (!BuildConfig.WESH_LOCAL_ONLY) LocationChannelManager.getInstance(applicationContext).syncPermissionState()
 
         // Check Bluetooth and Location status on resume and handle accordingly
         if (mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
@@ -765,6 +773,8 @@ class MainActivity : OrientationAwareActivity() {
                 return
             }
             
+            if (!requiresSystemLocationForMesh()) return
+
             // Check if location services were disabled while app was backgrounded
             val currentLocationStatus = locationStatusManager.checkLocationStatus()
             if (currentLocationStatus != LocationStatus.ENABLED) {

@@ -489,7 +489,13 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
                 // callback or notify after panic mode rejected the message while wiping state.
                 if (
                     !com.bitchat.android.services.IncomingMessageAdmission
-                        .admitToAppState(message)
+                        .admitToAppState(message) { peerID ->
+                            val fingerprint = getAuthenticatedRemoteStaticKey(peerID)?.let {
+                                com.bitchat.android.services.ContactIdentityResolver.fingerprintHex(it)
+                            } ?: getPeerFingerprint(peerID)
+                            fingerprint != null && context.getSharedPreferences("bitchat_prefs", Context.MODE_PRIVATE)
+                                .getStringSet("blocked_users", emptySet())!!.contains(fingerprint)
+                        }
                 ) return
 
                 // And forward to UI delegate if attached
@@ -1461,6 +1467,9 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
     fun getIdentityFingerprint(): String {
         return encryptionService.getIdentityFingerprint()
     }
+
+    fun getAuthenticatedRemoteStaticKey(peerID: String): ByteArray? =
+        encryptionService.getAuthenticatedRemoteStaticKey(peerID)
 
     fun getStaticNoisePublicKey(): ByteArray? {
         return encryptionService.getStaticPublicKey()

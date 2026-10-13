@@ -323,6 +323,9 @@ class UnifiedMeshService(
 
     override fun getIdentityFingerprint(): String = bluetooth.getIdentityFingerprint()
 
+    override fun getAuthenticatedRemoteStaticKey(peerID: String): ByteArray? =
+        bluetooth.getAuthenticatedRemoteStaticKey(peerID)
+
     override fun getStaticNoisePublicKey(): ByteArray? {
         return bluetooth.getStaticNoisePublicKey() ?: wifiService()?.getStaticNoisePublicKey()
     }

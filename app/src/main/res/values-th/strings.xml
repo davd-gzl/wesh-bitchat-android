@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">bitchat</string>
+    <string name="app_name">Wesh</string>
 
     <!-- คำอธิบายสิทธิ์ -->
     <string name="permission_bluetooth_rationale">จำเป็นต้องมีสิทธิ์บลูทูธเพื่อแชทโดยตรงกับผู้อื่นโดยไม่ใช้อินเทอร์เน็ต</string>
@@ -156,7 +156,7 @@
     <string name="cd_save_current_image">บันทึกรูปภาพปัจจุบัน</string>
     <string name="cd_close">ปิด</string>
     <string name="cd_image_index_of">รูปภาพ %1$d จาก %2$d</string>
-    <string name="cd_privacy_protected">คุ้มครองความเป็นส่วนตัว</string>
+    <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">บันทึกบันทึกเสียง</string>
     <string name="cd_offline_mesh_chat">แชทเมชออฟไลน์</string>
     <string name="cd_online_geohash_channels">ช่อง geohash ออนไลน์</string>
@@ -254,15 +254,15 @@
     <string name="location_unavailable_explanation">บริการตำแหน่งไม่สามารถใช้ได้ในอุปกรณ์นี้ ซึ่งผิดปกติเนื่องจากโดยทั่วไปแล้วอุปกรณ์ Android จะมีบริการตำแหน่ง\n\nต้องใช้บริการตำแหน่งเพื่อให้การสแกนบลูทูธทำงานได้อย่างถูกต้อง (ข้อกำหนดของ Android) หากไม่มี แอปจะไม่สามารถค้นพบผู้ใช้ใกล้เคียงได้</string>
     <string name="checking_location_services">กำลังตรวจสอบบริการตำแหน่ง…</string>
     <string name="bluetooth_required">ต้องใช้บลูทูธ</string>
-    <string name="bluetooth_needs_for">bitchat ต้องใช้บลูทูธสำหรับ:</string>
+    <string name="bluetooth_needs_for">Wesh ต้องใช้บลูทูธสำหรับ:</string>
     <string name="bluetooth_needs_bullets">• ค้นพบผู้ใช้ใกล้เคียง\n• สร้างการเชื่อมต่อเครือข่ายเมช\n• ส่งและรับข้อความ\n• ทำงานโดยไม่ใช้อินเทอร์เน็ตหรือเซิร์ฟเวอร์</string>
     <string name="enable_bluetooth">เปิดบลูทูธ</string>
     <string name="bluetooth_not_supported">ไม่รองรับบลูทูธ</string>
-    <string name="bluetooth_unsupported_explanation">อุปกรณ์นี้ไม่รองรับ Bluetooth Low Energy (BLE) ซึ่งจำเป็นสำหรับการทำงานของ bitchat\n\nต้องใช้ BLE เพื่อสร้างเครือข่ายเมชและสื่อสารกับอุปกรณ์ใกล้เคียงโดยไม่ใช้อินเทอร์เน็ต</string>
+    <string name="bluetooth_unsupported_explanation">อุปกรณ์นี้ไม่รองรับ Bluetooth Low Energy (BLE) ซึ่งจำเป็นสำหรับการทำงานของ Wesh\n\nต้องใช้ BLE เพื่อสร้างเครือข่ายเมชและสื่อสารกับอุปกรณ์ใกล้เคียงโดยไม่ใช้อินเทอร์เน็ต</string>
     <string name="checking_bluetooth_status">กำลังตรวจสอบสถานะบลูทูธ…</string>
     <string name="battery_optimization_detected_title">ตรวจพบการเพิ่มประสิทธิภาพแบตเตอรี่</string>
     <string name="battery_optimization_enabled_title">เปิดใช้การเพิ่มประสิทธิภาพแบตเตอรี่</string>
-    <string name="battery_optimization_explanation_short">bitchat ต้องทำงานเบื้องหลังเพื่อคงการเชื่อมต่อแบบเมช การเพิ่มประสิทธิภาพแบตเตอรี่อาจขัดจังหวะการเชื่อมต่อเหล่านี้</string>
+    <string name="battery_optimization_explanation_short">Wesh ต้องทำงานเบื้องหลังเพื่อคงการเชื่อมต่อแบบเมช การเพิ่มประสิทธิภาพแบตเตอรี่อาจขัดจังหวะการเชื่อมต่อเหล่านี้</string>
     <string name="benefits_of_disabling">ประโยชน์ของการปิดใช้งาน</string>
     <string name="battery_benefits_short">• ส่งข้อความได้อย่างเชื่อถือ\n• รักษาการเชื่อมต่อแบบเมช\n• ป้องกันการหลุดการเชื่อมต่อ</string>
     <string name="disable_battery_optimization">ปิดการเพิ่มประสิทธิภาพแบตเตอรี่</string>
@@ -273,8 +273,8 @@
     <string name="should_take_seconds">ควรใช้เวลาเพียงไม่กี่วินาที</string>
     <string name="setup_not_complete">ตั้งค่าไม่เสร็จสมบูรณ์</string>
     <string name="try_again">ลองอีกครั้ง</string>
-    <string name="privacy_protected">ความเป็นส่วนตัวของคุณได้รับการคุ้มครอง</string>
-    <string name="privacy_bullets">• ไม่มีการติดตามหรือเก็บข้อมูล\n• แชทเมชบลูทูธทำงานแบบออฟไลน์ทั้งหมด\n• แชท geohash ใช้อินเทอร์เน็ต</string>
+    <string name="privacy_protected">Public salon and private contacts</string>
+    <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">สิทธิ์</string>
     <string name="grant_permissions">ให้สิทธิ์</string>
     <string name="location_tracking_warning">bitchat ไม่ติดตามตำแหน่งของคุณ</string>
@@ -299,14 +299,14 @@
     <string name="cd_pause_voice">หยุดชั่วคราว</string>
 
     <!-- คำอธิบายสิทธิ์ -->
-    <string name="perm_nearby_devices_desc">จำเป็นสำหรับการค้นหาผู้ใช้ bitchat ผ่านบลูทูธ</string>
-    <string name="perm_nearby_devices_system">อนุญาตให้ bitchat เชื่อมต่อกับอุปกรณ์ใกล้เคียง</string>
-    <string name="perm_location_desc">ข้อกำหนดของ Android สำหรับการค้นหาผู้ใช้ bitchat ใกล้เคียงผ่านบลูทูธ</string>
-    <string name="perm_location_system">bitchat ต้องใช้สิ่งนี้เพื่อสแกนอุปกรณ์ใกล้เคียง</string>
+    <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
+    <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
+    <string name="perm_location_desc">Android 11 and earlier requires this permission for Bluetooth scanning. Wesh does not use GPS coordinates.</string>
+    <string name="perm_location_system">Android permission needed for Bluetooth scanning on older phones.</string>
     <string name="perm_notifications_desc">รับการแจ้งเตือนเมื่อคุณได้รับข้อความส่วนตัว</string>
-    <string name="perm_notifications_system">อนุญาตให้ bitchat ส่งการแจ้งเตือนถึงคุณ</string>
-    <string name="perm_battery_desc">ปิดการเพิ่มประสิทธิภาพแบตเตอรี่เพื่อให้ bitchat ทำงานได้อย่างเชื่อถือในเบื้องหลังและคงการเชื่อมต่อแบบเมช</string>
-    <string name="perm_battery_system">อนุญาตให้ bitchat ทำงานโดยไม่มีข้อจำกัดของแบตเตอรี่</string>
+    <string name="perm_notifications_system">Allow Wesh to send notifications.</string>
+    <string name="perm_battery_desc">Battery restrictions can interrupt mesh connections in the background.</string>
+    <string name="perm_battery_system">Allow Wesh to run without battery restrictions.</string>
 
     <!-- ประเภทสิทธิ์ -->
     <string name="perm_type_nearby_devices">อุปกรณ์ใกล้เคียง</string>

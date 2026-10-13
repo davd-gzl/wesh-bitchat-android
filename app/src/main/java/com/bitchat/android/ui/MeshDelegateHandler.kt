@@ -23,6 +23,7 @@ class MeshDelegateHandler(
     private val onHapticFeedback: () -> Unit,
     private val getMyPeerID: () -> String,
     private val getMeshService: () -> MeshService,
+    private val publicNotificationsMuted: () -> Boolean = { false },
     private val markMessageReadLocally: (messageID: String) -> Unit = {}
 ) : BluetoothMeshDelegate {
 
@@ -192,6 +193,7 @@ class MeshDelegateHandler(
      * Check for mentions in mesh messages and trigger notifications
      */
     private fun checkAndTriggerMeshMentionNotification(message: BitchatMessage) {
+        if (publicNotificationsMuted()) return
         try {
             // Get user's current nickname
             val currentNickname = state.getNicknameValue()

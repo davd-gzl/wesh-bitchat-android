@@ -57,6 +57,17 @@ class IncomingMessageAdmissionTest {
     }
 
     @Test
+    fun `blocked public sender cannot enter shared state or reach downstream notification`() {
+        val publicMessage = BitchatMessage(id = "blocked-public", sender = "Synthetic", content = "test", timestamp = Date(1), isRelay = false, senderPeerID = "peer-a")
+        assertFalse(IncomingMessageAdmission.admitToAppState(publicMessage) { it == "peer-a" })
+        assertTrue(AppStateStore.publicMessages.value.isEmpty())
+        assertFalse(IncomingMessageAdmission.admitToAppState(publicMessage) { error("synthetic unavailable identity") })
+        assertTrue(AppStateStore.publicMessages.value.isEmpty())
+        assertTrue(IncomingMessageAdmission.admitToAppState(publicMessage) { false })
+        assertEquals(listOf("blocked-public"), AppStateStore.publicMessages.value.map { it.id })
+    }
+
+    @Test
     fun `private message rejected during panic cannot continue transport dispatch`() {
         assertTrue(runBlocking { AppStateStore.panicClearPrivateConversations() })
 
