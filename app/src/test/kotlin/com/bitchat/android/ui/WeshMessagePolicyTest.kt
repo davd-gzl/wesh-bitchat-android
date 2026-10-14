@@ -10,6 +10,15 @@ class WeshMessagePolicyTest {
     private val replacement = ByteArray(32) { (it + 1).toByte() }
     private val verified = setOf(ContactIdentityResolver.fingerprintHex(key))
 
+    @Test fun `public consent refuses private context changed draft or Bluetooth lost during alert`() {
+        val request = WeshMessagePolicy.PublicSendRequest("synthetic public")
+        assertTrue(request.canConfirm("public", "synthetic public", true))
+        assertFalse(request.canConfirm("contact_synthetic", "synthetic private", true))
+        assertFalse(request.canConfirm("public", "new synthetic draft", true))
+        assertFalse(request.canConfirm("public", "synthetic public", false))
+        assertEquals("synthetic public", request.content)
+    }
+
     @Test fun `public text remains literal and cannot select a private or internet channel`() {
         val effects = mutableListOf<String>()
         assertTrue(WeshMessagePolicy.sendPublicText("/join synthetic", "Synthetic", "peer-local",

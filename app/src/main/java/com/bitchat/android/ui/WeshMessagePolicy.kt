@@ -17,6 +17,11 @@ internal object WeshMessagePolicy {
         sessionKey != null && expectedKey != null && sessionKey.contentEquals(expectedKey) &&
             verified.contains(ContactIdentityResolver.fingerprintHex(sessionKey))
 
+    data class PublicSendRequest(val content: String) {
+        fun canConfirm(destination: String, currentDraft: String, bluetoothReady: Boolean): Boolean =
+            destination == "public" && currentDraft == content && bluetoothReady && content.isNotBlank() && content.toByteArray().size <= 2000
+    }
+
     fun sendPublicText(
         content: String, nickname: String, myPeerID: String,
         store: (BitchatMessage) -> Unit,

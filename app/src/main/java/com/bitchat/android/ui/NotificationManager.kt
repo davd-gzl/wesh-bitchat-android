@@ -309,7 +309,7 @@ class NotificationManager(
                     markReadPendingIntent
                 ).build()
             )
-            .addAction(
+        if (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) builder.addAction(
                 NotificationCompat.Action.Builder(
                     R.drawable.ic_notification,
                     context.getString(R.string.notification_reply),
@@ -319,7 +319,7 @@ class NotificationManager(
                     .setAllowGeneratedReplies(true)
                     .build()
             )
-            .setPublicVersion(
+        builder.setPublicVersion(
                 NotificationCompat.Builder(context, CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_notification)
                     .setContentTitle(context.getString(R.string.notification_private_message))

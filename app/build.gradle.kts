@@ -31,8 +31,8 @@ android {
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         buildConfigField("boolean", "WESH_LOCAL_ONLY", "true")
-        versionCode = 39
-        versionName = "2.0.2"
+        versionCode = 40
+        versionName = "0.1.0"
         buildConfigField(
             "String",
             "GITHUB_RELEASE_CERT_SHA256",

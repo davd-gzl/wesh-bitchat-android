@@ -695,7 +695,7 @@ class MainActivity : OrientationAwareActivity() {
                 PoWPreferenceManager.init(this@MainActivity)
                 
                 // Initialize Location Notes Manager (extracted to separate file)
-                com.bitchat.android.nostr.LocationNotesInitializer.initialize(this@MainActivity)
+                if (!BuildConfig.WESH_LOCAL_ONLY) com.bitchat.android.nostr.LocationNotesInitializer.initialize(this@MainActivity)
                 
                 // Ensure all permissions are still granted (user might have revoked in settings)
                 if (!permissionManager.areAllPermissionsGranted()) {
@@ -821,8 +821,8 @@ class MainActivity : OrientationAwareActivity() {
                     Log.d("MainActivity", "Opening private chat with $senderNickname (peerID: $peerID) from notification")
                     
                     // Open the private chat sheet with this peer
-                    chatViewModel.showMeshPeerList()
-                    chatViewModel.showPrivateChatSheet(peerID)
+                    if (BuildConfig.WESH_LOCAL_ONLY) lifecycleScope.launch { chatViewModel.startPrivateChat(peerID) }
+                    else { chatViewModel.showMeshPeerList(); chatViewModel.showPrivateChatSheet(peerID) }
                     
                     // Clear notifications for this sender since user is now viewing the chat
                     chatViewModel.clearNotificationsForSender(peerID)
@@ -862,6 +862,11 @@ class MainActivity : OrientationAwareActivity() {
         val uri = intent.data ?: return
         if (uri.scheme != "bitchat" || uri.host != "verify") return
 
+        if (BuildConfig.WESH_LOCAL_ONLY) {
+            // A forwarded URL must not enroll silently: show review and require an explicit action.
+            chatViewModel.requestWeshQRReview(uri.toString())
+            return
+        }
         chatViewModel.showVerificationSheet()
         val qr = VerificationService.verifyScannedQR(uri.toString())
         if (qr != null) {

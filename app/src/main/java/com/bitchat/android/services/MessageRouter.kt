@@ -81,6 +81,8 @@ class MessageRouter private constructor(
     }
 
     // Outbox: conversationID -> queued messages, oldest first
+    internal var enforceWeshPolicy = com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
+    private val weshInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val outbox = ConcurrentHashMap<String, MutableList<QueuedMessage>>()
 
     // Per-conversation handshake retry state for queued messages
@@ -122,6 +124,17 @@ class MessageRouter private constructor(
         val meshTarget = resolution.meshPeerID ?: toPeerID.takeIf { ContactIdentityResolver.isMeshPeerId(it) }
         val nostrTarget = resolution.noiseKeyHex ?: toPeerID
 
+        if (enforceWeshPolicy) {
+            val sender = WeshPrivateSender(WeshContactStore.get(context))
+            if (!sender.enrolled(conversationID) || content.isBlank() || content.toByteArray().size > 2000) return RouteResult.DROPPED
+            if (sender.canSend(conversationID, mesh)) {
+                dispatchWesh(content, conversationID, messageID)
+                return RouteResult.MESH
+            }
+            enqueue(conversationID, QueuedMessage(content, recipientNickname, messageID, clock()))
+            return RouteResult.QUEUED
+        }
+
         if (com.bitchat.android.nostr.GeohashAliasRegistry.contains(toPeerID)) {
             Log.d(TAG, "Routing PM via Nostr (geohash) to alias ${toPeerID.take(12)}… id=${messageID.take(8)}…")
             val recipientHex = com.bitchat.android.nostr.GeohashAliasRegistry.get(toPeerID)
@@ -149,6 +162,21 @@ class MessageRouter private constructor(
             if (hasMesh) meshTarget?.let { kickHandshake(conversationID, it, immediate = true) }
             return RouteResult.QUEUED
         }
+    }
+
+    private fun dispatchWesh(content: String, conversationID: String, messageID: String) {
+        if (!weshInFlight.add(messageID)) return
+        schedulerScope.launch {
+            try { WeshPrivateSender(WeshContactStore.get(context)).dispatch(content, conversationID, messageID, mesh) }
+            finally { weshInFlight.remove(messageID) }
+        }
+    }
+
+    @Synchronized fun cancelWeshConversation(conversationID: String) {
+        outbox.remove(conversationID)?.forEach { entry ->
+            AppStateStore.updatePrivateMessageStatus(entry.messageID, com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré"))
+        }
+        retryState.remove(conversationID)
     }
 
     fun sendReadReceipt(receipt: ReadReceipt, toPeerID: String) {
@@ -209,6 +237,18 @@ class MessageRouter private constructor(
             val resolution = ContactDirectory.resolve(conversationID)
             val meshTarget = resolution.meshPeerID
             val nostrTarget = resolution.noiseKeyHex ?: conversationID
+            if (enforceWeshPolicy) {
+                val sender = WeshPrivateSender(WeshContactStore.get(context))
+                if (!sender.enrolled(conversationID)) {
+                    iterator.remove()
+                    com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(entry.messageID,
+                        com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
+                } else if (sender.canSend(conversationID, mesh)) {
+                    dispatchWesh(entry.content, conversationID, entry.messageID)
+                    iterator.remove()
+                }
+                continue
+            }
             if (meshTarget != null && isReady(mesh, meshTarget)) {
                 mesh.sendPrivateMessage(entry.content, meshTarget, entry.nickname, entry.messageID)
                 iterator.remove()

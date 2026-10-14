@@ -118,7 +118,7 @@ class FragmentingPacketSender(
         return true
     }
 
-    private fun packetsForTransport(routed: RoutedPacket): List<BitchatPacket>? {
+    internal fun packetsForTransport(routed: RoutedPacket): List<BitchatPacket>? {
         routed.preparedPackets?.let { prepared ->
             if (prepared.isEmpty() ||
                 prepared.size > com.bitchat.android.util.AppConstants.Fragmentation.MAX_FRAGMENTS_PER_ID) {

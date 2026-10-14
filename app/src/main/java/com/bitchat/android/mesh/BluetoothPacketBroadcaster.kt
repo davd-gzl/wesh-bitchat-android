@@ -119,7 +119,9 @@ class BluetoothPacketBroadcaster(
         val routed: RoutedPacket,
         val gattServer: BluetoothGattServer?,
         val characteristic: BluetoothGattCharacteristic?,
-        val accepted: CompletableDeferred<Boolean>? = null
+        val accepted: CompletableDeferred<Boolean>? = null,
+        val actualWrites: Boolean = false,
+        val authorized: () -> Boolean = { true }
     )
     
     // Actor scope for the broadcaster
@@ -140,7 +142,9 @@ class BluetoothPacketBroadcaster(
         val gatt: BluetoothGatt? = null,
         val gattServer: BluetoothGattServer? = null,
         val characteristic: BluetoothGattCharacteristic,
-        var callbackFailures: Int = 0
+        var callbackFailures: Int = 0,
+        val accepted: CompletableDeferred<Boolean>? = null,
+        val authorized: () -> Boolean = { true }
     )
 
     private class LinkSendState {
@@ -163,7 +167,8 @@ class BluetoothPacketBroadcaster(
                 broadcastSinglePacketInternal(
                     request.routed,
                     request.gattServer,
-                    request.characteristic
+                    request.characteristic, request.actualWrites,
+                    { request.accepted?.isCancelled != true && request.authorized() }
                 )
             } catch (e: Exception) {
                 Log.w(TAG, "Broadcast request failed: ${e.message}")
@@ -182,6 +187,27 @@ class BluetoothPacketBroadcaster(
             broadcastSinglePacket(packet, gattServer, characteristic)
             true
         }
+    }
+
+    /** Wesh texts keep the existing bounded fragment plan and report concrete GATT acceptance. */
+    suspend fun broadcastPacketAndAwaitAcceptance(routed: RoutedPacket, gattServer: BluetoothGattServer?,
+        characteristic: BluetoothGattCharacteristic?, authorized: () -> Boolean): Boolean {
+        val packets = fragmentingSender.packetsForTransport(routed) ?: return false
+        for ((index, packet) in packets.withIndex()) {
+            if (!authorized()) return false
+            val accepted = CompletableDeferred<Boolean>()
+            val result = try {
+                kotlinx.coroutines.withTimeoutOrNull(5_000) {
+                    broadcasterActor.send(BroadcastRequest(routed.copy(packet = packet, preparedPackets = null),
+                        gattServer, characteristic, accepted, true, authorized))
+                    accepted.await()
+                } == true
+            } catch (cancelled: CancellationException) { accepted.cancel(); throw cancelled }
+            catch (_: Exception) { false }
+            if (!result) { accepted.cancel(); return false }
+            if (index < packets.lastIndex) delay(20)
+        }
+        return true
     }
 
     fun cancelTransfer(transferId: String): Boolean {
@@ -342,8 +368,16 @@ class BluetoothPacketBroadcaster(
     private suspend fun broadcastSinglePacketInternal(
         routed: RoutedPacket,
         gattServer: BluetoothGattServer?,
-        characteristic: BluetoothGattCharacteristic?
+        characteristic: BluetoothGattCharacteristic?,
+        actualWrites: Boolean = false,
+        authorized: () -> Boolean = { true }
     ): Boolean {
+        if (!authorized()) return false
+        suspend fun notify(device: BluetoothDevice, data: ByteArray): Boolean =
+            if (actualWrites) notifyAndAwait(device, data, gattServer, characteristic, authorized)
+            else notifyDevice(device, data, gattServer, characteristic)
+        suspend fun write(connection: BluetoothConnectionTracker.DeviceConnection, data: ByteArray): Boolean =
+            if (actualWrites) writeAndAwait(connection, data, authorized) else writeToDeviceConn(connection, data)
         val packet = routed.packet
         // iOS-compatible: Use selective padding policy for BLE
         val padForBLE = BLEPacketPaddingPolicy.shouldPadForBLE(packet.type)
@@ -368,7 +402,7 @@ class BluetoothPacketBroadcaster(
                 .firstOrNull { connectionTracker.addressPeerMap[it.address] == firstHop }
 
             if (serverTarget != null) {
-                if (notifyDevice(serverTarget, data, gattServer, characteristic)) {
+                if (notify(serverTarget, data)) {
                     val toPeer = connectionTracker.addressPeerMap[serverTarget.address]
                     logPacketRelay(typeName, senderPeerID, senderNick, incomingPeer, incomingAddr, toPeer, serverTarget.address, packet.ttl, packet.version, routeInfo)
                     sent = true
@@ -381,7 +415,7 @@ class BluetoothPacketBroadcaster(
                     .firstOrNull { connectionTracker.addressPeerMap[it.device.address] == firstHop }
                 
                 if (clientTarget != null) {
-                    if (writeToDeviceConn(clientTarget, data)) {
+                    if (write(clientTarget, data)) {
                         val toPeer = connectionTracker.addressPeerMap[clientTarget.device.address]
                         logPacketRelay(typeName, senderPeerID, senderNick, incomingPeer, incomingAddr, toPeer, clientTarget.device.address, packet.ttl, packet.version, routeInfo)
                         sent = true
@@ -403,7 +437,7 @@ class BluetoothPacketBroadcaster(
             
             // If found, send directly
             if (targetDevice != null) {
-                if (notifyDevice(targetDevice, data, gattServer, characteristic)) {
+                if (notify(targetDevice, data)) {
                     val toPeer = connectionTracker.addressPeerMap[targetDevice.address]
                     logPacketRelay(typeName, senderPeerID, senderNick, incomingPeer, incomingAddr, toPeer, targetDevice.address, packet.ttl, packet.version, routeInfo)
                     return true
@@ -416,7 +450,7 @@ class BluetoothPacketBroadcaster(
             
             // If found, send directly
             if (targetDeviceConn != null) {
-                if (writeToDeviceConn(targetDeviceConn, data)) {
+                if (write(targetDeviceConn, data)) {
                     val toPeer = connectionTracker.addressPeerMap[targetDeviceConn.device.address]
                     logPacketRelay(typeName, senderPeerID, senderNick, incomingPeer, incomingAddr, toPeer, targetDeviceConn.device.address, packet.ttl, packet.version, routeInfo)
                     return true
@@ -439,7 +473,7 @@ class BluetoothPacketBroadcaster(
             if (connectionTracker.addressPeerMap[device.address] == senderID) {
                 return@forEach
             }
-            val sent = notifyDevice(device, data, gattServer, characteristic)
+            val sent = notify(device, data)
             if (sent) {
                 accepted = true
                 val toPeer = connectionTracker.addressPeerMap[device.address]
@@ -456,7 +490,7 @@ class BluetoothPacketBroadcaster(
                 if (connectionTracker.addressPeerMap[deviceConn.device.address] == senderID) {
                     return@forEach
                 }
-                val sent = writeToDeviceConn(deviceConn, data)
+                val sent = write(deviceConn, data)
                 if (sent) {
                     accepted = true
                     val toPeer = connectionTracker.addressPeerMap[deviceConn.device.address]
@@ -503,6 +537,29 @@ class BluetoothPacketBroadcaster(
         )
     }
 
+    private suspend fun notifyAndAwait(device: BluetoothDevice, data: ByteArray, server: BluetoothGattServer?,
+        characteristic: BluetoothGattCharacteristic?, authorized: () -> Boolean): Boolean {
+        val link = connectionTracker.getDeviceConnection(device.address)?.takeIf { !it.isClient } ?: return false
+        if (server == null || characteristic == null) return false
+        return enqueueAndAwait(SendKey(device.address, link.linkID, SendDirection.SERVER_NOTIFICATION),
+            PendingSend(data.copyOf(), device, gattServer = server, characteristic = characteristic,
+                accepted = CompletableDeferred(), authorized = authorized))
+    }
+    private suspend fun writeAndAwait(connection: BluetoothConnectionTracker.DeviceConnection, data: ByteArray,
+        authorized: () -> Boolean): Boolean {
+        val gatt = connection.gatt ?: return false
+        val characteristic = connection.characteristic ?: return false
+        return enqueueAndAwait(SendKey(connection.device.address, connection.linkID, SendDirection.CLIENT_WRITE),
+            PendingSend(data.copyOf(), connection.device, gatt = gatt, characteristic = characteristic,
+                accepted = CompletableDeferred(), authorized = authorized))
+    }
+    private suspend fun enqueueAndAwait(key: SendKey, request: PendingSend): Boolean {
+        val accepted = request.accepted ?: return false
+        if (!enqueueSend(key, request)) return false
+        return try { kotlinx.coroutines.withTimeoutOrNull(5_000) { accepted.await() } == true }
+        finally { if (!accepted.isCompleted) accepted.cancel() }
+    }
+
     /**
      * Android permits only one outstanding GATT operation per link. Queueing here mirrors the
      * readiness-driven iOS transport and prevents later voice frames from overwriting an operation
@@ -535,6 +592,10 @@ class BluetoothPacketBroadcaster(
     @SuppressLint("MissingPermission", "ObsoleteSdkInt")
     private fun startHead(key: SendKey) {
         val request = synchronized(sendLock) { sendStates[key]?.pending?.peekFirst() } ?: return
+        if (request.accepted?.isCancelled == true || !request.authorized() ||
+            (request.accepted != null && connectionTracker.getDeviceConnection(key.deviceAddress)?.linkID != key.linkID)) {
+            failBoundHead(key, request); return
+        }
         val accepted = try {
             when (key.direction) {
                 SendDirection.CLIENT_WRITE -> {
@@ -574,7 +635,20 @@ class BluetoothPacketBroadcaster(
             Log.w(TAG, "BLE ${key.direction} failed to start: ${error.message}")
             false
         }
-        if (!accepted) rejectStart(key)
+        if (accepted) request.accepted?.complete(true)
+        else if (request.accepted != null) failBoundHead(key, request) else rejectStart(key)
+    }
+
+    private fun failBoundHead(key: SendKey, request: PendingSend) {
+        request.accepted?.complete(false)
+        val startNext = synchronized(sendLock) {
+            val state = sendStates[key] ?: return
+            if (state.pending.peekFirst() !== request) return
+            state.pending.removeFirst(); state.pendingBytes -= request.data.size; state.inFlight = false
+            if (state.pending.isEmpty()) { sendStates.remove(key); false }
+            else { state.inFlight = true; true }
+        }
+        if (startNext) startHead(key)
     }
 
     private fun rejectStart(key: SendKey): Boolean {
@@ -645,9 +719,8 @@ class BluetoothPacketBroadcaster(
 
     fun onLinkDisconnected(deviceAddress: String, linkID: String?) {
         synchronized(sendLock) {
-            sendStates.keys.removeAll { key ->
-                key.deviceAddress == deviceAddress && (linkID == null || key.linkID == linkID)
-            }
+            sendStates.keys.filter { key -> key.deviceAddress == deviceAddress && (linkID == null || key.linkID == linkID) }
+                .forEach { key -> sendStates.remove(key)?.pending?.forEach { it.accepted?.complete(false) } }
         }
     }
     
@@ -667,7 +740,7 @@ class BluetoothPacketBroadcaster(
      * Shutdown the broadcaster actor gracefully
      */
     fun shutdown() {
-        synchronized(sendLock) { sendStates.clear() }
+        synchronized(sendLock) { sendStates.values.forEach { state -> state.pending.forEach { it.accepted?.complete(false) } }; sendStates.clear() }
         // Close the actor gracefully
         broadcasterActor.close()
 

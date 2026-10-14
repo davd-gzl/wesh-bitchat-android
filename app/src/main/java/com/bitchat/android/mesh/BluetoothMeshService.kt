@@ -1057,6 +1057,27 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
      * Send private message - SIMPLIFIED iOS-compatible version 
      * Uses NoisePayloadType system exactly like iOS SimplifiedBluetoothService
      */
+    /** Wesh handoff has a result and pins the generation at encryption, without changing the wire. */
+    suspend fun sendPrivateMessageBound(content: String, recipientPeerID: String, expectedKey: ByteArray,
+        messageID: String, authorized: () -> Boolean): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (content.isBlank() || content.toByteArray().size > 2000 || expectedKey.size != 32 || !authorized()) return@withContext false
+        val session = encryptionService.getAuthenticatedSession(recipientPeerID) ?: return@withContext false
+        if (!session.remoteStaticKey.contentEquals(expectedKey)) return@withContext false
+        runCatching {
+            val encoded = com.bitchat.android.model.PrivateMessagePacket(messageID, content).encode() ?: return@withContext false
+            val payload = com.bitchat.android.model.NoisePayload(com.bitchat.android.model.NoisePayloadType.PRIVATE_MESSAGE, encoded)
+            // encryptForSession atomically refuses a replacement generation, even for the same alias.
+            val encrypted = encryptionService.encryptForSession(payload.encode(), recipientPeerID, session)
+            if (!authorized()) return@withContext false
+            val packet = BitchatPacket(version = 1u, type = MessageType.NOISE_ENCRYPTED.value,
+                senderID = hexStringToByteArray(myPeerID), recipientID = hexStringToByteArray(recipientPeerID),
+                timestamp = System.currentTimeMillis().toULong(), payload = encrypted, signature = null, ttl = MAX_TTL)
+            connectionManager.broadcastPacketAndAwaitAcceptance(RoutedPacket(signPacketBeforeBroadcast(packet))) {
+                authorized() && encryptionService.getAuthenticatedSession(recipientPeerID) == session
+            }
+        }.getOrDefault(false)
+    }
+
     fun sendPrivateMessage(content: String, recipientPeerID: String, recipientNickname: String, messageID: String? = null) {
         if (content.isEmpty() || recipientPeerID.isEmpty()) return
         // Nicknames are presentation metadata. Routing and encryption are bound to the peer ID,

@@ -61,6 +61,8 @@ class MessageRouterTest {
         expired.clear()
 
         router = MessageRouter.getInstance(context, mesh)
+        // This suite exercises upstream generic routing; Wesh policy is covered separately.
+        router.enforceWeshPolicy = false
         router.clock = { fakeTime }
         router.onMessageExpired = { expired.add(it) }
     }
