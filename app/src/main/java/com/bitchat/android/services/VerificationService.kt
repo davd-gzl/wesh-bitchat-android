@@ -206,26 +206,10 @@ object VerificationService {
     }
 
     fun parseVerifyChallenge(data: ByteArray): Pair<String, ByteArray>? {
-        var idx = 0
-
-        fun take(n: Int): ByteArray? {
-            if (idx + n > data.size) return null
-            val out = data.copyOfRange(idx, idx + n)
-            idx += n
-            return out
-        }
-
-        val t1 = take(1) ?: return null
-        if (t1[0].toInt() != 0x01) return null
-        val l1 = take(1)?.get(0)?.toInt() ?: return null
-        val noiseBytes = take(l1) ?: return null
-        val noise = noiseBytes.toString(Charsets.UTF_8)
-
-        val t2 = take(1) ?: return null
-        if (t2[0].toInt() != 0x02) return null
-        val l2 = take(1)?.get(0)?.toInt() ?: return null
-        val nonce = take(l2) ?: return null
-
+        val reader = VerificationTlvReader(data)
+        val noise = reader.noiseKey() ?: return null
+        val nonce = reader.field(0x02, 16) ?: return null
+        if (!reader.isExhausted()) return null
         return noise to nonce
     }
 
@@ -252,32 +236,41 @@ object VerificationService {
     }
 
     fun parseVerifyResponse(data: ByteArray): VerifyResponse? {
-        var idx = 0
+        val reader = VerificationTlvReader(data)
+        val noise = reader.noiseKey() ?: return null
+        val nonce = reader.field(0x02, 16) ?: return null
+        val sig = reader.field(0x03, 64) ?: return null
+        if (!reader.isExhausted()) return null
+        return VerifyResponse(noise, nonce, sig)
+    }
 
-        fun take(n: Int): ByteArray? {
-            if (idx + n > data.size) return null
-            val out = data.copyOfRange(idx, idx + n)
-            idx += n
-            return out
+    /** Fixed verification schema; malformed fields never reach range arithmetic. */
+    private class VerificationTlvReader(private val data: ByteArray) {
+        private var offset = 0
+
+        fun field(expectedTag: Int, expectedSize: Int): ByteArray? {
+            if (data.size - offset < 2) return null
+            val tag = data[offset++].toInt() and 0xff
+            val size = data[offset++].toInt() and 0xff
+            // offset is within data; subtraction avoids an unchecked offset+size.
+            if (tag != expectedTag || size != expectedSize || size > data.size - offset) return null
+            val end = offset + size
+            val value = data.copyOfRange(offset, end)
+            offset = end
+            return value
         }
 
-        val t1 = take(1) ?: return null
-        if (t1[0].toInt() != 0x01) return null
-        val l1 = take(1)?.get(0)?.toInt() ?: return null
-        val noiseBytes = take(l1) ?: return null
-        val noise = noiseBytes.toString(Charsets.UTF_8)
+        fun noiseKey(): String? {
+            val bytes = field(0x01, 64) ?: return null
+            val isHex = bytes.all {
+                val value = it.toInt()
+                value in 48..57 || value in 65..70 || value in 97..102
+            }
+            if (!isHex) return null
+            return bytes.toString(Charsets.US_ASCII)
+        }
 
-        val t2 = take(1) ?: return null
-        if (t2[0].toInt() != 0x02) return null
-        val l2 = take(1)?.get(0)?.toInt() ?: return null
-        val nonce = take(l2) ?: return null
-
-        val t3 = take(1) ?: return null
-        if (t3[0].toInt() != 0x03) return null
-        val l3 = take(1)?.get(0)?.toInt() ?: return null
-        val sig = take(l3) ?: return null
-
-        return VerifyResponse(noise, nonce, sig)
+        fun isExhausted(): Boolean = offset == data.size
     }
 
     fun verifyResponseSignature(

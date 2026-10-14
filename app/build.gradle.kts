@@ -1,3 +1,4 @@
+import java.security.MessageDigest
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -31,7 +32,7 @@ android {
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         buildConfigField("boolean", "WESH_LOCAL_ONLY", "true")
-        versionCode = 40
+        versionCode = 41
         versionName = "0.1.0"
         buildConfigField(
             "String",
@@ -176,11 +177,8 @@ dependencies {
     // HTTP Server for hotspot APK sharing
     implementation(libs.nanohttpd)
 
-    // Arti (Tor in Rust) Android bridge - custom build from latest source
-    // Built with rustls, 16KB page size support, and onio//un service client
-    // Native libraries are in src/tor/jniLibs/ (extracted from arti-custom.aar)
-    // Only included in tor flavor to reduce APK size for standard builds
-    // Note: AAR is kept in libs/ for reference, but libraries loaded from jniLibs/
+    // Arti JNI libraries are vendored in src/main/jniLibs for all four ABIs.
+    // tools/arti-build pins their source, dependencies, and native toolchain.
 
     // Google Play Services Location
     implementation(libs.gms.location)
@@ -206,3 +204,62 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         "https://repo.maven.apache.org/maven2"
     )
 }
+
+// A changed dependency lock must never silently package the previous vendored
+// libraries. The native rebuild emits both manifests after all four ABIs pass.
+val verifyNativeArtiInputs = tasks.register("verifyNativeArtiInputs") {
+    val nativeRoot = rootProject.layout.projectDirectory
+    val manifests = listOf("SHA256SUMS", "SOURCE_SHA256SUMS")
+    inputs.files(manifests.map { nativeRoot.file("tools/arti-build/$it") })
+    inputs.files(fileTree(nativeRoot.dir("tools/arti-build")) {
+        include("Cargo.lock", "Cargo.toml", "Dockerfile", "TOOLCHAIN.env", "rust-toolchain.toml", "build-arti.sh", "provenance.sh", "src/lib.rs")
+    })
+    inputs.files(fileTree("src/main/jniLibs") { include("**/libarti_android.so") })
+    doLast {
+        val patches = nativeRoot.dir("tools/arti-build/patches").asFile
+        check(!patches.isDirectory || patches.listFiles().isNullOrEmpty()) {
+            "Native patches need explicit provenance support before use"
+        }
+        manifests.forEach { name ->
+            val manifest = nativeRoot.file("tools/arti-build/$name").asFile
+            check(manifest.isFile) { "Missing native provenance; rebuild all four Arti ABIs" }
+            val entries = manifest.readLines().filter { it.isNotBlank() }
+            val expectedPaths = if (name == "SHA256SUMS") {
+                listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+                    .map { "app/src/main/jniLibs/$it/libarti_android.so" }.toSet()
+            } else {
+                listOf("Cargo.lock", "Cargo.toml", "Dockerfile", "TOOLCHAIN.env", "rust-toolchain.toml", "build-arti.sh", "provenance.sh", "src/lib.rs")
+                    .map { "tools/arti-build/$it" }.toSet()
+            }
+            check(entries.size == expectedPaths.size && entries.map {
+                it.split(Regex("\\s+"), limit = 2).getOrNull(1)
+            }.toSet() == expectedPaths) {
+                "Incomplete native provenance; rebuild all four Arti ABIs"
+            }
+            entries.forEach { line ->
+                val fields = line.split(Regex("\\s+"), limit = 2)
+                check(fields.size == 2 && fields[0].matches(Regex("[a-f0-9]{64}"))) {
+                    "Invalid native checksum entry"
+                }
+                val relative = fields[1]
+                check(!relative.startsWith("/") && !relative.split('/').contains("..")) {
+                    "Native checksum paths must be repository relative"
+                }
+                val source = nativeRoot.file(relative).asFile
+                check(source.isFile) { "Missing native input: $relative" }
+                val digest = MessageDigest.getInstance("SHA-256")
+                source.inputStream().use { input ->
+                    val buffer = ByteArray(65536)
+                    var count = input.read(buffer)
+                    while (count >= 0) {
+                        if (count > 0) digest.update(buffer, 0, count)
+                        count = input.read(buffer)
+                    }
+                }
+                val actual = digest.digest().joinToString("") { "%02x".format(it) }
+                check(actual == fields[0]) { "Native input changed: $relative; rebuild all four Arti ABIs" }
+            }
+        }
+    }
+}
+tasks.named("preBuild") { dependsOn(verifyNativeArtiInputs) }

@@ -1,6 +1,7 @@
 .git
 .gradle
 .reproducible-build
+.validation
 **/build
 local.properties
 tools/arti-build/.arti-source
