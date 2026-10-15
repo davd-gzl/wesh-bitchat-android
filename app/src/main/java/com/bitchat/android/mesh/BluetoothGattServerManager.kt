@@ -71,8 +71,10 @@ class BluetoothGattServerManager(
     fun disconnectDevice(device: BluetoothDevice) {
         try {
             gattServer?.cancelConnection(device)
+        } catch (_: SecurityException) {
+            Log.w(TAG, "Bluetooth permission revoked while disconnecting server device")
         } catch (e: Exception) {
-            Log.w(TAG, "Error disconnecting device ${device.address}: ${e.message}")
+            Log.w(TAG, "Error disconnecting server device: ${e.message}")
         }
     }
     
@@ -94,8 +96,14 @@ class BluetoothGattServerManager(
             return false
         }
         
-        if (bluetoothAdapter?.isEnabled != true) {
-            Log.e(TAG, "Bluetooth is not enabled")
+        val bluetoothEnabled = try {
+            bluetoothAdapter?.isEnabled == true
+        } catch (_: SecurityException) {
+            Log.w(TAG, "Bluetooth permission revoked before startup")
+            false
+        }
+        if (!bluetoothEnabled) {
+            Log.e(TAG, "Bluetooth is not enabled or permission is unavailable")
             return false
         }
         
@@ -119,39 +127,35 @@ class BluetoothGattServerManager(
      * Stop GATT server
      */
     fun stop() {
-        if (!isActive) {
-            // Idempotent stop
-            stopAdvertising()
-            // Ensure server is closed if present
-            gattServer?.close()
-            gattServer = null
-            serverLinkIDs.clear()
-            return
-        }
-
         isActive = false
+        stopAdvertising()
 
-        connectionScope.launch {
-            stopAdvertising()
-            
-            // Try to cancel any active connections explicitly before closing
+        // Detach the resources first so denied framework cleanup cannot leave a usable server.
+        val server = gattServer
+        gattServer = null
+        characteristic = null
+        serverLinkIDs.clear()
+        if (server == null) return
+
+        connectionTracker.getConnectedDevices().values.filter { !it.isClient }.forEach { connection ->
             try {
-                // Disconnect ALL server connections
-                val servers = connectionTracker.getConnectedDevices().values.filter { !it.isClient }
-                servers.forEach { d ->
-                    try { gattServer?.cancelConnection(d.device) } catch (_: Exception) { }
-                }
-            } catch (_: Exception) { }
-            
-            // Close GATT server
-            gattServer?.close()
-            gattServer = null
-            serverLinkIDs.clear()
-            
-            Log.i(TAG, "GATT server stopped")
+                server.cancelConnection(connection.device)
+            } catch (_: SecurityException) {
+                Log.w(TAG, "Bluetooth permission revoked while cancelling server connection")
+            } catch (e: Exception) {
+                Log.w(TAG, "Error cancelling server connection: ${e.message}")
+            }
         }
+        try {
+            server.close()
+        } catch (_: SecurityException) {
+            Log.w(TAG, "Bluetooth permission revoked while closing server")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error closing GATT server: ${e.message}")
+        }
+        Log.i(TAG, "GATT server stopped")
     }
-    
+
     /**
      * Get GATT server instance
      */

@@ -116,8 +116,14 @@ class BluetoothGattClientManager(
             return false
         }
         
-        if (bluetoothAdapter?.isEnabled != true) {
-            Log.e(TAG, "Bluetooth is not enabled")
+        val bluetoothEnabled = try {
+            bluetoothAdapter?.isEnabled == true
+        } catch (_: SecurityException) {
+            Log.w(TAG, "Bluetooth permission revoked before startup")
+            false
+        }
+        if (!bluetoothEnabled) {
+            Log.e(TAG, "Bluetooth is not enabled or permission is unavailable")
             return false
         }
         

@@ -5,8 +5,6 @@ import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.UUID
@@ -21,7 +19,6 @@ class BluetoothConnectionTracker(
     
     companion object {
         private const val TAG = "BluetoothConnectionTracker"
-        private const val CLEANUP_DELAY = com.bitchat.android.util.AppConstants.Mesh.CONNECTION_CLEANUP_DELAY_MS
     }
     
     // Connection tracking - reduced memory footprint
@@ -64,7 +61,15 @@ class BluetoothConnectionTracker(
     
     override fun disconnect(id: String) {
         connectedDevices[id]?.gatt?.let {
-            try { it.disconnect() } catch (_: Exception) { }
+            try {
+                it.disconnect()
+            } catch (_: SecurityException) {
+                Log.w(TAG, "Bluetooth permission revoked while disconnecting")
+                closeGatt(it)
+            } catch (e: Exception) {
+                Log.w(TAG, "Error disconnecting GATT: ${e.message}")
+                closeGatt(it)
+            }
         }
         cleanupDeviceConnection(id)
         Log.d(TAG, "Requested disconnect for $id")
@@ -303,23 +308,31 @@ class BluetoothConnectionTracker(
      * Clean up all connections
      */
     private fun cleanupAllConnections() {
-        connectedDevices.values.forEach { deviceConn ->
-            deviceConn.gatt?.disconnect()
-        }
-        
-        connectionScope.launch {
-            delay(CLEANUP_DELAY)
-            
-            connectedDevices.values.forEach { deviceConn ->
-                try {
-                    deviceConn.gatt?.close()
-                } catch (e: Exception) {
-                    Log.w(TAG, "Error closing GATT during cleanup: ${e.message}")
-                }
+        // Terminal cleanup must finish before the owner cancels the scope. Retain each GATT
+        // until close has been attempted, even when permission was revoked during disconnect.
+        connectedDevices.values.toList().forEach { deviceConn ->
+            val gatt = deviceConn.gatt ?: return@forEach
+            try {
+                gatt.disconnect()
+            } catch (_: SecurityException) {
+                Log.w(TAG, "Bluetooth permission revoked while disconnecting")
+            } catch (e: Exception) {
+                Log.w(TAG, "Error disconnecting GATT during cleanup: ${e.message}")
             }
+            closeGatt(gatt)
         }
     }
-    
+
+    private fun closeGatt(gatt: BluetoothGatt) {
+        try {
+            gatt.close()
+        } catch (_: SecurityException) {
+            Log.w(TAG, "Bluetooth permission revoked while closing GATT")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error closing GATT during cleanup: ${e.message}")
+        }
+    }
+
     /**
      * Clear all connection tracking
      */
