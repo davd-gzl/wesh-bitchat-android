@@ -133,6 +133,7 @@ class ChatViewModel(
 
     // Specialized managers
     private val dataManager = DataManager(application.applicationContext)
+    internal val weshPreferences by lazy { WeshPreferences(application.applicationContext) }
     private val identityManager by lazy { SecureIdentityStateManager(getApplication()) }
     private val seenMessageStore by lazy {
         com.bitchat.android.services.SeenMessageStore.getInstance(getApplication())
@@ -220,7 +221,7 @@ class ChatViewModel(
         onHapticFeedback = { ChatViewModelUtils.triggerHapticFeedback(application.applicationContext) },
         getMyPeerID = { mesh.myPeerID },
         getMeshService = { mesh },
-        publicNotificationsMuted = { WeshPreferences(getApplication()).publicMuted },
+        publicNotificationsMuted = { weshPreferences.publicMuted },
         markMessageReadLocally = { messageID ->
             seenMessageStore.markReadLocally(messageID)
         }
@@ -1094,10 +1095,26 @@ class ChatViewModel(
     }
 
     /** Explicit Wesh routes bypass slash commands, location channels and public internet relays. */
-    fun sendWeshPublic(content: String): Boolean {
-        if (!weshBluetoothReady()) return false
-        return WeshMessagePolicy.sendPublicText(content, state.getNicknameValue(), meshService.myPeerID,
-            store = messageManager::addMessage, bluetoothSend = meshService::sendMessage)
+    internal val weshPublicSending = MutableStateFlow(false)
+
+    fun sendWeshPublic(content: String, onAccepted: (Boolean) -> Unit) {
+        val transport = meshService
+        val authorized = transport.weshPublicSendGuard {
+            !weshPanicInProgress.value && com.bitchat.android.startup.WeshRuntime.transportAllowed &&
+                meshService === transport && weshBluetoothReady()
+        }
+        if (!authorized() || !weshPublicSending.compareAndSet(false, true)) { onAccepted(false); return }
+        viewModelScope.launch {
+            try {
+                val accepted = WeshMessagePolicy.sendPublicText(content, state.getNicknameValue(), transport.myPeerID,
+                    store = messageManager::addMessage,
+                    bluetoothSend = { transport.sendWeshPublicMessage(it, authorized) },
+                    authorized = authorized)
+                onAccepted(accepted)
+            } finally {
+                weshPublicSending.value = false
+            }
+        }
     }
 
     fun weshBluetoothReady(): Boolean {
@@ -1541,6 +1558,7 @@ class ChatViewModel(
             com.bitchat.android.startup.WeshRuntime.requirePanicRecovery()
         }
         weshDraftStore.fenceForPanic()
+        weshPreferences.fenceForPanic()
         viewModelScope.launch {
             try {
                 performPanicClearAllData()
@@ -1622,16 +1640,20 @@ class ChatViewModel(
         state.setNickname(newNickname)
         dataManager.saveNickname(newNickname)
 
-        if (!conversationsCleared || !draftsCleared) {
-            // Privacy wins over availability: keep private-message admission and transports
-            // stopped if SQLite could not prove that the conversation history was erased.
-            Log.e(TAG, "PANIC MODE INCOMPLETE - draft or conversation wipe unconfirmed")
+        val resumed = resumeAfterWeshPanicWipe(
+            draftsCleared = draftsCleared,
+            conversationsCleared = conversationsCleared,
+            clearPreferences = {
+                withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { weshPreferences.clearForPanic() }
+            },
+            // This also finishes the durable draft marker; never enter it on an uncertain wipe.
+            resume = { recreateMeshServiceAfterPanic() }
+        )
+        if (!resumed) {
+            Log.e(TAG, "PANIC MODE INCOMPLETE - application wipe or fresh identity unconfirmed")
             return
         }
-
-        // Recreate mesh service with fresh identity
-        if (!recreateMeshServiceAfterPanic()) return
-
+        weshPreferences.resumeAfterVerifiedPanic()
         Log.w(TAG, "🚨 PANIC MODE COMPLETED - New identity: ${mesh.myPeerID}")
     }
 

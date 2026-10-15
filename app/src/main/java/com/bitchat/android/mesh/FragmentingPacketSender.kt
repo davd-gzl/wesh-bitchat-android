@@ -4,6 +4,7 @@ import android.util.Log
 import com.bitchat.android.model.RoutedPacket
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.protocol.MessageType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -21,7 +22,9 @@ class FragmentingPacketSender(
     private val scope: CoroutineScope,
     private val fragmentManager: FragmentManager?,
     private val logTag: String,
-    private val interFragmentDelayMs: Long = 20L
+    private val interFragmentDelayMs: Long = 20L,
+    private val onFailure: (String) -> Unit = TransferProgressManager::fail,
+    private val onComplete: (String, Int) -> Unit = TransferProgressManager::complete
 ) {
     private val transferJobs = ConcurrentHashMap<String, Job>()
 
@@ -34,7 +37,7 @@ class FragmentingPacketSender(
         val packets = packetsForTransport(routed)
         if (packets == null) {
             if (transferId != null) {
-                TransferProgressManager.fail(transferId)
+                onFailure(transferId)
             }
             return false
         }
@@ -54,9 +57,9 @@ class FragmentingPacketSender(
             if (transferId != null) {
                 if (sent) {
                     TransferProgressManager.progress(transferId, 1, 1)
-                    TransferProgressManager.complete(transferId, 1)
+                    onComplete(transferId, 1)
                 } else {
-                    TransferProgressManager.fail(transferId)
+                    onFailure(transferId)
                 }
             }
             return sent
@@ -80,13 +83,17 @@ class FragmentingPacketSender(
                 )
                 val delivered = try {
                     sendSingle(fragment)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (e: Exception) {
                     Log.e(logTag, "Fragment send failed for $description: ${e.message}", e)
                     false
                 }
 
                 if (!delivered) {
+                    if (!isActive) return@launch
                     Log.w(logTag, "Stopping fragmented send for $description after $sent/$total fragments")
+                    if (transferId != null) onFailure(transferId)
                     return@launch
                 }
 
@@ -100,7 +107,7 @@ class FragmentingPacketSender(
             }
 
             if (transferId != null) {
-                TransferProgressManager.complete(transferId, total)
+                onComplete(transferId, total)
             }
         }
 
@@ -108,8 +115,9 @@ class FragmentingPacketSender(
             transferJobs[transferId] = job
             job.invokeOnCompletion { transferJobs.remove(transferId, job) }
         }
-        job.start()
-        return true
+        val started = job.start()
+        if (!started && transferId != null) onFailure(transferId)
+        return started
     }
 
     fun cancelTransfer(transferId: String): Boolean {

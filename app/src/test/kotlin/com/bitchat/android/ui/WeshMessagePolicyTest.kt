@@ -4,6 +4,9 @@ import com.bitchat.android.model.DeliveryStatus
 import com.bitchat.android.services.ContactIdentityResolver
 import org.junit.Assert.*
 import org.junit.Test
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 
 class WeshMessagePolicyTest {
     private val key = ByteArray(32) { it.toByte() }
@@ -19,17 +22,75 @@ class WeshMessagePolicyTest {
         assertEquals("synthetic public", request.content)
     }
 
-    @Test fun `public text remains literal and cannot select a private or internet channel`() {
+    @Test fun `public text remains literal and cannot select a private or internet channel`() = runTest {
         val effects = mutableListOf<String>()
         assertTrue(WeshMessagePolicy.sendPublicText("/join synthetic", "Synthetic", "peer-local",
             store = { message -> assertFalse(message.isPrivate); assertNull(message.channel); effects += "stored" },
-            bluetoothSend = { content, mentions, channel ->
-                assertEquals("/join synthetic", content); assertTrue(mentions.isEmpty()); assertNull(channel); effects += "bluetooth"
+            bluetoothSend = { content ->
+                assertEquals("/join synthetic", content); effects += "bluetooth"; true
             }))
-        assertEquals(listOf("stored", "bluetooth"), effects)
+        assertEquals(listOf("bluetooth", "stored"), effects)
         effects.clear()
-        assertFalse(WeshMessagePolicy.sendPublicText(" ", "Synthetic", "peer-local", { effects += "stored" }, { _, _, _ -> effects += "sent" }))
+        assertFalse(WeshMessagePolicy.sendPublicText(" ", "Synthetic", "peer-local", { effects += "stored" }, { effects += "sent"; true }))
         assertTrue(effects.isEmpty())
+    }
+
+    @Test fun `refused public handoff preserves captured draft and creates no success echo`() = runTest {
+        val drafts = WeshDraftStore()
+        drafts.save("public", "synthetic public")
+        val capture = requireNotNull(drafts.capture("public"))
+        var echoes = 0
+        val accepted = WeshMessagePolicy.sendPublicText(capture.text, "Synthetic", "peer-local",
+            store = { echoes++ }, bluetoothSend = { false })
+        if (accepted) drafts.clearIfUnchanged(capture)
+        assertFalse(accepted)
+        assertEquals(0, echoes)
+        assertEquals(capture.text, drafts.drafts.value["public"])
+    }
+
+    @Test fun `pending public handoff creates no echo and late success preserves a newer draft`() = runTest {
+        val drafts = WeshDraftStore()
+        drafts.save("public", "synthetic original")
+        val capture = requireNotNull(drafts.capture("public"))
+        val awaitingHandoff = CompletableDeferred<Unit>()
+        val acceptedHandoff = CompletableDeferred<Boolean>()
+        var echoes = 0
+        val send = async {
+            WeshMessagePolicy.sendPublicText(capture.text, "Synthetic", "peer-local",
+                store = { echoes++ }, bluetoothSend = {
+                    awaitingHandoff.complete(Unit)
+                    acceptedHandoff.await()
+                })
+        }
+        awaitingHandoff.await()
+        assertEquals(0, echoes)
+        assertEquals(capture.text, drafts.drafts.value["public"])
+        drafts.save("public", "synthetic newer")
+        acceptedHandoff.complete(true)
+        assertTrue(send.await())
+        drafts.clearIfUnchanged(capture)
+        assertEquals(1, echoes)
+        assertEquals("synthetic newer", drafts.drafts.value["public"])
+    }
+
+    @Test fun `revoked admission before final echo preserves draft even after a local handoff`() = runTest {
+        val drafts = WeshDraftStore()
+        drafts.save("public", "synthetic public")
+        val capture = requireNotNull(drafts.capture("public"))
+        var allowed = true
+        var echoes = 0
+        var handoffs = 0
+        val accepted = WeshMessagePolicy.sendPublicText(capture.text, "Synthetic", "peer-local",
+            store = { echoes++ }, bluetoothSend = {
+                handoffs++
+                allowed = false
+                true
+            }, authorized = { allowed })
+        if (accepted) drafts.clearIfUnchanged(capture)
+        assertFalse(accepted)
+        assertEquals(1, handoffs)
+        assertEquals(0, echoes)
+        assertEquals(capture.text, drafts.drafts.value["public"])
     }
 
     @Test fun `a parsed QR or unavailable session does not authorize private sending`() {

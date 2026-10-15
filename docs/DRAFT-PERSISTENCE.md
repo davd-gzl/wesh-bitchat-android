@@ -72,7 +72,7 @@ distinct development APKs stay ignored under
 `.validation/artifacts/android-drafts-lint/`; historical evidence is preserved.
 
 
-## Local validation
+## Historical draft-persistence validation
 
 The final JDK 21 offline run assembled app and Wear debug APKs, forced both
 complete JVM test tasks with --rerun and no filter, then ran lint. App: 834
@@ -103,3 +103,34 @@ new artifact directory. No actual Keystore, Android data-erasure action,
 device, ADB, emulator, GUI, live location, upload or distribution was used for
 this validation. Physical process/power loss, panic recovery and accessibility
 remain qualification gates.
+
+
+## V1 send admission and global panic follow-up
+
+Public Wesh submission now awaits the concrete BLE handoff result before adding
+its local echo or clearing the captured draft. Availability and the service
+request generation are rechecked across the suspension. A failed fragment stops
+the remaining train and reports one failure. Cancellation retains coroutine
+semantics. A rejected submission can follow a partial transmission; retry may
+therefore duplicate content already sent. Acceptance is not a recipient receipt.
+
+Global panic now also requires the synchronous `wesh_ui` preferences clear to
+commit successfully and read back empty before its final recovery barrier can
+remove the durable marker or restart transport. Failure of preferences, draft or
+conversation erasure preserves the recovery gate. This closes an omission that
+could retain the personal note after a nominally completed panic. Other global
+steps still retain their earlier verification limits.
+
+The ViewModel and UI share one preferences owner. Panic immediately fences edits
+and clears the in-memory note. The editor no longer saves note text in
+`rememberSaveable`. Edit/save callbacks carry the immutable generation captured
+by their composition; callbacks from before panic remain rejected after a
+successful resume, without overwriting a newly entered note. The draft help text
+now accurately describes encrypted persistence after application closure.
+
+Tests use injected preferences and isolated synthetic markers, including commit
+false after an in-memory clear, exceptions, nonempty readback, other wipe failure
+and stale callbacks after resume. They do not prove system IME/rotation behavior,
+power-loss durability or physical erasure. Current local validation evidence is
+ignored under `.validation/artifacts/android-v1-readiness/`; previous results
+above belong to their historical source.

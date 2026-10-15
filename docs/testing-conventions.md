@@ -62,25 +62,21 @@ fixtures.
 
 ## Coverage
 
-Run the full report and non-regression floor:
+Run the app compatibility suite and the separate Wear suite:
 
 ```sh
-./gradlew clientRewriteContractTest
+./gradlew clientRewriteContractTest :wear:testDebugUnitTest
 ```
 
-Reports are written to:
+`clientRewriteContractTest` currently depends on the app JVM test task only.
+The Gradle build does not configure JaCoCo report generation or a
+`checkChangedLineCoverage` task. A successful compatibility run therefore does
+not establish a line-coverage percentage or a non-regression coverage floor.
 
-- `app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml`
-- `app/build/reports/jacoco/jacocoTestReport/html/`
-
-Check executable production lines changed from the base branch:
-
-```sh
-COVERAGE_BASE_REF=origin/main ./gradlew checkChangedLineCoverage
-```
-
-Generated resource classes, Compose-generated singleton classes, platform
-bridges, and vendored Noise code are excluded from first-party coverage metrics.
+The standalone parser and evaluator in `tools/coverage/check_changed_coverage.py`
+have their own synthetic unit tests. They require an independently generated
+JaCoCo XML report to evaluate changed lines; their tests are not an application
+coverage measurement.
 
 ## Quarantine and skips
 

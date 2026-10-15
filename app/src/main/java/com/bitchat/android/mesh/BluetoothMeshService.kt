@@ -124,14 +124,15 @@ class BluetoothMeshService(
     )
     
     // Service state management
-    private var isActive = false
+    @Volatile private var isActive = false
     
     // Delegate for message callbacks (maintains same interface)
     var delegate: BluetoothMeshDelegate? = null
     
     // Coroutines
     // Tracks whether this instance has been terminated via stopServices()
-    private var terminated = false
+    @Volatile private var terminated = false
+    private val publicSendGeneration = java.util.concurrent.atomic.AtomicLong()
     
     init {
         serviceScope.launch {
@@ -781,6 +782,7 @@ class BluetoothMeshService(
         Log.i(TAG, "Starting Bluetooth mesh service with peer ID: $myPeerID")
         
         if (connectionManager.startServices()) {
+            publicSendGeneration.incrementAndGet()
             isActive = true
             TransportBridgeService.register("BLE", this)
             
@@ -805,6 +807,7 @@ class BluetoothMeshService(
     private fun pauseServicesForTransportDisable() {
         Log.i(TAG, "Disabling BLE mesh transport")
         isActive = false
+        publicSendGeneration.incrementAndGet()
         com.bitchat.android.service.MeshServiceHolder.stopSharedGossip("BLE")
         TransportBridgeService.unregister("BLE")
         try { com.bitchat.android.services.AppStateStore.clearTransportPeers("BLE") } catch (_: Exception) { }
@@ -824,6 +827,7 @@ class BluetoothMeshService(
         
         Log.i(TAG, "Stopping Bluetooth mesh service")
         isActive = false
+        publicSendGeneration.incrementAndGet()
         TransportBridgeService.unregister("BLE")
         try { com.bitchat.android.services.AppStateStore.clearTransportPeers("BLE") } catch (_: Exception) { }
         try { com.bitchat.android.services.AppStateStore.clearTransportDirectPeers("BLE") } catch (_: Exception) { }
@@ -860,6 +864,43 @@ class BluetoothMeshService(
         return reusable
     }
     
+    /** The UI keeps this guard through the handoff and the final local echo admission. */
+    internal fun weshPublicSendGuard(authorized: () -> Boolean): () -> Boolean {
+        val capturedGeneration = publicSendGeneration.get()
+        return {
+            isActive && !terminated && serviceScope.isActive && isBleTransportEnabled() &&
+                publicSendGeneration.get() == capturedGeneration && authorized()
+        }
+    }
+
+    /** A Wesh public send succeeds only after a local BLE handoff, never on queueing alone. */
+    suspend fun sendWeshPublicMessage(content: String, authorized: () -> Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            admitWeshPublicMessage(
+                content = content,
+                ready = { isActive && !terminated && serviceScope.isActive && isBleTransportEnabled() && authorized() },
+                generation = publicSendGeneration::get,
+                prepare = {
+                    signPacketBeforeBroadcast(BitchatPacket(
+                        version = 1u,
+                        type = MessageType.MESSAGE.value,
+                        senderID = hexStringToByteArray(myPeerID),
+                        recipientID = SpecialRecipients.BROADCAST,
+                        timestamp = System.currentTimeMillis().toULong(),
+                        payload = content.toByteArray(Charsets.UTF_8),
+                        signature = null,
+                        ttl = MAX_TTL
+                    ))
+                },
+                handoff = { packet, stillAuthorized ->
+                    connectionManager.broadcastPacketAndAwaitAcceptance(RoutedPacket(packet), stillAuthorized)
+                },
+                recordAccepted = { packet ->
+                    try { gossipSyncManager.onPublicPacketSeen(packet) } catch (_: Exception) { }
+                }
+            )
+        }
+
     /**
      * Send public message
      */
@@ -1689,4 +1730,30 @@ class BluetoothMeshService(
 interface BluetoothMeshDelegate : MeshDelegate {
     override fun didReceiveVerifyChallenge(peerID: String, payload: ByteArray, timestampMs: Long)
     override fun didReceiveVerifyResponse(peerID: String, payload: ByteArray, timestampMs: Long)
+}
+
+/** Captures one lifecycle generation and checks it again at the concrete transport effect. */
+internal suspend fun <T> admitWeshPublicMessage(
+    content: String,
+    ready: () -> Boolean,
+    generation: () -> Long,
+    prepare: () -> T,
+    handoff: suspend (T, () -> Boolean) -> Boolean,
+    recordAccepted: (T) -> Unit
+): Boolean {
+    if (content.isBlank() || content.toByteArray(Charsets.UTF_8).size > 2000) return false
+    val capturedGeneration = generation()
+    val authorized = { ready() && generation() == capturedGeneration }
+    if (!authorized()) return false
+    return try {
+        val packet = prepare()
+        if (!authorized() || !handoff(packet, authorized) || !authorized()) false else {
+            recordAccepted(packet)
+            true
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false
+    }
 }
