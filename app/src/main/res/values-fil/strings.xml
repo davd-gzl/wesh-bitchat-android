@@ -219,7 +219,6 @@
     <string name="debug_max_gcs_filter_size_fmt">max laki ng GCS filter: %1$d bytes (128–1024)</string>
     <string name="debug_target_fpr_fmt">target FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">mga nakakonektang device</string>
-    <string name="debug_our_device_id_fmt">ID ng aming device: %1$s</string>
     <string name="debug_none">wala</string>
     <string name="debug_disconnect">i‑disconnect</string>
     <string name="debug_recent_scan_results">mga huling resulta ng scan</string>

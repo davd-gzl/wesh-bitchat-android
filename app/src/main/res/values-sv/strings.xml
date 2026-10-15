@@ -204,7 +204,6 @@
     <string name="debug_max_gcs_filter_size_fmt">max GCS‑filterstorlek: %1$d byte (128–1024)</string>
     <string name="debug_target_fpr_fmt">mål‑FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">anslutna enheter</string>
-    <string name="debug_our_device_id_fmt">vår enhets‑ID: %1$s</string>
     <string name="debug_none">ingen</string>
     <string name="debug_disconnect">koppla från</string>
     <string name="debug_recent_scan_results">senaste skanningsresultat</string>

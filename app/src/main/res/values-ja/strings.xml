@@ -229,7 +229,6 @@
     <string name="debug_max_gcs_filter_size_fmt">GCS フィルター最大サイズ: %1$d バイト (128–1024)</string>
     <string name="debug_target_fpr_fmt">目標 FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">接続済みデバイス</string>
-    <string name="debug_our_device_id_fmt">自分のデバイス ID: %1$s</string>
     <string name="debug_none">なし</string>
     <string name="debug_disconnect">切断</string>
     <string name="debug_recent_scan_results">最近スキャンしたデバイス</string>

@@ -90,23 +90,14 @@ class MainActivity : OrientationAwareActivity() {
         }
         // Register receiver for force finish signal from shutdown coordinator
         val filter = android.content.IntentFilter(com.bitchat.android.util.AppConstants.UI.ACTION_FORCE_FINISH)
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(
-                forceFinishReceiver,
-                filter,
-                packageName + ".permission.FORCE_FINISH",
-                null,
-                android.content.Context.RECEIVER_NOT_EXPORTED
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            registerReceiver(
-                forceFinishReceiver,
-                filter,
-                packageName + ".permission.FORCE_FINISH",
-                null
-            )
-        }
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
+            forceFinishReceiver,
+            filter,
+            packageName + ".permission.FORCE_FINISH",
+            null,
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         
         // Check if this is a quit request from the notification
         if (intent.getBooleanExtra("ACTION_QUIT_APP", false)) {

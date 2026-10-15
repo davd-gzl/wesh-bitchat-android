@@ -229,7 +229,6 @@
     <string name="debug_max_gcs_filter_size_fmt">وڈ توں وڈ GCS فلٹر سائز: %1$d بائٹ (128–1024)</string>
     <string name="debug_target_fpr_fmt">ٹارگٹ FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">جڑے ڈیوائس</string>
-    <string name="debug_our_device_id_fmt">ساڈا ڈیوائس ID: %1$s</string>
     <string name="debug_none">کچھ وی نئیں</string>
     <string name="debug_disconnect">ڈس کنیکٹ</string>
     <string name="debug_recent_scan_results">حال ہی وچ سکین ہوۓ ڈیوائس</string>

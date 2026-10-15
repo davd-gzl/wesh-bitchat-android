@@ -229,7 +229,6 @@
     <string name="debug_max_gcs_filter_size_fmt">max GCS-filtergrootte: %1$d bytes (128–1024)</string>
     <string name="debug_target_fpr_fmt">doel-FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">verbonden apparaten</string>
-    <string name="debug_our_device_id_fmt">ons apparaat-ID: %1$s</string>
     <string name="debug_none">geen</string>
     <string name="debug_disconnect">verbreken</string>
     <string name="debug_recent_scan_results">recente scanresultaten</string>

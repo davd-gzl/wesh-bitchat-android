@@ -229,7 +229,6 @@
     <string name="debug_max_gcs_filter_size_fmt">সর্বোচ্চ GCS ফিল্টার আকার: %1$d বাইট (128–1024)</string>
     <string name="debug_target_fpr_fmt">লক্ষ্য FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">সংযুক্ত ডিভাইস</string>
-    <string name="debug_our_device_id_fmt">আমাদের ডিভাইস ID: %1$s</string>
     <string name="debug_none">কোনটি নেই</string>
     <string name="debug_disconnect">সংযোগ বিচ্ছিন্ন করুন</string>
     <string name="debug_recent_scan_results">সাম্প্রতিক স্ক্যান করা ডিভাইস</string>

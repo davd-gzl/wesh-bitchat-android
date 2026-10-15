@@ -219,7 +219,6 @@
     <string name="debug_max_gcs_filter_size_fmt">GCS फिल्टर साइज अधिकतम: %1$d बाइट (128–1024)</string>
     <string name="debug_target_fpr_fmt">लक्ष्य FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">जडान भएका यन्त्रहरू</string>
-    <string name="debug_our_device_id_fmt">हाम्रो यन्त्र आईडी: %1$s</string>
     <string name="debug_none">केही छैन</string>
     <string name="debug_disconnect">डिस्कनेक्ट</string>
     <string name="debug_recent_scan_results">हालैका स्क्यान नतिजा</string>

@@ -56,7 +56,7 @@ class BluetoothStatusManager(
         bluetoothEnableLauncher = activity.registerForActivityResult(
             ActivityResultContracts.StartActivityForResult()
         ) { result ->
-            val isEnabled = bluetoothAdapter?.isEnabled == true
+            val isEnabled = isBluetoothEnabled()
             Log.d(TAG, "Bluetooth enable request result: $isEnabled (result code: ${result.resultCode})")
             if (isEnabled) {
                 onBluetoothEnabled()
@@ -178,14 +178,13 @@ class BluetoothStatusManager(
                 try {
                     // These calls require BLUETOOTH_CONNECT permission on Android 12+
                     appendLine("Adapter name: ${adapter.name ?: "Unknown"}")
-                    appendLine("Adapter address: ${adapter.address ?: "Unknown"}")
+                    appendLine("Adapter state: ${getAdapterStateName(adapter.state)}")
                 } catch (securityException: SecurityException) {
                     // Permission not granted yet, skip detailed info
                     appendLine("Adapter details: [Permission required]")
                 } catch (e: Exception) {
                     appendLine("Adapter details: [Error: ${e.message}]")
                 }
-                appendLine("Adapter state: ${getAdapterStateName(adapter.state)}")
             }
         }
     }
@@ -240,7 +239,7 @@ class BluetoothStatusManager(
                         onBluetoothStateChanged(BluetoothStatus.DISABLED)
                         bluetoothStatusManager.onBluetoothDisabled("User has turned off their Blue")
                     }
-                    BluetoothAdapter.STATE_TURNING_ON, BluetoothAdapter.STATE_OFF -> {
+                    BluetoothAdapter.STATE_TURNING_ON, BluetoothAdapter.STATE_TURNING_OFF -> {
                         Log.d(TAG, "Bluetooth state transitioning: ${bluetoothStatusManager.getAdapterStateName(intent.getIntExtra(
                             BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR))}")
                     }

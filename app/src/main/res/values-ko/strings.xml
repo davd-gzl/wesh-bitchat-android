@@ -229,7 +229,6 @@
     <string name="debug_max_gcs_filter_size_fmt">최대 GCS 필터 크기: %1$d Byte (128–1024)</string>
     <string name="debug_target_fpr_fmt">목표 FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">연결된 장치</string>
-    <string name="debug_our_device_id_fmt">우리 장치 ID: %1$s</string>
     <string name="debug_none">없음</string>
     <string name="debug_disconnect">연결 해제</string>
     <string name="debug_recent_scan_results">최근 스캔된 장치</string>

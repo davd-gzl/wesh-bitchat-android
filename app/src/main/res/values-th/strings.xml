@@ -229,7 +229,6 @@
     <string name="debug_max_gcs_filter_size_fmt">ขนาดตัวกรอง GCS สูงสุด: %1$d ไบต์ (128–1024)</string>
     <string name="debug_target_fpr_fmt">อัตราบวกเทียมเป้าหมาย: %1$.2f%%</string>
     <string name="debug_connected_devices">อุปกรณ์ที่เชื่อมต่อ</string>
-    <string name="debug_our_device_id_fmt">รหัสอุปกรณ์ของเรา: %1$s</string>
     <string name="debug_none">ไม่มี</string>
     <string name="debug_disconnect">ตัดการเชื่อมต่อ</string>
     <string name="debug_recent_scan_results">อุปกรณ์ที่สแกนล่าสุด</string>

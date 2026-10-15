@@ -429,9 +429,6 @@ class BluetoothConnectionManager(
         }
     }
 
-    // Expose local adapter address for debug UI
-    fun getLocalAdapterAddress(): String? = try { bluetoothAdapter?.address } catch (e: Exception) { null }
-
     fun isClientConnection(address: String): Boolean? {
         return try { connectionTracker.getConnectedDevices()[address]?.isClient } catch (e: Exception) { null }
     }
@@ -473,9 +470,13 @@ class BluetoothConnectionManager(
     fun getDebugInfo(): String {
         return buildString {
             appendLine("=== Bluetooth Connection Manager ===")
-            appendLine("Bluetooth MAC Address: ${bluetoothAdapter?.address}")
             appendLine("Active: $isActive")
-            appendLine("Bluetooth Enabled: ${bluetoothAdapter?.isEnabled}")
+            val bluetoothEnabled = try {
+                bluetoothAdapter?.isEnabled?.toString() ?: "Unavailable"
+            } catch (_: SecurityException) {
+                "[Permission required]"
+            }
+            appendLine("Bluetooth Enabled: $bluetoothEnabled")
             appendLine("Has Permissions: ${permissionManager.hasBluetoothPermissions()}")
             appendLine("GATT Server Active: ${serverManager.getGattServer() != null}")
             appendLine()

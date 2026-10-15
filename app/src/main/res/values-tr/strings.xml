@@ -204,7 +204,6 @@
     <string name="debug_max_gcs_filter_size_fmt">maks GCS filtre boyutu: %1$d bayt (128–1024)</string>
     <string name="debug_target_fpr_fmt">hedef FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">bağlı cihazlar</string>
-    <string name="debug_our_device_id_fmt">cihaz kimliğimiz: %1$s</string>
     <string name="debug_none">yok</string>
     <string name="debug_disconnect">bağlantıyı kes</string>
     <string name="debug_recent_scan_results">son tarama sonuçları</string>

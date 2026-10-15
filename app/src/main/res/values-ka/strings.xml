@@ -229,7 +229,6 @@
     <string name="debug_max_gcs_filter_size_fmt">მაქს. GCS ფილტრის ზომა: %1$d ბაიტი (128–1024)</string>
     <string name="debug_target_fpr_fmt">სამიზნე FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">დაკავშირებული მოწყობილობები</string>
-    <string name="debug_our_device_id_fmt">ჩვენი მოწყობილობის ID: %1$s</string>
     <string name="debug_none">არცერთი</string>
     <string name="debug_disconnect">გათიშვა</string>
     <string name="debug_recent_scan_results">ბოლო სკანირებული მოწყობილობები</string>

@@ -220,7 +220,6 @@
     <string name="debug_max_gcs_filter_size_fmt">taille max du filtre GCS : %1$d octets (128–1024)</string>
     <string name="debug_target_fpr_fmt">FPR cible : %1$.2f%%</string>
     <string name="debug_connected_devices">appareils connectés</string>
-    <string name="debug_our_device_id_fmt">ID de notre appareil : %1$s</string>
     <string name="debug_none">aucun</string>
     <string name="debug_disconnect">déconnecter</string>
     <string name="debug_recent_scan_results">résultats de scan récents</string>

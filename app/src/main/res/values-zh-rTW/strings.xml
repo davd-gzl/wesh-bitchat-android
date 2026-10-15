@@ -266,7 +266,6 @@
   <string name="debug_max_gcs_filter_size_fmt">最大 GCS 篩選器大小：%1$d 位元組（128–1024）</string>
   <string name="debug_target_fpr_fmt">目標 FPR：%1$.2f%%</string>
   <string name="debug_connected_devices">已連線的裝置</string>
-  <string name="debug_our_device_id_fmt">我們的裝置 ID：%1$s</string>
   <string name="debug_none">無</string>
   <string name="debug_disconnect">中斷連線</string>
   <string name="debug_recent_scan_results">最近的掃描結果</string>

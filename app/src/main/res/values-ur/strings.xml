@@ -229,7 +229,6 @@
     <string name="debug_max_gcs_filter_size_fmt">زیادہ سے زیادہ GCS فلٹر سائز: %1$d بائٹس (128–1024)</string>
     <string name="debug_target_fpr_fmt">ہدف FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">منسلک آلات</string>
-    <string name="debug_our_device_id_fmt">ہمارا آلہ ID: %1$s</string>
     <string name="debug_none">کوئی نہیں</string>
     <string name="debug_disconnect">منقطع کریں</string>
     <string name="debug_recent_scan_results">حال ہی میں اسکین شدہ آلات</string>

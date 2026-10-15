@@ -260,7 +260,6 @@
     <string name="debug_max_gcs_filter_size_fmt">макс. розмір GCS-фільтра: %1$d байт (128–1024)</string>
     <string name="debug_target_fpr_fmt">цільовий FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">підключені пристрої</string>
-    <string name="debug_our_device_id_fmt">id нашого пристрою: %1$s</string>
     <string name="debug_none">немає</string>
     <string name="debug_disconnect">від’єднати</string>
     <string name="debug_recent_scan_results">останні результати сканування</string>

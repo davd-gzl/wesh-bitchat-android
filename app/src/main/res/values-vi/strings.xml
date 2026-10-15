@@ -229,7 +229,6 @@
     <string name="debug_max_gcs_filter_size_fmt">kích thước bộ lọc GCS tối đa: %1$d Byte (128–1024)</string>
     <string name="debug_target_fpr_fmt">FPR mục tiêu: %1$.2f%%</string>
     <string name="debug_connected_devices">thiết bị đã kết nối</string>
-    <string name="debug_our_device_id_fmt">ID thiết bị của chúng tôi: %1$s</string>
     <string name="debug_none">không có</string>
     <string name="debug_disconnect">ngắt kết nối</string>
     <string name="debug_recent_scan_results">thiết bị được quét gần đây</string>

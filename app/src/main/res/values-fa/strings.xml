@@ -229,7 +229,6 @@
     <string name="debug_max_gcs_filter_size_fmt">حداکثر اندازهٔ فیلتر GCS: %1$d بایت (128–1024)</string>
     <string name="debug_target_fpr_fmt">FPR هدف: %1$.2f%%</string>
     <string name="debug_connected_devices">دستگاه‌های متصل</string>
-    <string name="debug_our_device_id_fmt">شناسهٔ دستگاه ما: %1$s</string>
     <string name="debug_none">هیچ</string>
     <string name="debug_disconnect">قطع اتصال</string>
     <string name="debug_recent_scan_results">دستگاه‌های اخیراً اسکن‌شده</string>

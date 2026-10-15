@@ -851,8 +851,6 @@ fun DebugSettingsSheet(
                             Icon(Icons.Filled.Devices, contentDescription = null, tint = Color(0xFF4CAF50))
                             Text(stringResource(R.string.debug_connected_devices), fontFamily = BitchatFontFamily, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         }
-                        val localAddr = remember { meshService.connectionManager.getLocalAdapterAddress() }
-                        Text(stringResource(R.string.debug_our_device_id_fmt, localAddr ?: stringResource(R.string.unknown)), fontFamily = BitchatFontFamily, fontSize = 11.sp, color = colorScheme.onSurface.copy(alpha = 0.7f))
                         if (connectedDevices.isEmpty()) {
                             Text("None", fontFamily = BitchatFontFamily, fontSize = 11.sp, color = colorScheme.onSurface.copy(alpha = 0.6f))
                         } else {

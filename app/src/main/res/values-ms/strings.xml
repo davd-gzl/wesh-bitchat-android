@@ -251,7 +251,6 @@
   <string name="debug_max_gcs_filter_size_fmt">saiz penapis GCS maksimum: %1$d bait (128–1024)</string>
   <string name="debug_target_fpr_fmt">FPR sasaran: %1$.2f%%</string>
   <string name="debug_connected_devices">peranti disambungkan</string>
-  <string name="debug_our_device_id_fmt">id peranti kami: %1$s</string>
   <string name="debug_none">tiada</string>
   <string name="debug_disconnect">putuskan sambungan</string>
   <string name="debug_recent_scan_results">keputusan imbasan terkini</string>

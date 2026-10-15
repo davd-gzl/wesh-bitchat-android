@@ -271,7 +271,6 @@
   <string name="debug_max_gcs_filter_size_fmt">அதிகபட்ச GCS ஃபில்டர் அளவு: %1$d பைட்டுகள் (128–1024)</string>
   <string name="debug_target_fpr_fmt">இலக்கு FPR: %1$.2f%%</string>
   <string name="debug_connected_devices">இணைக்கப்பட்ட சாதனங்கள்</string>
-  <string name="debug_our_device_id_fmt">எங்கள் சாதன ஐடி: %1$s</string>
   <string name="debug_none">எதுவுமில்லை</string>
   <string name="debug_disconnect">துண்டி</string>
   <string name="debug_recent_scan_results">சமீபத்திய ஸ்கேன் முடிவுகள்</string>
