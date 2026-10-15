@@ -32,8 +32,7 @@ internal object WeshRuntime {
                 EncryptionService(app)
             }
             withContext(Dispatchers.Main.immediate) {
-                MeshServiceHolder.installPreparedEncryption(encryption)
-                MeshServiceHolder.getUnifiedOrCreate(app)
+                MeshServiceHolder.getUnifiedOrCreate(app, encryption)
                 Unit
             }
         }.also { coordinator = it }
