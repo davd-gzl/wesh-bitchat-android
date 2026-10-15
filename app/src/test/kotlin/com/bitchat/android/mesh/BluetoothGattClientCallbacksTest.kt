@@ -10,6 +10,8 @@ import android.bluetooth.le.ScanRecord
 import android.os.ParcelUuid
 import android.os.Build
 import com.bitchat.android.util.AppConstants
+import com.bitchat.android.ui.debug.DebugSettingsManager
+import com.bitchat.android.ui.debug.DebugScanResult
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -370,6 +372,74 @@ class BluetoothGattClientCallbacksTest {
         scanCallbacks.single().onBatchScanResults(mutableListOf(result))
         verifyNoInteractions(result)
         verify(device, never()).connectGatt(eq(context), eq(false), any(), eq(BluetoothDevice.TRANSPORT_LE))
+    }
+
+    private fun scanDebugResult(advertisedName: String?, rssi: Int, beforeDelivery: () -> Unit = {}): DebugScanResult {
+        val debug = DebugSettingsManager.getInstance()
+        debug.clearScanResults()
+        whenever(power.getRSSIThreshold()).thenReturn(-70)
+        assertTrue(client.start())
+        scope.runCurrent()
+        val record = mock<ScanRecord> {
+            on { serviceUuids }.thenReturn(listOf(ParcelUuid(AppConstants.Mesh.Gatt.SERVICE_UUID)))
+            on { deviceName }.thenReturn(advertisedName)
+        }
+        val result = mock<ScanResult> {
+            on { device }.thenReturn(this@BluetoothGattClientCallbacksTest.device)
+            on { getRssi() }.thenReturn(rssi)
+            on { scanRecord }.thenReturn(record)
+        }
+        beforeDelivery()
+        scanCallbacks.single().onScanResult(0, result)
+        return debug.scanResults.value.single()
+    }
+
+    @Test fun `advertised debug name avoids protected cached name without blocking connection attempt`() {
+        whenever(device.name).thenThrow(SecurityException("synthetic name denial"))
+        val result = scanDebugResult("Synthetic advertised label", -30)
+        assertEquals("Synthetic advertised label", result.deviceName)
+        verify(device, never()).name
+        verify(device).connectGatt(eq(context), eq(false), any(), eq(BluetoothDevice.TRANSPORT_LE))
+        verify(delegate, never()).onDeviceConnected(any())
+    }
+
+    @Test fun `cached debug name is read once for weak unnamed advertisement`() {
+        whenever(device.name).thenReturn("Synthetic cached label")
+        val result = scanDebugResult(null, -95)
+        assertEquals("Synthetic cached label", result.deviceName)
+        assertEquals(-95, tracker.getBestRSSI(address))
+        verify(device).name
+        verify(device, never()).connectGatt(eq(context), eq(false), any(), eq(BluetoothDevice.TRANSPORT_LE))
+    }
+
+    @Test fun `revoked cached name still publishes weak scan without claiming a connection`() {
+        whenever(device.name).thenThrow(SecurityException("synthetic name denial"))
+        val result = scanDebugResult(null, -95)
+        assertNull(result.deviceName)
+        assertEquals(-95, tracker.getBestRSSI(address))
+        verify(device).name
+        verify(device, never()).connectGatt(eq(context), eq(false), any(), eq(BluetoothDevice.TRANSPORT_LE))
+        verify(delegate, never()).onDeviceConnected(any())
+    }
+
+    @Test fun `permission revoked before optional name lookup prevents protected read and connection attempt`() {
+        val result = scanDebugResult(null, -30) {
+            // The callback and scan handler pass preflight, then name lookup and connect fail closed.
+            whenever(permissions.hasBluetoothPermissions()).thenReturn(true, true, false)
+        }
+        assertNull(result.deviceName)
+        verify(device, never()).name
+        verify(device, never()).connectGatt(eq(context), eq(false), any(), eq(BluetoothDevice.TRANSPORT_LE))
+        verify(delegate, never()).onDeviceConnected(any())
+    }
+
+    @Test fun `optional cached name refusal does not gate otherwise accepted connection attempt`() {
+        whenever(device.name).thenThrow(SecurityException("synthetic name denial"))
+        val result = scanDebugResult(null, -30)
+        assertNull(result.deviceName)
+        verify(device).name
+        verify(device).connectGatt(eq(context), eq(false), any(), eq(BluetoothDevice.TRANSPORT_LE))
+        verify(delegate, never()).onDeviceConnected(any())
     }
 
 }

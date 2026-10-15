@@ -403,11 +403,24 @@ class BluetoothGattClientManager(
         // Store RSSI from scan results for later use (especially for server connections)
         connectionTracker.updateScanRSSI(deviceAddress, rssi)
 
+        // A name is optional debug data; its permission must not gate scan processing.
+        val deviceName = scanRecord.deviceName ?: if (permissionManager.hasBluetoothPermissions()) {
+            try {
+                device.name
+            } catch (_: SecurityException) {
+                null
+            } catch (_: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+
         // Publish scan result to debug UI buffer
         try {
             DebugSettingsManager.getInstance().addScanResult(
                 DebugScanResult(
-                    deviceName = device.name,
+                    deviceName = deviceName,
                     deviceAddress = deviceAddress,
                     rssi = rssi,
                     peerID = peerID // Use the discovered peerID if available
@@ -421,7 +434,7 @@ class BluetoothGattClientManager(
             try {
                 DebugSettingsManager.getInstance().addScanResult(
                     DebugScanResult(
-                        deviceName = device.name,
+                        deviceName = deviceName,
                         deviceAddress = deviceAddress,
                         rssi = rssi,
                         peerID = peerID

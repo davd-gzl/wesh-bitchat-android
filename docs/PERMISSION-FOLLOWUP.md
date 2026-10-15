@@ -182,3 +182,60 @@ review. Physical permission revocation, reconnect timing, background radio,
 phone/watch interop, accessibility and 16 KiB runtime qualification remain open.
 No device, emulator, ADB, live location, GUI, TalkBack, Mesh Lab, upload, native
 library rebuild, version bump, deployment or distribution was used or claimed.
+
+## Final development permission batch
+
+This batch follows `55f8a5d8` and retains development version 42. Connection-limit
+cleanup explicitly handles permission revocation and continues attempting later
+evictions. A failed disconnect does not discard tracker ownership or claim that
+the connection has closed; framework callbacks still determine its lifecycle.
+
+Scan diagnostics prefer the name already supplied by the advertisement. Without
+an advertised name, the optional cached device name is read after a permission
+check and tolerates revocation between that check and the framework call. An
+unavailable name stays null while the scan record and RSSI remain usable. Names
+remain debug labels; readiness, identity and connection acceptance do not depend
+on them. The existing RSSI filter and connection permission checks remain in use.
+
+One connection-limit regression and five scan-name regressions run on synthetic
+SDK 32 and 35 runtimes, adding twelve cases to each module. They check continued
+eviction attempts, retained tracker ownership, advertised and cached labels,
+weak scans, denied reads and revocation races. A debug-name failure cannot claim
+connection readiness or bypass a denied connection attempt.
+
+### Final permission validation
+
+- A single JDK 21 offline session assembled both debug APKs, executed both full
+  JVM collections with task-level `--rerun` and completed lint on the same frozen
+  production/test sources. App: 804 total, 801 passed, 3 inherited skips; Wear:
+  341 passed without skips. Neither module has a failure or error. These are
+  fresh executions, not UP-TO-DATE test reuse; the 74 targeted intermediate
+  cases are not added to these totals. Other unchanged build dependencies may
+  still be UP-TO-DATE.
+- Normalized XML comparison against the archived GATT callback reports removes
+  exactly three MissingPermission errors per module and adds no diagnostic.
+  No MissingPermission remains in either report. App: 268 errors / 318 warnings
+  / 19 hints, previously 271/318/19. Wear: 3/51/10, previously 6/51/10. Lint
+  still reports other errors; inherited abortOnError=false remains unchanged.
+  All eleven Wear ObsoleteSdkInt warnings are inherited and unchanged. In
+  particular, its minSdk 33 makes the shared descriptor API 32/33 branch
+  redundant for Wear, while the phone still requires the older path. The
+  shared implementation remains without a suppression or Wear-specific copy.
+- Both development APKs passed package/version, debug signer and zipalign16
+  checks. All twenty app native libraries match historical42 by entry name
+  and bytes; all four Wear natives match the preceding GATT callback APK.
+  Vendored Arti checksums and packaged Arti bytes match, ELF64 LOAD alignment
+  remains at least 16 KiB, and regression test class markers are absent.
+- The 655 build input hashes were captured before the full run and verified
+  afterward. Both changed production sources and both test sources match the
+  generated Wear copies. Historical42 and the preceding app/Wear development
+  APK hashes remain unchanged. Distinct development APKs, complete JUnit and
+  lint reports, source proof and provenance remain local and ignored under
+  `.validation/artifacts/android-permissions-final/`.
+
+Independent review established no actionable defect in this small follow-up.
+No device, emulator, ADB, GUI, radio, live location, upload, workflow dispatch,
+native rebuild, version bump, deployment or distribution was used. Physical
+permission revocation, connection-budget enforcement and radio timing remain
+unqualified; closing these static permission diagnostics does not qualify a
+stable release or remove the earlier Mesh Lab and accessibility gates.

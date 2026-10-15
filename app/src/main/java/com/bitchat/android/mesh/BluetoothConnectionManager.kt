@@ -209,7 +209,11 @@ class BluetoothConnectionManager(
                 
                 toEvict.forEach { conn ->
                     if (conn.isClient) {
-                        try { conn.gatt?.disconnect() } catch (_: Exception) { }
+                        try {
+                            conn.gatt?.disconnect()
+                        } catch (_: SecurityException) {
+                            Log.w(TAG, "Bluetooth permission revoked while enforcing connection limits")
+                        } catch (_: Exception) { }
                     } else {
                         serverManager.disconnectDevice(conn.device)
                     }
