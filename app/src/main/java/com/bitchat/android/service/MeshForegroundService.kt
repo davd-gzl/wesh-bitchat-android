@@ -202,6 +202,18 @@ class MeshForegroundService : Service() {
             else -> { /* ACTION_START or null */ }
         }
 
+        // A sticky restart can outlive permission or policy changes. Do not wait for
+        // encrypted storage when promotion/transport is already disallowed.
+        if (!hasAllRequiredPermissions() || (runtimeReady() && !MeshServicePreferences.isBackgroundEnabled(true))) {
+            startupJob?.cancel()
+            startupJob = null
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            isInForeground = false
+            clearMeshNotifications()
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         // Promote exactly once when eligible, otherwise stay background (or stop).
         // POST_NOTIFICATIONS is intentionally not an eligibility requirement: Android 13+
         // still allows foreground services and exposes them in the system task manager.
