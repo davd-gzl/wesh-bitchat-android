@@ -77,6 +77,33 @@ pinned SDK `zipalign -c -P 16` when libraries are stored uncompressed. ELF LOAD
 alignment, APK ZIP alignment and real 16 KiB device behavior are different
 checks. Keep artifact paths, hashes and provenance concordant.
 
+## Secure startup and lifecycle
+
+Wesh prepares identity storage and cryptography on an IO dispatcher through the
+process-owned `startup/WeshRuntime` coordinator. Keep Activity construction and
+chat / notification / QR operations gated on readiness; retries must use the
+same durable identity. Keep Bluetooth / unified construction on Main with the
+prepared crypto argument rather than recreating keystore objects there.
+
+An absent first-use key and an unreadable, partial or incorrectly sized key are
+different states. Never replace the latter with a new identity. Identity writes
+must check the Boolean result of `commit`; the KTX `edit(commit = true)` helper
+returns Unit and does not provide that result. Keep the process-wide failed-write
+and panic-wipe fences in `DurableIdentityPreferences`: Android can change its
+in-memory map even when commit reports failure. Do not silence the resulting
+style-only UseKtx diagnostics or weaken the persistence checks.
+
+Foreground-service promotion must precede suspension for secure startup; an
+ineligible restart stops before waiting or starting transport. Stop/quit must
+cancel its waiter. Preserve only the latest bounded, allowlisted pending route
+in Activity state and reapply existing QR and per-send authorization at use.
+
+The JVM startup tests use synthetic data. First-frame timing, process liveness,
+secure-runtime readiness and actual UI/accessibility are separate evidence. A
+loading screen appearing promptly is not proof that conversations or radio
+are ready. Physical service deadlines, revocation and background behavior still
+require Mesh Lab testing.
+
 ## Device and accessibility validation
 
 An isolated emulator can establish installation, process startup and absence of

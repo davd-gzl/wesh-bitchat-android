@@ -19,52 +19,69 @@ roadmap exploration outside V1.
 
 ## Current development candidate
 
-Candidate **0.1.0 (41)** was built from runtime source
-`74f2a79490129ee91abacfd5f1835b45dae69d79`.
+Candidate **0.1.0 (42)** was built from runtime source
+`8a5516eb4286a6df97d8790e0cdac8cb2aedc13c`.
 
-- App and Wear debug builds passed. App JVM tests: **656 passed, 3 inherited
-  skips (659 total)**. Wear JVM tests: **224 passed, no skips**. Wear remains
-  an inherited module outside the Wesh V1 product scope.
-- The four Arti libraries and both checksum manifests are byte-identical
-  between two clean builds in the same pinned environment. Independent review
-  checked their ELF/JNI properties and source correspondence.
-- The local universal APK passed package, label, version, existing debug-signer
+Wesh now prepares encrypted preferences and persisted crypto identity on IO,
+with a process-owned initializing / ready / failed state and explicit retry.
+Unreadable, partial or incorrectly sized stored keys do not become replacement
+identities. Checked persistence fences prevent a failed commit from being
+accepted just because its values entered memory. Bluetooth / unified service
+construction stays on Main and receives prepared crypto directly. The latest
+bounded pending route survives Activity state restoration and waits for secure
+startup plus onboarding; QR review and per-send authorization remain in force.
+Foreground-service promotion precedes suspension, and an ineligible sticky
+restart stops without waiting for the keystore. See the
+[startup verification and limits](docs/validation/STARTUP-PREPARATION.md).
+
+Image export now uses an explicit document destination on API 26–28 and the
+Downloads API on API 29+, performs storage work on IO, and reports actual copy /
+publication failure. It adds no broad storage permission. This does not qualify
+all inherited image formats or physical providers.
+
+- App debug build and its full JVM collection passed: **684 passed, 3 inherited
+  skips (687 total)**. The final global invocation reused the Wear build,
+  **224 successful JVM cases** and lint results with unchanged shared inputs;
+  their actual execution also passed in the preceding complete run. Wear
+  remains an inherited module outside the Wesh V1 product scope.
+- The four Arti libraries and both checksum manifests remain unchanged and
+  byte-identical between the earlier two clean builds in the same pinned
+  environment. Independent review checked ELF/JNI/source correspondence.
+- The final universal APK passed package, label, version, existing debug-signer
   and ZIP alignment checks. All 20 native ZIP entries are stored uncompressed;
   all LOAD segments in its 10 packaged 64-bit libraries meet 16 KiB alignment.
   This does not qualify a physical 16 KiB device.
-- App lint reported **305 errors, 320 warnings and 19 hints**. No diagnostic was
-  added or located on a changed line relative to candidate 40. Its 20 fewer
-  warnings are newer-version suggestions absent in the offline run, not source
-  fixes. Wear lint reported **37 errors, 51 warnings and 10 hints** after its
-  missing locked dependencies were downloaded. Both module tasks completed,
-  while the first global offline invocation failed at Wear dependency resolution.
-  The inherited `abortOnError = false` remains; this is not lint clean.
+- App lint reports **304 errors, 321 warnings and 19 hints**; Wear reports
+  **37 errors, 52 warnings and 10 hints**. Compared with candidate 41, the
+  unsupported Downloads API error is removed. Each module has three new
+  UseKtx style warnings and two old ones removed (net +1); explicit editor
+  commits preserve their checked Boolean result. No new error, suppression,
+  baseline or privileged permission was added. The inherited
+  `abortOnError = false` remains; task success is not lint clean.
 
-The known isolated emulator accepted installation. The first startup recorded
-an ANR while completing startup, and a retry exceeded the launch wait timeout;
-a later process remained alive. A subsequent controlled cold launch completed
-in about 28 seconds and stayed alive for the bounded health check. Retain the
-initial ANR and slow startup as an unresolved QA limitation; no cause or GUI /
-TalkBack success is established by these CLI checks. The existing ANR trace
-was not readable through ordinary ADB access; no elevated diagnostic access
-was used.
+The known isolated API 35 emulator accepted the upgrade and its installed APK
+hash matched the verified candidate exactly. Three CLI cold launches reported
+Activity first-frame TotalTime values of **8.136 / 4.149 / 7.884 seconds**. The
+same process stayed alive for 15 seconds after each, with no fatal observed in
+its bounded crash buffer and no new ANR exit record in the targeted before /
+after comparison. These are Activity/loading observations: secure-runtime
+readiness, completed onboarding, actual conversations, GUI and TalkBack were
+not independently observed. They are not phone performance or full ANR tests.
+The headless emulator was then shut down cleanly.
 
-A disposable debug-only probe captured 17 main-thread stacks during a
-45-second collection; the capture was incomplete and this instrumented run is
-not a performance baseline. The stacks showed synchronous encrypted-preference
-and keystore calls on the main thread, without establishing the original ANR
-cause or any blocking duration. The original candidate 41 was then restored,
-with the installed APK hash confirmed identical; it was not relaunched after
-restoration.
-
-The earlier candidate 40 remains historical. Raw APKs, exact artifact hashes,
-command logs and detailed provenance are retained locally, outside Git.
+An earlier GUI emulator process exited with code 139 before candidate 42 was
+installed; its cause is not established and cannot be attributed to the app.
+Candidate 41's initial app ANR and one launch observed at roughly 28 seconds
+remain historical limitations, with no causal resolution inferred from this
+candidate's different first screen. The disposable earlier instrumented probe
+was incomplete and is not a performance baseline. Candidate 40 / 41 artifacts
+and provisional candidate-42 source checks remain preserved separately locally.
 
 This is a local development candidate. Store publication, pilot distribution,
 regulatory classification and tester invitations require their own decisions.
-Physical BLE interoperability, multi-hop delivery, background and battery
-behavior, full GUI accessibility and TalkBack audio remain unqualified. An
-emulator startup or static 16 KiB check cannot establish these properties.
+Physical BLE interoperability, multi-hop delivery, background / battery behavior,
+full GUI accessibility, TalkBack audio and service deadlines remain unqualified.
+Raw APKs, exact artifact hashes, command logs and detailed provenance stay local.
 
 ## Build and test
 
