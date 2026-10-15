@@ -49,6 +49,14 @@ TalkBack success is established by these CLI checks. The existing ANR trace
 was not readable through ordinary ADB access; no elevated diagnostic access
 was used.
 
+A disposable debug-only probe captured 17 main-thread stacks during a
+45-second collection; the capture was incomplete and this instrumented run is
+not a performance baseline. The stacks showed synchronous encrypted-preference
+and keystore calls on the main thread, without establishing the original ANR
+cause or any blocking duration. The original candidate 41 was then restored,
+with the installed APK hash confirmed identical; it was not relaunched after
+restoration.
+
 The earlier candidate 40 remains historical. Raw APKs, exact artifact hashes,
 command logs and detailed provenance are retained locally, outside Git.
 
