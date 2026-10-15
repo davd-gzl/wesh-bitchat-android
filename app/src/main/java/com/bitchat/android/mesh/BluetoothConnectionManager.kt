@@ -61,6 +61,12 @@ class BluetoothConnectionManager(
             delegate?.onPacketReceived(packet, peerID, device, ingressLinkID)
         }
         
+        override fun onServerConnectionRegistered(device: BluetoothDevice) {
+            // Enforce budgets even when a central never enables notifications.
+            // This is resource admission, not a ready transport notification.
+            enforceStrictLimits()
+        }
+
         override fun onDeviceConnected(device: BluetoothDevice) {
             // Trigger limit enforcement immediately upon any new connection
             enforceStrictLimits()
@@ -504,6 +510,8 @@ interface BluetoothConnectionManagerDelegate {
         device: BluetoothDevice?,
         ingressLinkID: String
     )
+    /** A server link occupies a connection budget before CCCD readiness. */
+    fun onServerConnectionRegistered(device: BluetoothDevice) = Unit
     fun onDeviceConnected(device: BluetoothDevice)
     fun onDeviceDisconnected(device: BluetoothDevice, linkID: String?, peerID: String?)
     fun onRSSIUpdated(deviceAddress: String, rssi: Int)

@@ -94,3 +94,91 @@ was attempted for this batch. Revocation timing, reconnect, background radio,
 phone/watch interop and physical 16 KiB behavior remain qualification gates.
 No native library rebuild, version bump, upload, deployment or distribution
 was performed.
+
+## GATT callback development batch
+
+This batch follows `056cb6c1`, still with development version 42. The client
+records a separate callback owner for every connection attempt, including the
+interval before MTU negotiation. `connectToAddress` now returns the framework
+attempt's actual acceptance, and rejects denied permission, duplicate attempts,
+null GATT and failed startup. Each setup operation handles permission revocation
+and refusal. Failed MTU negotiation retains the existing disconnect policy;
+this batch does not introduce a fallback to the default MTU.
+
+MTU, service discovery and CCCD writes are sequenced. The characteristic becomes
+usable and the connected delegate fires only after a matching successful CCCD
+acknowledgement. API 33 and newer use the descriptor write status API; older
+versions check the legacy Boolean result. Setup expires after 30 seconds. Stop,
+refusal, callback failure and timeout release the owned GATT and pending attempt;
+disconnect and close are attempted independently. Old client callback owners
+cannot mutate a replacement link, including a synthetic test that reuses the
+same GATT object. Scan shutdown now completes synchronously and detaches the
+old callback even if permission is denied. Results, batches and failures
+delivered by an old callback after restart are rejected, and denied results are
+rejected before reading device details. Delayed scan starts respect the desired state.
+
+The server catches denied open, service publication, responses and advertising
+stop. Advertising waits for successful service publication. A separate resource
+admission event enforces connection budgets as soon as a central registers,
+including centrals that never enable notifications; readiness still waits for
+CCCD acceptance. Descriptor and
+packet responses must be accepted before subscription, readiness or packet
+dispatch advances; a false response leaves the request retryable. Invalid CCCD,
+prepared/offset writes and malformed packets receive failure when a response
+is requested. Server stop
+captures its old resources before cleanup. Callbacks and delayed work from a
+stopped server generation cannot be admitted into its replacement.
+
+Server generation checks qualify admission to a callback; delegate callouts are
+performed outside the server lock. An already-admitted event may still complete
+while stop runs. Android server callbacks expose a device address rather than a
+connection-generation token, so a late callback from a previous connection using
+the same address within one still-running server generation remains ambiguous.
+Physical reconnect and radio timing qualification remains required. No claim of
+complete elimination of Bluetooth races is made.
+
+### GATT callback validation
+
+- Final JDK 21 offline debug assembly, lint and the full Wear JVM collection
+  completed together. That session reused the already-current app test task,
+  so a separate unfiltered `:app:testDebugUnitTest --rerun` executed the full
+  app collection again on the same frozen Kotlin sources. Final XML: app
+  792 total / 789 passed / 3 inherited skips; Wear 329 passed with no skip.
+  Neither module has a failure or error. Earlier filtered and interrupted
+  runs remain intermediate evidence and are not reused for these counts.
+- The new callback regressions contribute 96 cases on each target: 31 client
+  and 17 server methods each executed on synthetic SDK 32 and 35 runtimes.
+  They cover API-specific descriptor acceptance, permission denial and races,
+  failed and late callbacks, timeouts, cleanup, stop/restart, scan ownership,
+  and resource admission before CCCD readiness. Robolectric is not a physical
+  device or emulator qualification.
+- Normalized XML comparison against the archived `056cb6c1` reports removes
+  20 MissingPermission errors per module. App: 271 errors / 318 warnings /
+  19 hints (previously 291/318/19), no added diagnostic. Wear: 6/51/10
+  (previously 26/50/10). Its sole added diagnostic is ObsoleteSdkInt on the
+  shared API 32/33 descriptor branch: Wear requires SDK 33, while the phone
+  still needs the older API path. The shared branch is retained without a
+  suppression, baseline change or duplicate Wear source implementation.
+  Three MissingPermission errors remain per module: connection-limit
+  disconnect and two permission-protected debug device-name reads. Lint is
+  still not clean; inherited abortOnError=false permits successful task exit.
+- Both distinct development APKs passed package/version, historical debug
+  signer and zipalign16 checks. The app remains Wesh version 42, with all 20
+  native libraries byte-identical to historical42; all four Arti libraries
+  match their vendored inputs and the checksum verifier passed. Wear retains
+  its existing package/version and all four native libraries match the preceding
+  development APK. Packaged ELF64 LOAD alignment remains at least 16 KiB on
+  both targets. New test class markers are absent from both APKs.
+- Source hashes were captured before assembly and verified before the fresh
+  app run and after validation. All six changed production/test sources match
+  the generated Wear copies. Historical42 and both preceding development APK
+  hashes remain unchanged. The distinct current APKs and raw reports are local
+  and ignored under `.validation/artifacts/android-gatt-callbacks/`.
+
+Review corrected deferred client shutdown affecting replacement connections,
+late scan callback admission, and server budgets for centrals that never enable
+notifications. No further actionable defect was established in the final local
+review. Physical permission revocation, reconnect timing, background radio,
+phone/watch interop, accessibility and 16 KiB runtime qualification remain open.
+No device, emulator, ADB, live location, GUI, TalkBack, Mesh Lab, upload, native
+library rebuild, version bump, deployment or distribution was used or claimed.
