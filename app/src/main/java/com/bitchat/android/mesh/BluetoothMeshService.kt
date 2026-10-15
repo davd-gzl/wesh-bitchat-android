@@ -38,7 +38,10 @@ import kotlin.random.Random
  * - BluetoothConnectionManager: BLE connections and GATT operations
  * - PacketProcessor: Incoming packet routing
  */
-class BluetoothMeshService(private val context: Context) : TransportBridgeService.TransportLayer {
+class BluetoothMeshService(
+    private val context: Context,
+    private val encryptionService: EncryptionService = EncryptionService(context)
+) : TransportBridgeService.TransportLayer {
     private val debugManager by lazy { try { com.bitchat.android.ui.debug.DebugSettingsManager.getInstance() } catch (e: Exception) { null } }
     
     companion object {
@@ -48,7 +51,6 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
     }
     
     // Core components - each handling specific responsibilities
-    private val encryptionService = EncryptionService(context)
 
     // My peer identification - derived from persisted Noise identity fingerprint (first 16 hex chars)
     val myPeerID: String = encryptionService.getIdentityFingerprint().take(16)

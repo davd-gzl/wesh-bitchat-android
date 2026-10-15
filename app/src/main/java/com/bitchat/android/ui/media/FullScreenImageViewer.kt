@@ -3,9 +3,10 @@ package com.bitchat.android.ui.media
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
-import android.content.ContentValues
+import android.app.Activity
 import android.os.Build
-import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,6 +19,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -35,6 +40,9 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.res.stringResource
 import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.R
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -58,7 +66,28 @@ fun FullScreenImageViewer(path: String, onClose: () -> Unit) {
 @Composable
 fun FullScreenImageViewer(imagePaths: List<String>, initialIndex: Int = 0, onClose: () -> Unit) {
     val context = LocalContext.current
-    val pagerState = rememberPagerState(initialPage = initialIndex, pageCount = imagePaths::size)
+    val pagerState = rememberPagerState(initialPage = initialIndex.coerceIn(0, (imagePaths.size - 1).coerceAtLeast(0)), pageCount = imagePaths::size)
+    val scope = rememberCoroutineScope()
+    var pendingDocument by rememberSaveable { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    fun showResult(success: Boolean) {
+        Toast.makeText(context, if (success) R.string.toast_image_saved else R.string.toast_failed_to_save_image, Toast.LENGTH_SHORT).show()
+    }
+    val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val source = pendingDocument
+        pendingDocument = null
+        if (result.resultCode == Activity.RESULT_OK && source != null) {
+            val destination = result.data?.data
+            scope.launch {
+                saving = true
+                try {
+                    showResult(withContext(Dispatchers.IO) {
+                        destination != null && ImageExport.toDocument(context.contentResolver, File(source), destination)
+                    })
+                } finally { saving = false }
+            }
+        }
+    }
 
     if (imagePaths.isEmpty()) {
         onClose()
@@ -99,7 +128,7 @@ fun FullScreenImageViewer(imagePaths: List<String>, initialIndex: Int = 0, onClo
                             .padding(horizontal = 12.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = stringResource(R.string.image_counter, (pagerState.currentPage ?: 0) + 1, imagePaths.size),
+                            text = stringResource(R.string.image_counter, pagerState.currentPage + 1, imagePaths.size),
                             color = Color.White,
                             fontSize = 14.sp,
                             fontFamily = BitchatFontFamily
@@ -116,9 +145,26 @@ fun FullScreenImageViewer(imagePaths: List<String>, initialIndex: Int = 0, onClo
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(48.dp)
                             .background(Color(0x66000000), CircleShape)
-                            .clickable { saveToDownloads(context, imagePaths[pagerState.currentPage].toString()) },
+                            .clickable(enabled = !saving && pendingDocument == null) {
+                                val source = File(imagePaths[pagerState.currentPage])
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                    scope.launch {
+                                        saving = true
+                                        try {
+                                            showResult(withContext(Dispatchers.IO) {
+                                                ImageExport.toDownloads(context.contentResolver, source)
+                                            })
+                                        } finally { saving = false }
+                                    }
+                                } else {
+                                    // The system picker grants access to just the chosen destination on API 26–28.
+                                    pendingDocument = source.path
+                                    try { documentPicker.launch(ImageExport.documentIntent(source)) }
+                                    catch (_: Exception) { pendingDocument = null; showResult(false) }
+                                }
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         androidx.compose.material3.Icon(Icons.Filled.Download, stringResource(R.string.cd_save_current_image), tint = Color.White)
@@ -126,7 +172,7 @@ fun FullScreenImageViewer(imagePaths: List<String>, initialIndex: Int = 0, onClo
                     Spacer(Modifier.width(12.dp))
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(48.dp)
                             .background(Color(0x66000000), CircleShape)
                             .clickable { onClose() },
                         contentAlignment = Alignment.Center
@@ -136,38 +182,5 @@ fun FullScreenImageViewer(imagePaths: List<String>, initialIndex: Int = 0, onClo
                 }
             }
         }
-    }
-}
-
-private fun saveToDownloads(context: android.content.Context, path: String) {
-    runCatching {
-        val name = File(path).name
-        val mime = when {
-            name.endsWith(".png", true) -> "image/png"
-            name.endsWith(".webp", true) -> "image/webp"
-            else -> "image/jpeg"
-        }
-        val values = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, name)
-            put(MediaStore.Downloads.MIME_TYPE, mime)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Downloads.IS_PENDING, 1)
-            }
-        }
-        val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-        if (uri != null) {
-            context.contentResolver.openOutputStream(uri)?.use { out ->
-                File(path).inputStream().use { it.copyTo(out) }
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val v2 = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
-                context.contentResolver.update(uri, v2, null, null)
-            }
-            // Show toast message indicating the image has been saved
-            Toast.makeText(context, context.getString(R.string.toast_image_saved), Toast.LENGTH_SHORT).show()
-        }
-    }.onFailure {
-        // Optionally handle failure case (e.g., show error toast)
-        Toast.makeText(context, context.getString(R.string.toast_failed_to_save_image), Toast.LENGTH_SHORT).show()
     }
 }

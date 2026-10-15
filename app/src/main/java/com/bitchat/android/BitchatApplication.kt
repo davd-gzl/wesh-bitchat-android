@@ -13,6 +13,14 @@ class BitchatApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        if (BuildConfig.WESH_LOCAL_ONLY) {
+            com.bitchat.android.startup.WeshRuntime.start(this)
+        } else {
+            initializeRuntime()
+        }
+    }
+
+    internal fun initializeRuntime() {
         // Start the single process-wide power policy before transport components are constructed.
         com.bitchat.android.mesh.PowerManager.getInstance(this).start()
 
@@ -24,9 +32,7 @@ class BitchatApplication : Application() {
         }
 
         // Initialize favorites persistence early so MessageRouter/NostrTransport can use it on startup
-        try {
-            com.bitchat.android.favorites.FavoritesPersistenceService.initialize(this)
-        } catch (_: Exception) { }
+        com.bitchat.android.favorites.FavoritesPersistenceService.initialize(this)
 
         // Restore private conversations before background transports can deliver new messages.
         // AppStateStore merges any in-flight arrivals by message ID, so startup cannot replace
@@ -69,7 +75,7 @@ class BitchatApplication : Application() {
         try { com.bitchat.android.service.MeshServicePreferences.init(this) } catch (_: Exception) { }
 
         // Proactively start the foreground service to keep mesh alive
-        try { com.bitchat.android.service.MeshForegroundService.start(this) } catch (_: Exception) { }
+        if (!BuildConfig.WESH_LOCAL_ONLY) try { com.bitchat.android.service.MeshForegroundService.start(this) } catch (_: Exception) { }
 
         // TorManager already initialized above
     }

@@ -62,6 +62,8 @@ class MainActivity : OrientationAwareActivity() {
     private lateinit var unifiedMeshService: MeshService
     private val mainViewModel: MainViewModel by viewModels()
     private var pendingMeshForegroundServiceStart = false
+    private var runtimeAttached by mutableStateOf(false)
+    private val routeGate = com.bitchat.android.startup.StartupRouteGate()
     private val chatViewModel: ChatViewModel by viewModels { 
         object : ViewModelProvider.Factory {
             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
@@ -82,6 +84,7 @@ class MainActivity : OrientationAwareActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        routeGate.pending = savedInstanceState?.getBoolean("wesh_pending_route", true) ?: true
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             this.setRecentsScreenshotEnabled(false)
         }
@@ -112,6 +115,16 @@ class MainActivity : OrientationAwareActivity() {
             return
         }
 
+        if (BuildConfig.WESH_LOCAL_ONLY) {
+            @Suppress("DEPRECATION")
+            val pendingIntent = if (Build.VERSION.SDK_INT >= 33) {
+                savedInstanceState?.getParcelable("wesh_pending_intent", Intent::class.java)
+            } else {
+                savedInstanceState?.getParcelable<Intent>("wesh_pending_intent")
+            }
+            setIntent(com.bitchat.android.startup.boundedWeshStartupIntent(pendingIntent ?: intent))
+        }
+
         com.bitchat.android.service.AppShutdownCoordinator.cancelPendingShutdown()
         
         // Enable edge-to-edge display for modern Android look
@@ -119,13 +132,6 @@ class MainActivity : OrientationAwareActivity() {
 
         // Initialize permission management
         permissionManager = PermissionManager(this)
-        // Start the foreground service when allowed, then get mesh instances from the holder.
-        startMeshForegroundServiceBestEffort()
-        meshService = com.bitchat.android.service.MeshServiceHolder.getOrCreate(applicationContext)
-        unifiedMeshService = com.bitchat.android.service.MeshServiceHolder.getUnifiedOrCreate(applicationContext)
-        // Expose BLE mesh to Wi‑Fi Aware controller for cross-transport relays - DEPRECATED
-        // Bridging is now handled by TransportBridgeService automatically
-        
         bluetoothStatusManager = BluetoothStatusManager(
             activity = this,
             context = this,
@@ -160,10 +166,17 @@ class MainActivity : OrientationAwareActivity() {
                     modifier = Modifier.fillMaxSize(),
                     containerColor = MaterialTheme.colorScheme.background
                 ) { innerPadding ->
-                    OnboardingFlowScreen(modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                    )
+                    val modifier = Modifier.fillMaxSize().padding(innerPadding)
+                    if (BuildConfig.WESH_LOCAL_ONLY && !runtimeAttached) {
+                        val startup by com.bitchat.android.startup.WeshRuntime.get(applicationContext).state.collectAsState()
+                        com.bitchat.android.startup.StartupScreen(
+                            failed = startup is com.bitchat.android.startup.StartupCoordinator.State.Failed,
+                            onRetry = { com.bitchat.android.startup.WeshRuntime.get(applicationContext).start(retry = true) },
+                            modifier = modifier
+                        )
+                    } else {
+                        OnboardingFlowScreen(modifier)
+                    }
                 }
             }
         }
@@ -181,20 +194,38 @@ class MainActivity : OrientationAwareActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 WifiAwareController.running.collect { running ->
-                    if (running && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    if (runtimeAttached && running && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                         unifiedMeshService.delegate = chatViewModel
                     }
                 }
             }
         }
         
-        // Only start onboarding process if we're in the initial CHECKING state
-        // This prevents restarting onboarding on configuration changes
-        if (mainViewModel.onboardingState.value == OnboardingState.CHECKING) {
-            checkOnboardingStatus()
+        if (BuildConfig.WESH_LOCAL_ONLY) {
+            lifecycleScope.launch {
+                com.bitchat.android.startup.WeshRuntime.get(applicationContext).state.collect { state ->
+                    if (state is com.bitchat.android.startup.StartupCoordinator.State.Ready && !runtimeAttached) {
+                        attachRuntime()
+                    }
+                }
+            }
+        } else {
+            attachRuntime()
         }
     }
     
+    private fun attachRuntime() {
+        meshService = com.bitchat.android.service.MeshServiceHolder.getOrCreate(applicationContext)
+        unifiedMeshService = com.bitchat.android.service.MeshServiceHolder.getUnifiedOrCreate(applicationContext)
+        runtimeAttached = true
+        startMeshForegroundServiceBestEffort()
+        if (mainViewModel.onboardingState.value == OnboardingState.CHECKING) checkOnboardingStatus()
+        if (mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
+            unifiedMeshService.delegate = chatViewModel
+            dispatchPendingRoute()
+        }
+    }
+
     @Composable
     private fun OnboardingFlowScreen(modifier: Modifier = Modifier) {
         val context = LocalContext.current
@@ -604,6 +635,7 @@ class MainActivity : OrientationAwareActivity() {
     }
 
     private fun startMeshForegroundServiceBestEffort() {
+        if (!runtimeAttached) return
         if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
             pendingMeshForegroundServiceStart = true
             Log.i("MainActivity", "Deferring foreground mesh service start until activity is started")
@@ -710,14 +742,13 @@ class MainActivity : OrientationAwareActivity() {
                 unifiedMeshService.startServices()
                 startMeshForegroundServiceBestEffort()
 
-                // Handle any notification intent
-                handleNotificationIntent(intent)
-                handleVerificationIntent(intent)
+                // Keep the latest launch route bounded until secure startup and onboarding finish.
 
                 // Small delay to ensure mesh service is fully initialized
                 delay(500)
                 Log.i("MainActivity", "App initialization complete")
                 mainViewModel.updateOnboardingState(OnboardingState.COMPLETE)
+                dispatchPendingRoute()
             } catch (e: Exception) {
                 Log.e("MainActivity", "Failed to initialize app", e)
                 handleOnboardingFailed("Failed to initialize the app: ${e.message}")
@@ -727,8 +758,6 @@ class MainActivity : OrientationAwareActivity() {
     
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent)
-        
         // Check if this is a quit request from the notification
         if (intent.getBooleanExtra("ACTION_QUIT_APP", false)) {
             android.util.Log.d("MainActivity", "Quit request received, finishing activity")
@@ -736,13 +765,29 @@ class MainActivity : OrientationAwareActivity() {
             return
         }
 
+        setIntent(if (BuildConfig.WESH_LOCAL_ONLY) com.bitchat.android.startup.boundedWeshStartupIntent(intent) else intent)
+        routeGate.pending = true
         com.bitchat.android.service.AppShutdownCoordinator.cancelPendingShutdown()
         
         // Handle notification intents when app is already running
-        if (mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
+        if (runtimeAttached && mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
+            dispatchPendingRoute()
+        }
+    }
+
+    private fun dispatchPendingRoute() {
+        routeGate.dispatchIfReady(runtimeAttached, mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
             handleNotificationIntent(intent)
             handleVerificationIntent(intent)
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("wesh_pending_route", routeGate.pending)
+        if (BuildConfig.WESH_LOCAL_ONLY && routeGate.pending) {
+            outState.putParcelable("wesh_pending_intent", com.bitchat.android.startup.boundedWeshStartupIntent(intent))
+        }
+        super.onSaveInstanceState(outState)
     }
 
     override fun onStart() {
@@ -758,7 +803,7 @@ class MainActivity : OrientationAwareActivity() {
         if (!BuildConfig.WESH_LOCAL_ONLY) LocationChannelManager.getInstance(applicationContext).syncPermissionState()
 
         // Check Bluetooth and Location status on resume and handle accordingly
-        if (mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
+        if (runtimeAttached && mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
             // Reattach mesh delegate to new ChatViewModel instance after Activity recreation
             try { unifiedMeshService.delegate = chatViewModel } catch (_: Exception) { }
 
@@ -792,7 +837,7 @@ class MainActivity : OrientationAwareActivity() {
     override fun onPause() {
         super.onPause()
         // Only set background state if app is fully initialized
-        if (mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
+        if (runtimeAttached && mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
             // Detach UI delegate so the foreground service can own DM notifications while UI is closed
             try { unifiedMeshService.delegate = null } catch (_: Exception) { }
         }

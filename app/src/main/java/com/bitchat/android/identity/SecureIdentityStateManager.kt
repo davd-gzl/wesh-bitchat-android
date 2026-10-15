@@ -44,6 +44,21 @@ class SecureIdentityStateManager {
         // race a panic wipe.
         private val privateMediaPinsLock = Any()
         private var privateMediaPinsEpoch = 0L
+        @Volatile private var encryptedPreferences: SharedPreferences? = null
+
+        private fun openPreferences(context: Context): SharedPreferences =
+            encryptedPreferences ?: synchronized(this) {
+                encryptedPreferences ?: run {
+                    val masterKey = MasterKey.Builder(context.applicationContext, MasterKey.DEFAULT_MASTER_KEY_ALIAS)
+                        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                        .build()
+                    EncryptedSharedPreferences.create(
+                        context.applicationContext, PREFS_NAME, masterKey,
+                        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                    )
+                }.also { encryptedPreferences = it }
+            }
     }
     
     private val prefs: SharedPreferences
@@ -54,19 +69,7 @@ class SecureIdentityStateManager {
         privateMediaPinsEpochAtCreation = synchronized(privateMediaPinsLock) {
             privateMediaPinsEpoch
         }
-        // Create master key for encryption
-        val masterKey = MasterKey.Builder(context, MasterKey.DEFAULT_MASTER_KEY_ALIAS)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        
-        // Create encrypted shared preferences
-        prefs = EncryptedSharedPreferences.create(
-            context,
-            PREFS_NAME,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+        prefs = openPreferences(context)
     }
 
     /** Test-only storage injection; production always uses encrypted prefs. */
@@ -78,39 +81,26 @@ class SecureIdentityStateManager {
         this.prefs = prefs
     }
     
+    // Missing both entries is first use. Partial, corrupt or unreadable storage must not
+    // become a replacement identity. Exceptions propagate to the startup gate for retry.
+    private fun readIdentityPair(privateName: String, publicName: String): Pair<ByteArray, ByteArray>? {
+        val (privateText, publicText) = DurableIdentityPreferences.read(prefs, privateName, publicName)
+        if (privateText == null && publicText == null) return null
+        check(privateText != null && publicText != null) { "Incomplete stored identity" }
+        val privateKey = Base64.decode(privateText, Base64.DEFAULT)
+        val publicKey = Base64.decode(publicText, Base64.DEFAULT)
+        check(privateKey.size == 32 && publicKey.size == 32) { "Invalid stored identity" }
+        return privateKey to publicKey
+    }
+
     // MARK: - Static Key Management
     
     /**
      * Load saved static key pair
      * Returns (privateKey, publicKey) or null if none exists
      */
-    fun loadStaticKey(): Pair<ByteArray, ByteArray>? {
-        return try {
-            val privateKeyString = prefs.getString(KEY_STATIC_PRIVATE_KEY, null)
-            val publicKeyString = prefs.getString(KEY_STATIC_PUBLIC_KEY, null)
-            
-            if (privateKeyString != null && publicKeyString != null) {
-                val privateKey = android.util.Base64.decode(privateKeyString, android.util.Base64.DEFAULT)
-                val publicKey = android.util.Base64.decode(publicKeyString, android.util.Base64.DEFAULT)
-                
-                // Validate key sizes
-                if (privateKey.size == 32 && publicKey.size == 32) {
-                    Log.d(TAG, "Loaded static identity key from secure storage")
-                    Pair(privateKey, publicKey)
-                } else {
-                    Log.w(TAG, "Invalid key sizes in storage, returning null")
-                    null
-                }
-            } else {
-                Log.d(TAG, "No static identity key found in storage")
-                null
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load static key: ${e.message}")
-            null
-        }
-    }
-    
+    fun loadStaticKey(): Pair<ByteArray, ByteArray>? = readIdentityPair(KEY_STATIC_PRIVATE_KEY, KEY_STATIC_PUBLIC_KEY)
+
     /**
      * Save static key pair to secure storage
      */
@@ -124,10 +114,9 @@ class SecureIdentityStateManager {
             val privateKeyString = android.util.Base64.encodeToString(privateKey, android.util.Base64.DEFAULT)
             val publicKeyString = android.util.Base64.encodeToString(publicKey, android.util.Base64.DEFAULT)
             
-            prefs.edit()
-                .putString(KEY_STATIC_PRIVATE_KEY, privateKeyString)
-                .putString(KEY_STATIC_PUBLIC_KEY, publicKeyString)
-                .apply()
+            DurableIdentityPreferences.write(prefs, mapOf(
+                KEY_STATIC_PRIVATE_KEY to privateKeyString, KEY_STATIC_PUBLIC_KEY to publicKeyString
+            ))
             
             Log.d(TAG, "Saved static identity key to secure storage")
         } catch (e: Exception) {
@@ -142,32 +131,7 @@ class SecureIdentityStateManager {
      * Load saved signing key pair
      * Returns (privateKey, publicKey) or null if none exists
      */
-    fun loadSigningKey(): Pair<ByteArray, ByteArray>? {
-        return try {
-            val privateKeyString = prefs.getString(KEY_SIGNING_PRIVATE_KEY, null)
-            val publicKeyString = prefs.getString(KEY_SIGNING_PUBLIC_KEY, null)
-            
-            if (privateKeyString != null && publicKeyString != null) {
-                val privateKey = android.util.Base64.decode(privateKeyString, android.util.Base64.DEFAULT)
-                val publicKey = android.util.Base64.decode(publicKeyString, android.util.Base64.DEFAULT)
-                
-                // Validate key sizes
-                if (privateKey.size == 32 && publicKey.size == 32) {
-                    Log.d(TAG, "Loaded Ed25519 signing key from secure storage")
-                    Pair(privateKey, publicKey)
-                } else {
-                    Log.w(TAG, "Invalid signing key sizes in storage, returning null")
-                    null
-                }
-            } else {
-                Log.d(TAG, "No Ed25519 signing key found in storage")
-                null
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load signing key: ${e.message}")
-            null
-        }
-    }
+    fun loadSigningKey(): Pair<ByteArray, ByteArray>? = readIdentityPair(KEY_SIGNING_PRIVATE_KEY, KEY_SIGNING_PUBLIC_KEY)
 
     /**
      * Save signing key pair to secure storage
@@ -182,10 +146,9 @@ class SecureIdentityStateManager {
             val privateKeyString = android.util.Base64.encodeToString(privateKey, android.util.Base64.DEFAULT)
             val publicKeyString = android.util.Base64.encodeToString(publicKey, android.util.Base64.DEFAULT)
             
-            prefs.edit()
-                .putString(KEY_SIGNING_PRIVATE_KEY, privateKeyString)
-                .putString(KEY_SIGNING_PUBLIC_KEY, publicKeyString)
-                .apply()
+            DurableIdentityPreferences.write(prefs, mapOf(
+                KEY_SIGNING_PRIVATE_KEY to privateKeyString, KEY_SIGNING_PUBLIC_KEY to publicKeyString
+            ))
             
             Log.d(TAG, "Saved Ed25519 signing key to secure storage")
         } catch (e: Exception) {
@@ -471,9 +434,7 @@ class SecureIdentityStateManager {
             synchronized(privateMediaPinsLock) {
                 privateMediaPinsEpoch += 1
                 privateMediaPinsEpochAtCreation = privateMediaPinsEpoch
-                if (!prefs.edit().clear().commit()) {
-                    Log.e(TAG, "Identity preference wipe could not be committed")
-                }
+                DurableIdentityPreferences.clear(prefs)
             }
             Log.w(TAG, "All identity data cleared")
         } catch (e: Exception) {

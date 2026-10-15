@@ -68,6 +68,20 @@ object MeshServiceHolder {
         }
     }
 
+    private var preparedEncryption: com.bitchat.android.crypto.EncryptionService? = null
+
+    @Synchronized
+    internal fun installPreparedEncryption(encryption: com.bitchat.android.crypto.EncryptionService) {
+        if (meshService == null) preparedEncryption = encryption
+    }
+
+    private fun createBluetooth(context: Context): BluetoothMeshService {
+        val prepared = preparedEncryption
+        preparedEncryption = null
+        return if (prepared != null) BluetoothMeshService(context.applicationContext, prepared)
+        else BluetoothMeshService(context.applicationContext)
+    }
+
     @Volatile
     var meshService: BluetoothMeshService? = null
         private set
@@ -91,7 +105,7 @@ object MeshServiceHolder {
                     try { existing.stopServices() } catch (e: Exception) {
                         android.util.Log.w(TAG, "Error while stopping non-reusable instance: ${e.message}")
                     }
-                    val created = BluetoothMeshService(context.applicationContext)
+                    val created = createBluetooth(context)
                     android.util.Log.i(TAG, "Created new BluetoothMeshService (replacement)")
                     meshService = created
                     unifiedMeshService = null
@@ -99,13 +113,13 @@ object MeshServiceHolder {
                 }
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Error checking service reusability; creating new instance: ${e.message}")
-                val created = BluetoothMeshService(context.applicationContext)
+                val created = createBluetooth(context)
                 meshService = created
                 unifiedMeshService = null
                 created
             }
         }
-        val created = BluetoothMeshService(context.applicationContext)
+        val created = createBluetooth(context)
         android.util.Log.i(TAG, "Created new BluetoothMeshService (no existing instance)")
         meshService = created
         unifiedMeshService = null

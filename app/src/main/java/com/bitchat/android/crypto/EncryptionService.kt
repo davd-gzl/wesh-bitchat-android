@@ -6,6 +6,7 @@ import android.util.Base64
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.bitchat.android.identity.DurableIdentityPreferences
 import com.bitchat.android.noise.NoiseEncryptionService
 import com.bitchat.android.noise.NoiseHandshakeProcessingResult
 import com.bitchat.android.noise.AuthenticatedNoiseSession
@@ -34,6 +35,21 @@ open class EncryptionService(private val context: Context) {
         private const val ED25519_PRIVATE_KEY_PREF = "ed25519_signing_private_key"
         private const val OLD_PREFS_NAME = "bitchat_crypto"
         private const val SECURE_PREFS_NAME = "bitchat_crypto_secure"
+        @Volatile private var encryptedPreferences: SharedPreferences? = null
+
+        private fun openPreferences(context: Context): SharedPreferences =
+            encryptedPreferences ?: synchronized(this) {
+                encryptedPreferences ?: run {
+                    val masterKey = MasterKey.Builder(context.applicationContext, MasterKey.DEFAULT_MASTER_KEY_ALIAS)
+                        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                        .build()
+                    EncryptedSharedPreferences.create(
+                        context.applicationContext, SECURE_PREFS_NAME, masterKey,
+                        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                    )
+                }.also { encryptedPreferences = it }
+            }
     }
     
     // Core Noise encryption service
@@ -57,18 +73,7 @@ open class EncryptionService(private val context: Context) {
     }
 
     private fun setUpEncryptedPrefs() {
-        val masterKey = MasterKey.Builder(context, MasterKey.DEFAULT_MASTER_KEY_ALIAS)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-
-        // Create encrypted shared preferences
-        prefs = EncryptedSharedPreferences.create(
-            context,
-            SECURE_PREFS_NAME,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+        prefs = openPreferences(context)
     }
 
     /**
@@ -169,7 +174,7 @@ open class EncryptionService(private val context: Context) {
         
         // Clear Ed25519 signing key from preferences
         try {
-            prefs.edit { remove(ED25519_PRIVATE_KEY_PREF) }
+            DurableIdentityPreferences.remove(prefs, ED25519_PRIVATE_KEY_PREF)
             Log.d(TAG, "🗑️ Cleared Ed25519 signing keys from preferences")
 
             // Generate new keys immediately
@@ -463,21 +468,14 @@ open class EncryptionService(private val context: Context) {
     private fun loadOrCreateEd25519KeyPair(): AsymmetricCipherKeyPair {
         // Migrate legacy plaintext Ed25519 key to encrypted storage if present
         migrateOldEd25519KeyIfNeeded()
-        try {
-            val storedKey = prefs.getString(ED25519_PRIVATE_KEY_PREF, null)
-
-            if (storedKey != null) {
-                // Load existing key
-                val privateKeyBytes = Base64.decode(storedKey, Base64.DEFAULT)
-                val privateKey = Ed25519PrivateKeyParameters(privateKeyBytes, 0)
-                val publicKey = privateKey.generatePublicKey()
-                Log.d(TAG, "✅ Loaded existing Ed25519 signing key pair")
-                return AsymmetricCipherKeyPair(publicKey, privateKey)
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "⚠️ Failed to load existing Ed25519 key, creating new one: ${e.message}")
+        val storedKey = DurableIdentityPreferences.read(prefs, ED25519_PRIVATE_KEY_PREF).single()
+        if (storedKey != null) {
+            val privateKeyBytes = Base64.decode(storedKey, Base64.DEFAULT)
+            check(privateKeyBytes.size == 32) { "Invalid stored signing identity" }
+            val privateKey = Ed25519PrivateKeyParameters(privateKeyBytes, 0)
+            return AsymmetricCipherKeyPair(privateKey.generatePublicKey(), privateKey)
         }
-        
+
         // Create new key pair
         return generateAndSaveEd25519KeyPair()
     }
@@ -487,39 +485,28 @@ open class EncryptionService(private val context: Context) {
         keyGen.init(Ed25519KeyGenerationParameters(SecureRandom()))
         val keyPair = keyGen.generateKeyPair()
 
-        // Store private key in preferences
-        try {
-            val privateKey = keyPair.private as Ed25519PrivateKeyParameters
-            val privateKeyBytes = privateKey.encoded
-            val encodedKey = Base64.encodeToString(privateKeyBytes, Base64.DEFAULT)
+        // A write failure must not expose a temporary identity to transport/UI.
+        val privateKey = keyPair.private as Ed25519PrivateKeyParameters
+        val encodedKey = Base64.encodeToString(privateKey.encoded, Base64.DEFAULT)
+        DurableIdentityPreferences.write(prefs, mapOf(ED25519_PRIVATE_KEY_PREF to encodedKey))
 
-            prefs.edit { putString(ED25519_PRIVATE_KEY_PREF, encodedKey) }
-            Log.d(TAG, "✅ Created and stored new Ed25519 signing key pair")
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to store Ed25519 private key: ${e.message}")
-        }
-        
         return keyPair
     }
 
     private fun migrateOldEd25519KeyIfNeeded() {
-        try {
-            // old existing plain text preference
-            val oldPrefs = context.getSharedPreferences(OLD_PREFS_NAME, Context.MODE_PRIVATE)
-
-            val oldKey = oldPrefs.getString(ED25519_PRIVATE_KEY_PREF, null)
-
-            if (oldKey != null && !prefs.contains(ED25519_PRIVATE_KEY_PREF)) {
-                prefs.edit {
-                    putString(ED25519_PRIVATE_KEY_PREF, oldKey)
-                }
-                oldPrefs.edit {
-                    remove(ED25519_PRIVATE_KEY_PREF)
-                }
-                Log.d(TAG, "🔁 Migrated Ed25519 key to EncryptedSharedPreferences")
+        val oldPrefs = context.getSharedPreferences(OLD_PREFS_NAME, Context.MODE_PRIVATE)
+        val oldKey = oldPrefs.getString(ED25519_PRIVATE_KEY_PREF, null) ?: return
+        val stored = DurableIdentityPreferences.read(prefs, ED25519_PRIVATE_KEY_PREF).single()
+        if (stored == null) {
+            val bytes = Base64.decode(oldKey, Base64.DEFAULT)
+            check(bytes.size == 32) { "Invalid legacy signing identity" }
+            DurableIdentityPreferences.write(prefs, mapOf(ED25519_PRIVATE_KEY_PREF to oldKey))
+        }
+        if (stored == null || stored == oldKey) {
+            // Retry cleanup even when the encrypted write succeeded in a preceding attempt.
+            check(oldPrefs.edit().remove(ED25519_PRIVATE_KEY_PREF).commit()) {
+                "Legacy signing identity cleanup failed"
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "⚠️ Failed to migrate Ed25519 key; generating new identity: ${e.message}")
         }
     }
 }
