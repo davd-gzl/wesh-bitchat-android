@@ -1,0 +1,105 @@
+# Local encrypted drafts
+
+Wesh drafts are local data, never queued sends. Public drafts and private drafts
+use separate destinations. A private destination contains the complete Noise
+public key from the QR contact record; short mesh IDs, nicknames and aliases are
+not accepted. The local owner is also the complete Noise public key, obtained
+from the prepared runtime, without creating or replacing an identity on read.
+
+The bounded document lives in the app's no-backup directory. AES-GCM uses a
+dedicated Android Keystore alias and versioned associated data bound to the
+local owner. Text, destination keys and owner are inside the encrypted envelope;
+no draft is written to plaintext preferences or SavedState. The shared cipher
+now loads an existing key for decrypt, failing on absent, inaccessible or invalid
+aliases. It creates a key only for encrypt; the draft backend first verifies
+that existing storage is absent or readable for the same owner.
+
+The schema accepts only its own canonical version-one JSON representation.
+Unknown fields, duplicate keys/destinations, wrong types, invalid UTF-8,
+authentication failure and oversized data fail restoration. Filesystem probes
+conclude absence only on NoSuchFileException; access errors, directories,
+symlinks and incomplete atomic files cannot become an empty default.
+
+Limits are 64 destinations, 8,192 UTF-8 bytes per draft and 131,072 UTF-8 text
+bytes in total. Known loaded drafts evict the oldest entries when count/total
+limits are reached. While restore is unconfirmed, at most 64 destinations may
+be edited; additional destinations are rejected so deletion tombstones are not
+forgotten. Encoding/envelope reads are separately capped before parsing.
+
+The process-owned store serializes bounded, conflated writes on IO. Startup
+restoration happens after secure runtime readiness. Edits made while storage is
+unavailable remain in RAM and merge only after successful restoration; they
+never overwrite unknown or malformed disk contents. Confirmation requires atomic
+write plus exact decrypted readback. A byte-exact confirmed ciphertext baseline
+and one owned unconfirmed candidate protect replacements: even a valid but
+divergent same-owner document is retained without overwrite. A recognized prior
+candidate becomes the rollback baseline before another commit is attempted.
+Failed commit/readback keeps the draft dirty for explicit retry. French UI distinguishes pending memory, confirmed storage
+and errors; the last keystroke is not promised durable before confirmation.
+A captured send includes destination, exact text, destination revision and store
+generation. Accepted callbacks cannot clear later edits, including ABA edits
+that return to the original text, or text belonging to another local identity.
+
+Panic immediately fences RAM and pending writes. Before any draft deletion or
+key destruction, an atomic, data-free marker records the interrupted operation.
+Failure keeps the marker and the gate. During a normal completed panic, a changed
+local Noise identity and confirmed draft erasure are required before the marker
+is removed and private admission/transports resume. Existing global panic steps
+outside this draft change retain their earlier verification limits; the marker
+does not independently prove every global deletion completed.
+
+If a marker remains on startup, runtime preparation stops before transport
+construction. There is no automatic repair or selective draft-wipe bypass. The
+same recovery screen appears after an incomplete panic in the current process.
+The user can explicitly ask Android to erase all Wesh application data after a
+confirmation covering identity, messages, drafts, settings and permissions to
+reauthorize. Android accepting this request means only that erasure was requested;
+the app keeps its gate and does not claim completion or remove the marker.
+A refusal/exception remains visible and retryable. Tests inject this OS action;
+no real app-data erasure is run by validation.
+
+A crash or storage failure before the initial panic marker is committed cannot
+guarantee erasure across process death. The running process remains fenced and offers the explicit
+Android recovery. Other-identity or unreadable ciphertext is retained without
+mixing; resolving it requires successful restoration for its owner or explicit
+panic/recovery, never automatic replacement.
+
+All tests use synthetic values, injected key providers/backends and temporary
+files. They do not access a real Keystore, devices, location or production data.
+Physical lifecycle, process termination, Android system erasure and accessibility
+qualification still require the unavailable devices. Local raw validation and
+distinct development APKs stay ignored under
+`.validation/artifacts/android-drafts-lint/`; historical evidence is preserved.
+
+
+## Local validation
+
+The final JDK 21 offline run assembled app and Wear debug APKs, forced both
+complete JVM test tasks with --rerun and no filter, then ran lint. App: 834
+tests, 831 passed and 3 inherited skips. Wear: 345 passed, no skips. No failure
+or error occurred. The 33 app / 4 Wear targeted cases are included in these
+full collections and are not additional historical candidate results.
+
+Normalized XML comparison with the preceding permissions-final evidence adds
+no diagnostic. App has 260 errors / 314 warnings / 19 hints, down from
+268/318/19. Wear has zero errors / 47 warnings / 10 hints, down from 3/51/10.
+No MissingPermission remains. The lint cleanup removes eight app errors and
+three Wear errors plus four warnings per module; inherited abortOnError=false
+still means task success alone does not establish a clean report.
+
+All 662 frozen build-input hashes match before and after the full run. The
+nine changed shared production/test files generated for Wear match their app
+sources exactly. Historical42 and the preceding development app/Wear APK
+hashes are unchanged. New APKs retain the package, versions and debug signer;
+the app remains development version 42. Signer, zipalign16, ELF64 LOAD alignment
+and native-byte equality checks passed; app contains the same 20 native
+libraries as historical42, including the four verified vendored Arti inputs.
+Wear's four native libraries match its preceding development APK. New test
+class markers are absent from both APKs.
+
+Distinct APKs, normalized deltas, raw reports, input manifests, source patch,
+targeted evidence and verification scripts remain local and ignored in the
+new artifact directory. No actual Keystore, Android data-erasure action,
+device, ADB, emulator, GUI, live location, upload or distribution was used for
+this validation. Physical process/power loss, panic recovery and accessibility
+remain qualification gates.

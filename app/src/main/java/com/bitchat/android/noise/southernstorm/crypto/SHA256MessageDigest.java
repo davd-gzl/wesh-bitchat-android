@@ -178,47 +178,47 @@ public class SHA256MessageDigest extends MessageDigest implements Destroyable {
     	return (value >>> n) | (value << (32 - n));
     }
 
-	private void transform(byte[] m, int offset)
-	{
-		int a, b, c, d, e, f, g, h;
-		int temp1, temp2;
-		int index;
+    private void transform(byte[] m, int offset)
+    {
+        int a, b, c, d, e, f, g, h;
+        int temp1, temp2;
+        int index;
 
-		// Initialize working variables to the current hash value.
-		a = this.h[0];
-		b = this.h[1];
-		c = this.h[2];
-		d = this.h[3];
-		e = this.h[4];
-		f = this.h[5];
-		g = this.h[6];
-		h = this.h[7];
+        // Initialize working variables to the current hash value.
+        a = this.h[0];
+        b = this.h[1];
+        c = this.h[2];
+        d = this.h[3];
+        e = this.h[4];
+        f = this.h[5];
+        g = this.h[6];
+        h = this.h[7];
 		
-		// Convert the 16 input message words from big endian to host byte order.
-		for (index = 0; index < 16; ++index) {
-			w[index] = ((m[offset] & 0xFF) << 24) |
-					   ((m[offset + 1] & 0xFF) << 16) |
-					   ((m[offset + 2] & 0xFF) << 8) |
-					    (m[offset + 3] & 0xFF);
-			offset += 4;
-		}
+        // Convert the 16 input message words from big endian to host byte order.
+        for (index = 0; index < 16; ++index) {
+            w[index] = ((m[offset] & 0xFF) << 24) |
+                       ((m[offset + 1] & 0xFF) << 16) |
+                       ((m[offset + 2] & 0xFF) << 8) |
+                        (m[offset + 3] & 0xFF);
+            offset += 4;
+        }
 		
-	    // Extend the first 16 words to 64.
-	    for (index = 16; index < 64; ++index) {
-	        w[index] = w[index - 16] + w[index - 7] +
-	            (rightRotate(w[index - 15], 7) ^
-	             rightRotate(w[index - 15], 18) ^
-	             (w[index - 15] >>> 3)) +
-	            (rightRotate(w[index - 2], 17) ^
-	             rightRotate(w[index - 2], 19) ^
-	             (w[index - 2] >>> 10));
-	    }
+        // Extend the first 16 words to 64.
+        for (index = 16; index < 64; ++index) {
+            w[index] = w[index - 16] + w[index - 7] +
+                (rightRotate(w[index - 15], 7) ^
+                 rightRotate(w[index - 15], 18) ^
+                 (w[index - 15] >>> 3)) +
+                (rightRotate(w[index - 2], 17) ^
+                 rightRotate(w[index - 2], 19) ^
+                 (w[index - 2] >>> 10));
+        }
 	    
-	    // Compression function main loop.
-	    for (index = 0; index < 64; ++index) {
-	        temp1 = (h) + k[index] + w[index] +
-	                (rightRotate((e), 6) ^ rightRotate((e), 11) ^ rightRotate((e), 25)) +
-	                (((e) & (f)) ^ ((~(e)) & (g)));
+        // Compression function main loop.
+        for (index = 0; index < 64; ++index) {
+            temp1 = (h) + k[index] + w[index] +
+                    (rightRotate((e), 6) ^ rightRotate((e), 11) ^ rightRotate((e), 25)) +
+                    (((e) & (f)) ^ ((~(e)) & (g)));
             temp2 = (rightRotate((a), 2) ^ rightRotate((a), 13) ^ rightRotate((a), 22)) +
                     (((a) & (b)) ^ ((a) & (c)) ^ ((b) & (c)));
             h = g;
@@ -229,16 +229,16 @@ public class SHA256MessageDigest extends MessageDigest implements Destroyable {
             c = b;
             b = a;
             a = temp1 + temp2;
-	    }
+        }
 
-		// Add the compressed chunk to the current hash value.
-		this.h[0] += a;
-		this.h[1] += b;
-		this.h[2] += c;
-		this.h[3] += d;
-		this.h[4] += e;
-		this.h[5] += f;
-		this.h[6] += g;
-		this.h[7] += h;
-	}
+        // Add the compressed chunk to the current hash value.
+        this.h[0] += a;
+        this.h[1] += b;
+        this.h[2] += c;
+        this.h[3] += d;
+        this.h[4] += e;
+        this.h[5] += f;
+        this.h[6] += g;
+        this.h[7] += h;
+    }
 }

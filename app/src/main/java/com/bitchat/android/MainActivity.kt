@@ -160,9 +160,16 @@ class MainActivity : OrientationAwareActivity() {
                     val modifier = Modifier.fillMaxSize().padding(innerPadding)
                     if (BuildConfig.WESH_LOCAL_ONLY && !runtimeAttached) {
                         val startup by com.bitchat.android.startup.WeshRuntime.get(applicationContext).state.collectAsState()
+                        val draftWipeRequired by com.bitchat.android.startup.WeshRuntime.draftWipeRequired.collectAsState()
+                        val panicRecovery by com.bitchat.android.startup.WeshRuntime.recoveryState.collectAsState()
                         com.bitchat.android.startup.StartupScreen(
+                            draftWipeRequired = draftWipeRequired,
+                            recovery = panicRecovery,
+                            onEraseAll = { com.bitchat.android.startup.WeshRuntime.clearInterruptedPanic(applicationContext) },
                             failed = startup is com.bitchat.android.startup.StartupCoordinator.State.Failed,
-                            onRetry = { com.bitchat.android.startup.WeshRuntime.get(applicationContext).start(retry = true) },
+                            onRetry = {
+                                com.bitchat.android.startup.WeshRuntime.get(applicationContext).start(retry = true)
+                            },
                             modifier = modifier
                         )
                     } else {
@@ -627,6 +634,10 @@ class MainActivity : OrientationAwareActivity() {
 
     private fun startMeshForegroundServiceBestEffort() {
         if (!runtimeAttached) return
+        if (BuildConfig.WESH_LOCAL_ONLY && !com.bitchat.android.startup.WeshRuntime.transportAllowed) {
+            pendingMeshForegroundServiceStart = false
+            return
+        }
         if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
             pendingMeshForegroundServiceStart = true
             Log.i("MainActivity", "Deferring foreground mesh service start until activity is started")
@@ -729,6 +740,7 @@ class MainActivity : OrientationAwareActivity() {
                 }
 
                 // Set up unified mesh delegate and start enabled transports
+                if (BuildConfig.WESH_LOCAL_ONLY && !com.bitchat.android.startup.WeshRuntime.transportAllowed) return@launch
                 unifiedMeshService.delegate = chatViewModel
                 unifiedMeshService.startServices()
                 startMeshForegroundServiceBestEffort()

@@ -211,7 +211,7 @@ public class RijndaelAES {
 	        return Nr;
 	}
 
-	public void encrypt(byte[] pt, int ptoffset, byte[] ct, int ctoffset) {
+    public void encrypt(byte[] pt, int ptoffset, byte[] ct, int ctoffset) {
         int s0, s1, s2, s3, t0, t1, t2, t3;
         int r, rkoffset;
 
@@ -227,66 +227,66 @@ public class RijndaelAES {
         /*
          * Nr - 1 full rounds:
          */
-	    r = Nr >> 1;
-	    rkoffset = 0;
-	    for (;;) {
-	        t0 =
-	            Te0[(s0 >> 24) & 0xff] ^
-	            Te1[(s1 >> 16) & 0xff] ^
-	            Te2[(s2 >>  8) & 0xff] ^
-	            Te3[(s3      ) & 0xff] ^
-	            rk[rkoffset + 4];
-	        t1 =
-	            Te0[(s1 >> 24) & 0xff] ^
-	            Te1[(s2 >> 16) & 0xff] ^
-	            Te2[(s3 >>  8) & 0xff] ^
-	            Te3[(s0      ) & 0xff] ^
-	            rk[rkoffset + 5];
-	        t2 =
-	            Te0[(s2 >> 24) & 0xff] ^
-	            Te1[(s3 >> 16) & 0xff] ^
-	            Te2[(s0 >>  8) & 0xff] ^
-	            Te3[(s1      ) & 0xff] ^
-	            rk[rkoffset + 6];
-	        t3 =
-	            Te0[(s3 >> 24) & 0xff] ^
-	            Te1[(s0 >> 16) & 0xff] ^
-	            Te2[(s1 >>  8) & 0xff] ^
-	            Te3[(s2      ) & 0xff] ^
-	            rk[rkoffset + 7];
+        r = Nr >> 1;
+        rkoffset = 0;
+        for (;;) {
+            t0 =
+                Te0[(s0 >> 24) & 0xff] ^
+                Te1[(s1 >> 16) & 0xff] ^
+                Te2[(s2 >>  8) & 0xff] ^
+                Te3[(s3      ) & 0xff] ^
+                rk[rkoffset + 4];
+            t1 =
+                Te0[(s1 >> 24) & 0xff] ^
+                Te1[(s2 >> 16) & 0xff] ^
+                Te2[(s3 >>  8) & 0xff] ^
+                Te3[(s0      ) & 0xff] ^
+                rk[rkoffset + 5];
+            t2 =
+                Te0[(s2 >> 24) & 0xff] ^
+                Te1[(s3 >> 16) & 0xff] ^
+                Te2[(s0 >>  8) & 0xff] ^
+                Te3[(s1      ) & 0xff] ^
+                rk[rkoffset + 6];
+            t3 =
+                Te0[(s3 >> 24) & 0xff] ^
+                Te1[(s0 >> 16) & 0xff] ^
+                Te2[(s1 >>  8) & 0xff] ^
+                Te3[(s2      ) & 0xff] ^
+                rk[rkoffset + 7];
 	
-	        rkoffset += 8;
-	        if (--r == 0) {
-	            break;
-	        }
+            rkoffset += 8;
+            if (--r == 0) {
+                break;
+            }
 
-	        s0 =
-	                Te0[(t0 >> 24) & 0xff] ^
-	                Te1[(t1 >> 16) & 0xff] ^
-	                Te2[(t2 >>  8) & 0xff] ^
-	                Te3[(t3      ) & 0xff] ^
-	                rk[rkoffset];
-	            s1 =
-	                Te0[(t1 >> 24) & 0xff] ^
-	                Te1[(t2 >> 16) & 0xff] ^
-	                Te2[(t3 >>  8) & 0xff] ^
-	                Te3[(t0      ) & 0xff] ^
-	                rk[rkoffset + 1];
-	            s2 =
-	                Te0[(t2 >> 24) & 0xff] ^
-	                Te1[(t3 >> 16) & 0xff] ^
-	                Te2[(t0 >>  8) & 0xff] ^
-	                Te3[(t1      ) & 0xff] ^
-	                rk[rkoffset + 2];
-	            s3 =
-	                Te0[(t3 >> 24) & 0xff] ^
-	                Te1[(t0 >> 16) & 0xff] ^
-	                Te2[(t1 >>  8) & 0xff] ^
-	                Te3[(t2      ) & 0xff] ^
-	                rk[rkoffset + 3];
-	    }
+            s0 =
+                    Te0[(t0 >> 24) & 0xff] ^
+                    Te1[(t1 >> 16) & 0xff] ^
+                    Te2[(t2 >>  8) & 0xff] ^
+                    Te3[(t3      ) & 0xff] ^
+                    rk[rkoffset];
+                s1 =
+                    Te0[(t1 >> 24) & 0xff] ^
+                    Te1[(t2 >> 16) & 0xff] ^
+                    Te2[(t3 >>  8) & 0xff] ^
+                    Te3[(t0      ) & 0xff] ^
+                    rk[rkoffset + 1];
+                s2 =
+                    Te0[(t2 >> 24) & 0xff] ^
+                    Te1[(t3 >> 16) & 0xff] ^
+                    Te2[(t0 >>  8) & 0xff] ^
+                    Te3[(t1      ) & 0xff] ^
+                    rk[rkoffset + 2];
+                s3 =
+                    Te0[(t3 >> 24) & 0xff] ^
+                    Te1[(t0 >> 16) & 0xff] ^
+                    Te2[(t1 >>  8) & 0xff] ^
+                    Te3[(t2      ) & 0xff] ^
+                    rk[rkoffset + 3];
+        }
 
-	    /*
+        /*
          * apply last round and
          * map cipher state to byte array block:
          */
@@ -318,7 +318,7 @@ public class RijndaelAES {
                 (Te4[(t2      ) & 0xff] & 0x000000ff) ^
                 rk[rkoffset + 3];
         PUTU32(ct, ctoffset + 12, s3);
-	}
+    }
 
 	public void decrypt(byte[] ct, int ctoffset, byte[] pt, int ptoffset) {
         int s0, s1, s2, s3, t0, t1, t2, t3;

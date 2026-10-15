@@ -469,63 +469,63 @@ public final class Curve25519 {
 	 * @param publicKey The public key to use in the evaluation, or null
 	 * if the base point of the curve should be used.
 	 */
-	public static void eval(byte[] result, int offset, byte[] privateKey, byte[] publicKey)
-	{
-		Curve25519 state = new Curve25519();
-		try {
-			// Unpack the public key value.  If null, use 9 as the base point.
-			Arrays.fill(state.x_1, 0);
-			if (publicKey != null) {
-				// Convert the input value from little-endian into 26-bit limbs.
-			    for (int index = 0; index < 32; ++index) {
-			    	int bit = (index * 8) % 26;
-			    	int word = (index * 8) / 26;
-			    	int value = publicKey[index] & 0xFF;
-			    	if (bit <= (26 - 8)) {
-			    		state.x_1[word] |= value << bit;
-			    	} else {
-			    		state.x_1[word] |= value << bit;
-			    		state.x_1[word] &= 0x03FFFFFF;
-			    		state.x_1[word + 1] |= value >> (26 - bit);
-			    	}
-			    }
+    public static void eval(byte[] result, int offset, byte[] privateKey, byte[] publicKey)
+    {
+        Curve25519 state = new Curve25519();
+        try {
+            // Unpack the public key value.  If null, use 9 as the base point.
+            Arrays.fill(state.x_1, 0);
+            if (publicKey != null) {
+                // Convert the input value from little-endian into 26-bit limbs.
+                for (int index = 0; index < 32; ++index) {
+                    int bit = (index * 8) % 26;
+                    int word = (index * 8) / 26;
+                    int value = publicKey[index] & 0xFF;
+                    if (bit <= (26 - 8)) {
+                        state.x_1[word] |= value << bit;
+                    } else {
+                        state.x_1[word] |= value << bit;
+                        state.x_1[word] &= 0x03FFFFFF;
+                        state.x_1[word + 1] |= value >> (26 - bit);
+                    }
+                }
 
-				// Just in case, we reduce the number modulo 2^255 - 19 to
-				// make sure that it is in range of the field before we start.
-				// This eliminates values between 2^255 - 19 and 2^256 - 1.
-				state.reduceQuick(state.x_1);
-				state.reduceQuick(state.x_1);
-			} else {
-				state.x_1[0] = 9;
-			}
+                // Just in case, we reduce the number modulo 2^255 - 19 to
+                // make sure that it is in range of the field before we start.
+                // This eliminates values between 2^255 - 19 and 2^256 - 1.
+                state.reduceQuick(state.x_1);
+                state.reduceQuick(state.x_1);
+            } else {
+                state.x_1[0] = 9;
+            }
 
-			// Initialize the other temporary variables.
-			Arrays.fill(state.x_2, 0);			// x_2 = 1
-			state.x_2[0] = 1;
-			Arrays.fill(state.z_2, 0);			// z_2 = 0
-			System.arraycopy(state.x_1, 0, state.x_3, 0, state.x_1.length);  // x_3 = x_1
-			Arrays.fill(state.z_3, 0);			// z_3 = 1
-			state.z_3[0] = 1;
+            // Initialize the other temporary variables.
+            Arrays.fill(state.x_2, 0);			// x_2 = 1
+            state.x_2[0] = 1;
+            Arrays.fill(state.z_2, 0);			// z_2 = 0
+            System.arraycopy(state.x_1, 0, state.x_3, 0, state.x_1.length);  // x_3 = x_1
+            Arrays.fill(state.z_3, 0);			// z_3 = 1
+            state.z_3[0] = 1;
 			
-			// Evaluate the curve for every bit of the private key.
-			state.evalCurve(privateKey);
+            // Evaluate the curve for every bit of the private key.
+            state.evalCurve(privateKey);
 
-		    // Compute x_2 * (z_2 ^ (p - 2)) where p = 2^255 - 19.
-		    state.recip(state.z_3, state.z_2);
-		    state.mul(state.x_2, state.x_2, state.z_3);
+            // Compute x_2 * (z_2 ^ (p - 2)) where p = 2^255 - 19.
+            state.recip(state.z_3, state.z_2);
+            state.mul(state.x_2, state.x_2, state.z_3);
 
-		    // Convert x_2 into little-endian in the result buffer.
-		    for (int index = 0; index < 32; ++index) {
-		    	int bit = (index * 8) % 26;
-		    	int word = (index * 8) / 26;
-		    	if (bit <= (26 - 8))
-		    		result[offset + index] = (byte)(state.x_2[word] >> bit);
-		    	else
-		    		result[offset + index] = (byte)((state.x_2[word] >> bit) | (state.x_2[word + 1] << (26 - bit)));
-		    }
-		} finally {
-			// Clean up all temporary state before we exit.
-			state.destroy();
-		}
-	}
+            // Convert x_2 into little-endian in the result buffer.
+            for (int index = 0; index < 32; ++index) {
+                int bit = (index * 8) % 26;
+                int word = (index * 8) / 26;
+                if (bit <= (26 - 8))
+                    result[offset + index] = (byte)(state.x_2[word] >> bit);
+                else
+                    result[offset + index] = (byte)((state.x_2[word] >> bit) | (state.x_2[word + 1] << (26 - bit)));
+            }
+        } finally {
+            // Clean up all temporary state before we exit.
+            state.destroy();
+        }
+    }
 }

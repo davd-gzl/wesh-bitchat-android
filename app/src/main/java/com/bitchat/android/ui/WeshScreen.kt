@@ -61,6 +61,17 @@ fun WeshScreen(viewModel: ChatViewModel) {
     val names by viewModel.peerNicknames.collectAsState()
     val contacts by viewModel.weshContacts.collectAsState()
     val drafts by viewModel.weshDraftStore.drafts.collectAsState()
+    val draftPersistence by viewModel.weshDraftStore.persistence.collectAsState()
+    val panicRecoveryRequired by com.bitchat.android.startup.WeshRuntime.draftWipeRequired.collectAsState()
+    val panicInProgress by viewModel.weshPanicInProgress.collectAsState()
+    val panicRecovery by com.bitchat.android.startup.WeshRuntime.recoveryState.collectAsState()
+    if (panicRecoveryRequired && !panicInProgress) {
+        com.bitchat.android.startup.StartupScreen(
+            failed = true, onRetry = {}, draftWipeRequired = true, recovery = panicRecovery,
+            onEraseAll = { com.bitchat.android.startup.WeshRuntime.clearInterruptedPanic(context) }
+        )
+        return
+    }
     val requestedContactSheet by viewModel.weshContactSheet.collectAsState()
     val conversations by viewModel.conversations.collectAsState()
     val nickname by viewModel.nickname.collectAsState()
@@ -68,11 +79,12 @@ fun WeshScreen(viewModel: ChatViewModel) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var publicOpen by rememberSaveable { mutableStateOf(false) }
     var contactOpen by rememberSaveable { mutableStateOf(false) }
-    val destination = if (publicOpen) "public" else selectedPrivate ?: "inbox"
-    val draft = drafts[destination].orEmpty()
+    val destination = if (publicOpen) "public" else viewModel.weshDraftDestination(selectedPrivate)
+    val draft = destination?.let(drafts::get).orEmpty()
     var noteOpen by remember { mutableStateOf(false) }
     var contactAction by remember { mutableStateOf<Pair<String, String>?>(null) }
     var publicRequest by remember { mutableStateOf<WeshMessagePolicy.PublicSendRequest?>(null) }
+    var publicCapture by remember { mutableStateOf<WeshDraftStore.Capture?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var muted by remember { mutableStateOf(prefs.publicMuted) }
     var meeting by rememberSaveable { mutableStateOf(prefs.meetingNote) }
@@ -93,14 +105,18 @@ fun WeshScreen(viewModel: ChatViewModel) {
         if (viewModel.selectedPrivateChatPeer.value != privatePeer) {
             feedback = "La destination a changé. Votre texte est conservé."; return
         }
-        val sentDestination = destination
-        val sentDraft = draft
+        val capture = destination?.let(viewModel.weshDraftStore::capture)
+        if (capture == null || capture.text != draft) { feedback = "Le brouillon a changé. Relisez votre texte."; return }
+        val sentDraft = capture.text
         if (publicOpen) {
-            if (!prefs.publicDisclosureAccepted) publicRequest = WeshMessagePolicy.PublicSendRequest(sentDraft)
-            else if (viewModel.sendWeshPublic(sentDraft)) viewModel.weshDraftStore.clearIfUnchanged(sentDestination, sentDraft) else feedback = "Message vide ou trop long (2 000 octets maximum)."
+            if (!prefs.publicDisclosureAccepted) {
+                publicCapture = capture
+                publicRequest = WeshMessagePolicy.PublicSendRequest(sentDraft)
+            }
+            else if (viewModel.sendWeshPublic(sentDraft)) viewModel.weshDraftStore.clearIfUnchanged(capture) else feedback = "Message vide ou trop long (2 000 octets maximum)."
         } else if (privatePeer != null) {
             viewModel.sendWeshPrivate(sentDraft, privatePeer) { accepted ->
-                if (accepted) viewModel.weshDraftStore.clearIfUnchanged(sentDestination, sentDraft) else feedback = "Envoi indisponible. Vérifiez l’identité et la connexion Bluetooth."
+                if (accepted) viewModel.weshDraftStore.clearIfUnchanged(capture) else feedback = "Envoi indisponible. Vérifiez l’identité et la connexion Bluetooth."
             }
         }
     }
@@ -137,8 +153,19 @@ fun WeshScreen(viewModel: ChatViewModel) {
                 }
                 feedback?.let { Text(it, Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.error) }
                 if (!canSend) Text(if (publicOpen) "Activez Bluetooth dans les réglages du téléphone pour envoyer dans le salon." else "Scannez le QR de ce contact et attendez la confirmation. Un changement de clé exige une nouvelle vérification.", Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium)
+                Text(when (draftPersistence) {
+                    WeshDraftStore.Persistence.Loading -> "Chargement des brouillons… Votre saisie n’est pas encore confirmée sur ce téléphone."
+                    WeshDraftStore.Persistence.Unconfirmed -> "Brouillon en mémoire · enregistrement non confirmé."
+                    WeshDraftStore.Persistence.Confirmed -> "Brouillon enregistré sur ce téléphone."
+                    WeshDraftStore.Persistence.Error -> "Enregistrement ou restauration indisponible. Votre saisie reste en mémoire ; ne fermez pas l’application."
+                    WeshDraftStore.Persistence.WipeRequired -> if (panicInProgress) "Effacement en cours…" else "Effacement inachevé. La récupération doit être confirmée."
+                    WeshDraftStore.Persistence.Wiped -> "Brouillons effacés."
+                }, Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall)
+                if (draftPersistence == WeshDraftStore.Persistence.Error) TextButton(onClick = viewModel::retryWeshDrafts) { Text("Réessayer l’enregistrement ou la restauration") }
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.Bottom) {
-                    OutlinedTextField(value = draft, onValueChange = { viewModel.weshDraftStore.save(destination, it) }, label = { Text("Message") }, modifier = Modifier.weight(1f), maxLines = 6)
+                    OutlinedTextField(value = draft, enabled = destination != null && draftPersistence != WeshDraftStore.Persistence.WipeRequired && draftPersistence != WeshDraftStore.Persistence.Wiped, onValueChange = { text ->
+                        destination?.let { if (!viewModel.weshDraftStore.save(it, text)) feedback = "Brouillon trop long (8 192 octets) ou limite de restauration atteinte. Votre texte précédent est conservé." }
+                    }, label = { Text("Message") }, modifier = Modifier.weight(1f), maxLines = 6)
                     WeshMetalButton(onClick = { send() }, enabled = canSend && draft.isNotBlank(), modifier = Modifier.padding(start = 8.dp)) { Text("Envoyer") }
                 }
                 if (!publicOpen && !canSend) TextButton(onClick = { contactOpen = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Vérifier un contact") }
@@ -184,10 +211,10 @@ fun WeshScreen(viewModel: ChatViewModel) {
         AlertDialog(onDismissRequest = { publicRequest = null }, title = { Text("Envoyer dans le salon public ?") },
             text = { Text("Toute personne sur le mesh Bluetooth peut lire, relayer et conserver votre message. Les pseudonymes ne sont pas des identités vérifiées.") },
             confirmButton = { TextButton(onClick = {
-                if (request.canConfirm(if (publicOpen && viewModel.selectedPrivateChatPeer.value == null) "public" else "other",
+                if (publicCapture?.let(viewModel.weshDraftStore::isCurrent) == true && request.canConfirm(if (publicOpen && viewModel.selectedPrivateChatPeer.value == null) "public" else "other",
                         viewModel.weshDraftStore.drafts.value["public"].orEmpty(), viewModel.weshBluetoothReady()) && viewModel.sendWeshPublic(request.content)) {
                     prefs.publicDisclosureAccepted = true
-                    viewModel.weshDraftStore.clearIfUnchanged("public", request.content)
+                    publicCapture?.let(viewModel.weshDraftStore::clearIfUnchanged)
                 } else feedback = "Envoi annulé : Bluetooth, destination ou brouillon a changé. Votre texte est conservé."
                 publicRequest = null
             }) { Text("Envoyer en public") } },

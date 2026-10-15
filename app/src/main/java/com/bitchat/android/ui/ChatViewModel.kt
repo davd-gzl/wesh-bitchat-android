@@ -195,7 +195,7 @@ class ChatViewModel(
     val verifiedFingerprints = verificationHandler.verifiedFingerprints
     private val weshContactStore = com.bitchat.android.services.WeshContactStore.get(application)
     val weshContacts = weshContactStore.contacts
-    internal val weshDraftStore = WeshDraftStore()
+    internal val weshDraftStore = WeshDraftStore.get(application)
     val weshContactSheet = kotlinx.coroutines.flow.MutableStateFlow(false)
     val weshIncomingQR = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     private val weshPrivateSender = com.bitchat.android.services.WeshPrivateSender(weshContactStore)
@@ -431,7 +431,20 @@ class ChatViewModel(
         mesh.initiateNoiseHandshake(peerID)
     }
 
+    internal fun weshDraftDestination(privateConversation: String?): String? =
+        privateConversation?.let(weshContactStore::contact)?.noiseHex?.let(WeshDraftStore::privateDestination)
+
+    internal fun retryWeshDrafts() = weshDraftStore.retry()
+
+    private suspend fun loadWeshDrafts() {
+        if (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) return
+        com.bitchat.android.startup.WeshRuntime.get(getApplication()).awaitReady()
+        val key = mesh.getStaticNoisePublicKey()?.takeIf { it.size == 32 } ?: return
+        weshDraftStore.load(key.hexEncodedString())
+    }
+
     init {
+        viewModelScope.launch { loadWeshDrafts() }
         observeConversationPresenceWithDisconnectGrace()
         // Note: Mesh service delegate is now set by MainActivity
         loadAndInitialize()
@@ -1517,16 +1530,24 @@ class ChatViewModel(
     
     // MARK: - Emergency Clear
 
-    private var panicClearInProgress = false
+    internal val weshPanicInProgress = MutableStateFlow(false)
+    private var weshPanicPreviousKey: ByteArray? = null
 
     fun panicClearAllData() {
-        if (panicClearInProgress) return
-        panicClearInProgress = true
+        if (weshPanicInProgress.value) return
+        weshPanicInProgress.value = true
+        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) {
+            weshPanicPreviousKey = mesh.getStaticNoisePublicKey()?.copyOf()
+            com.bitchat.android.startup.WeshRuntime.requirePanicRecovery()
+        }
+        weshDraftStore.fenceForPanic()
         viewModelScope.launch {
             try {
                 performPanicClearAllData()
+            } catch (_: Exception) {
+                Log.e(TAG, "PANIC MODE INCOMPLETE - recovery required")
             } finally {
-                panicClearInProgress = false
+                weshPanicInProgress.value = false
             }
         }
     }
@@ -1546,6 +1567,7 @@ class ChatViewModel(
         // Stop all message admission before wiping storage. The AppStateStore gate also rejects
         // any transport callback already in flight until the fresh identity is ready.
         clearAllMeshServiceData()
+        val draftsCleared = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY || weshDraftStore.panicClear()
         val conversationsCleared =
             com.bitchat.android.services.AppStateStore
                 .panicClearPrivateConversations()
@@ -1569,7 +1591,6 @@ class ChatViewModel(
         // Clear all cryptographic data
         verificationHandler.clearWeshVerifications()
         weshContactStore.clear()
-        weshDraftStore.clear()
         clearAllCryptographicData()
         
         // Clear all notifications
@@ -1601,17 +1622,15 @@ class ChatViewModel(
         state.setNickname(newNickname)
         dataManager.saveNickname(newNickname)
 
-        if (!conversationsCleared) {
+        if (!conversationsCleared || !draftsCleared) {
             // Privacy wins over availability: keep private-message admission and transports
             // stopped if SQLite could not prove that the conversation history was erased.
-            Log.e(TAG, "🚨 PANIC MODE INCOMPLETE - conversation database wipe failed")
+            Log.e(TAG, "PANIC MODE INCOMPLETE - draft or conversation wipe unconfirmed")
             return
         }
 
         // Recreate mesh service with fresh identity
-        com.bitchat.android.services.AppStateStore
-            .resumePrivateConversationsAfterPanic()
-        recreateMeshServiceAfterPanic()
+        if (!recreateMeshServiceAfterPanic()) return
 
         Log.w(TAG, "🚨 PANIC MODE COMPLETED - New identity: ${mesh.myPeerID}")
     }
@@ -1620,7 +1639,7 @@ class ChatViewModel(
      * Recreate the mesh service with a fresh identity after panic clear.
      * This ensures the new cryptographic keys are used for a new peer ID.
      */
-    private fun recreateMeshServiceAfterPanic() {
+    private suspend fun recreateMeshServiceAfterPanic(): Boolean {
         val oldPeerID = mesh.myPeerID
 
         // Clear the holder so getOrCreate() returns a fresh instance
@@ -1635,6 +1654,18 @@ class ChatViewModel(
         unifiedMeshService = freshUnifiedMeshService
         mesh.delegate = this
 
+        // A failed identity reset must not remove the durable panic marker.
+        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) {
+            val previous = weshPanicPreviousKey ?: return false
+            val fresh = mesh.getStaticNoisePublicKey()?.takeIf { it.size == 32 } ?: return false
+            if (previous.contentEquals(fresh)) return false
+        }
+        // Confirm the dedicated draft wipe before restarting any transport.
+        loadWeshDrafts()
+        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY &&
+            weshDraftStore.persistence.value != WeshDraftStore.Persistence.Confirmed) return false
+        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) com.bitchat.android.startup.WeshRuntime.normalPanicCompleted()
+        com.bitchat.android.services.AppStateStore.resumePrivateConversationsAfterPanic()
         // Restart mesh operations with new identity
         mesh.startServices()
         mesh.sendBroadcastAnnounce()
@@ -1643,6 +1674,7 @@ class ChatViewModel(
             TAG,
             "✅ Mesh service recreated. Old peerID: $oldPeerID, New peerID: ${mesh.myPeerID}"
         )
+        return true
     }
     
     /**

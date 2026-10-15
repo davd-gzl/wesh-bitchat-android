@@ -135,17 +135,17 @@ fun LocationChannelsSheet(
     val wifiAwareEnabled by WifiAwareController.enabled.collectAsStateWithLifecycle()
 
     var customGeohash by remember { mutableStateOf("") }
-    var customError by remember { mutableStateOf<String?>(null) }
+    var hasCustomError by remember { mutableStateOf(false) }
 
     val teleportToGeohash: (String) -> Unit = { value ->
         val channel = channelForManualGeohash(value)
         if (channel != null) {
-            customError = null
+            hasCustomError = false
             locationManager.selectManual(channel)
             onDismiss()
         } else {
             customGeohash = value.trim().lowercase().replace("#", "")
-            customError = context.getString(R.string.invalid_geohash)
+            hasCustomError = true
         }
     }
 
@@ -495,7 +495,7 @@ fun LocationChannelsSheet(
                                                 .replace("#", "")
                                                 .filter { it in allowed }
                                                 .take(12)
-                                            customError = null
+                                            hasCustomError = false
                                         },
                                         onFocusGained = {
                                             coroutineScope.launch { sheetState.expand() }
@@ -521,7 +521,7 @@ fun LocationChannelsSheet(
                             }
 
                             AnimatedVisibility(
-                                visible = customError != null,
+                                visible = hasCustomError,
                                 enter = fadeIn(tween(BitchatMotion.STANDARD_MS)) +
                                     expandVertically(
                                         tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing)
@@ -531,11 +531,8 @@ fun LocationChannelsSheet(
                                         tween(BitchatMotion.QUICK_MS, easing = FastOutSlowInEasing)
                                     )
                             ) {
-                                // Held across the exit animation: by the time it plays, the error
-                                // itself has already been cleared.
-                                val shownError = remember(customError) { customError ?: "" }
                                 Text(
-                                    text = shownError,
+                                    text = stringResource(R.string.invalid_geohash),
                                     fontSize = 12.sp,
                                     fontFamily = BitchatFontFamily,
                                     color = colorScheme.error,

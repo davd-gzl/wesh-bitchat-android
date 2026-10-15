@@ -21,9 +21,16 @@ internal interface ConversationStorageCipher {
     fun decrypt(envelope: ByteArray, associatedData: ByteArray): ByteArray
     fun destroyKey()
 }
-internal class AndroidConversationStorageCipher(
-    private val keyAlias: String = DEFAULT_KEY_ALIAS
+internal interface ConversationStorageKeyProvider {
+    fun loadExisting(): SecretKey?
+    fun create(): SecretKey
+    fun delete()
+}
+
+internal class AndroidConversationStorageCipher internal constructor(
+    private val keys: ConversationStorageKeyProvider
 ) : ConversationStorageCipher {
+    constructor(keyAlias: String = DEFAULT_KEY_ALIAS) : this(AndroidStorageKeyProvider(keyAlias))
     companion object {
         internal const val DEFAULT_KEY_ALIAS = "bitchat_conversation_storage_v1"
         private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
@@ -39,7 +46,7 @@ internal class AndroidConversationStorageCipher(
 
     override fun encrypt(plaintext: ByteArray, associatedData: ByteArray): ByteArray {
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+        cipher.init(Cipher.ENCRYPT_MODE, key(allowCreate = true))
         cipher.updateAAD(associatedData)
         val ciphertext = cipher.doFinal(plaintext)
         check(cipher.iv.size == IV_BYTES) { "Unexpected AES-GCM IV length" }
@@ -54,7 +61,7 @@ internal class AndroidConversationStorageCipher(
         val iv = envelope.copyOfRange(1, 1 + IV_BYTES)
         val ciphertext = envelope.copyOfRange(1 + IV_BYTES, envelope.size)
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
+        cipher.init(Cipher.DECRYPT_MODE, key(allowCreate = false), GCMParameterSpec(GCM_TAG_BITS, iv))
         cipher.updateAAD(associatedData)
         return cipher.doFinal(ciphertext)
     }
@@ -62,37 +69,42 @@ internal class AndroidConversationStorageCipher(
     override fun destroyKey() {
         synchronized(keyLock) {
             cachedKey = null
-            val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
-            if (keyStore.containsAlias(keyAlias)) {
-                keyStore.deleteEntry(keyAlias)
-            }
+            keys.delete()
         }
     }
 
-    private fun getOrCreateKey(): SecretKey =
+    private fun key(allowCreate: Boolean): SecretKey =
         cachedKey ?: synchronized(keyLock) {
-            cachedKey ?: run {
-                val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
-                (keyStore.getKey(keyAlias, null) as? SecretKey) ?: generateKey()
-            }.also { cachedKey = it }
+            cachedKey ?: (keys.loadExisting() ?: run {
+                check(allowCreate) { "Storage key unavailable" }
+                keys.create()
+            }).also { check(it.algorithm == "AES") { "Stored key has an invalid type" }; cachedKey = it }
         }
 
-    private fun generateKey(): SecretKey {
-        val generator = KeyGenerator.getInstance(
-            KeyProperties.KEY_ALGORITHM_AES,
-            KEYSTORE_PROVIDER
-        )
-        generator.init(
-            KeyGenParameterSpec.Builder(
-                keyAlias,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+    private class AndroidStorageKeyProvider(private val keyAlias: String) : ConversationStorageKeyProvider {
+        override fun loadExisting(): SecretKey? {
+            val store = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
+            if (!store.containsAlias(keyAlias)) return null
+            return store.getKey(keyAlias, null) as? SecretKey
+                ?: error("Stored key has an invalid type")
+        }
+
+        override fun delete() {
+            val store = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
+            if (store.containsAlias(keyAlias)) store.deleteEntry(keyAlias)
+        }
+
+        override fun create(): SecretKey {
+            val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE_PROVIDER)
+            generator.init(
+                KeyGenParameterSpec.Builder(keyAlias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setKeySize(256)
+                    .setRandomizedEncryptionRequired(true)
+                    .build()
             )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .setRandomizedEncryptionRequired(true)
-                .build()
-        )
-        return generator.generateKey()
+            return generator.generateKey()
+        }
     }
 }

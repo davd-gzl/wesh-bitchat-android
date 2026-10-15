@@ -1,34 +1,255 @@
 package com.bitchat.android.ui
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class WeshDraftStoreTest {
-    @Test fun `navigation between public and two stable private destinations preserves isolated drafts`() {
+    private val owner = "11".repeat(32)
+    private val secondOwner = "22".repeat(32)
+    private val privateA = WeshDraftStore.privateDestination("33".repeat(32))!!
+    private val privateB = WeshDraftStore.privateDestination("44".repeat(32))!!
+
+    @Test fun `public and full Noise destinations survive isolated navigation`() {
         val store = WeshDraftStore()
         store.save("public", "public synthetic")
-        store.save("contact_synthetic-a", "private A")
-        store.save("contact_synthetic-b", "private B")
+        store.save(privateA, "private A")
+        store.save(privateB, "private B")
+        val sent = store.capture(privateA)!!
+        store.clearIfUnchanged(sent)
         assertEquals("public synthetic", store.drafts.value["public"])
-        assertEquals("private A", store.drafts.value["contact_synthetic-a"])
-        store.clearIfUnchanged("contact_synthetic-a", "private A")
-        assertNull(store.drafts.value["contact_synthetic-a"])
-        assertEquals("private B", store.drafts.value["contact_synthetic-b"])
+        assertNull(store.drafts.value[privateA])
+        assertEquals("private B", store.drafts.value[privateB])
+        assertFalse(store.save("contact_synthetic-short", "not an identity"))
     }
-    @Test fun `late send callback cannot erase newer text or a different destination`() {
+
+    @Test fun `late callback preserves newer text including ABA edits`() {
         val store = WeshDraftStore()
-        store.save("public", "new synthetic draft")
-        store.save("contact_synthetic-a", "A")
-        store.clearIfUnchanged("public", "old synthetic draft")
-        assertEquals("new synthetic draft", store.drafts.value["public"])
-        assertEquals("A", store.drafts.value["contact_synthetic-a"])
+        store.save("public", "old synthetic")
+        val sent = store.capture("public")!!
+        store.save("public", "new synthetic")
+        store.save("public", "old synthetic")
+        store.clearIfUnchanged(sent)
+        assertEquals("old synthetic", store.drafts.value["public"])
     }
-    @Test fun `drafts have bounded memory and reject excess UTF8 bytes without truncation`() {
+
+    @Test fun `editing another destination does not prevent clearing accepted draft`() {
+        val store = WeshDraftStore()
+        store.save("public", "synthetic")
+        val sent = store.capture("public")!!
+        store.save(privateA, "new A")
+        store.clearIfUnchanged(sent)
+        assertNull(store.drafts.value["public"])
+        assertEquals("new A", store.drafts.value[privateA])
+    }
+
+    @Test fun `UTF8 individual count and aggregate bounds reject or evict without truncation`() {
         val store = WeshDraftStore()
         store.save("public", "kept")
-        store.save("public", "é".repeat(4097))
+        assertFalse(store.save("public", "é".repeat(4097)))
         assertEquals("kept", store.drafts.value["public"])
-        repeat(70) { store.save("synthetic-$it", "x") }
+        repeat(70) { store.save("private:" + it.toString(16).padStart(64, '0'), "x") }
         assertEquals(64, store.drafts.value.size)
+        repeat(64) { store.save("private:" + it.toString(16).padStart(64, '0'), "x".repeat(8192)) }
+        assertEquals(16, store.drafts.value.size)
+        assertEquals(131072, store.drafts.value.values.sumOf { it.toByteArray().size })
+    }
+
+    @Test fun `edits before confirmed restore merge after disk and never overwrite unread data`() = runTest {
+        val backend = FakeBackend().apply { stored[owner] = mapOf(privateA to "stored A", "public" to "stored public") }
+        val store = WeshDraftStore(backend, backgroundScope, StandardTestDispatcher(testScheduler))
+        store.save("public", "new local")
+        runCurrent()
+        assertEquals(0, backend.writes)
+        store.load(owner)
+        runCurrent()
+        assertEquals(mapOf(privateA to "stored A", "public" to "new local"), backend.stored[owner])
+        assertEquals(WeshDraftStore.Persistence.Confirmed, store.persistence.value)
+    }
+
+    @Test fun `malformed or unreadable restore retains RAM and requires successful read before write`() = runTest {
+        val backend = FakeBackend().apply { failRead = true }
+        val store = WeshDraftStore(backend, backgroundScope, StandardTestDispatcher(testScheduler))
+        store.load(owner)
+        store.save("public", "kept in RAM")
+        runCurrent()
+        assertEquals(WeshDraftStore.Persistence.Error, store.persistence.value)
+        assertEquals(0, backend.writes)
+        store.retry()
+        runCurrent()
+        assertEquals(0, backend.writes)
+        backend.failRead = false
+        backend.stored[owner] = mapOf(privateA to "stored A")
+        store.retry()
+        runCurrent()
+        assertEquals("kept in RAM", backend.stored[owner]?.get("public"))
+        assertEquals("stored A", store.drafts.value[privateA])
+    }
+
+    @Test fun `failed commit even after memory publication stays dirty until explicit rewrite`() = runTest {
+        val backend = FakeBackend()
+        val store = WeshDraftStore(backend, backgroundScope, StandardTestDispatcher(testScheduler))
+        store.load(owner)
+        backend.failWrite = true
+        store.save("public", "synthetic pending")
+        runCurrent()
+        assertEquals(WeshDraftStore.Persistence.Error, store.persistence.value)
+        assertEquals("synthetic pending", store.drafts.value["public"])
+        backend.failWrite = false
+        store.retry()
+        runCurrent()
+        assertEquals(2, backend.writes)
+        assertEquals(WeshDraftStore.Persistence.Confirmed, store.persistence.value)
+    }
+
+    @Test fun `readback mismatch retains RAM and retry persists again`() = runTest {
+        val backend = FakeBackend()
+        val store = WeshDraftStore(backend, backgroundScope, StandardTestDispatcher(testScheduler))
+        store.load(owner)
+        backend.dropWrite = true
+        store.save("public", "pending")
+        runCurrent()
+        assertEquals(WeshDraftStore.Persistence.Error, store.persistence.value)
+        backend.dropWrite = false
+        store.retry()
+        runCurrent()
+        assertEquals("pending", backend.stored[owner]?.get("public"))
+        assertEquals(2, backend.writes)
+    }
+
+    @Test fun `delayed retry cannot reclaim previous identity or erase new owner edits`() = runTest {
+        val backend = FakeBackend().apply { failRead = true }
+        val store = WeshDraftStore(backend, backgroundScope, StandardTestDispatcher(testScheduler))
+        store.load(owner)
+        store.retry()
+        backend.failRead = false
+        store.load(secondOwner)
+        store.save("public", "owner B")
+        runCurrent()
+        assertEquals(listOf(owner, secondOwner, secondOwner), backend.readOwners)
+        assertEquals("owner B", store.drafts.value["public"])
+        assertFalse(backend.stored.containsKey(owner))
+    }
+
+    @Test fun `concurrent restore of same identity reads disk only once`() = runTest {
+        val backend = FakeBackend().apply { stored[owner] = mapOf("public" to "stored") }
+        val store = WeshDraftStore(backend, backgroundScope, StandardTestDispatcher(testScheduler))
+        launch { store.load(owner) }
+        launch { store.load(owner) }
+        runCurrent()
+        assertEquals(1, backend.readOwners.size)
+        store.save("public", "new text")
+        runCurrent()
+        assertEquals("new text", store.drafts.value["public"])
+    }
+
+    @Test fun `owner switch clears old RAM and old captures cannot erase identical new text`() = runTest {
+        val backend = FakeBackend()
+        val store = WeshDraftStore(backend, backgroundScope, StandardTestDispatcher(testScheduler))
+        store.load(owner)
+        store.save("public", "same synthetic")
+        val sent = store.capture("public")!!
+        store.load(secondOwner)
+        assertTrue(store.drafts.value.isEmpty())
+        store.save("public", "same synthetic")
+        store.clearIfUnchanged(sent)
+        assertEquals("same synthetic", store.drafts.value["public"])
+    }
+
+    @Test fun `panic fences queued writes clears RAM and keeps failed wipe visibly blocked`() = runTest {
+        val backend = FakeBackend()
+        val store = WeshDraftStore(backend, backgroundScope, StandardTestDispatcher(testScheduler))
+        store.load(owner)
+        store.save("public", "never resurrect")
+        backend.failWipe = true
+        assertFalse(store.panicClear())
+        runCurrent()
+        assertEquals(0, backend.writes)
+        assertTrue(store.drafts.value.isEmpty())
+        assertFalse(store.save("public", "blocked"))
+        store.load(secondOwner)
+        assertEquals(WeshDraftStore.Persistence.WipeRequired, store.persistence.value)
+        assertEquals(1, backend.readOwners.size)
+    }
+
+    @Test fun `successful panic requires marker finish before new owner can write`() = runTest {
+        val backend = FakeBackend()
+        val store = WeshDraftStore(backend, backgroundScope, StandardTestDispatcher(testScheduler))
+        store.load(owner)
+        assertTrue(store.panicClear())
+        backend.failFinish = true
+        store.load(secondOwner)
+        assertFalse(store.save("public", "blocked"))
+        assertEquals(WeshDraftStore.Persistence.WipeRequired, store.persistence.value)
+        backend.failFinish = false
+        assertTrue(store.panicClear())
+        store.load(secondOwner)
+        store.save("public", "fresh")
+        runCurrent()
+        assertEquals(mapOf("public" to "fresh"), backend.stored[secondOwner])
+    }
+
+    @Test fun `restart with pending marker never restores data or repairs without explicit wipe`() = runTest {
+        val backend = FakeBackend().apply { marker = true; stored[owner] = mapOf("public" to "old") }
+        val store = WeshDraftStore(backend, backgroundScope, StandardTestDispatcher(testScheduler))
+        store.load(owner)
+        store.retry()
+        runCurrent()
+        assertEquals(WeshDraftStore.Persistence.WipeRequired, store.persistence.value)
+        assertEquals(0, backend.wipes)
+        assertFalse(store.save("public", "blocked"))
+    }
+
+    @Test fun `empty edits to many other destinations cannot reset revision of a restored draft`() = runTest {
+        val backend = FakeBackend().apply { stored[owner] = mapOf("public" to "A") }
+        val store = WeshDraftStore(backend, backgroundScope, StandardTestDispatcher(testScheduler))
+        store.load(owner)
+        val sent = store.capture("public")!!
+        store.save("public", "B")
+        store.save("public", "A")
+        repeat(70) { store.save("private:" + it.toString(16).padStart(64, '0'), "") }
+        store.clearIfUnchanged(sent)
+        assertEquals("A", store.drafts.value["public"])
+    }
+
+    private class FakeBackend : WeshDraftBackend {
+        val stored = mutableMapOf<String, Map<String, String>>()
+        val readOwners = mutableListOf<String>()
+        var writes = 0
+        var wipes = 0
+        var failRead = false
+        var failWrite = false
+        var dropWrite = false
+        var failWipe = false
+        var failFinish = false
+        var marker = false
+        override fun load(owner: String): Map<String, String> {
+            readOwners += owner
+            if (marker) throw DraftWipePending()
+            check(!failRead)
+            return stored[owner].orEmpty()
+        }
+        override fun write(owner: String, drafts: Map<String, String>) {
+            writes++
+            check(!marker)
+            if (!dropWrite) stored[owner] = drafts.toMap()
+            check(!failWrite)
+        }
+        override fun wipe() {
+            wipes++
+            marker = true
+            check(!failWipe)
+            stored.clear()
+        }
+        override fun finishVerifiedWipe() {
+            check(marker && !failFinish)
+            stored.clear()
+            marker = false
+        }
     }
 }

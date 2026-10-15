@@ -102,11 +102,13 @@ class MeshForegroundService : Service() {
     // A sticky service can be recreated before the IO bootstrap loads preferences. Promote
     // promptly with a minimal notification, then enforce the stored policy before transport.
     private fun runtimeReady(): Boolean = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY ||
-        com.bitchat.android.startup.WeshRuntime.get(applicationContext).state.value is
-            com.bitchat.android.startup.StartupCoordinator.State.Ready
+        (com.bitchat.android.startup.WeshRuntime.transportAllowed &&
+            com.bitchat.android.startup.WeshRuntime.get(applicationContext).state.value is
+            com.bitchat.android.startup.StartupCoordinator.State.Ready)
 
     private fun backgroundRequested(): Boolean =
-        !runtimeReady() || MeshServicePreferences.isBackgroundEnabled(true)
+        (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY || com.bitchat.android.startup.WeshRuntime.transportAllowed) &&
+            (!runtimeReady() || MeshServicePreferences.isBackgroundEnabled(true))
 
     override fun onCreate() {
         super.onCreate()
@@ -204,7 +206,8 @@ class MeshForegroundService : Service() {
 
         // A sticky restart can outlive permission or policy changes. Do not wait for
         // encrypted storage when promotion/transport is already disallowed.
-        if (!hasAllRequiredPermissions() || (runtimeReady() && !MeshServicePreferences.isBackgroundEnabled(true))) {
+        if ((com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY && !com.bitchat.android.startup.WeshRuntime.transportAllowed) ||
+            !hasAllRequiredPermissions() || (runtimeReady() && !MeshServicePreferences.isBackgroundEnabled(true))) {
             startupJob?.cancel()
             startupJob = null
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -235,10 +238,11 @@ class MeshForegroundService : Service() {
         startupJob = scope.launch {
             try {
                 if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) {
-                    com.bitchat.android.startup.WeshRuntime.get(applicationContext).awaitReady()
+                    com.bitchat.android.startup.WeshRuntime.awaitTransportReady(applicationContext)
                 }
                 if (isShuttingDown) return@launch
-                if (!MeshServicePreferences.isBackgroundEnabled(true) || !hasAllRequiredPermissions()) {
+                if ((com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY && !com.bitchat.android.startup.WeshRuntime.transportAllowed) ||
+                    !MeshServicePreferences.isBackgroundEnabled(true) || !hasAllRequiredPermissions()) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     isInForeground = false
                     clearMeshNotifications()
