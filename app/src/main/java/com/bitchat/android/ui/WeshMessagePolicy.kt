@@ -3,6 +3,12 @@ package com.bitchat.android.ui
 import android.content.Context
 import android.content.SharedPreferences
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import androidx.core.content.edit
@@ -49,11 +55,18 @@ internal object WeshMessagePolicy {
     }
 }
 
-internal class WeshPreferences(private val prefs: SharedPreferences) {
+internal class WeshPreferences(
+    private val prefs: SharedPreferences,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val commitEditor: suspend (SharedPreferences.Editor) -> Boolean = { it.commit() }
+) {
     constructor(context: Context) : this(context.applicationContext.getSharedPreferences("wesh_ui", Context.MODE_PRIVATE))
 
     private val lock = Any()
+    private val io = Mutex()
     private var fenced = false
+    private var meetingRevision = 0L
+    private data class MeetingSnapshot(val text: String, val epoch: Long, val revision: Long)
     private val _resetEpoch = MutableStateFlow(0L)
     val resetEpoch = _resetEpoch.asStateFlow()
     private val _meetingDraft = MutableStateFlow(prefs.getString("meeting_note", "") ?: "")
@@ -75,13 +88,34 @@ internal class WeshPreferences(private val prefs: SharedPreferences) {
     fun editMeetingDraft(value: String, expectedEpoch: Long): Boolean = synchronized(lock) {
         if (fenced || expectedEpoch != _resetEpoch.value) return@synchronized false
         _meetingDraft.value = value
+        meetingRevision++
         true
     }
 
-    fun saveMeetingDraft(expectedEpoch: Long): Boolean = synchronized(lock) {
-        if (fenced || expectedEpoch != _resetEpoch.value) return@synchronized false
-        prefs.edit { putString("meeting_note", _meetingDraft.value) }
-        true
+    suspend fun saveMeetingDraft(expectedEpoch: Long): Boolean {
+        val snapshot = synchronized(lock) {
+            if (fenced || expectedEpoch != _resetEpoch.value) return false
+            MeetingSnapshot(_meetingDraft.value, expectedEpoch, meetingRevision)
+        }
+        val confirmed = withContext(ioDispatcher) {
+            io.withLock {
+                if (!isCurrent(snapshot)) return@withLock false
+                try {
+                    // Retry the actual commit even when a failed prior commit changed the RAM cache.
+                    val committed = commitEditor(prefs.edit().putString("meeting_note", snapshot.text))
+                    committed && prefs.getString("meeting_note", null) == snapshot.text && isCurrent(snapshot)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    false
+                }
+            }
+        }
+        return confirmed && isCurrent(snapshot)
+    }
+
+    private fun isCurrent(snapshot: MeetingSnapshot): Boolean = synchronized(lock) {
+        !fenced && snapshot.epoch == _resetEpoch.value && snapshot.revision == meetingRevision
     }
 
     /** Blocks stale UI callbacks before any suspending panic work. */
@@ -89,17 +123,22 @@ internal class WeshPreferences(private val prefs: SharedPreferences) {
         synchronized(lock) {
             fenced = true
             _meetingDraft.value = ""
+            meetingRevision++
             _resetEpoch.value++
         }
     }
 
-    /** Must run on IO. A clear published only in memory is never a confirmed wipe. */
-    fun clearForPanic(): Boolean {
+    /** Waits for any in-flight save, then erases it before the global panic can resume. */
+    suspend fun clearForPanic(): Boolean {
         fenceForPanic()
-        return try {
-            prefs.edit().clear().commit() && prefs.all.isEmpty()
-        } catch (_: Exception) {
-            false
+        return withContext(NonCancellable + ioDispatcher) {
+            io.withLock {
+                try {
+                    commitEditor(prefs.edit().clear()) && prefs.all.isEmpty()
+                } catch (_: Exception) {
+                    false
+                }
+            }
         }
     }
 
@@ -115,6 +154,7 @@ internal class WeshPreferences(private val prefs: SharedPreferences) {
 internal suspend fun resumeAfterWeshPanicWipe(
     draftsCleared: Boolean,
     conversationsCleared: Boolean,
+    mediaCleared: Boolean,
     clearPreferences: suspend () -> Boolean,
     resume: suspend () -> Boolean
 ): Boolean {
@@ -125,6 +165,6 @@ internal suspend fun resumeAfterWeshPanicWipe(
     } catch (_: Exception) {
         false
     }
-    if (!draftsCleared || !conversationsCleared || !preferencesCleared) return false
+    if (!draftsCleared || !conversationsCleared || !mediaCleared || !preferencesCleared) return false
     return resume()
 }

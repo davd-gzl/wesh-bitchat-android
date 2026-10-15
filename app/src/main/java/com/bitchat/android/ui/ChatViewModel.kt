@@ -1614,8 +1614,10 @@ class ChatViewModel(
         // Clear all notifications
         notificationManager.clearAllNotifications(removeConversationShortcuts = true)
 
-        // Clear all media files
-        com.bitchat.android.features.file.FileUtils.clearAllMedia(getApplication())
+        // Plaintext attachments need their own verified erasure before the panic marker is lifted.
+        val mediaCleared = withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+            com.bitchat.android.features.file.FileUtils.clearAllMedia(getApplication())
+        }
         
         // Clear Nostr/geohash state, keys, connections, bookmarks, and reinitialize from scratch
         try {
@@ -1643,6 +1645,7 @@ class ChatViewModel(
         val resumed = resumeAfterWeshPanicWipe(
             draftsCleared = draftsCleared,
             conversationsCleared = conversationsCleared,
+            mediaCleared = mediaCleared,
             clearPreferences = {
                 withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { weshPreferences.clearForPanic() }
             },

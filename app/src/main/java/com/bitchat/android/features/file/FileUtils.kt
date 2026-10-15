@@ -10,6 +10,10 @@ import com.bitchat.android.model.BitchatMessageType
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.NoSuchFileException
+import java.nio.file.attribute.BasicFileAttributes
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -276,54 +280,57 @@ object FileUtils {
         }
     }
 
-    /**
-     * Recursively delete all media files (incoming and outgoing)
-     * Used for Panic Mode cleanup
-     */
-    fun clearAllMedia(context: Context) {
+    /** Caller runs this verified logical erasure on IO before completing global panic. */
+    fun clearAllMedia(context: Context): Boolean = clearAllMedia(
+        filesDir = { context.filesDir },
+        cacheDir = { context.cacheDir }
+    )
+
+    internal fun clearAllMedia(
+        filesDir: () -> File,
+        cacheDir: () -> File,
+        deleteTree: (File) -> Boolean = { it.deleteRecursively() },
+        probe: (File) -> Boolean = ::mediaDirectoryExists
+    ): Boolean {
+        var confirmed = true
+        val targets = mutableListOf<File>()
         try {
-            // Clear files dir subdirectories (legacy storage and outgoing)
-            val filesDir = context.filesDir
-            val dirsToClear = listOf(
-                "files/incoming",
-                "files/outgoing",
-                "images/incoming",
-                "images/outgoing",
-                "voicenotes"
-            )
-
-            dirsToClear.forEach { subDir ->
-                val dir = File(filesDir, subDir)
-                if (dir.exists()) {
-                    dir.deleteRecursively()
-                    Log.d(TAG, "Deleted media directory from filesDir: $subDir")
-                }
-            }
-            
-            // Clear cache dir subdirectories (new incoming storage)
-            // Note: cacheDir.deleteRecursively() below would handle this, but being explicit ensures these
-            // specific media folders are targeted even if full cache clear fails or is modified later.
-            val cacheDir = context.cacheDir
-            val cacheDirsToClear = listOf(
-                "files/incoming",
-                "images/incoming"
-            )
-            
-            cacheDirsToClear.forEach { subDir ->
-                val dir = File(cacheDir, subDir)
-                if (dir.exists()) {
-                    dir.deleteRecursively()
-                    Log.d(TAG, "Deleted media directory from cacheDir: $subDir")
-                }
-            }
-            
-            // Also clear entire cache dir as a catch-all
-            context.cacheDir.deleteRecursively()
-            Log.d(TAG, "Cleared entire cache directory")
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to clear media files", e)
+            val root = filesDir()
+            listOf("files/incoming", "files/outgoing", "images/incoming", "images/outgoing", "voicenotes")
+                .forEach { targets += File(root, it) }
+        } catch (_: Exception) {
+            confirmed = false
         }
+        try {
+            // Capture once: requesting context.cacheDir again can recreate a just-deleted directory.
+            val root = cacheDir()
+            targets += File(root, "files/incoming")
+            targets += File(root, "images/incoming")
+            targets += root
+        } catch (_: Exception) {
+            confirmed = false
+        }
+        for (target in targets) {
+            try {
+                if (probe(target)) {
+                    val deleted = deleteTree(target)
+                    val absent = !probe(target)
+                    if (!deleted || !absent) confirmed = false
+                }
+            } catch (_: Exception) {
+                confirmed = false
+            }
+        }
+        if (!confirmed) Log.w(TAG, "Media erasure was not confirmed")
+        return confirmed
+    }
+
+    private fun mediaDirectoryExists(file: File): Boolean = try {
+        val attributes = Files.readAttributes(file.toPath(), BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+        check(attributes.isDirectory) { "Unexpected media storage entry" }
+        true
+    } catch (_: NoSuchFileException) {
+        false
     }
 
     /**

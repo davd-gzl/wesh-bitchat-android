@@ -134,3 +134,40 @@ and stale callbacks after resume. They do not prove system IME/rotation behavior
 power-loss durability or physical erasure. Current local validation evidence is
 ignored under `.validation/artifacts/android-v1-readiness/`; previous results
 above belong to their historical source.
+
+
+## Confirmed personal-note save
+
+The note's Save action is separate from encrypted conversation drafts. It now
+waits off Main for SharedPreferences commit success and an exact value readback
+before showing confirmation inside the note sheet. Failure retains the edited
+in-memory text and offers retry; the message says the save is unconfirmed,
+without claiming that no write occurred. Every retry performs the actual commit
+even when a failed earlier call already changed the preferences RAM cache.
+
+A separate coroutine mutex serializes note writes and panic clearing. The RAM
+fence takes no IO lock: it invalidates editors immediately, while panic waits
+for any in-flight commit and clears afterward. Queued saves recheck their
+captured generation and revision before writing. Confirmation is checked again
+after returning to the caller dispatcher, so an edit or panic that supersedes
+the snapshot cannot announce success. Cancellation of a save propagates;
+panic clearing is non-cancellable. This is an OS commit/readback contract,
+not proof of physical power-loss durability.
+
+
+## Media erasure and the Wesh wipe control
+
+The normal global wipe is now reachable from Wesh settings through an explicit
+French confirmation. Cancelling or dismissing only closes that dialog. Its
+confirmation calls the existing panic routine, whose progress/recovery screens
+continue to hide normal actions; no alternate reset bypass is introduced.
+The copy distinguishes local data from external copies and physical erasure.
+
+Plaintext attachments require confirmed deletion as well as conversations,
+drafts and preferences before the marker can be removed or transport resume.
+Media cleanup runs on IO, captures storage roots once, and attempts every target
+even when another fails. A refused delete, exception, unexpected entry type,
+unknown stat result or remaining directory prevents success. Only an explicit
+missing-path result counts as absence. Synthetic file tests cover retained
+readable bytes after refusal, acknowledgement without removal, unknown probes,
+exceptions, full cleanup and retry; they never erase actual QA application data.

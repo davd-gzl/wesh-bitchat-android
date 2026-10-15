@@ -93,7 +93,10 @@ fun WeshScreen(viewModel: ChatViewModel) {
     var contactOpen by rememberSaveable { mutableStateOf(false) }
     val destination = if (publicOpen) "public" else viewModel.weshDraftDestination(selectedPrivate)
     val draft = destination?.let(drafts::get).orEmpty()
+    var confirmPanic by remember { mutableStateOf(false) }
     var noteOpen by remember { mutableStateOf(false) }
+    var noteSaving by remember { mutableStateOf(false) }
+    var noteFeedback by remember(preferencesEpoch) { mutableStateOf<String?>(null) }
     var contactAction by remember { mutableStateOf<Pair<String, String>?>(null) }
     var publicRequest by remember { mutableStateOf<WeshMessagePolicy.PublicSendRequest?>(null) }
     var publicCapture by remember { mutableStateOf<WeshDraftStore.Capture?>(null) }
@@ -217,10 +220,27 @@ fun WeshScreen(viewModel: ChatViewModel) {
                     }
                     item { Text("Brouillons", style = MaterialTheme.typography.titleMedium); Text("Les brouillons sont enregistrés chiffrés sur ce téléphone et restent disponibles après fermeture de Wesh. Quitter l’application ne les efface pas ; ils ne sont jamais envoyés automatiquement.") }
                     item { Text("Confidentialité", style = MaterialTheme.typography.titleMedium); Text("Le salon local est public. Les messages privés utilisent le chiffrement du protocole existant. Les contacts et les messages peuvent rester stockés : fermer le salon ne les efface pas. Bloquer masque une identité sur ce téléphone, sans empêcher un relais de conserver ses messages.") }
+                    item {
+                        Text("Effacement d’urgence", style = MaterialTheme.typography.titleMedium)
+                        Text("Effacer vos données locales et renouveler votre identité Wesh.")
+                        OutlinedButton(onClick = { confirmPanic = true }, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text("Effacer mes données de Wesh")
+                        }
+                    }
                 }
             }
         }
     }
+    if (confirmPanic) AlertDialog(
+        onDismissRequest = { confirmPanic = false },
+        title = { Text("Effacer vos données de Wesh ?") },
+        text = { Text("Cette action efface votre identité actuelle, vos contacts et vérifications, votre historique, vos brouillons, votre note personnelle et les fichiers locaux gérés par Wesh. Une nouvelle identité sera créée et vos contacts devront être vérifiés à nouveau. Les copies déjà reçues, exportées ou sauvegardées hors de Wesh ne sont pas retirées. Il s’agit d’un effacement logique, sans garantie d’effacement physique des supports. Si l’effacement ne peut pas être confirmé, Wesh restera verrouillé et proposera une récupération par Android.") },
+        confirmButton = { TextButton(onClick = {
+            confirmPanic = false
+            viewModel.panicClearAllData()
+        }) { Text("Effacer mes données") } },
+        dismissButton = { TextButton(onClick = { confirmPanic = false }) { Text("Annuler") } }
+    )
     publicRequest?.let { request ->
         AlertDialog(onDismissRequest = { publicRequest = null }, title = { Text("Envoyer dans le salon public ?") },
             text = { Text("Toute personne sur le mesh Bluetooth peut lire, relayer et conserver votre message. Les pseudonymes ne sont pas des identités vérifiées.") },
@@ -258,8 +278,23 @@ fun WeshScreen(viewModel: ChatViewModel) {
     if (noteOpen) ModalBottomSheet(onDismissRequest = { noteOpen = false }) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Note personnelle", style = MaterialTheme.typography.headlineSmall)
-            OutlinedTextField(meeting, { value -> prefs.editMeetingDraft(value, editorEpoch) }, label = { Text("Lieu, heure et notes") }, modifier = Modifier.fillMaxWidth(), minLines = 5)
-            WeshMetalButton(onClick = { feedback = if (prefs.saveMeetingDraft(editorEpoch)) "Note enregistrée sur ce téléphone." else "Enregistrement refusé : la note a été réinitialisée." }) { Text("Enregistrer") }
+            OutlinedTextField(meeting, { value ->
+                if (prefs.editMeetingDraft(value, editorEpoch)) noteFeedback = null
+            }, label = { Text("Lieu, heure et notes") }, modifier = Modifier.fillMaxWidth(), minLines = 5)
+            WeshMetalButton(onClick = {
+                noteSaving = true
+                noteFeedback = null
+                scope.launch {
+                    try {
+                        val confirmed = prefs.saveMeetingDraft(editorEpoch)
+                        if (prefs.resetEpoch.value == editorEpoch) {
+                            noteFeedback = if (confirmed) "Note enregistrée sur ce téléphone."
+                            else "Enregistrement non confirmé. Votre saisie reste en mémoire ; réessayez avant de fermer Wesh."
+                        }
+                    } finally { noteSaving = false }
+                }
+            }, enabled = !noteSaving) { Text(if (noteSaving) "Enregistrement…" else "Enregistrer") }
+            noteFeedback?.let { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
             Text("La note reste locale. Elle n’est pas envoyée aux contacts.")
             TextButton(onClick = { noteOpen = false }) { Text("Fermer") }
         }
