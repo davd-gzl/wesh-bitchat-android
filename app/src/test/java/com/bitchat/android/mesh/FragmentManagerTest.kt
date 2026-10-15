@@ -2,13 +2,16 @@ package com.bitchat.android.mesh
 
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.protocol.MessageType
+import com.bitchat.android.protocol.MessagePadding
 import com.bitchat.android.model.FragmentPayload
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -26,11 +29,16 @@ class FragmentManagerTest {
         fragmentManager = FragmentManager()
     }
 
+    @After
+    fun tearDown() {
+        fragmentManager.shutdown()
+    }
+
     @Test
     fun `test fragmentation without route`() {
         // Create a large payload (e.g., 1000 bytes)
         val payload = ByteArray(1000)
-        Random().nextBytes(payload)
+        Random(0xB17C4A7).nextBytes(payload)
 
         val packet = BitchatPacket(
             version = 1u,
@@ -62,7 +70,7 @@ class FragmentManagerTest {
     fun `test fragmentation with route`() {
         // Create a large payload
         val payload = ByteArray(1000)
-        Random().nextBytes(payload)
+        Random(0xB17C4A7).nextBytes(payload)
         
         // Create a fake route (3 hops)
         val route = listOf(
@@ -102,7 +110,7 @@ class FragmentManagerTest {
         // by observing that fragments with routes carry less data payload per fragment
         
         val payload = ByteArray(2000) // Large enough to ensure full fragments
-        Random().nextBytes(payload)
+        Random(0xB17C4A7).nextBytes(payload)
         
         // 1. Without route
         val packetNoRoute = BitchatPacket(
@@ -150,7 +158,7 @@ class FragmentManagerTest {
     @Test
     fun `test reassembly`() {
         val originalPayload = ByteArray(1500)
-        Random().nextBytes(originalPayload)
+        Random(0xB17C4A7).nextBytes(originalPayload)
         
         val originalPacket = BitchatPacket(
             version = 1u,
@@ -180,6 +188,79 @@ class FragmentManagerTest {
         assertEquals("Type should match", originalPacket.type, reassembledPacket!!.type)
         assertEquals("Payload size should match", originalPacket.payload.size, reassembledPacket.payload.size)
         assertTrue("Payload content should match", originalPacket.payload.contentEquals(reassembledPacket.payload))
+    }
+
+    @Test
+    fun `fragmentation preserves unpadded frame ending in a single padding-like byte`() {
+        assertUnpaddedSuffixRoundTrip(byteArrayOf(0x01))
+    }
+
+    @Test
+    fun `fragmentation preserves unpadded frame ending in repeated padding-like bytes`() {
+        assertUnpaddedSuffixRoundTrip(byteArrayOf(0x02, 0x02))
+    }
+
+    @Test
+    fun `fragmentation retains core bytes when transport padding is actually applied`() {
+        val packet = deterministicPacket(900, byteArrayOf(0x01))
+        val expectedCore = literalHeader("0384") + packet.payload
+        assertArrayEquals(expectedCore, packet.toBinaryData(padding = false))
+        val padded = packet.toBinaryData(padding = true)!!
+        assertEquals(930, expectedCore.size)
+        assertEquals(1024, padded.size)
+        assertArrayEquals(expectedCore, MessagePadding.unpad(padded))
+
+        assertFragmentRoundTrip(packet, expectedCore)
+    }
+
+    private fun assertUnpaddedSuffixRoundTrip(suffix: ByteArray) {
+        val packet = deterministicPacket(1500, suffix)
+        val expectedCore = literalHeader("05dc") + packet.payload
+        assertEquals(1530, expectedCore.size)
+        assertArrayEquals(expectedCore, packet.toBinaryData(padding = false))
+        assertEquals(2048, MessagePadding.optimalBlockSize(expectedCore.size))
+        assertEquals(518, MessagePadding.optimalBlockSize(expectedCore.size) - expectedCore.size)
+        // The required padding exceeds its one-byte marker; the transport encoder leaves the frame intact.
+        assertArrayEquals(expectedCore, packet.toBinaryData(padding = true))
+
+        assertFragmentRoundTrip(packet, expectedCore)
+    }
+
+    private fun deterministicPacket(payloadSize: Int, suffix: ByteArray): BitchatPacket {
+        // All 256 byte values occur, bypassing the encoder's low-diversity compression heuristic.
+        val payload = ByteArray(payloadSize) { it.toByte() }
+        suffix.copyInto(payload, payload.size - suffix.size)
+        return BitchatPacket(
+            version = 1u,
+            type = MessageType.FILE_TRANSFER.value,
+            senderID = hexStringToByteArray(senderID),
+            recipientID = hexStringToByteArray(recipientID),
+            timestamp = 1u,
+            payload = payload,
+            ttl = 7u
+        )
+    }
+
+    private fun literalHeader(payloadLengthHex: String): ByteArray =
+        // v1, FILE_TRANSFER, TTL 7, timestamp 1, recipient flag, UInt16 length, sender, recipient.
+        hexStringToByteArray("012207000000000000000101" + payloadLengthHex + senderID + recipientID)
+
+    private fun assertFragmentRoundTrip(packet: BitchatPacket, expectedCore: ByteArray) {
+        val fragments = fragmentManager.createFragments(packet)
+        assertTrue("Should create multiple fragments", fragments.size > 1)
+        val chunks = fragments.map { requireNotNull(FragmentPayload.decode(it.payload)).data }
+        assertArrayEquals(expectedCore, chunks.flatMap { it.asIterable() }.toByteArray())
+
+        val completed = fragments.mapNotNull { fragmentManager.handleFragment(it) }
+        assertEquals("Exactly one reassembled packet", 1, completed.size)
+        val reassembled = completed.single()
+        assertEquals(packet.version, reassembled.version)
+        assertEquals(packet.type, reassembled.type)
+        assertEquals(packet.timestamp, reassembled.timestamp)
+        assertArrayEquals(packet.senderID, reassembled.senderID)
+        assertArrayEquals(packet.recipientID, reassembled.recipientID)
+        assertArrayEquals(packet.payload, reassembled.payload)
+        assertEquals(0u.toUByte(), reassembled.ttl)
     }
 
     @Test
@@ -245,8 +326,8 @@ class FragmentManagerTest {
     }
 
     private fun hexStringToByteArray(hexString: String): ByteArray {
-        val result = ByteArray(8)
-        for (i in 0 until 8) {
+        val result = ByteArray(hexString.length / 2)
+        for (i in result.indices) {
             val byteStr = hexString.substring(i * 2, i * 2 + 2)
             result[i] = byteStr.toInt(16).toByte()
         }

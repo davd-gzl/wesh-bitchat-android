@@ -27,6 +27,16 @@ them merely because an implementation changed. Update a vector only when the
 wire protocol is intentionally versioned and interoperating clients are updated
 together.
 
+Fragmentation splits an explicitly unpadded encoded mesh frame. Do not encode
+with optional padding and then unconditionally unpad: padding may be omitted
+when the next size bucket would require more than 255 bytes, and a genuine
+payload or signature suffix can resemble PKCS#7 padding. Fragment contents must
+preserve every byte of that frame; each outer fragment keeps its existing
+transport encoding policy. `FragmentManagerTest` covers deterministic trailing
+padding-like bytes and size boundaries. This correction does not version the
+wire format or replace the existing golden vectors. Physical cross-client
+fragment exchange remains part of the device-only gate below.
+
 Round-trip tests remain useful but are not sufficient on their own: an encoder
 and decoder can share the same defect. Each critical wire format therefore has
 at least one literal vector.

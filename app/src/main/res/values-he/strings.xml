@@ -4,6 +4,7 @@
     <!-- Machine-translated (Claude) — pending native-speaker review -->
   <plurals name="location_notes_title">
     <item quantity="one">#%1$s ± 1 • %2$d הערה</item>
+    <item quantity="two">#%1$s ± 1 • %2$d הערות</item>
     <item quantity="other">#%1$s ± 1 • %2$d הערות</item>
   </plurals>
   <string name="location_notes_description">הוסף הערות קצרות וקבועות למיקום זה כדי שמבקרים אחרים ימצאו אותן.</string>
@@ -111,6 +112,7 @@
   <string name="notification_more_locations">ועוד %1$d מיקומים</string>
   <plurals name="notification_and_more">
     <item quantity="one">ועוד %1$d</item>
+    <item quantity="two">ועוד %1$d</item>
     <item quantity="other">ועוד %1$d</item>
   </plurals>
   <string name="mesh_service_channel_name">שירות רקע של רשת Mesh</string>
@@ -385,6 +387,7 @@
 
   <plurals name="people_count">
     <item quantity="one">איש אחד</item>
+    <item quantity="two">%1$d אנשים</item>
     <item quantity="other">%1$d אנשים</item>
   </plurals>
     <string name="about_language">שפה</string>

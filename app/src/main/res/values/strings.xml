@@ -174,11 +174,11 @@
   <string name="about_section_settings">Settings</string>
 
   <!-- About sheet: feature list -->
-  <string name="about_no_tracking_title">No Tracking</string>
-  <string name="about_no_tracking_desc">No servers, accounts, or data collection.</string>
+  <string name="about_no_tracking_title">Connection privacy</string>
+  <string name="about_no_tracking_desc">Local mesh messaging does not require an account. Online channels use public internet relays.</string>
   <string name="about_ephemeral_title">Ephemeral Identity</string>
   <string name="about_ephemeral_desc">A new peer ID is generated regularly.</string>
-  <string name="about_panic_desc">Triple-tap the logo to instantly clear all data.</string>
+  <string name="about_panic_desc">Triple-tap the logo to request clearing all application data.</string>
 
   <!-- About sheet: settings labels -->
   <string name="about_tor_title">Tor Network</string>
