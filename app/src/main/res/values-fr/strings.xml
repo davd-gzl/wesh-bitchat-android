@@ -263,7 +263,6 @@
     <string name="dot">.</string>
     <string name="setting_up_bluetooth">Configuration du mesh Bluetooth…</string>
     <string name="should_take_seconds">Cela ne devrait prendre que quelques secondes</string>
-    <string name="warning_emoji">⚠️</string>
     <string name="setup_not_complete">Configuration incomplète</string>
     <string name="try_again">Réessayer</string>
     <string name="privacy_protected">Salon public et contacts privés</string>
@@ -271,23 +270,14 @@
     <string name="permissions_header">autorisations</string>
     <string name="grant_permissions">Accorder les autorisations</string>
     <string name="location_tracking_warning">bitchat ne suit PAS ta position</string>
-    <string name="at_symbol">@</string>
-    <string name="channel_count_prefix"> · ⧉ </string>
     <string name="nobody_around">personne aux alentours…</string>
     <string name="you_suffix"> (toi)</string>
     <string name="pan_zoom_instruction">déplacer et zoomer pour choisir un geohash</string>
     <string name="select">sélectionner</string>
     <string name="type_a_message_placeholder">écrire un message…</string>
-    <string name="mention_suggestion_at">@%1$s</string>
     <string name="mention">mention</string>
     <string name="image_counter">%1$d / %2$d</string>
-    <string name="at_nickname">@%1$s</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="hash_symbol">#</string>
-    <string name="underscore">_</string>
-    <string name="progress_bar_brackets">[%1$s] %2$d%%</string>
-    <string name="progress_filled">█</string>
-    <string name="progress_empty">░</string>
     <string name="image_star">image/*</string>
     <string name="media_type_image">Image</string>
     <string name="media_type_file">Fichier</string>
@@ -298,12 +288,6 @@
     <string name="notification_sent_image">📷 a envoyé une image</string>
     <string name="notification_sent_voice">🎤 a envoyé un message vocal</string>
     <string name="notification_sent_file">📎 a envoyé un fichier</string>
-    <string name="notification_file_pdf">📄</string>
-    <string name="notification_file_zip">🗜️</string>
-    <string name="notification_file_doc">📄</string>
-    <string name="notification_file_xls">📊</string>
-    <string name="notification_file_ppt">📈</string>
-    <string name="notification_file_generic">📎</string>
 
     <!-- Lecteur vocal accessibilité -->
     <string name="cd_play_voice">Lire</string>
@@ -449,7 +433,6 @@
     <string name="conversation_read">Lu</string>
     <string name="conversation_draft_preview">Brouillon : %1$s</string>
     <string name="conversation_you_preview">Vous : %1$s</string>
-    <string name="conversation_preview_timestamp">· %1$s</string>
     <string name="conversation_delete_failed">Impossible de supprimer la conversation</string>
     <string name="conversation_deleted">Conversation avec %1$s supprimée</string>
     <string name="undo">Annuler</string>

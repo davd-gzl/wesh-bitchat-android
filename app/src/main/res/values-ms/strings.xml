@@ -201,7 +201,7 @@
   <string name="location_permission_denied">kebenaran lokasi ditolak. aktifkan dalam tetapan untuk menggunakan saluran lokasi.</string>
 
   <string name="location_permission_granted">✓ kebenaran lokasi diberikan</string>
-  <string name="checking_permissions">menyemak kebenaran...</string>
+  <string name="checking_permissions">menyemak kebenaran…</string>
   <string name="finding_nearby_channels">mencari saluran berdekatan…</string>
   <string name="bookmarked">ditanda buku</string>
   <string name="geohash_placeholder">geohash</string>
@@ -322,14 +322,14 @@
   <string name="check_again">Semak Semula</string>
   <string name="location_services_unavailable">Perkhidmatan Lokasi Tidak Tersedia</string>
   <string name="location_unavailable_explanation">Perkhidmatan lokasi tidak tersedia pada peranti ini. Ini luar biasa kerana perkhidmatan lokasi adalah standard pada peranti Android.\n\nbitchat memerlukan perkhidmatan lokasi untuk imbasan Bluetooth berfungsi dengan betul (keperluan Android). Tanpa ini, apl tidak dapat mengesan pengguna berdekatan.</string>
-  <string name="checking_location_services">Menyemak perkhidmatan lokasi...</string>
+  <string name="checking_location_services">Menyemak perkhidmatan lokasi…</string>
   <string name="bluetooth_required">Bluetooth Diperlukan</string>
   <string name="bluetooth_needs_for">Wesh memerlukan Bluetooth untuk:</string>
   <string name="bluetooth_needs_bullets">• Mengesan pengguna berdekatan\n• Mewujudkan sambungan rangkaian mesh\n• Menghantar dan menerima mesej\n• Berfungsi tanpa internet atau pelayan</string>
   <string name="enable_bluetooth">Aktifkan Bluetooth</string>
   <string name="bluetooth_not_supported">Bluetooth Tidak Disokong</string>
   <string name="bluetooth_unsupported_explanation">Peranti ini tidak menyokong Bluetooth Low Energy (BLE), yang diperlukan untuk Wesh berfungsi.\n\nWesh memerlukan BLE untuk mewujudkan rangkaian mesh dan berkomunikasi dengan peranti berdekatan tanpa internet.</string>
-  <string name="checking_bluetooth_status">Menyemak status Bluetooth...</string>
+  <string name="checking_bluetooth_status">Menyemak status Bluetooth…</string>
   <string name="battery_optimization_detected_title">pengoptimuman bateri dikesan</string>
   <string name="battery_optimization_enabled_title">Pengoptimuman Bateri Diaktifkan</string>
   <string name="battery_optimization_explanation_short">Wesh perlu berjalan di latar belakang untuk mengekalkan sambungan mesh. pengoptimuman bateri boleh mengganggu sambungan ini.</string>
@@ -340,9 +340,8 @@
   <string name="continue_btn">Teruskan</string>
   <string name="initializing_mesh_network">Memulakan rangkaian mesh</string>
   <string name="dot">.</string>
-  <string name="setting_up_bluetooth">Menyediakan rangkaian mesh Bluetooth...</string>
+  <string name="setting_up_bluetooth">Menyediakan rangkaian mesh Bluetooth…</string>
   <string name="should_take_seconds">Ini sepatutnya hanya mengambil masa beberapa saat</string>
-  <string name="warning_emoji">⚠️</string>
   <string name="setup_not_complete">Persediaan Tidak Lengkap</string>
   <string name="try_again">Cuba Lagi</string>
   <string name="open_settings">Buka Tetapan</string>
@@ -351,23 +350,14 @@
   <string name="permissions_header">kebenaran</string>
   <string name="grant_permissions">Berikan Kebenaran</string>
   <string name="location_tracking_warning">bitchat TIDAK menjejaki lokasi anda</string>
-  <string name="at_symbol">@</string>
-  <string name="channel_count_prefix"> · ⧉ </string>
-  <string name="nobody_around">tiada sesiapa berdekatan...</string>
+  <string name="nobody_around">tiada sesiapa berdekatan…</string>
   <string name="you_suffix"> (anda)</string>
   <string name="pan_zoom_instruction">gerak dan zum untuk memilih geohash</string>
   <string name="select">pilih</string>
-  <string name="type_a_message_placeholder">taip mesej...</string>
-  <string name="mention_suggestion_at">@%1$s</string>
+  <string name="type_a_message_placeholder">taip mesej…</string>
   <string name="mention">sebutan</string>
   <string name="image_counter">%1$d / %2$d</string>
-  <string name="at_nickname">@%1$s</string>
   <string name="version_prefix">v%1$s</string>
-  <string name="hash_symbol">#</string>
-  <string name="underscore">_</string>
-  <string name="progress_bar_brackets">[%1$s] %2$d%%</string>
-  <string name="progress_filled">█</string>
-  <string name="progress_empty">░</string>
   <string name="image_star">image/*</string>
   <string name="media_type_image">Imej</string>
   <string name="media_type_file">Fail</string>
@@ -378,12 +368,6 @@
   <string name="notification_sent_image">📷 menghantar imej</string>
   <string name="notification_sent_voice">🎤 menghantar mesej suara</string>
   <string name="notification_sent_file">📎 menghantar fail</string>
-  <string name="notification_file_pdf">📄</string>
-  <string name="notification_file_zip">🗜️</string>
-  <string name="notification_file_doc">📄</string>
-  <string name="notification_file_xls">📊</string>
-  <string name="notification_file_ppt">📈</string>
-  <string name="notification_file_generic">📎</string>
 
   <!-- Voice player accessibility -->
   <string name="cd_play_voice">Main</string>

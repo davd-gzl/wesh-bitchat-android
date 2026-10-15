@@ -324,17 +324,14 @@
 
     <!-- 복수형 -->
     <plurals name="notification_and_more">
-        <item quantity="one">그리고 %d개 더</item>
         <item quantity="other">그리고 %d개 더</item>
     </plurals>
 
     <plurals name="people_count">
-        <item quantity="one">1명</item>
         <item quantity="other">%d명</item>
     </plurals>
 
   <plurals name="location_notes_title">
-    <item quantity="one">#%1$s ± 1 • %2$d개의 노트</item>
     <item quantity="other">#%1$s ± 1 • %2$d개의 노트</item>
   </plurals>
   <string name="location_notes_description">다른 방문자들이 볼 수 있도록 이 위치에 짧은 영구 노트를 추가하세요.</string>

@@ -262,7 +262,6 @@
     <string name="dot">.</string>
     <string name="setting_up_bluetooth">ब्लुटुथ मेष सेटअप गर्दै…</string>
     <string name="should_take_seconds">यसलाई केही सेकेन्ड मात्र लाग्छ</string>
-    <string name="warning_emoji">⚠️</string>
     <string name="setup_not_complete">सेटअप पूरा भएन</string>
     <string name="try_again">फेरि प्रयास गर्नुहोस्</string>
     <string name="privacy_protected">Public salon and private contacts</string>
@@ -270,23 +269,14 @@
     <string name="permissions_header">अनुमति</string>
     <string name="grant_permissions">अनुमति दिनुहोस्</string>
     <string name="location_tracking_warning">bitchat ले तपाईंको स्थान पछ्याउँदैन</string>
-    <string name="at_symbol">@</string>
-    <string name="channel_count_prefix"> · ⧉ </string>
     <string name="nobody_around">वरिपरि कोही छैन…</string>
     <string name="you_suffix"> (तपाईं)</string>
     <string name="pan_zoom_instruction">geohash छान्न प्यान र जुम गर्नुहोस्</string>
     <string name="select">छान्नुहोस्</string>
     <string name="type_a_message_placeholder">सन्देश टाइप गर्नुहोस्…</string>
-    <string name="mention_suggestion_at">@%1$s</string>
     <string name="mention">उल्लेख</string>
     <string name="image_counter">%1$d / %2$d</string>
-    <string name="at_nickname">@%1$s</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="hash_symbol">#</string>
-    <string name="underscore">_</string>
-    <string name="progress_bar_brackets">[%1$s] %2$d%%</string>
-    <string name="progress_filled">█</string>
-    <string name="progress_empty">░</string>
     <string name="image_star">image/*</string>
     <string name="media_type_image">तस्वीर</string>
     <string name="media_type_file">फाइल</string>
@@ -297,12 +287,6 @@
     <string name="notification_sent_image">📷 तस्वीर पठाइयो</string>
     <string name="notification_sent_voice">🎤 भ्वाइस सन्देश पठाइयो</string>
     <string name="notification_sent_file">📎 फाइल पठाइयो</string>
-    <string name="notification_file_pdf">📄</string>
-    <string name="notification_file_zip">🗜️</string>
-    <string name="notification_file_doc">📄</string>
-    <string name="notification_file_xls">📊</string>
-    <string name="notification_file_ppt">📈</string>
-    <string name="notification_file_generic">📎</string>
 
     <!-- भ्वाइस प्लेयर पहुँचयोग्यता -->
     <string name="cd_play_voice">प्ले</string>

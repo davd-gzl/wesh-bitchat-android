@@ -324,12 +324,10 @@
 
     <!-- พหูพจน์ -->
     <plurals name="notification_and_more">
-        <item quantity="one">และอีก %d</item>
         <item quantity="other">และอีก %d</item>
     </plurals>
 
     <plurals name="people_count">
-        <item quantity="one">1 คน</item>
         <item quantity="other">%d คน</item>
     </plurals>
 

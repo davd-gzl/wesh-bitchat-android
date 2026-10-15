@@ -324,17 +324,14 @@
 
     <!-- 複数形 -->
     <plurals name="notification_and_more">
-        <item quantity="one">ほか %d</item>
         <item quantity="other">ほか %d</item>
     </plurals>
 
     <plurals name="people_count">
-        <item quantity="one">1 人</item>
         <item quantity="other">%d 人</item>
     </plurals>
 
   <plurals name="location_notes_title">
-    <item quantity="one">#%1$s ± 1 • %2$d 件のメモ</item>
     <item quantity="other">#%1$s ± 1 • %2$d 件のメモ</item>
   </plurals>
   <string name="location_notes_description">他の訪問者が見つけられるよう、この場所に短いメモを追加しましょう。</string>

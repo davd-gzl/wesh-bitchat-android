@@ -324,17 +324,14 @@
 
     <!-- Jamak -->
     <plurals name="notification_and_more">
-        <item quantity="one">dan %d lagi</item>
         <item quantity="other">dan %d lagi</item>
     </plurals>
 
     <plurals name="people_count">
-        <item quantity="one">1 orang</item>
         <item quantity="other">%d orang</item>
     </plurals>
 
   <plurals name="location_notes_title">
-    <item quantity="one">#%1$s ± 1 • %2$d catatan</item>
     <item quantity="other">#%1$s ± 1 • %2$d catatan</item>
   </plurals>
   <string name="location_notes_description">tambahkan catatan singkat permanen ke lokasi ini agar pengunjung lain dapat menemukannya.</string>

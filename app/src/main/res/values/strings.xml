@@ -107,7 +107,7 @@
   <string name="conversation_read">Read</string>
   <string name="conversation_draft_preview">Draft: %1$s</string>
   <string name="conversation_you_preview">You: %1$s</string>
-  <string name="conversation_preview_timestamp">· %1$s</string>
+  <string name="conversation_preview_timestamp" translatable="false">· %1$s</string>
   <string name="conversation_delete_failed">Conversation could not be deleted</string>
   <string name="conversation_deleted">Deleted conversation with %1$s</string>
   <string name="undo">Undo</string>
@@ -540,14 +540,14 @@
   <string name="check_again">Check Again</string>
   <string name="location_services_unavailable">Location Services Unavailable</string>
   <string name="location_unavailable_explanation">Location services are not available on this device. This is unusual as location services are standard on Android devices.\n\nbitchat needs location services for Bluetooth scanning to work properly (Android requirement). Without this, the app cannot discover nearby users.</string>
-  <string name="checking_location_services">Checking location services...</string>
+  <string name="checking_location_services">Checking location services…</string>
   <string name="bluetooth_required">Bluetooth Required</string>
   <string name="bluetooth_needs_for">Wesh needs Bluetooth to:</string>
   <string name="bluetooth_needs_bullets">• Discover nearby users\n• Create mesh network connections\n• Send and receive messages\n• Work without internet or servers</string>
   <string name="enable_bluetooth">Enable Bluetooth</string>
   <string name="bluetooth_not_supported">Bluetooth Not Supported</string>
   <string name="bluetooth_unsupported_explanation">This device doesn\'t support Bluetooth Low Energy (BLE), which is required for Wesh to function.\n\nWesh needs BLE to create mesh networks and communicate with nearby devices without internet.</string>
-  <string name="checking_bluetooth_status">Checking Bluetooth status...</string>
+  <string name="checking_bluetooth_status">Checking Bluetooth status…</string>
   <string name="battery_optimization_detected_title">Battery optimization detected</string>
   <string name="battery_optimization_enabled_title">Battery Optimization Enabled</string>
   <string name="battery_optimization_explanation_short">Wesh needs to run in the background to maintain mesh connections. Battery optimization can interrupt these connections.</string>
@@ -558,9 +558,9 @@
   <string name="continue_btn">Continue</string>
   <string name="initializing_mesh_network">Initializing mesh network</string>
   <string name="dot">.</string>
-  <string name="setting_up_bluetooth">Setting up Bluetooth mesh networking...</string>
+  <string name="setting_up_bluetooth">Setting up Bluetooth mesh networking…</string>
   <string name="should_take_seconds">This should only take a few seconds</string>
-  <string name="warning_emoji">⚠️</string>
+  <string name="warning_emoji" translatable="false">⚠️</string>
   <string name="setup_not_complete">Setup Not Complete</string>
   <string name="try_again">Try Again</string>
   <string name="open_settings">Open Settings</string>
@@ -569,24 +569,24 @@
   <string name="permissions_header">Permissions</string>
   <string name="grant_permissions">Grant Permissions</string>
   <string name="location_tracking_warning">bitchat does NOT track your location</string>
-  <string name="at_symbol">@</string>
+  <string name="at_symbol" translatable="false">@</string>
   <string name="cd_open_about">Open About</string>
-  <string name="channel_count_prefix"> · ⧉ </string>
+  <string name="channel_count_prefix" translatable="false"> · ⧉ </string>
   <string name="nobody_around">Nobody around…</string>
   <string name="you_suffix"> (you)</string>
   <string name="pan_zoom_instruction">Drag to spin · Pinch to zoom · Tap to focus</string>
   <string name="select">Select</string>
   <string name="type_a_message_placeholder">Type a message…</string>
-  <string name="mention_suggestion_at">@%1$s</string>
+  <string name="mention_suggestion_at" translatable="false">@%1$s</string>
   <string name="mention">Mention</string>
   <string name="image_counter">%1$d / %2$d</string>
-  <string name="at_nickname">@%1$s</string>
+  <string name="at_nickname" translatable="false">@%1$s</string>
   <string name="version_prefix">v%1$s</string>
-  <string name="hash_symbol">#</string>
-  <string name="underscore">_</string>
-  <string name="progress_bar_brackets">[%1$s] %2$d%%</string>
-  <string name="progress_filled">█</string>
-  <string name="progress_empty">░</string>
+  <string name="hash_symbol" translatable="false">#</string>
+  <string name="underscore" translatable="false">_</string>
+  <string name="progress_bar_brackets" translatable="false">[%1$s] %2$d%%</string>
+  <string name="progress_filled" translatable="false">█</string>
+  <string name="progress_empty" translatable="false">░</string>
   <string name="image_star">image/*</string>
   <string name="media_type_image">Image</string>
   <string name="media_type_file">File</string>
@@ -595,12 +595,12 @@
   <string name="notification_sent_image">📷 sent an image</string>
   <string name="notification_sent_voice">🎤 sent a voice message</string>
   <string name="notification_sent_file">📎 sent a file</string>
-  <string name="notification_file_pdf">📄</string>
-  <string name="notification_file_zip">🗜️</string>
-  <string name="notification_file_doc">📄</string>
-  <string name="notification_file_xls">📊</string>
-  <string name="notification_file_ppt">📈</string>
-  <string name="notification_file_generic">📎</string>
+  <string name="notification_file_pdf" translatable="false">📄</string>
+  <string name="notification_file_zip" translatable="false">🗜️</string>
+  <string name="notification_file_doc" translatable="false">📄</string>
+  <string name="notification_file_xls" translatable="false">📊</string>
+  <string name="notification_file_ppt" translatable="false">📈</string>
+  <string name="notification_file_generic" translatable="false">📎</string>
 
   <!-- Voice player accessibility -->
   <string name="cd_play_voice">Play</string>
@@ -634,7 +634,7 @@
   <string name="join">Join</string>
   <string name="cancel">Cancel</string>
     <string name="tor_not_available_in_this_build">Tor not available in this build</string>
-    <string name="checking">Checking...</string>
+    <string name="checking">Checking…</string>
     <string name="apk_not_ready_please_prepare_it_first">APK not ready. Please prepare it first.</string>
 
     <!-- Plurals -->

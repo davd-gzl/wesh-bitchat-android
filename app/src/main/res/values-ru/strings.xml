@@ -246,7 +246,6 @@
     <string name="dot">.</string>
     <string name="setting_up_bluetooth">Настройка Bluetooth mesh…</string>
     <string name="should_take_seconds">Займёт лишь несколько секунд</string>
-    <string name="warning_emoji">⚠️</string>
     <string name="setup_not_complete">Настройка не завершена</string>
     <string name="try_again">Повторить</string>
     <string name="privacy_protected">Public salon and private contacts</string>
@@ -254,23 +253,14 @@
     <string name="permissions_header">разрешения</string>
     <string name="grant_permissions">Выдать разрешения</string>
     <string name="location_tracking_warning">bitchat НЕ отслеживает вашу геопозицию</string>
-    <string name="at_symbol">@</string>
-    <string name="channel_count_prefix"> · ⧉ </string>
     <string name="nobody_around">никого рядом…</string>
     <string name="you_suffix"> (вы)</string>
     <string name="pan_zoom_instruction">прокрутите/масштабируйте для выбора geohash</string>
     <string name="select">выбрать</string>
     <string name="type_a_message_placeholder">введите сообщение…</string>
-    <string name="mention_suggestion_at">@%1$s</string>
     <string name="mention">упоминание</string>
     <string name="image_counter">%1$d / %2$d</string>
-    <string name="at_nickname">@%1$s</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="hash_symbol">#</string>
-    <string name="underscore">_</string>
-    <string name="progress_bar_brackets">[%1$s] %2$d%%</string>
-    <string name="progress_filled">█</string>
-    <string name="progress_empty">░</string>
     <string name="image_star">image/*</string>
     <string name="media_type_image">Изображение</string>
     <string name="media_type_file">Файл</string>
@@ -278,12 +268,6 @@
     <string name="notification_sent_image">📷 отправил изображение</string>
     <string name="notification_sent_voice">🎤 отправил голосовое</string>
     <string name="notification_sent_file">📎 отправил файл</string>
-    <string name="notification_file_pdf">📄</string>
-    <string name="notification_file_zip">🗜️</string>
-    <string name="notification_file_doc">📄</string>
-    <string name="notification_file_xls">📊</string>
-    <string name="notification_file_ppt">📈</string>
-    <string name="notification_file_generic">📎</string>
 
     <string name="cd_play_voice">Воспроизвести</string>
     <string name="cd_pause_voice">Пауза</string>

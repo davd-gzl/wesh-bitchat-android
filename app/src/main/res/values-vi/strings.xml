@@ -324,12 +324,10 @@
 
     <!-- Số nhiều -->
     <plurals name="notification_and_more">
-        <item quantity="one">và %d khác</item>
         <item quantity="other">và %d khác</item>
     </plurals>
 
     <plurals name="people_count">
-        <item quantity="one">1 người</item>
         <item quantity="other">%d người</item>
     </plurals>
 

@@ -323,29 +323,13 @@
     <string name="cancel">Annuleren</string>
 
     <!-- Symbolen &amp; speciale strings -->
-    <string name="at_symbol">@</string>
-    <string name="channel_count_prefix"> · ⧉ </string>
-    <string name="mention_suggestion_at">@%1$s</string>
     <string name="image_counter">%1$d / %2$d</string>
-    <string name="at_nickname">@%1$s</string>
-    <string name="hash_symbol">#</string>
-    <string name="underscore">_</string>
-    <string name="progress_bar_brackets">[%1$s] %2$d%%</string>
-    <string name="progress_filled">█</string>
-    <string name="progress_empty">░</string>
     <string name="dot">.</string>
-    <string name="warning_emoji">⚠️</string>
     <string name="debug_question_mark">?</string>
 
     <!-- Berichtstatus-pictogrammen -->
 
     <!-- Meldingsbestand-emojis -->
-    <string name="notification_file_pdf">📄</string>
-    <string name="notification_file_zip">🗜️</string>
-    <string name="notification_file_doc">📄</string>
-    <string name="notification_file_xls">📊</string>
-    <string name="notification_file_ppt">📈</string>
-    <string name="notification_file_generic">📎</string>
 
     <!-- Meervouden -->
     <plurals name="notification_and_more">

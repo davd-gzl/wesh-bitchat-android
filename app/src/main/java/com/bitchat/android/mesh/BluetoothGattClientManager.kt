@@ -232,27 +232,27 @@ class BluetoothGattClientManager(
                 lastScanStopTime = currentTimeMillis()
 
                 when (errorCode) {
-                    1 -> {
+                    ScanCallback.SCAN_FAILED_ALREADY_STARTED -> {
                         // Already started: the stack thinks a scan is running. Re-arm from a clean
                         // state so we don't stay wedged (stop then restart with backoff).
                         stopScanning()
                         scheduleScanRestart("already-started", SCAN_RETRY_BASE_MS)
                     }
-                    2 -> {
+                    ScanCallback.SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> {
                         // App registration failed: common transient stack fault. Previously had NO
                         // retry, which left discovery dead until a manual BLE toggle.
                         scheduleScanRestart("registration-failed", SCAN_RETRY_BASE_MS)
                     }
-                    3 -> {
+                    ScanCallback.SCAN_FAILED_INTERNAL_ERROR -> {
                         scheduleScanRestart("internal-error", SCAN_RETRY_BASE_MS)
                     }
-                    4 -> Unit // permanent: don't retry
-                    5 -> {
+                    ScanCallback.SCAN_FAILED_FEATURE_UNSUPPORTED -> Unit // permanent: don't retry
+                    ScanCallback.SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES -> {
                         // Out of hardware resources: back off longer so other scanners/connections
                         // can free up before we try again.
                         scheduleScanRestart("out-of-resources", SCAN_RETRY_BASE_MS * 3)
                     }
-                    6 -> {
+                    ScanCallback.SCAN_FAILED_SCANNING_TOO_FREQUENTLY -> {
                         scheduleScanRestart("too-frequently", 10_000L)
                     }
                     else -> {

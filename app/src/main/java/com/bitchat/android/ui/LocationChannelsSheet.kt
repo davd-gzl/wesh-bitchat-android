@@ -80,6 +80,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Locale
 
 /**
  * Leading column width matching settings rows: 22.dp glyph + 16.dp gutter before title text.
@@ -1210,9 +1211,9 @@ private fun coverageString(precision: Int): String {
 
 private fun formatDistance(value: Double): String {
     return when {
-        value >= 100 -> String.format("%.0f", value)
-        value >= 10 -> String.format("%.1f", value)
-        else -> String.format("%.1f", value)
+        value >= 100 -> String.format(Locale.getDefault(), "%.0f", value)
+        value >= 10 -> String.format(Locale.getDefault(), "%.1f", value)
+        else -> String.format(Locale.getDefault(), "%.1f", value)
     }
 }
 

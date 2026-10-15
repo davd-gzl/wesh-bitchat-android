@@ -240,10 +240,11 @@ fun DebugSettingsSheet(
     ) { _ ->
         // Check live state, not the result map — already-held permissions are filtered out
         // before launching. Only NEARBY_WIFI_DEVICES blocks startup; the other is defensive.
-        val nearbyPermission = android.Manifest.permission.NEARBY_WIFI_DEVICES
-        val nearbyGranted = nearbyPermission !in wifiAwarePermissions ||
-            ContextCompat.checkSelfPermission(context, nearbyPermission) ==
-                PackageManager.PERMISSION_GRANTED
+        val nearbyGranted = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU || run {
+            val nearbyPermission = android.Manifest.permission.NEARBY_WIFI_DEVICES
+            nearbyPermission !in wifiAwarePermissions ||
+                ContextCompat.checkSelfPermission(context, nearbyPermission) == PackageManager.PERMISSION_GRANTED
+        }
         if (nearbyGranted) {
             manager.setWifiAwareEnabled(true)
         } else {
