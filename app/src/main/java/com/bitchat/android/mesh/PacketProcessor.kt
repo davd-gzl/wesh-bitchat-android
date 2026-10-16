@@ -120,6 +120,10 @@ class PacketProcessor(private val myPeerID: String) {
             return
         }
 
+        // Read before dispatch: local delivery runs asynchronously and may suppress relay of
+        // this very copy (inbound budget) before the relay step below is reached.
+        val relaySuppressed = delegate?.isRelaySuppressed(packet, peerID) == true
+
         var validPacket = true
         val messageType = MessageType.fromValue(packet.type)
         // Verbose logging to debug manager (and chat via ChatViewModel observer)
@@ -164,7 +168,7 @@ class PacketProcessor(private val myPeerID: String) {
             
             // CENTRALIZED RELAY LOGIC: Handle relay decisions for all packets not addressed to us.
             // A redelivered copy of a packet relayed once already is never relayed again.
-            if (delegate?.isRelaySuppressed(packet, peerID) != true) {
+            if (!relaySuppressed) {
                 packetRelayManager.handlePacketRelay(routed)
             }
         }
