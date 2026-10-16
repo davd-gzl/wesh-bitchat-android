@@ -13,7 +13,8 @@ import java.text.Normalizer
  *    the whole name unnamed rather than being removed silently. Emoji keep their joiner and
  *    presentation selectors, strictly in place ([isKeptEmojiJoiner]); tags are refused everywhere.
  * 3. At most [MAX_COMBINING_MARKS] marks per character; one line.
- * 4. Letters mixing confusable scripts (Latin, Greek, Cyrillic, Armenian, Cherokee) make it unnamed.
+ * 4. Scripts of the letters: Latin mixes only with [LATIN_MAY_MIX_WITH]; [NEVER_MIX_TOGETHER] never
+ *    mix with each other; any letter of [ALWAYS_UNNAMED] makes it unnamed, even alone.
  * 5. At most [MAX_GRAPHEMES] graphemes, elided in the middle.
  * 6. A name whose skeleton reads as a reserved word, in full or elided, is masked as reserved;
  *    so is one that imitates the short key fingerprint ([FINGERPRINT_LIKE]).
@@ -31,14 +32,23 @@ object PaveDisplayName {
     private const val EMOJI_PRESENTATION = 0xFE0F
     private const val COMBINING_KEYCAP = 0x20E3
 
-    private val CONFUSABLE_SCRIPTS = setOf(
-        Character.UnicodeScript.LATIN, Character.UnicodeScript.GREEK, Character.UnicodeScript.CYRILLIC,
-        Character.UnicodeScript.ARMENIAN, Character.UnicodeScript.CHEROKEE,
-    )
+    /**
+     * Script groups of rule 4, by Unicode script name as in the shared vectors file (compared with
+     * [Character.UnicodeScript] names, so no enum constant a device runtime may lack is referenced).
+     * Common and Inherited letters are ignored.
+     */
+    internal val LATIN_MAY_MIX_WITH = listOf("Han", "Hiragana", "Katakana", "Hangul", "Bopomofo")
+    internal val NEVER_MIX_TOGETHER = listOf("Latin", "Greek", "Cyrillic", "Armenian")
+    internal val ALWAYS_UNNAMED = listOf("Cherokee", "Lisu", "Coptic", "Canadian_Aboriginal", "Old_Italic", "Tifinagh", "Osage")
+    private const val LATIN = "LATIN"
+    private val IGNORED_SCRIPTS = setOf("COMMON", "INHERITED")
+    private val LATIN_PARTNERS = LATIN_MAY_MIX_WITH.map { it.uppercase() }.toSet()
+    private val NEVER_TOGETHER = NEVER_MIX_TOGETHER.map { it.uppercase() }.toSet()
+    private val REFUSED_SCRIPTS = ALWAYS_UNNAMED.map { it.uppercase() }.toSet()
 
     /**
-     * Look-alikes (Cyrillic, Greek, Latin small capitals, dotless i) folded before lowercasing when
-     * comparing with reserved words. Same table as the shared vectors file;
+     * Look-alikes (Cyrillic, Greek, Armenian, Latin small capitals, dotless i) folded before
+     * lowercasing when comparing with reserved words. Same table as the shared vectors file;
      * PaveDisplayNameVectorsTest keeps the two equal.
      */
     internal val CONFUSABLES: Map<Char, Char> = mapOf(
@@ -119,13 +129,21 @@ object PaveDisplayName {
         '\u028F' to 'y', // Latin Letter Small Capital Y
         '\u1D22' to 'z', // Latin Letter Small Capital Z
         '\u0131' to 'i', // Latin Small Letter Dotless I
+        '\u0585' to 'o', // Armenian Small Letter Oh
+        '\u057D' to 'u', // Armenian Small Letter Seh
+        '\u0578' to 'n', // Armenian Small Letter Vo
+        '\u0570' to 'h', // Armenian Small Letter Ho
+        '\u0581' to 'g', // Armenian Small Letter Co
+        '\u0566' to 'q', // Armenian Small Letter Za
     )
 
     /**
      * Applied after lowercasing, to names and reserved words alike, so "NO NICKNAME", "N0 nickname"
      * and "no nickname" share one skeleton. Same table as the shared vectors file.
      */
-    internal val AFTER_LOWERCASE: Map<Char, Char> = mapOf('i' to 'l', 'l' to 'l', '1' to 'l', '0' to 'o')
+    internal val AFTER_LOWERCASE: Map<Char, Char> = mapOf(
+        'i' to 'l', 'l' to 'l', '1' to 'l', '0' to 'o', '3' to 'e', '4' to 'a', '5' to 's', '7' to 't', '8' to 'b',
+    )
 
     /**
      * Assigned code points that still draw nothing: Hangul fillers, Braille blank, Khmer inherent
@@ -245,16 +263,19 @@ object PaveDisplayName {
             }
         }
         val clean = out.toString().trim()
-        if (clean.codePoints().noneMatch(::isVisible) || mixesConfusableScripts(clean)) return null
+        if (clean.codePoints().noneMatch(::isVisible) || hasRefusedScripts(clean)) return null
         return clean
     }
 
-    private fun mixesConfusableScripts(text: String): Boolean = text.codePoints()
-        .filter { Character.isLetter(it) }
-        .mapToObj { Character.UnicodeScript.of(it) }
-        .filter { it in CONFUSABLE_SCRIPTS }
-        .distinct()
-        .count() > 1
+    /** Rule 4: whether the scripts of the letters of [text] make it unnamed. */
+    private fun hasRefusedScripts(text: String): Boolean {
+        val scripts = HashSet<String>()
+        text.codePoints().filter { Character.isLetter(it) }.forEach { scripts += Character.UnicodeScript.of(it).name }
+        scripts -= IGNORED_SCRIPTS
+        return scripts.any { it in REFUSED_SCRIPTS } ||
+            scripts.count { it in NEVER_TOGETHER } > 1 ||
+            (LATIN in scripts && scripts.any { it != LATIN && it !in LATIN_PARTNERS })
+    }
 
     /** The first [MAX_RAW_CODE_POINTS] code points of [raw], without reading the rest. */
     private fun clampRaw(raw: String): String {

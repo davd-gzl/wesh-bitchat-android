@@ -227,4 +227,32 @@ class PaveDisplayNameTest {
         assertEquals("dead beef", safe("dead beef"))
         assertEquals("A1B2 Nora C3D4", safe("A1B2 Nora C3D4"))
     }
+
+    @Test
+    fun `Latin mixes only with East Asian scripts`() {
+        assertEquals("小明 Lee", safe("小明 Lee"))
+        assertEquals("Nora " + cp(0x3072, 0x30AB, 0xD55C, 0x3105), safe("Nora " + cp(0x3072, 0x30AB, 0xD55C, 0x3105)))
+        assertEquals("?", safe("Nora " + cp(0x0627, 0x0644, 0x0641))) // Arabic
+        assertEquals(cp(0x0627, 0x0644, 0x0641), safe(cp(0x0627, 0x0644, 0x0641)))
+        assertEquals("?", safe(cp(0x0412, 0x03B1))) // Cyrillic with Greek
+        assertEquals("?", safe(cp(0x0585) + cp(0x0391))) // Armenian with Greek
+    }
+
+    @Test
+    fun `rare Latin look-alike scripts are refused even alone`() {
+        assertEquals("?", safe(cp(0xA4E6, 0xA4F3, 0xA4F4, 0xA4E2))) // Lisu
+        assertEquals("?", safe(cp(0x13A0, 0x13A1))) // Cherokee
+        assertEquals("?", safe(cp(0x2C80, 0x2C81))) // Coptic
+        assertEquals("?", safe(cp(0x1401, 0x1402))) // Canadian syllabics
+        assertEquals("?", safe(cp(0x2D30, 0x2D31))) // Tifinagh
+        assertEquals("?", safe(cp(0x10300, 0x10301))) // Old Italic
+        assertEquals("?", safe(cp(0x104B0, 0x104D8))) // Osage
+    }
+
+    @Test
+    fun `digits that look like letters are folded for reserved words`() {
+        assertEquals("!", safe("Vou5", listOf("Vous")))
+        assertEquals("!", safe("R3çu", listOf("Reçu")))
+        assertEquals("!", safe("8luetooth", listOf("Bluetooth")))
+    }
 }

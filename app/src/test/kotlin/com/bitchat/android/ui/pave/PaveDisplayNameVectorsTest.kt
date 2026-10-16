@@ -34,6 +34,20 @@ class PaveDisplayNameVectorsTest {
     }
 
     @Test
+    fun `script groups match the shared fixture`() {
+        val scripts = fixture.getAsJsonObject("scripts")
+        fun list(key: String) = scripts.getAsJsonArray(key).map { it.asString }
+        assertEquals(setOf("latinMayMixWith", "neverMixTogether", "alwaysUnnamed"), scripts.keySet())
+        assertEquals(list("latinMayMixWith"), PaveDisplayName.LATIN_MAY_MIX_WITH)
+        assertEquals(list("neverMixTogether"), PaveDisplayName.NEVER_MIX_TOGETHER)
+        assertEquals(list("alwaysUnnamed"), PaveDisplayName.ALWAYS_UNNAMED)
+        val known = Character.UnicodeScript.values().map { it.name }.toSet()
+        (list("latinMayMixWith") + list("neverMixTogether") + list("alwaysUnnamed")).forEach { name ->
+            assertTrue("$name is not a Java script name", name.uppercase() in known)
+        }
+    }
+
+    @Test
     fun `every shared vector gives the expected outcome in French and English`() {
         val reservedWords = fixture.getAsJsonArray("reservedForTest").map { it.asString } +
             PaveStringResources.reservedWords()

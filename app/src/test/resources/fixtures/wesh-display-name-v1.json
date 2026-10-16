@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "rule": "docs/plan/design/system/README.md#surnom-distant-regle-unique-ios-et-android-v1",
+  "rule": "docs/plan/design/system/README.md (section Surnom distant, v1, frozen 2026-10-16)",
   "outcomes": {
     "display": "the expected visible string",
     "unnamed": "the platform string for « Sans surnom » / « No nickname »",
@@ -83,7 +83,13 @@
     "ᴡ": "w",
     "ʏ": "y",
     "ᴢ": "z",
-    "ı": "i"
+    "ı": "i",
+    "օ": "o",
+    "ս": "u",
+    "ո": "n",
+    "հ": "h",
+    "ց": "g",
+    "զ": "q"
   },
   "reservedForTest": [
     "Vous",
@@ -293,18 +299,77 @@
     {
       "input": "Nora 0F3A 9lC2",
       "expect": "reserved"
+    },
+    {
+      "input": "Vꓳus",
+      "expect": "unnamed"
+    },
+    {
+      "input": "ꓦꓳꓴꓢ",
+      "expect": "unnamed"
+    },
+    {
+      "input": "Nora الف",
+      "expect": "unnamed"
+    },
+    {
+      "input": "الف",
+      "expect": "display",
+      "display": "الف"
+    },
+    {
+      "input": "Vou5",
+      "expect": "reserved"
+    },
+    {
+      "input": "օւ",
+      "expect": "display",
+      "display": "օւ"
+    },
+    {
+      "input": "Nora 7F3A 9lC2 OB5E 44D8",
+      "expect": "reserved"
     }
   ],
   "afterLowercase": {
     "i": "l",
     "l": "l",
     "1": "l",
-    "0": "o"
+    "0": "o",
+    "3": "e",
+    "4": "a",
+    "5": "s",
+    "7": "t",
+    "8": "b"
   },
   "afterLowercaseNote": "Applied after the confusables table and lowercasing, on both the name and every reserved word.",
   "fingerprintCanonical": {
     "o": "0",
     "i": "1",
     "l": "1"
+  },
+  "scripts": {
+    "latinMayMixWith": [
+      "Han",
+      "Hiragana",
+      "Katakana",
+      "Hangul",
+      "Bopomofo"
+    ],
+    "neverMixTogether": [
+      "Latin",
+      "Greek",
+      "Cyrillic",
+      "Armenian"
+    ],
+    "alwaysUnnamed": [
+      "Cherokee",
+      "Lisu",
+      "Coptic",
+      "Canadian_Aboriginal",
+      "Old_Italic",
+      "Tifinagh",
+      "Osage"
+    ]
   }
 }
