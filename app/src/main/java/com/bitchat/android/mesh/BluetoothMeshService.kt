@@ -159,9 +159,7 @@ class BluetoothMeshService(
         setupDelegates()
         messageHandler.packetProcessor = packetProcessor
         com.bitchat.android.services.IncomingMessageAdmission.install(context)
-        messageHandler.acceptIncomingMedia = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
-        messageHandler.acceptDirectedPlaintext = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
-        messageHandler.acceptFavoriteNotices = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
+        messageHandler.applyInboundPolicy(com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY)
         if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) com.bitchat.android.features.voice.LiveVoicePreferences.forceDisabled = true
         //startPeriodicDebugLogging()
 

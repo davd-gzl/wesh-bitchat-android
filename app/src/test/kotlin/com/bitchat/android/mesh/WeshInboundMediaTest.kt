@@ -139,6 +139,28 @@ class WeshInboundMediaTest {
     }
 
     @Test
+    fun `an enrolled QR contact is not charged to the relaying link`() = runBlocking {
+        val key = ByteArray(32) { 7 }
+        val tightLink = MessageHandler(myPeerID, RuntimeEnvironment.getApplication(),
+            PublicInboundBudget(global = PublicInboundBudget.Rate(100.0, 100.0),
+                perAuthenticatedSource = PublicInboundBudget.Rate(0.0, 5.0), perLink = PublicInboundBudget.Rate(0.0, 2.0)))
+        tightLink.delegate = delegate
+        whenever(delegate.getAuthenticatedRemoteStaticKey(peerID)).thenReturn(key)
+        whenever(delegate.isEnrolledContactKey(key)).thenReturn(true)
+        repeat(5) { tightLink.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, "c$it".toByteArray()), peerID, "link")) }
+        verify(delegate, times(5)).onMessageReceived(any())
+    }
+
+    @Test
+    fun `the Wesh inbound policy closes media, plaintext private text and favorite notices`() {
+        val fresh = MessageHandler(myPeerID, RuntimeEnvironment.getApplication())
+        fresh.applyInboundPolicy(weshLocalOnly = true)
+        assertFalse(fresh.acceptIncomingMedia || fresh.acceptDirectedPlaintext || fresh.acceptFavoriteNotices)
+        fresh.applyInboundPolicy(weshLocalOnly = false)
+        assertTrue(fresh.acceptIncomingMedia && fresh.acceptDirectedPlaintext && fresh.acceptFavoriteNotices)
+    }
+
+    @Test
     fun `peers proven to hold one key share one budget`() = runBlocking {
         val otherPeer = "1111aaaa2222bbbb"
         val key = ByteArray(32) { 7 }

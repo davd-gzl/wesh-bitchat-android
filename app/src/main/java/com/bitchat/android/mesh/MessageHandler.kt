@@ -51,6 +51,13 @@ class MessageHandler(
     /** When false, favorite control notices are ignored and never acknowledged. */
     var acceptFavoriteNotices: Boolean = true
 
+    /** Wesh accepts no incoming media, plaintext private text or favorite notices, on any transport. */
+    fun applyInboundPolicy(weshLocalOnly: Boolean) {
+        acceptIncomingMedia = !weshLocalOnly
+        acceptDirectedPlaintext = !weshLocalOnly
+        acceptFavoriteNotices = !weshLocalOnly
+    }
+
     private fun storeIncomingFile(file: com.bitchat.android.model.BitchatFilePacket): String =
         if (acceptIncomingMedia) com.bitchat.android.features.file.FileUtils.saveIncomingFile(appContext, file) else ""
 

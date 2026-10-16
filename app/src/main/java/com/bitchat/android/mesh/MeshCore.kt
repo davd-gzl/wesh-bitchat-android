@@ -110,11 +110,9 @@ class MeshCore(
     }
     private val securityManager = SecurityManager(encryptionService, myPeerID)
     private val storeForwardManager = StoreForwardManager()
+    // Same inbound policy as Bluetooth.
     private val messageHandler = MessageHandler(myPeerID, context.applicationContext).apply {
-        // Same inbound policy as Bluetooth: Wesh accepts no media, plaintext DMs or favorite notices.
-        acceptIncomingMedia = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
-        acceptDirectedPlaintext = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
-        acceptFavoriteNotices = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
+        applyInboundPolicy(com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY)
     }
     private val packetProcessor = PacketProcessor(myPeerID)
     private data class VoiceFrameRequest(val recipientPeerID: String?, val payload: ByteArray)
