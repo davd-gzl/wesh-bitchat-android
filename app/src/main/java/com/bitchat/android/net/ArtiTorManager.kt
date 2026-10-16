@@ -228,6 +228,14 @@ class ArtiTorManager private constructor() {
                     }
 
                     TorMode.ON -> {
+                        // Single chokepoint: Arti never starts over state a failed panic left behind.
+                        if (!ArtiTorControl.completePendingWipe(application)) {
+                            Log.w(TAG, "applyMode: ON refused, Arti state wipe pending")
+                            desiredMode = TorMode.OFF
+                            lastMode = TorMode.OFF
+                            TorPreferenceManager.set(application, TorMode.OFF, commit = true)
+                            return
+                        }
                         Log.i(TAG, "applyMode: ON -> starting arti")
                         if (currentSocksPort < DEFAULT_SOCKS_PORT) {
                             currentSocksPort = DEFAULT_SOCKS_PORT
@@ -260,6 +268,11 @@ class ArtiTorManager private constructor() {
     }
 
     private suspend fun startArti(application: Application, useDelay: Boolean = false) {
+        if (!ArtiTorControl.completePendingWipe(application)) {
+            _statusFlow.update { it.copy(running = false, state = TorState.ERROR) }
+            TorPreferenceManager.set(application, TorMode.OFF, commit = true)
+            return
+        }
         try {
             stopArtiAndWait()
             if (useDelay) {
