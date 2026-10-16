@@ -320,19 +320,30 @@ class MainActivity : OrientationAwareActivity() {
             }
             
             OnboardingState.PERMISSION_EXPLANATION -> {
-                // Pavé welcome: nickname, then the Bluetooth explanation before the system prompt.
-                // The coordinator then asks for what is still missing and runs the usual checks.
+                // Pavé welcome: nickname, the Bluetooth explanation, then (Android 13+) the
+                // notifications explanation, each before its system prompt.
                 val prefs = chatViewModel.weshPreferences
                 val currentNickname by chatViewModel.nickname.collectAsState()
+                val initialNickname = remember(currentNickname) { welcomeNickname(prefs.welcomed, currentNickname) }
+                val notifications = permissionManager.getUnrequestedOptionalPermissions()
+                    .filter { it == android.Manifest.permission.POST_NOTIFICATIONS }
+                val requiredGranted = permissionManager.areRequiredPermissionsGranted()
                 com.bitchat.android.ui.pave.OnboardingFlow(
-                    onFinished = { chosen, _ ->
-                        if (com.bitchat.android.ui.pave.NicknameGenerator.isValid(chosen)) chatViewModel.setNickname(chosen)
+                    onFinished = { chosen, bluetoothGranted ->
+                        // Only a nickname the person actually set replaces the stored one.
+                        if (chosen != initialNickname && com.bitchat.android.ui.pave.NicknameGenerator.isValid(chosen)) {
+                            chatViewModel.setNickname(chosen)
+                        }
                         prefs.welcomed = true
                         mainViewModel.updateOnboardingState(OnboardingState.PERMISSION_REQUESTING)
-                        onboardingCoordinator.requestPermissions()
+                        if (bluetoothGranted) onboardingCoordinator.requestPermissions()
+                        else onboardingCoordinator.continueWithoutBluetooth()
                     },
                     modifier = modifier,
-                    initialNickname = if (prefs.welcomed) currentNickname else null,
+                    initialNickname = initialNickname,
+                    start = welcomeStart(prefs.welcomed, requiredGranted, notifications.isNotEmpty()),
+                    askNotifications = notifications.isNotEmpty(),
+                    onNotificationsAsked = { permissionManager.markOptionalPermissionsRequested(notifications) },
                 )
             }
 
@@ -947,4 +958,19 @@ class MainActivity : OrientationAwareActivity() {
         
         // Do not stop mesh here; ForegroundService owns lifecycle for background reliability
     }
+}
+
+/** The nickname the welcome starts from: the stored one, unless it is BitChat's default "anon1234". */
+internal fun welcomeNickname(welcomed: Boolean, stored: String): String? = when {
+    welcomed -> stored
+    stored.isBlank() || Regex("^anon\\d{4}$").matches(stored) -> null
+    else -> stored
+}
+
+/** First launch starts at the welcome; a returning person goes straight to what is missing. */
+internal fun welcomeStart(welcomed: Boolean, requiredGranted: Boolean, notificationsPending: Boolean) = when {
+    !welcomed && !requiredGranted -> com.bitchat.android.ui.pave.OnboardingStart.Welcome
+    !requiredGranted -> com.bitchat.android.ui.pave.OnboardingStart.Bluetooth
+    notificationsPending -> com.bitchat.android.ui.pave.OnboardingStart.Notifications
+    else -> com.bitchat.android.ui.pave.OnboardingStart.Welcome
 }

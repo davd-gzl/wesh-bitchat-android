@@ -70,4 +70,9 @@
     <string name="wesh_pave_fluo_media_unsupported">Media not supported</string>
     <string name="wesh_pave_fluo_draft_retry">Try saving drafts again</string>
     <string name="wesh_pave_fluo_request_hidden">Message waiting, content hidden</string>
+    <string name="wesh_pave_fluo_notif_title">Get told when a message arrives</string>
+    <string name="wesh_pave_fluo_notif_body">Notifications never show message text. The nickname appears only if you turn it on in Settings.</string>
+    <string name="wesh_pave_fluo_notif_optional">You can say no: Wesh still works while it is open.</string>
+    <string name="wesh_pave_fluo_notif_allow">Allow notifications</string>
+    <string name="wesh_pave_fluo_notif_later">Later</string>
 </resources>

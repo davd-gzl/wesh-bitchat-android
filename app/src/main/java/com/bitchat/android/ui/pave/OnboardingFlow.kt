@@ -58,17 +58,44 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.core.app.ActivityCompat
+import androidx.compose.material.icons.rounded.Notifications
 import com.bitchat.android.R
 import com.bitchat.android.ui.WeshLinks
 
-private enum class OnboardingStep { Welcome, Bluetooth }
+/** Where the welcome starts: first launch, back for a missing Bluetooth permission, or notifications only. */
+enum class OnboardingStart { Welcome, Bluetooth, Notifications }
+
+private enum class OnboardingStep { Welcome, Bluetooth, Notifications }
+
+/** How the person answered the Bluetooth prompt. A simple refusal keeps "Continuer"; only a permanent one sends to Settings. */
+internal enum class BluetoothRefusal { None, Once, Permanent }
+
+internal fun bluetoothRefusal(granted: Boolean, shouldShowRationale: Boolean): BluetoothRefusal = when {
+    granted -> BluetoothRefusal.None
+    shouldShowRationale -> BluetoothRefusal.Once
+    else -> BluetoothRefusal.Permanent
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
 
 /**
- * First launch: Bienvenue (random editable nickname), then the Bluetooth explainer,
- * then the system permission dialog. On API 31+ Wesh never asks for location.
+ * First launch: Bienvenue (editable nickname), then the Bluetooth explainer before the system
+ * dialog, then, on Android 13+, the notifications explainer before its own dialog. On API 31+
+ * Wesh never asks for location.
  *
  * @param onFinished nickname chosen, and whether the Bluetooth permissions were granted.
  * @param initialNickname the nickname already chosen on this phone, if any; otherwise a random one.
+ * @param askNotifications show the notifications step (Android 13+, not asked yet).
+ * @param onNotificationsAsked the notifications prompt was shown or declined: it is never asked again.
  */
 @Composable
 fun OnboardingFlow(
@@ -76,25 +103,64 @@ fun OnboardingFlow(
     modifier: Modifier = Modifier,
     sdkInt: Int = Build.VERSION.SDK_INT,
     initialNickname: String? = null,
+    start: OnboardingStart = OnboardingStart.Welcome,
+    askNotifications: Boolean = false,
+    onNotificationsAsked: () -> Unit = {},
 ) {
-    var step by rememberSaveable { mutableStateOf(OnboardingStep.Welcome) }
-    // Someone back here for a missing permission keeps the nickname they already chose.
-    var nickname by rememberSaveable { mutableStateOf(initialNickname?.takeIf(NicknameGenerator::isValid) ?: NicknameGenerator.generate()) }
+    var step by rememberSaveable {
+        mutableStateOf(
+            when (start) {
+                OnboardingStart.Welcome -> OnboardingStep.Welcome
+                OnboardingStart.Bluetooth -> OnboardingStep.Bluetooth
+                OnboardingStart.Notifications -> OnboardingStep.Notifications
+            }
+        )
+    }
+    // Someone back here for a missing permission keeps the nickname they already chose; the
+    // notifications-only path never proposes one.
+    var nickname by rememberSaveable {
+        mutableStateOf(
+            initialNickname?.takeIf(NicknameGenerator::isValid)
+                ?: if (start == OnboardingStart.Welcome) NicknameGenerator.generate() else ""
+        )
+    }
     val context = LocalContext.current
-    var denied by rememberSaveable { mutableStateOf(false) }
+    var refusal by rememberSaveable { mutableStateOf(BluetoothRefusal.None) }
+    var bluetoothGranted by rememberSaveable { mutableStateOf(start == OnboardingStart.Notifications) }
     val permissions = paveBluetoothRuntimePermissions(sdkInt)
 
-    val request: () -> Unit = if (LocalInspectionMode.current) {
+    fun afterBluetooth(granted: Boolean) {
+        bluetoothGranted = granted
+        if (askNotifications) step = OnboardingStep.Notifications else onFinished(nickname.trim(), granted)
+    }
+    fun afterNotifications() {
+        onNotificationsAsked()
+        onFinished(nickname.trim(), bluetoothGranted)
+    }
+
+    val inspection = LocalInspectionMode.current
+    val request: () -> Unit = if (inspection) {
         {}
     } else {
         val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-            val granted = permissions.all { result[it] == true || ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
-            if (granted) onFinished(nickname.trim(), true) else denied = true
+            val missing = permissions.filter { result[it] != true && ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }
+            val activity = context.findActivity()
+            refusal = bluetoothRefusal(
+                granted = missing.isEmpty(),
+                shouldShowRationale = activity != null && missing.any { ActivityCompat.shouldShowRequestPermissionRationale(activity, it) },
+            )
+            if (refusal == BluetoothRefusal.None) afterBluetooth(true)
         };
         {
             val missing = permissions.filter { ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }
-            if (missing.isEmpty()) onFinished(nickname.trim(), true) else launcher.launch(missing.toTypedArray())
+            if (missing.isEmpty()) afterBluetooth(true) else launcher.launch(missing.toTypedArray())
         }
+    }
+    val requestNotifications: () -> Unit = if (inspection || sdkInt < Build.VERSION_CODES.TIRAMISU) {
+        { afterNotifications() }
+    } else {
+        val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { afterNotifications() };
+        { launcher.launch(Manifest.permission.POST_NOTIFICATIONS) }
     }
 
     Box(modifier.fillMaxSize().background(WeshPave.colors.bg).systemBarsPadding().imePadding()) {
@@ -107,7 +173,7 @@ fun OnboardingFlow(
             )
             OnboardingStep.Bluetooth -> BluetoothStep(
                 legacyLocation = sdkInt < Build.VERSION_CODES.S,
-                denied = denied,
+                refusal = refusal,
                 onContinue = request,
                 onOpenSettings = {
                     context.startActivity(
@@ -115,9 +181,27 @@ fun OnboardingFlow(
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
                 },
-                onContinueWithout = { onFinished(nickname.trim(), false) },
+                onContinueWithout = { afterBluetooth(false) },
             )
+            OnboardingStep.Notifications -> NotificationsStep(onAllow = requestNotifications, onLater = ::afterNotifications)
         }
+    }
+}
+
+@Composable
+private fun NotificationsStep(onAllow: () -> Unit, onLater: () -> Unit) {
+    val c = WeshPave.colors
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = WeshSpace.gutter, vertical = WeshSpace.s8),
+        verticalArrangement = Arrangement.spacedBy(WeshSpace.s4),
+    ) {
+        Icon(Icons.Rounded.Notifications, contentDescription = null, tint = c.ink, modifier = Modifier.size(48.dp))
+        Text(stringResource(R.string.wesh_pave_fluo_notif_title), style = WeshType.title, color = c.ink, modifier = Modifier.semantics { heading() })
+        Text(stringResource(R.string.wesh_pave_fluo_notif_body), style = WeshType.body, color = c.ink)
+        Text(stringResource(R.string.wesh_pave_fluo_notif_optional), style = WeshType.body, color = c.ink)
+        Spacer(Modifier.weight(1f))
+        PrimaryButton(stringResource(R.string.wesh_pave_fluo_notif_allow), onAllow)
+        SecondaryButton(stringResource(R.string.wesh_pave_fluo_notif_later), onLater, Modifier.fillMaxWidth())
     }
 }
 
@@ -219,7 +303,7 @@ private fun TermsLine() {
 @Composable
 private fun BluetoothStep(
     legacyLocation: Boolean,
-    denied: Boolean,
+    refusal: BluetoothRefusal,
     onContinue: () -> Unit,
     onOpenSettings: () -> Unit,
     onContinueWithout: () -> Unit,
@@ -240,12 +324,18 @@ private fun BluetoothStep(
             Text(stringResource(R.string.wesh_pave_bt_no_location), style = WeshType.body, color = c.ink)
         }
         Spacer(Modifier.weight(1f))
-        if (denied) {
-            Text(stringResource(R.string.wesh_pave_bt_denied), style = WeshType.body, color = c.warning)
-            PrimaryButton(stringResource(R.string.wesh_pave_open_settings), onOpenSettings)
-            SecondaryButton(stringResource(R.string.wesh_pave_bt_continue_without), onContinueWithout, Modifier.fillMaxWidth())
-        } else {
-            PrimaryButton(stringResource(R.string.wesh_pave_continue), onContinue)
+        when (refusal) {
+            BluetoothRefusal.None -> PrimaryButton(stringResource(R.string.wesh_pave_continue), onContinue)
+            BluetoothRefusal.Once -> {
+                Text(stringResource(R.string.wesh_pave_bt_denied), style = WeshType.body, color = c.warning)
+                PrimaryButton(stringResource(R.string.wesh_pave_continue), onContinue)
+                SecondaryButton(stringResource(R.string.wesh_pave_bt_continue_without), onContinueWithout, Modifier.fillMaxWidth())
+            }
+            BluetoothRefusal.Permanent -> {
+                Text(stringResource(R.string.wesh_pave_bt_denied), style = WeshType.body, color = c.warning)
+                PrimaryButton(stringResource(R.string.wesh_pave_open_settings), onOpenSettings)
+                SecondaryButton(stringResource(R.string.wesh_pave_bt_continue_without), onContinueWithout, Modifier.fillMaxWidth())
+            }
         }
     }
 }
@@ -257,11 +347,11 @@ private fun OnboardingWelcomePreview() = PavePreview(padded = false) { Onboardin
 @PaveScreenPreviews
 @Composable
 private fun OnboardingBluetoothPreview() = PavePreview(padded = false) {
-    BluetoothStep(legacyLocation = false, denied = false, onContinue = {}, onOpenSettings = {}, onContinueWithout = {})
+    BluetoothStep(legacyLocation = false, refusal = BluetoothRefusal.None, onContinue = {}, onOpenSettings = {}, onContinueWithout = {})
 }
 
 @PavePreviews
 @Composable
 private fun OnboardingBluetoothDeniedPreview() = PavePreview(padded = false) {
-    BluetoothStep(legacyLocation = true, denied = true, onContinue = {}, onOpenSettings = {}, onContinueWithout = {})
+    BluetoothStep(legacyLocation = true, refusal = BluetoothRefusal.Permanent, onContinue = {}, onOpenSettings = {}, onContinueWithout = {})
 }
