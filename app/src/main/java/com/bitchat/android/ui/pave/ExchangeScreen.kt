@@ -290,7 +290,7 @@ private fun Viewfinder() {
         Box(
             Modifier
                 .align(Alignment.Center)
-                .size(160.dp)
+                .size(PAVE_QR_VIEWFINDER)
                 .border(WeshStroke.publicRule, c.publicColor, RoundedCornerShape(WeshRadius.control))
         )
         Text(
