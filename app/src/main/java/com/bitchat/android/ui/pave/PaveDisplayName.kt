@@ -42,6 +42,9 @@ object PaveDisplayName {
     internal val ALWAYS_UNNAMED = listOf("Cherokee", "Lisu", "Coptic", "Canadian_Aboriginal", "Old_Italic", "Tifinagh", "Osage")
     private const val LATIN = "LATIN"
     private val IGNORED_SCRIPTS = setOf("COMMON", "INHERITED")
+
+    /** A letter the runtime cannot place (a script newer than the device, like Osage on API 26): refused. */
+    private const val UNKNOWN_SCRIPT = "UNKNOWN"
     private val LATIN_PARTNERS = LATIN_MAY_MIX_WITH.map { it.uppercase() }.toSet()
     private val NEVER_TOGETHER = NEVER_MIX_TOGETHER.map { it.uppercase() }.toSet()
     private val REFUSED_SCRIPTS = ALWAYS_UNNAMED.map { it.uppercase() }.toSet()
@@ -267,12 +270,18 @@ object PaveDisplayName {
         return clean
     }
 
-    /** Rule 4: whether the scripts of the letters of [text] make it unnamed. */
-    private fun hasRefusedScripts(text: String): Boolean {
+    /**
+     * Rule 4: whether the scripts of the letters of [text] make it unnamed. [scriptOf] gives the
+     * Unicode script name of a code point; tests replace it to stand in for an older runtime.
+     */
+    internal fun hasRefusedScripts(
+        text: String,
+        scriptOf: (Int) -> String = { Character.UnicodeScript.of(it).name },
+    ): Boolean {
         val scripts = HashSet<String>()
-        text.codePoints().filter { Character.isLetter(it) }.forEach { scripts += Character.UnicodeScript.of(it).name }
+        text.codePoints().filter { Character.isLetter(it) }.forEach { scripts += scriptOf(it) }
         scripts -= IGNORED_SCRIPTS
-        return scripts.any { it in REFUSED_SCRIPTS } ||
+        return scripts.any { it == UNKNOWN_SCRIPT || it in REFUSED_SCRIPTS } ||
             scripts.count { it in NEVER_TOGETHER } > 1 ||
             (LATIN in scripts && scripts.any { it != LATIN && it !in LATIN_PARTNERS })
     }

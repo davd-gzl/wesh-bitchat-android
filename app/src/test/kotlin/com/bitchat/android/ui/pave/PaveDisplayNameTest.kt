@@ -2,6 +2,7 @@ package com.bitchat.android.ui.pave
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PaveDisplayNameTest {
@@ -254,5 +255,14 @@ class PaveDisplayNameTest {
         assertEquals("!", safe("Vou5", listOf("Vous")))
         assertEquals("!", safe("R3çu", listOf("Reçu")))
         assertEquals("!", safe("8luetooth", listOf("Bluetooth")))
+    }
+
+    @Test
+    fun `a letter whose script the runtime does not know is refused`() {
+        val real = { codePoint: Int -> Character.UnicodeScript.of(codePoint).name }
+        assertFalse(PaveDisplayName.hasRefusedScripts("Nora"))
+        // As on an older runtime that predates a script: one letter reports UNKNOWN.
+        assertTrue(PaveDisplayName.hasRefusedScripts("Nora") { if (it == 'r'.code) "UNKNOWN" else real(it) })
+        assertTrue(PaveDisplayName.hasRefusedScripts("r") { "UNKNOWN" })
     }
 }
