@@ -94,6 +94,25 @@ class WeshVerificationHandlerTest {
         assertEquals(qr.nickname, store.contacts.value.single().nickname)
         assertEquals("verified", handler.weshProgress(qr.noiseKeyHex))
     }
+    @Test fun `announced nickname is sanitized in the system message, notification and nickname cache`() = scope.runTest {
+        val key = qr.noiseKeyHex.dataFromHexString()!!
+        whenever(mesh.getPeerInfo(peer)).thenReturn(PeerInfo(id = peer, nickname = "\u202Eevil\u200Bname", noisePublicKey = key, isConnected = true, isDirectConnection = true, signingPublicKey = qr.signKeyHex.dataFromHexString(), isVerifiedNickname = true, lastSeen = 1L))
+        val identity: SecureIdentityStateManager = mock()
+        val notifications: NotificationManager = mock()
+        val context: Context = mock()
+        whenever(context.getString(any(), any())).thenReturn("Synthetic verification notice")
+        val state: ChatState = mock()
+        whenever(state.getConnectedPeersValue()).thenReturn(listOf(peer))
+        handler = VerificationHandler(context, scope, { mesh }, identity, state, notifications, mock(), { time })
+
+        assertTrue(handler.beginQRVerification(qr))
+        respond(); runCurrent()
+
+        val fingerprint = handler.fingerprintFromNoiseBytes(key)
+        verify(identity).cacheFingerprintNickname(fingerprint, "evilname")
+        verify(notifications).showVerificationSuccessNotification("evilname", peer)
+        verify(context).getString(any(), eq("evilname"))
+    }
     @Test fun `response after deadline and late handshake cannot enroll`() = scope.runTest {
         assertTrue(handler.beginQRVerification(qr))
         time += 60_001

@@ -12,6 +12,7 @@ import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.services.VerificationService
 import com.bitchat.android.util.dataFromHexString
 import com.bitchat.android.util.hexEncodedString
+import com.bitchat.android.util.safeDisplayName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -104,7 +105,7 @@ class VerificationHandler(
             meshService.initiateNoiseHandshake(peerID)
         }
         fingerprintFromNoiseHex(qr.noiseKeyHex)?.let { fp ->
-            identityManager.cacheFingerprintNickname(fp, qr.nickname)
+            identityManager.cacheFingerprintNickname(fp, safeDisplayName(qr.nickname, fp.take(8)))
             identityManager.cacheNoiseFingerprint(qr.noiseKeyHex, fp)
             identityManager.cachePeerNoiseKey(peerID, qr.noiseKeyHex)
         }
@@ -349,8 +350,9 @@ class VerificationHandler(
     }
 
     private fun resolvePeerDisplayName(peerID: String): String {
+        // The announced nickname is remote input: it reaches a system message, a notification and the cache.
         val nick = try { meshService.getPeerInfo(peerID)?.nickname } catch (_: Exception) { null }
-        return nick ?: peerID.take(8)
+        return safeDisplayName(nick.orEmpty(), peerID.take(8))
     }
 
 
