@@ -403,4 +403,14 @@ class AppStateStoreTest {
             AppStateStore.setNickname(previous)
         }
     }
+    @Test
+    fun `a public message reusing an id already in the timeline is ignored`() {
+        fun message(peer: String, text: String) = BitchatMessage(
+            id = "same-id", sender = "Léo", content = text, timestamp = Date(1_700_000_000_000L), isRelay = false, senderPeerID = peer,
+        )
+        AppStateStore.addPublicMessage(message("peer-a", "bonjour"))
+        AppStateStore.addPublicMessage(message("peer-b", "faux"))
+        AppStateStore.upsertPublicMessage(message("peer-b", "remplacé"))
+        assertEquals(listOf("peer-a" to "bonjour"), AppStateStore.publicMessages.value.map { it.senderPeerID to it.content })
+    }
 }

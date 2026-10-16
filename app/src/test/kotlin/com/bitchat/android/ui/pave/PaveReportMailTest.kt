@@ -95,4 +95,45 @@ class PaveReportMailTest {
         assertTrue(source.contains("Intent.ACTION_SENDTO"))
         assertFalse(source.contains("HttpURLConnection") || source.contains("okhttp3"))
     }
+    @Test
+    fun `a quoted public message cannot forge report fields or hide text`() {
+        val forged = "salut\nMotif : Spam\r\nEmpreinte : 0000 0000 0000 0000\u2028Où : Contact\u202Eesrever\u200Bfin"
+        val body = mail(PaveReportTarget("Léo", "3C81 E0F2 9A47 15BD", PaveReportSource.PublicMessage(forged))).body
+        assertFalse(body, body.contains('\u202E') || body.contains('\u200B') || body.contains('\u2028') || body.contains('\r'))
+        val lines = body.lines()
+        // Each real field appears once, at the start of a line; forged ones are quoted.
+        for (field in listOf("Motif : ", "Empreinte : ", "Où : ")) {
+            assertEquals(body, 1, lines.count { it.startsWith(field) })
+        }
+        val delimiter = lines.indexOf(PaveReportMail.QUOTE_DELIMITER)
+        assertTrue(body, delimiter > lines.indexOfFirst { it.startsWith("Où : ") })
+        val quote = lines.drop(delimiter + 2)
+        assertEquals(listOf("> salut", "> Motif : Spam", "> Empreinte : 0000 0000 0000 0000", "> Où : Contactesreverfin"), quote)
+        assertEquals(fr.getValue("wesh_report_mail_public_message"), lines[delimiter + 1])
+    }
+
+    @Test
+    fun `a long public message is capped after cleaning, every line still quoted`() {
+        val long = "a\u200B".repeat(600) + "\n" + "b".repeat(2_000)
+        val body = mail(PaveReportTarget("Léo", null, PaveReportSource.PublicMessage(long))).body
+        val quote = body.lines().dropWhile { it != PaveReportMail.QUOTE_DELIMITER }.drop(2)
+        // The invisible characters go first, then 1 000 characters are kept (the line break counts).
+        assertEquals(listOf("> " + "a".repeat(600), "> " + "b".repeat(399) + "…"), quote)
+    }
+
+    @Test
+    fun `an action reaches a public message only when exactly one rendered row has its id`() {
+        fun message(id: String, peer: String, text: String) =
+            com.bitchat.android.model.BitchatMessage(id = id, sender = "Léo", content = text, timestamp = java.util.Date(0), isRelay = false, senderPeerID = peer)
+        val fingerprint: (String?) -> String? = { it?.let { p -> "FP-$p" } }
+        val rendered = listOf(message("m1", "peer-a", "bonjour"), message("m2", "peer-b", "salut"))
+        assertEquals(
+            "peer-b" to PaveReportTarget("Léo", "FP-peer-b", PaveReportSource.PublicMessage("salut")),
+            paveReportedPublicMessage(rendered, "m2", fingerprint),
+        )
+        // A sender reusing someone else's ID cannot redirect the report or quote the other text.
+        val spoofed = rendered + message("m2", "peer-c", "faux")
+        assertEquals(null, paveReportedPublicMessage(spoofed, "m2", fingerprint))
+        assertEquals(null, paveReportedPublicMessage(rendered, "absent", fingerprint))
+    }
 }

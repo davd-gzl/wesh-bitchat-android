@@ -92,5 +92,5 @@
     <string name="wesh_report_where_public">Public room</string>
     <string name="wesh_report_where_request">Private message request</string>
     <string name="wesh_report_where_contact">Contact verified by QR</string>
-    <string name="wesh_report_mail_public_message">Reported public message:</string>
+    <string name="wesh_report_mail_public_message">Reported public message, quoted as received:</string>
 </resources>

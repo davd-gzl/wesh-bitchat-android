@@ -319,29 +319,27 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                     onRetryContacts = viewModel::retryWeshContacts,
                 )
             }
-            PaveRoute.Public -> PublicRoomScreen(
-                phonesInReach = peers.size,
-                messages = publicMessages
-                    .filter { isPublicText(it, myPeerID, viewModel::weshIsBlocked) }
-                    .map { m ->
-                        val own = m.senderPeerID == myPeerID
-                        PaveMessageItem(
-                            id = m.id, text = m.content, own = own, time = time(m),
-                            sender = if (own) null else m.sender,
-                            senderFingerprint = if (own) null else peerFingerprint(m.senderPeerID),
-                            delivery = if (own) paveDelivery(m.deliveryStatus, public = true) else null,
-                        )
-                    },
-                composer = composer,
-                onDraftChange = onDraftChange,
-                onSend = ::send,
-                onBack = { go(PaveRoute.Home) },
-                onMessageActions = { id ->
-                    messageAction = publicMessages.firstOrNull { it.id == id }?.let { m ->
-                        m.senderPeerID?.let { it to PaveReportTarget(m.sender, peerFingerprint(it), PaveReportSource.PublicMessage(m.content)) }
-                    }
-                },
-            )
+            PaveRoute.Public -> {
+                val rendered = publicMessages.filter { isPublicText(it, myPeerID, viewModel::weshIsBlocked) }
+                PublicRoomScreen(
+                    phonesInReach = peers.size,
+                    messages = rendered
+                        .map { m ->
+                            val own = m.senderPeerID == myPeerID
+                            PaveMessageItem(
+                                id = m.id, text = m.content, own = own, time = time(m),
+                                sender = if (own) null else m.sender,
+                                senderFingerprint = if (own) null else peerFingerprint(m.senderPeerID),
+                                delivery = if (own) paveDelivery(m.deliveryStatus, public = true) else null,
+                            )
+                        },
+                    composer = composer,
+                    onDraftChange = onDraftChange,
+                    onSend = ::send,
+                    onBack = { go(PaveRoute.Home) },
+                    onMessageActions = { id -> messageAction = paveReportedPublicMessage(rendered, id, ::peerFingerprint) },
+                )
+            }
             PaveRoute.Private -> {
                 val contact = contacts.firstOrNull { it.conversationID == privatePeer }
                 val title = contact?.nickname ?: conversations.firstOrNull { it.conversationID == privatePeer }?.displayName.orEmpty()

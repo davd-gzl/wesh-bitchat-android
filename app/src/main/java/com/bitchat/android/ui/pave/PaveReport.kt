@@ -37,6 +37,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.bitchat.android.R
+import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.services.WeshMessageRequests
 import com.bitchat.android.ui.WeshLinks
 
@@ -64,6 +65,21 @@ internal fun paveReportTarget(request: WeshMessageRequests.Request) =
     PaveReportTarget(request.nickname, paveShortFingerprintFromHex(request.fingerprint), PaveReportSource.Request)
 
 /**
+ * The public message an action targets, from the rows actually rendered. Message IDs are chosen by
+ * the sender, so a row is used only when exactly one rendered row has [id]: a reused ID can neither
+ * redirect the block nor quote someone else's text.
+ */
+internal fun paveReportedPublicMessage(
+    rendered: List<BitchatMessage>,
+    id: String,
+    fingerprint: (String?) -> String?,
+): Pair<String, PaveReportTarget>? {
+    val message = rendered.singleOrNull { it.id == id } ?: return null
+    val peerID = message.senderPeerID ?: return null
+    return peerID to PaveReportTarget(message.sender, fingerprint(peerID), PaveReportSource.PublicMessage(message.content))
+}
+
+/**
  * The local block always runs first, on its own; sending the report is then only offered, whether
  * the block succeeded or not. Nothing is sent by the app.
  */
@@ -77,6 +93,8 @@ internal inline fun paveBlockThenOfferReport(target: PaveReportTarget, block: ()
 internal data class PaveReportMail(val address: String, val subject: String, val body: String, val uri: String) {
     companion object {
         const val SUBJECT = "Signalement Wesh"
+        /** Separates the fields written by the app from the quoted text written by someone else. */
+        const val QUOTE_DELIMITER = "-----"
         private const val MAX_PUBLIC_TEXT = 1_000
 
         /** [text] reads a string in the phone language, like Context.getString(id, args). */
@@ -100,14 +118,29 @@ internal data class PaveReportMail(val address: String, val subject: String, val
                 t(R.string.wesh_report_mail_reason, t(reason.label)),
                 t(R.string.wesh_report_mail_where, t(where)),
             )
+            // Last, after a delimiter, every line quoted: the text cannot pass for a field of the report.
             (target.source as? PaveReportSource.PublicMessage)?.let { message ->
-                val shown = if (message.text.length > MAX_PUBLIC_TEXT) message.text.take(MAX_PUBLIC_TEXT) + "…" else message.text
-                lines += listOf("", t(R.string.wesh_report_mail_public_message), shown)
+                lines += listOf("", QUOTE_DELIMITER, t(R.string.wesh_report_mail_public_message), quote(message.text))
             }
             val body = lines.joinToString("\n")
             val uri = "mailto:" + WeshLinks.REPORT_EMAIL +
                 "?subject=" + encode(SUBJECT) + "&body=" + encode(body.replace("\n", "\r\n"))
             return PaveReportMail(WeshLinks.REPORT_EMAIL, SUBJECT, body, uri)
+        }
+
+        /**
+         * Someone else's text, made inert: line breaks unified, invisible and steering characters
+         * (bidi, zero-width, controls) removed, capped, then every line prefixed with "> ".
+         */
+        internal fun quote(text: String): String {
+            val unified = text.replace("\r\n", "\n").replace('\r', '\n').replace('\u2028', '\n').replace('\u2029', '\n')
+            val cleaned = buildString {
+                unified.codePoints().forEach { cp -> if (cp == '\n'.code || !PaveDisplayName.isInvisible(cp)) appendCodePoint(cp) }
+            }
+            val capped = if (cleaned.codePointCount(0, cleaned.length) > MAX_PUBLIC_TEXT) {
+                cleaned.substring(0, cleaned.offsetByCodePoints(0, MAX_PUBLIC_TEXT)) + "…"
+            } else cleaned
+            return capped.split('\n').joinToString("\n") { "> $it" }
         }
 
         /** RFC 6068: every byte outside the unreserved set is percent-encoded, spaces included. */
