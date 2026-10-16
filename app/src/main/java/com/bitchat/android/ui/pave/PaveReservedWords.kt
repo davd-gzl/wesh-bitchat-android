@@ -9,9 +9,9 @@ import java.util.Locale
 /**
  * The single list of app labels a remote nickname may not imitate: every label drawn next to a
  * nickname ("Vous", "Sans surnom", badges, delivery states, transport, public room, Échanger,
- * Demandes, fingerprint). Checked in French and English whatever the phone language, so a peer
- * cannot pick the other language's word. PaveReservedWordsTest fails when a label of these
- * families is missing.
+ * Demandes, fingerprint, the Échanger screen and its checks, Profil). Checked in French and
+ * English whatever the phone language, so a peer cannot pick the other language's word.
+ * PaveReservedWordsTest fails when a label of these families is missing.
  */
 object PaveReservedWords {
     @StringRes
@@ -39,6 +39,22 @@ object PaveReservedWords {
         R.string.wesh_pave_section_requests,
         R.string.wesh_pave_fingerprint_label,
         R.string.wesh_pave_fingerprint_unavailable,
+        R.string.wesh_pave_fingerprint_mine,
+        R.string.wesh_pave_fingerprint_contact,
+        R.string.wesh_pave_exchange_title,
+        R.string.wesh_pave_exchange_intro,
+        R.string.wesh_pave_exchange_my_code,
+        R.string.wesh_pave_exchange_aim,
+        R.string.wesh_pave_exchange_they_scanned,
+        R.string.wesh_pave_exchange_they_pending,
+        R.string.wesh_pave_exchange_i_scanned,
+        R.string.wesh_pave_exchange_i_pending,
+        R.string.wesh_pave_exchange_footer,
+        R.string.wesh_pave_exchange_success,
+        R.string.wesh_pave_exchange_open_chat,
+        R.string.wesh_pave_step_done,
+        R.string.wesh_pave_step_pending,
+        R.string.wesh_pave_settings_profile,
     )
 
     private val locales = listOf(Locale.FRENCH, Locale.ENGLISH)
