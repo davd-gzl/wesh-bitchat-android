@@ -281,16 +281,27 @@ object PaveDisplayName {
             val words = skeletonWords(candidate)
             words.joinToString("") in whole ||
                 startsWithAffix(words, affixes, longest) || startsWithAffix(words.asReversed(), affixes, longest, reversed = true) ||
-                FINGERPRINT_LIKE.containsMatchIn(skeletonWords(candidate, afterLowercase = false).joinToString(" "))
+                imitatesFingerprint(candidate)
         }
     }
 
     /**
      * Two groups of 4 hex characters, each with at least one digit, joined or one space apart
      * ("A1B2 C3D4", "a1b2c3d4"; not "Café 2024" or "dead beef"): a name like that would pass for the
-     * short key fingerprint. Matched before [AFTER_LOWERCASE], which would turn 1 and 0 into letters.
+     * short key fingerprint. Matched on the lowercase skeleton without [AFTER_LOWERCASE], after
+     * [FINGERPRINT_CANONICAL] ("OB5E 44D8" is 0b5e 44d8), before counting digits.
      */
+    /** Letters read as the digits they resemble before [FINGERPRINT_LIKE]; same table as the shared vectors file. */
+    internal val FINGERPRINT_CANONICAL: Map<Char, Char> = mapOf('o' to '0', 'i' to '1', 'l' to '1')
+
     private val FINGERPRINT_LIKE = Regex("(?=[0-9a-f]{0,3}[0-9])[0-9a-f]{4} ?(?=[0-9a-f]{0,3}[0-9])[0-9a-f]{4}")
+
+    private fun imitatesFingerprint(text: String): Boolean {
+        val canonical = skeletonWords(text, afterLowercase = false).joinToString(" ")
+            .map { FINGERPRINT_CANONICAL[it] ?: it }
+            .joinToString("")
+        return FINGERPRINT_LIKE.containsMatchIn(canonical)
+    }
 
     /**
      * Whether whole leading [words] (trailing ones when [reversed]) join into one of [affixes].

@@ -27,6 +27,13 @@ class PaveDisplayNameVectorsTest {
     }
 
     @Test
+    fun `fingerprint canonical table matches the shared fixture`() {
+        val shared = fixture.getAsJsonObject("fingerprintCanonical").entrySet().associate { (key, value) -> key to value.asString }
+        val local = PaveDisplayName.FINGERPRINT_CANONICAL.entries.associate { (key, value) -> key.toString() to value.toString() }
+        assertEquals(shared, local)
+    }
+
+    @Test
     fun `every shared vector gives the expected outcome in French and English`() {
         val reservedWords = fixture.getAsJsonArray("reservedForTest").map { it.asString } +
             PaveStringResources.reservedWords()

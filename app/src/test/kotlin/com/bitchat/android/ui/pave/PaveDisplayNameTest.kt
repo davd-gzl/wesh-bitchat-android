@@ -220,6 +220,9 @@ class PaveDisplayNameTest {
         assertEquals("!", safe("A1B2-C3D4 Nora"))
         assertEquals("!", safe("Nora 1010 1010")) // checked before 1 and 0 are folded to l and o
         assertEquals("Nora 2024", safe("Nora 2024"))
+        assertEquals("!", safe("OB5E 44D8")) // O reads as 0
+        assertEquals("!", safe("Nora 0F3A 9lC2")) // l reads as 1
+        assertEquals("!", safe("ABIE 4ID8")) // I reads as 1
         assertEquals("Café 2024", safe("Café 2024")) // each group needs a digit
         assertEquals("dead beef", safe("dead beef"))
         assertEquals("A1B2 Nora C3D4", safe("A1B2 Nora C3D4"))

@@ -285,6 +285,14 @@
       "input": "dead beef",
       "expect": "display",
       "display": "dead beef"
+    },
+    {
+      "input": "OB5E 44D8",
+      "expect": "reserved"
+    },
+    {
+      "input": "Nora 0F3A 9lC2",
+      "expect": "reserved"
     }
   ],
   "afterLowercase": {
@@ -293,5 +301,10 @@
     "1": "l",
     "0": "o"
   },
-  "afterLowercaseNote": "Applied after the confusables table and lowercasing, on both the name and every reserved word."
+  "afterLowercaseNote": "Applied after the confusables table and lowercasing, on both the name and every reserved word.",
+  "fingerprintCanonical": {
+    "o": "0",
+    "i": "1",
+    "l": "1"
+  }
 }
