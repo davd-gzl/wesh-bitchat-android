@@ -20,7 +20,7 @@ class ChannelManager(
     private val coroutineScope: CoroutineScope,
     private val onSwitchToMeshLocation: () -> Unit = {},
     /** Wesh has a single public room; legacy named and password channels are not reachable. */
-    private val legacyChannelsEnabled: Boolean = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
+    private val legacyChannelsEnabled: Boolean = !com.bitchat.android.BuildConfig.WESH_POLICY
 ) {
     
     // Channel encryption and security

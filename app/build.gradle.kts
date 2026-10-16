@@ -31,7 +31,12 @@ android {
         applicationId = "org.samouraiworld.wesh.android"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        buildConfigField("boolean", "WESH_LOCAL_ONLY", "true")
+        // Product-safety policy (recovery gate, permissions, QR-only private messages, no
+        // geohash/location/updater/Wi-Fi Aware). Never switches the Internet on or off.
+        buildConfigField("boolean", "WESH_POLICY", "true")
+        // Makes the Internet opt-in available. Sockets still need the runtime toggle
+        // (WeshNetworkPolicy.allowsNetwork()), which defaults off.
+        buildConfigField("boolean", "WESH_INTERNET_AVAILABLE", "true")
         versionCode = 43
         versionName = "0.1.0"
         buildConfigField(

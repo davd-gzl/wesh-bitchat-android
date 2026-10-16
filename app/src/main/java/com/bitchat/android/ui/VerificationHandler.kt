@@ -35,7 +35,7 @@ class VerificationHandler(
     private val messageManager: MessageManager,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
     /** Read-only; null while Internet mode is off or fenced, which fails closed. Never creates keys. */
-    private val ownedNpubs: () -> Set<String>? = { com.bitchat.android.services.WeshQrIdentity.ownedNpubs(context) }
+    private val ownedNpubs: suspend () -> Set<String>? = { com.bitchat.android.services.WeshQrIdentity.ownedNpubs(context) }
 ) {
     // Helper to get current mesh service (may change after panic clear)
     private val meshService: MeshService
@@ -157,11 +157,19 @@ class VerificationHandler(
             )
             if (!ok) return@launch
 
-            pendingQRVerifications.remove(peerID)
+            // Claim the attempt first so duplicate responses bail before any key store work.
+            if (!pendingQRVerifications.remove(peerID, pending)) return@launch
+            // Read my npubs off the Main thread. A panic, a cancel, a contact removal or a block during
+            // that read is caught below, and nothing suspends between those checks and the writes.
+            val generation = weshGeneration
+            val removals = contacts.removalEpoch
+            val owned = ownedNpubs()
+            if (generation != weshGeneration || removals != contacts.removalEpoch || !isFreshAttempt(pending)) return@launch
+            if (contacts.isBlocked(pending.noiseKeyHex.dataFromHexString() ?: return@launch)) return@launch
             val fp = fingerprintFromNoiseHex(pending.noiseKeyHex) ?: return@launch
             // The QR signature covers the npub and this response proves the signer holds the Noise session.
             // A contact list that could not be read must never be replaced: abort the verification.
-            contacts.enroll(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname, pending.npub, pending.npubProof, ownedNpubs())
+            contacts.enroll(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname, pending.npub, pending.npubProof, owned)
                 ?: return@launch
             completedAttempts[pending.noiseKeyHex.lowercase()] = nowMs()
             identityManager.setVerifiedFingerprint(fp, true)
@@ -190,9 +198,13 @@ class VerificationHandler(
     internal fun isFreshAttemptTime(startedAt: Long): Boolean = (nowMs() - startedAt) in 0..60_000L
     private fun isFreshAttempt(pending: PendingVerification): Boolean = isFreshAttemptTime(pending.startedAtMs)
 
-    fun clearWeshVerifications() { pendingQRVerifications.clear(); completedAttempts.clear() }
+    /** Bumped by panic and cancel so a verification resumed after either never writes. */
+    @Volatile private var weshGeneration = 0L
+
+    fun clearWeshVerifications() { weshGeneration++; pendingQRVerifications.clear(); completedAttempts.clear() }
 
     fun cancelWeshVerification(conversationID: String) {
+        weshGeneration++
         pendingQRVerifications.entries.removeIf { (_, pending) ->
             pending.noiseKeyHex.dataFromHexString()?.let { ContactIdentityResolver.contactConversationIdForNoiseKey(it) } == conversationID
         }

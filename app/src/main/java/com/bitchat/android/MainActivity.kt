@@ -85,7 +85,7 @@ class MainActivity : OrientationAwareActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         routeGate.pending = savedInstanceState?.getBoolean("wesh_pending_route", true) ?: true
-        if (BuildConfig.WESH_LOCAL_ONLY) {
+        if (BuildConfig.WESH_POLICY) {
             com.bitchat.android.ui.WeshWindowPrivacy.apply(this)
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             this.setRecentsScreenshotEnabled(false)
@@ -108,7 +108,7 @@ class MainActivity : OrientationAwareActivity() {
             return
         }
 
-        if (BuildConfig.WESH_LOCAL_ONLY) {
+        if (BuildConfig.WESH_POLICY) {
             @Suppress("DEPRECATION")
             val pendingIntent = if (Build.VERSION.SDK_INT >= 33) {
                 savedInstanceState?.getParcelable("wesh_pending_intent", Intent::class.java)
@@ -160,7 +160,7 @@ class MainActivity : OrientationAwareActivity() {
                     containerColor = MaterialTheme.colorScheme.background
                 ) { innerPadding ->
                     val modifier = Modifier.fillMaxSize().padding(innerPadding)
-                    if (BuildConfig.WESH_LOCAL_ONLY && !runtimeAttached) {
+                    if (BuildConfig.WESH_POLICY && !runtimeAttached) {
                         val startup by com.bitchat.android.startup.WeshRuntime.get(applicationContext).state.collectAsState()
                         val draftWipeRequired by com.bitchat.android.startup.WeshRuntime.draftWipeRequired.collectAsState()
                         val panicRecovery by com.bitchat.android.startup.WeshRuntime.recoveryState.collectAsState()
@@ -204,7 +204,7 @@ class MainActivity : OrientationAwareActivity() {
             }
         }
         
-        if (BuildConfig.WESH_LOCAL_ONLY) {
+        if (BuildConfig.WESH_POLICY) {
             lifecycleScope.launch {
                 com.bitchat.android.startup.WeshRuntime.get(applicationContext).state.collect { state ->
                     if (state is com.bitchat.android.startup.StartupCoordinator.State.Ready && !runtimeAttached) {
@@ -493,7 +493,7 @@ class MainActivity : OrientationAwareActivity() {
      * Check Location services status and proceed with onboarding flow
      */
     private fun requiresSystemLocationForMesh(): Boolean =
-        !BuildConfig.WESH_LOCAL_ONLY || Build.VERSION.SDK_INT < 31
+        !BuildConfig.WESH_POLICY || Build.VERSION.SDK_INT < 31
 
     private fun checkLocationAndProceed() {
         // For first-time users, skip location check and go straight to permissions
@@ -639,7 +639,7 @@ class MainActivity : OrientationAwareActivity() {
 
     private fun startMeshForegroundServiceBestEffort() {
         if (!runtimeAttached) return
-        if (BuildConfig.WESH_LOCAL_ONLY && !com.bitchat.android.startup.WeshRuntime.transportAllowed) {
+        if (BuildConfig.WESH_POLICY && !com.bitchat.android.startup.WeshRuntime.transportAllowed) {
             pendingMeshForegroundServiceStart = false
             return
         }
@@ -734,7 +734,7 @@ class MainActivity : OrientationAwareActivity() {
                 PoWPreferenceManager.init(this@MainActivity)
                 
                 // Initialize Location Notes Manager (extracted to separate file)
-                if (!BuildConfig.WESH_LOCAL_ONLY) com.bitchat.android.nostr.LocationNotesInitializer.initialize(this@MainActivity)
+                if (!BuildConfig.WESH_POLICY) com.bitchat.android.nostr.LocationNotesInitializer.initialize(this@MainActivity)
                 
                 // Ensure all permissions are still granted (user might have revoked in settings)
                 if (!permissionManager.areAllPermissionsGranted()) {
@@ -745,7 +745,7 @@ class MainActivity : OrientationAwareActivity() {
                 }
 
                 // Set up unified mesh delegate and start enabled transports
-                if (BuildConfig.WESH_LOCAL_ONLY && !com.bitchat.android.startup.WeshRuntime.transportAllowed) return@launch
+                if (BuildConfig.WESH_POLICY && !com.bitchat.android.startup.WeshRuntime.transportAllowed) return@launch
                 unifiedMeshService.delegate = chatViewModel
                 unifiedMeshService.startServices()
                 startMeshForegroundServiceBestEffort()
@@ -773,7 +773,7 @@ class MainActivity : OrientationAwareActivity() {
             return
         }
 
-        setIntent(if (BuildConfig.WESH_LOCAL_ONLY) com.bitchat.android.startup.boundedWeshStartupIntent(intent) else intent)
+        setIntent(if (BuildConfig.WESH_POLICY) com.bitchat.android.startup.boundedWeshStartupIntent(intent) else intent)
         routeGate.pending = true
         com.bitchat.android.service.AppShutdownCoordinator.cancelPendingShutdown()
         
@@ -792,7 +792,7 @@ class MainActivity : OrientationAwareActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("wesh_pending_route", routeGate.pending)
-        if (BuildConfig.WESH_LOCAL_ONLY && routeGate.pending) {
+        if (BuildConfig.WESH_POLICY && routeGate.pending) {
             outState.putParcelable("wesh_pending_intent", com.bitchat.android.startup.boundedWeshStartupIntent(intent))
         }
         super.onSaveInstanceState(outState)
@@ -808,7 +808,7 @@ class MainActivity : OrientationAwareActivity() {
     override fun onResume() {
         super.onResume()
         // Revoke stale live-location work before any resumed UI can use cached channels.
-        if (!BuildConfig.WESH_LOCAL_ONLY) LocationChannelManager.getInstance(applicationContext).syncPermissionState()
+        if (!BuildConfig.WESH_POLICY) LocationChannelManager.getInstance(applicationContext).syncPermissionState()
 
         // Check Bluetooth and Location status on resume and handle accordingly
         if (runtimeAttached && mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
@@ -870,7 +870,7 @@ class MainActivity : OrientationAwareActivity() {
                 val peerID = intent.getStringExtra(com.bitchat.android.ui.NotificationManager.EXTRA_PEER_ID)
                 if (peerID != null) {
                     // Open the private chat sheet with this peer
-                    if (BuildConfig.WESH_LOCAL_ONLY) lifecycleScope.launch { chatViewModel.startPrivateChat(peerID) }
+                    if (BuildConfig.WESH_POLICY) lifecycleScope.launch { chatViewModel.startPrivateChat(peerID) }
                     else { chatViewModel.showMeshPeerList(); chatViewModel.showPrivateChatSheet(peerID) }
                     
                     // Clear notifications for this sender since user is now viewing the chat
@@ -911,7 +911,7 @@ class MainActivity : OrientationAwareActivity() {
         val uri = intent.data ?: return
         if (uri.scheme != "bitchat" || uri.host != "verify") return
 
-        if (BuildConfig.WESH_LOCAL_ONLY) {
+        if (BuildConfig.WESH_POLICY) {
             // A forwarded URL must not enroll silently: show review and require an explicit action.
             chatViewModel.requestWeshQRReview(uri.toString())
             return

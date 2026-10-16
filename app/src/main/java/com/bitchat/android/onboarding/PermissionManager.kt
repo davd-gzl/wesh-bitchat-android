@@ -26,7 +26,7 @@ class PermissionManager(private val context: Context) {
     private val sharedPrefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private fun shouldRequireWifiAwarePermission(): Boolean {
-        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) return false
+        if (com.bitchat.android.BuildConfig.WESH_POLICY) return false
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
         val enabled = try {
             com.bitchat.android.ui.debug.DebugPreferenceManager.getWifiAwareEnabled(false)
@@ -103,7 +103,7 @@ class PermissionManager(private val context: Context) {
         }
 
         // Legacy BLE scanning needs location permission; modern Wesh uses neverForLocation.
-        if (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY || Build.VERSION.SDK_INT < 31) permissions.addAll(listOf(
+        if (!com.bitchat.android.BuildConfig.WESH_POLICY || Build.VERSION.SDK_INT < 31) permissions.addAll(listOf(
             Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.ACCESS_FINE_LOCATION
         ))
@@ -124,7 +124,7 @@ class PermissionManager(private val context: Context) {
      */
     fun needsBackgroundLocationPermission(): Boolean {
         // Wesh never asks for background location; the manifest removes the permission.
-        return !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+        return !com.bitchat.android.BuildConfig.WESH_POLICY && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
     }
 
     fun getBackgroundLocationPermission(): String? {
@@ -270,7 +270,7 @@ class PermissionManager(private val context: Context) {
             Manifest.permission.ACCESS_FINE_LOCATION
         )
 
-        if (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY || Build.VERSION.SDK_INT < 31) categories.add(
+        if (!com.bitchat.android.BuildConfig.WESH_POLICY || Build.VERSION.SDK_INT < 31) categories.add(
             PermissionCategory(
                 type = PermissionType.PRECISE_LOCATION,
                 description = context.getString(R.string.perm_location_desc),
