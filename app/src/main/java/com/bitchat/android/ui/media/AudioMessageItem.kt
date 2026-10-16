@@ -17,6 +17,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import com.bitchat.android.ui.sentByNickname
 import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.R
 import com.bitchat.android.core.ui.component.text.AnnotatedClickableText
@@ -84,7 +85,7 @@ fun AudioMessageItem(
                     progressColor = overrideColor,
                     modifier = Modifier.widthIn(max = 260.dp)
                 )
-                val showCancel = message.sender == currentUserNickname && (message.deliveryStatus is com.bitchat.android.model.DeliveryStatus.PartiallyDelivered)
+                val showCancel = message.sentByNickname(currentUserNickname) && (message.deliveryStatus is com.bitchat.android.model.DeliveryStatus.PartiallyDelivered)
                 if (showCancel) {
                     Spacer(Modifier.width(8.dp))
                     Box(
@@ -148,7 +149,7 @@ fun AudioMessageItem(
                 progressOverride = overrideProgress,
                 progressColor = overrideColor,
             )
-            val showCancel = message.sender == currentUserNickname && (message.deliveryStatus is com.bitchat.android.model.DeliveryStatus.PartiallyDelivered)
+            val showCancel = message.sentByNickname(currentUserNickname) && (message.deliveryStatus is com.bitchat.android.model.DeliveryStatus.PartiallyDelivered)
             if (showCancel) {
                 Spacer(Modifier.width(8.dp))
                 Box(

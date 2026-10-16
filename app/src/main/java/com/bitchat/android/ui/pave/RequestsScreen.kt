@@ -40,7 +40,8 @@ data class PaveRequestItem(
     val id: String,
     val nickname: String,
     val fingerprint: String?,
-    val pendingMessages: Int,
+    /** Messages waiting, when known; their content is never shown. */
+    val pendingMessages: Int?,
     val verifiedNamesakeFingerprint: String? = null,
 )
 
@@ -101,8 +102,9 @@ private fun RequestCard(request: PaveRequestItem, onExchange: () -> Unit, onDism
             Text(remoteDisplayName(request.nickname), style = WeshType.headline, color = c.ink)
             FingerprintLine(request.fingerprint)
             Text(
-                stringResource(R.string.wesh_pave_unverified) + " · " +
-                    pluralStringResource(R.plurals.wesh_pave_request_preview, request.pendingMessages, request.pendingMessages),
+                stringResource(R.string.wesh_pave_unverified) + " · " + (request.pendingMessages?.let {
+                    pluralStringResource(R.plurals.wesh_pave_request_preview, it, it)
+                } ?: stringResource(R.string.wesh_pave_fluo_request_hidden)),
                 style = WeshType.caption,
                 color = c.inkMuted,
             )

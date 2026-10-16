@@ -39,7 +39,8 @@ object WeshMessageRequests {
         val key = fingerprint ?: peerID
         val current = _requests.value
         val existing = current.firstOrNull { (it.fingerprint ?: it.peerID) == key }
-        val name = safeDisplayName(nickname, peerID.take(8))
+        // Empty when nothing visible is left: the display rule shows it unnamed, not as hex.
+        val name = safeDisplayName(nickname, "")
         if (existing != null) {
             if (now - existing.lastSeen in 0 until SOURCE_INTERVAL_MS) return
             _requests.value = listOf(existing.copy(peerID = peerID, nickname = name, lastSeen = now)) +

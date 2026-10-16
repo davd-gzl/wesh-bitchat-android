@@ -21,6 +21,17 @@ class WeshPaveAppLogicTest {
     }
 
     @Test
+    fun `a remote fingerprint comes from the proven session key, never the announced one`() {
+        val announced = ByteArray(32) { 7 } // what an impostor can copy from Nora's announces
+        val proven = ByteArray(32) { 9 }
+        assertEquals(PaveFingerprint.short(proven), paveSenderFingerprint("synthetic-peer") { proven })
+        assertNull(paveSenderFingerprint("synthetic-peer") { null })
+        assertNull(paveSenderFingerprint(null) { announced })
+        val app = java.io.File("src/main/java/com/bitchat/android/ui/pave/WeshPaveApp.kt").readText()
+        assertFalse("WeshPaveApp reads an announced key", "noisePublicKey" in app || "getMeshPeerInfo" in app)
+    }
+
+    @Test
     fun `the public room never claims a receipt`() {
         val delivered = DeliveryStatus.Delivered("synthetic", Date(0))
         assertEquals(PaveDelivery.Sent, paveDelivery(delivered, public = true))
