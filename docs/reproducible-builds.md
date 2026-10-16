@@ -1,8 +1,7 @@
 # Reproducible builds
 
 Bitchat's canonical release build produces byte-for-byte reproducible unsigned
-phone APKs and Android App Bundles (AABs); the Wear module has no release
-variant. CI builds the release
+phone APKs and Android App Bundles (AABs). CI builds the release
 twice in independent jobs and exposes a verified release artifact only when
 every canonical byte matches.
 
@@ -52,7 +51,6 @@ The authoritative pins are:
 - `gradle/libs.versions.toml`
 - `settings-gradle.lockfile`
 - `app/gradle.lockfile`
-- `wear/gradle.lockfile`
 - `gradle/verification-metadata.xml`
 - `tools/reproducible-builds/TOOLCHAIN.env`
 - `tools/arti-build/TOOLCHAIN.env`

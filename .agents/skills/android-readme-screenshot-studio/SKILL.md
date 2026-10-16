@@ -49,7 +49,7 @@ Protect the user's active checkout:
 
 1. Inspect `git status` without modifying it.
 2. Fetch `origin/main`.
-3. Create a new `codex/` branch in a temporary worktree rooted at the current
+3. Create a new `chore/` branch in a temporary worktree rooted at the current
    `origin/main`.
 4. Keep screenshots and raw captures in a separate temporary artifact
    directory so cleanup or checkout operations cannot remove them.
@@ -229,7 +229,7 @@ GitHub writes require user authorization. When authorized:
 
 1. Stage only intended files.
 2. Commit without overriding author or committer identity.
-3. Push the `codex/` branch.
+3. Push the `chore/` branch.
 4. Use `gh pr create` or update the existing PR.
 5. Describe the exact capture sequence, synthetic fixture disclosure,
    repository-safe validation commands, and limitations. Keep emulator,

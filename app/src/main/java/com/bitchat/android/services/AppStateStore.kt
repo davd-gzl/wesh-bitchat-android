@@ -425,6 +425,21 @@ object AppStateStore {
         is DeliveryStatus.Failed -> 0
     }
 
+    /**
+     * Status from a transport that authenticated the sender as this conversation's contact: the
+     * message must belong to [conversationID], so an ack can never touch another conversation.
+     * Returns false (nothing written) when it does not, including when its history is unloaded.
+     */
+    fun updatePrivateMessageStatusIn(conversationID: String, messageID: String, status: DeliveryStatus): Boolean {
+        synchronized(this) {
+            val canonical = ContactDirectory.canonicalConversationId(conversationID)
+            if (_privateMessages.value[canonical].orEmpty().none { it.id == messageID }) return false
+            // Message IDs are unique across conversations (UNIQUE column, seenMessageIds).
+            updatePrivateMessageStatus(messageID, status)
+            return true
+        }
+    }
+
     fun updatePrivateMessageStatus(messageID: String, status: DeliveryStatus) {
         synchronized(this) {
             if (privateConversationWritesSuspended) return

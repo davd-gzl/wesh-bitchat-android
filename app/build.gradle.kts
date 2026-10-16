@@ -37,8 +37,8 @@ android {
         // Makes the Internet opt-in available. Sockets still need the runtime toggle
         // (WeshNetworkPolicy.allowsNetwork()), which defaults off.
         buildConfigField("boolean", "WESH_INTERNET_AVAILABLE", "true")
-        versionCode = 43
-        versionName = "0.1.0"
+        versionCode = 100
+        versionName = "1.0.0"
         buildConfigField(
             "String",
             "GITHUB_RELEASE_CERT_SHA256",

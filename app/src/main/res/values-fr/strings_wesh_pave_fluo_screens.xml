@@ -70,6 +70,13 @@
     <string name="wesh_pave_fluo_media_unsupported">Média non pris en charge</string>
     <string name="wesh_pave_fluo_draft_retry">Réessayer l’enregistrement des brouillons</string>
     <string name="wesh_pave_fluo_request_hidden">Message en attente, contenu masqué</string>
+    <string name="wesh_pave_fluo_notif_title">Être prévenu d’un message</string>
+    <string name="wesh_pave_fluo_notif_body">Les notifications ne montrent jamais le contenu d’un message. Le surnom n’y apparaît que si vous l’activez dans Réglages.</string>
+    <string name="wesh_pave_fluo_notif_optional">Vous pouvez refuser : Wesh fonctionne quand même, ouvert à l’écran.</string>
+    <string name="wesh_pave_fluo_notif_allow">Autoriser les notifications</string>
+    <string name="wesh_pave_fluo_notif_later">Plus tard</string>
+    <string name="wesh_pave_fluo_bt_required">Wesh a besoin du Bluetooth pour fonctionner.</string>
+    <string name="wesh_pave_fluo_init_failed">Wesh n’a pas pu démarrer. Réessayez.</string>
     <!-- Signalement envoyé à l’équipe Wesh : facultatif, par un e-mail que la personne relit et envoie -->
     <string name="wesh_report_send_title">Envoyer le signalement ?</string>
     <string name="wesh_report_send_body">Facultatif. Votre application mail ouvre un brouillon avec le surnom affiché, l’empreinte et le motif, plus le message s’il s’agit du salon public. Aucun message privé n’est ajouté. Vous pouvez le modifier avant l’envoi ; rien ne part sans vous. L’équipe verra votre adresse e-mail.</string>

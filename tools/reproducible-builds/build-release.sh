@@ -64,9 +64,6 @@ if [ ! -f "$aab_source" ]; then
 fi
 cp "$aab_source" "$OUTPUT_DIR/bitchat-android-release-unsigned.aab"
 
-# The Wear module (inherited com.bitchat.droid application ID) is not a Wesh artifact; it has no
-# release variant and is never packaged or uploaded.
-
 # AGP cannot build split APKs and an app bundle from the same intermediates.
 ./gradlew "${gradle_args[@]}" :app:clean :app:assembleRelease
 
