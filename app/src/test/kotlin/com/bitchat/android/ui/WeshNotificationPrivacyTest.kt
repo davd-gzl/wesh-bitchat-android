@@ -81,6 +81,26 @@ class WeshNotificationPrivacyTest {
         assertTrue(notification.flags and Notification.FLAG_LOCAL_ONLY != 0)
     }
 
+    @Test
+    fun `verification notification hides the contact nickname unless opted in`() {
+        backgroundManager().showVerificationSuccessNotification(nickname, "aaaabbbbccccdddd")
+
+        val notification = postedNotifications().single()
+        assertFalse(flatten(notification.extras).contains(nickname))
+        assertEquals(label(R.string.wesh_notification_verified_body), notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+        assertTrue(notification.flags and Notification.FLAG_LOCAL_ONLY != 0)
+        val intent = shadowOf(notification.contentIntent).savedIntent
+        assertFalse(intent.hasExtra(NotificationManager.EXTRA_SENDER_NICKNAME))
+        assertEquals("aaaabbbbccccdddd", intent.getStringExtra(NotificationManager.EXTRA_PEER_ID))
+    }
+
+    @Test
+    fun `verification notification names the contact after opt in`() {
+        WeshPreferences(app).notificationShowsSender = true
+        backgroundManager().showVerificationSuccessNotification(nickname, "aaaabbbbccccdddd")
+        assertEquals(label(R.string.verify_success_body), postedNotifications().single().extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+    }
+
     private fun backgroundManager() = NotificationManager(context, NotificationManagerCompat.from(context), isConversationMuted = { false })
         .apply { setAppBackgroundState(true) }
 

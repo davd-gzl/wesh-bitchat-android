@@ -3,4 +3,5 @@
     <string name="wesh_notification_new_message">Nouveau message</string>
     <string name="wesh_notification_open_to_read">Ouvrez Wesh pour le lire</string>
     <string name="wesh_notification_message_count">%1$d nouveaux messages</string>
+    <string name="wesh_notification_verified_body">Identité vérifiée sur ce téléphone.</string>
 </resources>

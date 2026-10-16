@@ -174,7 +174,7 @@ class VerificationHandler(
                 identityManager.cacheNoiseFingerprint(noiseKeyHex, fp)
             }
             addVerificationSystemMessage(peerID, context.getString(R.string.verify_success_system_message, name))
-            sendVerificationNotification(context.getString(R.string.verify_success_title), context.getString(R.string.verify_success_body, name), peerID)
+            notificationManager.showVerificationSuccessNotification(name, peerID)
 
 
         }
@@ -347,9 +347,6 @@ class VerificationHandler(
         return nick ?: peerID.take(8)
     }
 
-    private fun sendVerificationNotification(title: String, body: String, peerID: String) {
-        notificationManager.showVerificationNotification(title, body, peerID)
-    }
 
     private fun fingerprintFromNoiseHex(noiseHex: String): String? {
         val bytes = noiseHex.dataFromHexString() ?: return null
