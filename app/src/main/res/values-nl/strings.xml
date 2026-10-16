@@ -120,7 +120,6 @@
     <string name="cd_cancel">Annuleren</string>
     <string name="cd_link">Link</string>
     <string name="cd_privacy_protected">About message privacy</string>
-    <string name="cd_record_voice">Spraaknotitie opnemen</string>
     <string name="cd_offline_mesh_chat">Offline meshchat</string>
     <string name="cd_end_to_end_encryption">End-to-end-versleuteling</string>
 
@@ -239,7 +238,6 @@
     <!-- Toestemmingstypen -->
     <string name="perm_type_nearby_devices">Apparaten in de buurt</string>
     <string name="perm_type_precise_location">Precieze locatie</string>
-    <string name="perm_type_microphone">Microfoon</string>
     <string name="perm_type_notifications">Meldingen</string>
     <string name="perm_type_battery_optimization">Batterijoptimalisatie</string>
     <string name="perm_type_other">Overig</string>
