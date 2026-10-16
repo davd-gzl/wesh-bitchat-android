@@ -687,9 +687,7 @@ class NostrRelayManager private constructor() {
             if (wasConnected) {
                 desiredConnected.set(true)
             }
-            Log.w(TAG, "🚨 Cleared NostrRelayManager subscriptions, cache, and connections for panic mode")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to clear NostrRelayManager on panic: ${e.message}")
+        } catch (_: Exception) {
         }
     }
     

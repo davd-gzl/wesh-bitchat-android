@@ -5,6 +5,7 @@ import android.content.Context
 import com.bitchat.android.identity.SecureIdentityStateManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -36,6 +37,14 @@ class WeshContactStoreFailClosedTest {
         assertTrue(store.loadFailed.value)
         assertFalse(store.record(ByteArray(32) { 7 }, "Synthetic"))
         assertFalse(store.remove("any"))
+        assertTrue(store.contacts.value.isEmpty())
+        assertEquals(unreadable, identityPrefs.getString("wesh_qr_contacts_v1", null))
+    }
+
+    @Test
+    fun `QR enrollment is refused after a failed load`() {
+        val store = store()
+        assertNull(store.enroll(ByteArray(32) { 7 }, "Synthetic", null, null, emptySet()))
         assertTrue(store.contacts.value.isEmpty())
         assertEquals(unreadable, identityPrefs.getString("wesh_qr_contacts_v1", null))
     }

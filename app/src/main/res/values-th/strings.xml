@@ -29,12 +29,12 @@
     <string name="battery_optimization_not_required">ไม่จำเป็นต้องเพิ่มประสิทธิภาพแบตเตอรี่</string>
     <string name="battery_optimization_checking">กำลังตรวจสอบการเพิ่มประสิทธิภาพแบตเตอรี่</string>
     <string name="battery_optimization_why_disable">ทำไมต้องปิดการเพิ่มประสิทธิภาพแบตเตอรี่?</string>
-    <string name="battery_optimization_explanation">bitchat ทำงานเบื้องหลังเพื่อคงการเชื่อมต่อแบบเมชกับอุปกรณ์ใกล้เคียง การเพิ่มประสิทธิภาพแบตเตอรี่อาจขัดจังหวะการเชื่อมต่อเหล่านี้ ทำให้ข้อความล่าช้าหรือสูญหาย\n\nการปิดการเพิ่มประสิทธิภาพแบตเตอรี่ช่วยให้การสื่อสารแบบเพียร์ทูเพียร์เชื่อถือได้</string>
+    <string name="battery_optimization_explanation">Wesh ทำงานเบื้องหลังเพื่อคงการเชื่อมต่อแบบเมชกับอุปกรณ์ใกล้เคียง การเพิ่มประสิทธิภาพแบตเตอรี่อาจขัดจังหวะการเชื่อมต่อเหล่านี้ ทำให้ข้อความล่าช้าหรือสูญหาย\n\nการปิดการเพิ่มประสิทธิภาพแบตเตอรี่ช่วยให้การสื่อสารแบบเพียร์ทูเพียร์เชื่อถือได้</string>
     <string name="battery_optimization_disable_button">ปิดการเพิ่มประสิทธิภาพแบตเตอรี่</string>
-    <string name="battery_optimization_note">หมายเหตุ: คุณสามารถเปลี่ยนได้ภายหลังที่ การตั้งค่า Android &gt; แอป &gt; bitchat &gt; แบตเตอรี่</string>
-    <string name="battery_optimization_not_supported_explanation">อุปกรณ์ของคุณไม่ต้องการการตั้งค่าการเพิ่มประสิทธิภาพแบตเตอรี่ bitchat จะทำงานตามปกติ</string>
-    <string name="battery_optimization_not_supported_message">อุปกรณ์ของคุณไม่ต้องการการตั้งค่าการเพิ่มประสิทธิภาพแบตเตอรี่ bitchat จะทำงานตามปกติ</string>
-    <string name="battery_optimization_success_message">bitchat สามารถทำงานเบื้องหลังได้อย่างเชื่อถือได้</string>
+    <string name="battery_optimization_note">หมายเหตุ: คุณสามารถเปลี่ยนได้ภายหลังที่ การตั้งค่า Android &gt; แอป &gt; Wesh &gt; แบตเตอรี่</string>
+    <string name="battery_optimization_not_supported_explanation">อุปกรณ์ของคุณไม่ต้องการการตั้งค่าการเพิ่มประสิทธิภาพแบตเตอรี่ Wesh จะทำงานตามปกติ</string>
+    <string name="battery_optimization_not_supported_message">อุปกรณ์ของคุณไม่ต้องการการตั้งค่าการเพิ่มประสิทธิภาพแบตเตอรี่ Wesh จะทำงานตามปกติ</string>
+    <string name="battery_optimization_success_message">Wesh สามารถทำงานเบื้องหลังได้อย่างเชื่อถือได้</string>
     <string name="battery_optimization_benefits">• ส่งข้อความได้อย่างเชื่อถือ\n• รักษาการเชื่อมต่อแบบเมช\n• ส่งต่อข้อความเบื้องหลัง\n• ป้องกันการหลุดการเชื่อมต่อ</string>
     <string name="battery_optimization_check_again">ตรวจสอบอีกครั้ง</string>
     <string name="battery_optimization_skip">ข้ามตอนนี้</string>
@@ -57,8 +57,8 @@
     <string name="notification_new_activity_in">กิจกรรมใหม่ใน %1$s</string>
     <string name="notification_messages_in">ข้อความใน %1$s</string>
     <string name="notification_joined_conversation">%1$s ได้เข้าร่วมการสนทนา</string>
-    <string name="notification_geohash_summary_title_mentions">bitchat – %1$d การกล่าวถึง</string>
-    <string name="notification_geohash_summary_title">bitchat – แชทตามตำแหน่ง</string>
+    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d การกล่าวถึง</string>
+    <string name="notification_geohash_summary_title">Wesh – แชทตามตำแหน่ง</string>
     <string name="notification_geohash_summary_text">%1$d ข้อความจาก %2$d พื้นที่</string>
     <string name="notification_mesh_mention_title_singular">ถูกกล่าวถึงในแชทเมช</string>
     <string name="notification_mesh_mention_title_plural">ถูกกล่าวถึง %1$d ครั้งในแชทเมช</string>
@@ -244,8 +244,8 @@
     <!-- หน้าจอเริ่มต้นใช้งาน -->
     <string name="location_services_required">ต้องใช้บริการตำแหน่ง</string>
     <string name="privacy_first">ความเป็นส่วนตัวมาก่อน</string>
-    <string name="location_explanation">bitchat ไม่ติดตามตำแหน่งของคุณ\n\nต้องใช้บริการตำแหน่งสำหรับการสแกนบลูทูธและคุณสมบัติแชท geohash</string>
-    <string name="location_needs_for">bitchat ต้องใช้บริการตำแหน่งสำหรับ:</string>
+    <string name="location_explanation">Wesh ไม่ติดตามตำแหน่งของคุณ\n\nต้องใช้บริการตำแหน่งสำหรับการสแกนบลูทูธและคุณสมบัติแชท geohash</string>
+    <string name="location_needs_for">Wesh ต้องใช้บริการตำแหน่งสำหรับ:</string>
     <string name="location_needs_bullets">• สแกนอุปกรณ์บลูทูธ\n• ค้นพบผู้ใช้ใกล้เคียงในเครือข่ายเมช\n• คุณสมบัติแชท geohash\n• ไม่มีการติดตามหรือเก็บตำแหน่ง</string>
     <string name="open_location_settings">เปิดการตั้งค่าตำแหน่ง</string>
     <string name="check_again">ตรวจสอบอีกครั้ง</string>
@@ -276,7 +276,7 @@
     <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">สิทธิ์</string>
     <string name="grant_permissions">ให้สิทธิ์</string>
-    <string name="location_tracking_warning">bitchat ไม่ติดตามตำแหน่งของคุณ</string>
+    <string name="location_tracking_warning">Wesh ไม่ติดตามตำแหน่งของคุณ</string>
     <string name="nobody_around">ไม่มีใครอยู่ใกล้…</string>
     <string name="you_suffix"> (คุณ)</string>
     <string name="pan_zoom_instruction">ลาก/ซูมเพื่อเลือก geohash</string>

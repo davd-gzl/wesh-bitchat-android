@@ -25,8 +25,7 @@ class BluetoothGattServerManager(
     private val connectionTracker: BluetoothConnectionTracker,
     private val permissionManager: BluetoothPermissionManager,
     private val powerManager: PowerManager,
-    private val delegate: BluetoothConnectionManagerDelegate?,
-    private val myPeerID: String
+    private val delegate: BluetoothConnectionManagerDelegate?
 ) {
     
     companion object {
@@ -34,6 +33,19 @@ class BluetoothGattServerManager(
         // Self-healing advertising recovery tuning
         private const val ADVERTISE_RETRY_BASE_MS = 3_000L      // base backoff for transient advertise failures
         private const val ADVERTISE_MAX_RETRY_DELAY_MS = 30_000L // cap on backoff delay
+
+        internal fun advertiseData(): AdvertiseData = AdvertiseData.Builder()
+            .addServiceUuid(ParcelUuid(AppConstants.Mesh.Gatt.SERVICE_UUID))
+            .setIncludeTxPowerLevel(false)
+            .setIncludeDeviceName(false)
+            .build()
+
+        // A stable identifier in broadcast data lets any passive scanner follow a phone
+        // across MAC rotations and days. Peers deduplicate through the authenticated announce.
+        internal fun scanResponseData(): AdvertiseData = AdvertiseData.Builder()
+            .setIncludeTxPowerLevel(false)
+            .setIncludeDeviceName(false)
+            .build()
     }
     
     // Core Bluetooth components
@@ -411,26 +423,9 @@ class BluetoothGattServerManager(
 
         val settings = powerManager.getAdvertiseSettings()
         
-        val data = AdvertiseData.Builder()
-            .addServiceUuid(ParcelUuid(AppConstants.Mesh.Gatt.SERVICE_UUID))
-            .setIncludeTxPowerLevel(false)
-            .setIncludeDeviceName(false)
-            .build()
-            
-        // Add stable identity (first 8 bytes of peerID) to Scan Response
-        // This allows scanners to deduplicate devices even if MAC address rotates
-        val peerIDBytes = try {
-            myPeerID.chunked(2).map { it.toInt(16).toByte() }.toByteArray().take(8).toByteArray()
-        } catch (e: Exception) {
-            ByteArray(0)
-        }
-        
-        val scanResponse = AdvertiseData.Builder()
-            .addServiceData(ParcelUuid(AppConstants.Mesh.Gatt.SERVICE_UUID), peerIDBytes)
-            .setIncludeTxPowerLevel(false)
-            .setIncludeDeviceName(false)
-            .build()
-        
+        val data = advertiseData()
+        val scanResponse = scanResponseData()
+
         val generation = synchronized(serverStateLock) {
             if (!isActive || !serviceReady) return
             serverGeneration

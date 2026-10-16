@@ -15,7 +15,23 @@ class WeshContactStore internal constructor(
     private val identity: SecureIdentityStateManager,
     private val blockPreferences: SharedPreferences
 ) {
-    data class Contact(val noiseHex: String, val nickname: String) {
+    /**
+     * [npub] comes only from a signed QR proven over Noise; null means Bluetooth-only.
+     * [npubProven]: the QR also carried a valid proof by the npub key (NPUB-PROOF rules).
+     * [npubWarning]: an npub conflict or downgrade the user should review. It survives every
+     * path except a clean QR re-scan of this contact, and blocks Internet delivery meanwhile.
+     */
+    data class Contact(
+        val noiseHex: String,
+        val nickname: String,
+        val npub: String? = null,
+        val npubProven: Boolean = false,
+        val npubWarning: Boolean = false
+    ) {
+        /** False: the UI asks to rescan the QR before Internet delivery is possible. */
+        val internetReachable: Boolean get() = npub != null && !npubWarning
+        /** The npub Internet delivery may use: none for Bluetooth-only or flagged contacts. */
+        val deliveryNpub: String? get() = npub.takeIf { internetReachable }
         val key: ByteArray get() = noiseHex.dataFromHexString()!!
         val conversationID: String get() = ContactIdentityResolver.contactConversationIdForNoiseKey(key)
     }
@@ -32,7 +48,10 @@ class WeshContactStore internal constructor(
             val row = array.getJSONObject(index)
             val hex = row.getString("noise")
             val name = row.getString("nickname")
-            if (!hex.matches(Regex("[0-9a-f]{64}")) || name.toByteArray().size > 255) null else Contact(hex, name)
+            val npub = row.optString("npub").takeIf(WeshNpubPolicy::isValid)
+            val proven = npub != null && row.optBoolean("npubProven", false)
+            val warning = row.optBoolean("npubWarning", false)
+            if (!hex.matches(Regex("[0-9a-f]{64}")) || name.toByteArray().size > 255) null else Contact(hex, name, npub, proven, warning)
         }.distinctBy { it.noiseHex }.takeLast(256).also { _loadFailed.value = false }
     } catch (_: Exception) {
         _loadFailed.value = true
@@ -46,11 +65,47 @@ class WeshContactStore internal constructor(
         return !_loadFailed.value
     }
 
-    @Synchronized fun record(key: ByteArray, nickname: String): Boolean {
+    /**
+     * QR enrollment after a successful Noise challenge: evaluates [WeshNpubPolicy.enroll] on the
+     * current contacts and persists under one lock, so no other enrollment can interleave.
+     * Returns null, writing nothing, when the stored contacts could not be read.
+     */
+    @Synchronized fun enroll(
+        key: ByteArray,
+        nickname: String,
+        npub: String?,
+        proof: Boolean?,
+        ownedNpubs: Set<String>?
+    ): WeshNpubPolicy.Enrollment? {
+        if (_loadFailed.value) return null
+        val decision = WeshNpubPolicy.enroll(npub, proof, ownedNpubs, _contacts.value, key.hexEncodedString())
+        if (!record(key, nickname, decision)) return null
+        return decision
+    }
+
+    /**
+     * Applies a decision; evicted contacts lose the npub and are flagged. Caller holds the lock.
+     * Refuses (false) after a failed load so an unreadable list is never overwritten.
+     */
+    @Synchronized internal fun record(key: ByteArray, nickname: String, enrollment: WeshNpubPolicy.Enrollment? = null): Boolean {
         require(key.size == 32 && nickname.toByteArray().size <= 255)
         if (_loadFailed.value) return false
         val hex = key.hexEncodedString()
-        persist((_contacts.value.filterNot { it.noiseHex == hex } + Contact(hex, nickname)).takeLast(256))
+        val existing = _contacts.value.firstOrNull { it.noiseHex == hex }
+        val others = _contacts.value.filterNot { it.noiseHex == hex }.map {
+            if (enrollment != null && it.noiseHex in enrollment.evict && it.npub == enrollment.npub && !it.npubProven) {
+                it.copy(npub = null, npubProven = false, npubWarning = true)
+            } else it
+        }
+        var npub = enrollment?.npub?.takeIf(WeshNpubPolicy::isValid)
+        var warning = enrollment?.warning == true || (enrollment?.kept == true && existing?.npubWarning == true)
+        // Invariant re-check: nobody else may still hold the npub being bound.
+        if (npub != null && others.any { it.npub == npub }) {
+            npub = null
+            warning = true
+        }
+        val self = Contact(hex, nickname, npub, npub != null && enrollment?.proven == true, warning)
+        persist((others + self).takeLast(256))
         return true
     }
     @Synchronized fun remove(conversationID: String): Boolean {
@@ -65,6 +120,11 @@ class WeshContactStore internal constructor(
         persist(emptyList())
         _loadFailed.value = false
     }
+    /** Inbound resolution: the proven holder, else a single unproven holder; ambiguous is null. */
+    fun forNpub(npub: String): Contact? {
+        val holders = _contacts.value.filter { it.npub == npub }
+        return holders.firstOrNull { it.npubProven } ?: holders.singleOrNull()
+    }
     fun contact(conversationID: String): Contact? = _contacts.value.firstOrNull { it.conversationID == conversationID }
     fun forFingerprint(fingerprint: String): Contact? = _contacts.value.firstOrNull {
         ContactIdentityResolver.fingerprintHex(it.key) == fingerprint
@@ -76,7 +136,9 @@ class WeshContactStore internal constructor(
     fun blockedFingerprints(): Set<String> = blockPreferences.getStringSet("blocked_users", emptySet()).orEmpty().toSet()
     private fun persist(contacts: List<Contact>) {
         val array = JSONArray()
-        contacts.forEach { array.put(JSONObject().put("noise", it.noiseHex).put("nickname", it.nickname)) }
+        contacts.forEach { array.put(JSONObject().put("noise", it.noiseHex).put("nickname", it.nickname).putOpt("npub", it.npub)
+            .putOpt("npubProven", if (it.npubProven) true else null)
+            .putOpt("npubWarning", if (it.npubWarning) true else null)) }
         identity.storeSecureValue(storageKey, array.toString())
         _contacts.value = contacts
     }

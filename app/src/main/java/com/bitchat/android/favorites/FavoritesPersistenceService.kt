@@ -246,7 +246,6 @@ class FavoritesPersistenceService private constructor(private val context: Conte
         saveFavorites()
         notifyChanged(keyHex)
 
-        Log.d(TAG, "Updated favorite status for $nickname: $isFavorite")
     }
 
     /** Update peer favorited-us flag */

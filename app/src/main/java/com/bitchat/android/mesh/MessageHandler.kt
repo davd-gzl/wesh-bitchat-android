@@ -377,7 +377,6 @@ class MessageHandler(
                 .updateFromAnnouncement(peerID, nickname, neighborsOrNull, packet.timestamp)
         } catch (_: Exception) { }
 
-        Log.d(TAG, "Verified announce from $peerID (${announcement.nickname})")
         return AnnounceHandlingResult.Accepted(isFirstAnnounce)
     }
     
@@ -436,7 +435,6 @@ class MessageHandler(
         if (peerID == myPeerID) return true
         val senderNickname = delegate?.getPeerNickname(peerID)
         if (senderNickname != null) {
-            Log.d(TAG, "Received message from $senderNickname")
             delegate?.updatePeerNickname(peerID, senderNickname)
         }
         
