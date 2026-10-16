@@ -11,8 +11,9 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * Flood bounds: one update per source (fingerprint, else peer ID) per [SOURCE_INTERVAL_MS]; at
  * most [MAX_NEW_SOURCES_PER_WINDOW] new sources per [NEW_SOURCE_WINDOW_MS]; at most
- * [MAX_REQUESTS] entries. When full, only an unauthenticated entry shown for at least
- * [MIN_DISPLAY_AGE_MS] may be evicted; authenticated entries are never evicted.
+ * [MAX_REQUESTS] entries. When full, the least recently updated entry shown for at least
+ * [MIN_DISPLAY_AGE_MS] is evicted, whatever its type: Noise keys are cheap, so authenticated
+ * entries must not be able to lock the inbox.
  */
 object WeshMessageRequests {
     data class Request(
@@ -49,7 +50,7 @@ object WeshMessageRequests {
         if (newSourceTimes.size >= MAX_NEW_SOURCES_PER_WINDOW) return
         var kept = current
         if (kept.size >= MAX_REQUESTS) {
-            val victim = kept.lastOrNull { it.fingerprint == null && now - it.firstSeen >= MIN_DISPLAY_AGE_MS } ?: return
+            val victim = kept.lastOrNull { now - it.firstSeen >= MIN_DISPLAY_AGE_MS } ?: return
             kept = kept.filterNot { it === victim }
         }
         newSourceTimes.addLast(now)

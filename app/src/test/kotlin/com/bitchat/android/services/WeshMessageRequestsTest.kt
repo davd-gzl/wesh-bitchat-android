@@ -36,31 +36,29 @@ class WeshMessageRequestsTest {
     }
 
     @Test
-    fun `authenticated requests are never evicted`() {
+    fun `a full inbox of authenticated requests still admits a new one by evicting the oldest`() {
         repeat(WeshMessageRequests.MAX_REQUESTS) { WeshMessageRequests.record("peer-$it", "Synthetic", fp(it), time); nextWindowSlot() }
         WeshMessageRequests.record("peer-new", "Synthetic", fp(999), time)
-        WeshMessageRequests.record("anon", "Synthetic", null, time)
 
         val requests = WeshMessageRequests.requests.value
         assertEquals(WeshMessageRequests.MAX_REQUESTS, requests.size)
-        assertTrue(requests.all { it.fingerprint != null && it.fingerprint != fp(999) })
+        assertEquals("peer-new", requests.first().peerID)
+        assertTrue(requests.none { it.peerID == "peer-0" })
     }
 
     @Test
-    fun `when full only an unauthenticated entry shown long enough is evicted`() {
+    fun `when full an entry shown too briefly is skipped for an older one`() {
         repeat(WeshMessageRequests.MAX_REQUESTS - 1) { WeshMessageRequests.record("peer-$it", "Synthetic", fp(it), time); nextWindowSlot() }
-        WeshMessageRequests.record("anon-old", "Synthetic", null, time)
+        WeshMessageRequests.record("anon-recent", "Synthetic", null, time)
         nextWindowSlot()
+        // Refresh every older entry so the recent one becomes the least recently updated.
+        repeat(WeshMessageRequests.MAX_REQUESTS - 1) { WeshMessageRequests.record("peer-$it", "Synthetic", fp(it), time) }
 
-        WeshMessageRequests.record("peer-early", "Synthetic", fp(500), time)
-        assertTrue("too recent to evict", WeshMessageRequests.requests.value.any { it.peerID == "anon-old" })
-        assertTrue(WeshMessageRequests.requests.value.none { it.peerID == "peer-early" })
-
-        time += WeshMessageRequests.MIN_DISPLAY_AGE_MS
         WeshMessageRequests.record("peer-late", "Synthetic", fp(501), time)
         val requests = WeshMessageRequests.requests.value
         assertEquals(WeshMessageRequests.MAX_REQUESTS, requests.size)
-        assertTrue(requests.none { it.peerID == "anon-old" })
+        assertTrue("too recent to evict", requests.any { it.peerID == "anon-recent" })
+        assertTrue(requests.none { it.peerID == "peer-0" })
         assertEquals("peer-late", requests.first().peerID)
     }
 
