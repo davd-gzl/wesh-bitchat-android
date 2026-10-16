@@ -452,6 +452,12 @@ class BluetoothMeshService(
             override fun getAuthenticatedRemoteStaticKey(peerID: String): ByteArray? =
                 this@BluetoothMeshService.getAuthenticatedRemoteStaticKey(peerID)
 
+            override fun isEnrolledContactKey(noisePublicKey: ByteArray): Boolean = runCatching {
+                weshQrEnrollment?.isEnrolled?.invoke(
+                    com.bitchat.android.services.ContactIdentityResolver.fingerprintHex(noisePublicKey)
+                ) == true
+            }.getOrDefault(false)
+
             override fun removeNoiseSession(peerID: String) {
                 try {
                     encryptionService.removePeer(peerID)

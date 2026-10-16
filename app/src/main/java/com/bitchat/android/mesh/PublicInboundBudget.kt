@@ -6,18 +6,21 @@ import java.util.concurrent.atomic.AtomicLong
  * Bounds how fast public messages may enter local state, so one sender or one flooding link
  * cannot bury the local channel. Over-budget messages are dropped silently and only counted.
  *
- * Only a Noise-authenticated key gets a bucket of its own, and it is not charged to the relaying
- * link: its key bucket bounds it, so a flood relayed by the same neighbour cannot starve it.
- * Every unauthenticated message (no proven key or a full source table) pays into one shared
- * bucket sized for a crowd but kept below [global], plus a per-link and a small per-peer-ID cap,
- * so rotating peer IDs only drain the shared bucket and never the whole global budget.
+ * Only a Noise-authenticated key gets a bucket of its own. A finished handshake is cheap, so an
+ * authenticated key that is not a QR-enrolled contact also pays into a shared [authenticatedStranger]
+ * bucket and its relaying link. Every unauthenticated message (no proven key or a full source
+ * table) pays into a shared [unauthenticated] bucket, a per-link and a small per-peer-ID cap.
+ * Both shared buckets together stay below [global], so minted keys or rotating peer IDs never
+ * take the whole budget. Only enrolled contacts skip the shared and per-link buckets: their key
+ * bucket bounds them, so a flood relayed by the same neighbour cannot starve them.
  */
 class PublicInboundBudget(
     private val now: () -> Long = System::currentTimeMillis,
     private val global: Rate = Rate(perSecond = 20.0, burst = 60.0),
     private val perAuthenticatedSource: Rate = Rate(perSecond = 1.0, burst = 8.0),
     private val perLink: Rate = Rate(perSecond = 5.0, burst = 30.0),
-    private val unauthenticated: Rate = Rate(perSecond = 12.0, burst = 36.0),
+    private val unauthenticated: Rate = Rate(perSecond = 10.0, burst = 30.0),
+    private val authenticatedStranger: Rate = Rate(perSecond = 8.0, burst = 24.0),
     private val perUnauthenticatedPeer: Rate = Rate(perSecond = 1.0, burst = 5.0),
     private val maxTrackedSources: Int = 512
 ) {
@@ -27,6 +30,7 @@ class PublicInboundBudget(
 
     private val globalBucket = Bucket(global.burst, now())
     private val sharedUnauthenticated = Bucket(unauthenticated.burst, now())
+    private val sharedStrangers = Bucket(authenticatedStranger.burst, now())
     private val sources = LinkedHashMap<String, Bucket>(16, 0.75f, true)
     private val unauthenticatedPeers = LinkedHashMap<String, Bucket>(16, 0.75f, true)
     private val links = LinkedHashMap<String, Bucket>(16, 0.75f, true)
@@ -37,18 +41,25 @@ class PublicInboundBudget(
     /**
      * @param authenticatedSource key proven by a Noise session (for example `noise:<hex>`), or
      * null when the sender is not authenticated. [peerID] caps one unauthenticated peer ID.
+     * [enrolledContact]: the authenticated key belongs to a QR-enrolled contact.
      */
     @Synchronized
-    fun tryAdmit(authenticatedSource: String?, linkID: String?, peerID: String? = null): Boolean {
+    fun tryAdmit(authenticatedSource: String?, linkID: String?, peerID: String? = null, enrolledContact: Boolean = false): Boolean {
         val time = now()
         val charged = LinkedHashMap<Bucket, Rate>()
         charged[globalBucket] = global
         val source = authenticatedSource?.let { tracked(sources, it, perAuthenticatedSource, time) }
-        if (source != null) charged[source] = perAuthenticatedSource else {
+        if (source != null) {
+            charged[source] = perAuthenticatedSource
+            if (!enrolledContact) charged[sharedStrangers] = authenticatedStranger
+        } else {
             charged[sharedUnauthenticated] = unauthenticated
             peerID?.let { tracked(unauthenticatedPeers, it, perUnauthenticatedPeer, time) }
                 ?.let { charged[it] = perUnauthenticatedPeer }
-            linkID?.let { tracked(links, it, perLink, time) }?.let { charged[it] = perLink }
+        }
+        if (source == null || !enrolledContact) {
+            val link = linkID?.let { tracked(links, it, perLink, time) }
+            if (link != null) charged[link] = perLink else charged[sharedUnauthenticated] = unauthenticated
         }
         charged.forEach { (bucket, rate) -> refill(bucket, rate, time) }
         if (charged.keys.any { it.tokens < 1.0 }) {

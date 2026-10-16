@@ -487,9 +487,10 @@ class MessageHandler(
             return true
         }
         // Only a Noise-authenticated key may name a long-lived budget; an announce can claim any key.
-        val budgetSource = delegate?.getAuthenticatedRemoteStaticKey(peerID)?.takeIf { it.size == 32 }
-            ?.let { "noise:" + it.toHexString() }
-        if (!publicBudget.tryAdmit(budgetSource, routed.ingressLinkID ?: routed.relayAddress, peerID)) return false
+        val budgetKey = delegate?.getAuthenticatedRemoteStaticKey(peerID)?.takeIf { it.size == 32 }
+        val budgetSource = budgetKey?.let { "noise:" + it.toHexString() }
+        val enrolledContact = budgetKey?.let { delegate?.isEnrolledContactKey(it) } == true
+        if (!publicBudget.tryAdmit(budgetSource, routed.ingressLinkID ?: routed.relayAddress, peerID, enrolledContact)) return false
         
         try {
             // Try file packet first (voice, image, etc.) and log outcome for FILE_TRANSFER
@@ -764,6 +765,8 @@ interface MessageHandlerDelegate {
     fun getAuthenticatedSigningKey(noisePublicKey: ByteArray): ByteArray? = null
     /** Static key proven by an established Noise session with this peer, if any. */
     fun getAuthenticatedRemoteStaticKey(peerID: String): ByteArray? = null
+    /** True when this Noise static key belongs to a QR-enrolled contact. */
+    fun isEnrolledContactKey(noisePublicKey: ByteArray): Boolean = false
     
     // Noise protocol operations
     fun hasNoiseSession(peerID: String): Boolean

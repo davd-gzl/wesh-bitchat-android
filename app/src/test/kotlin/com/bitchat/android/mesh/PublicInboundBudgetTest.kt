@@ -27,7 +27,7 @@ class PublicInboundBudgetTest {
     fun `default shared bucket is sized for a crowd`() {
         val crowd = PublicInboundBudget(now = { time })
         val admitted = (0 until 100).count { crowd.tryAdmit(null, "link-$it", "peer-$it") }
-        assertEquals(36, admitted)
+        assertEquals(30, admitted)
         assertTrue("unauthenticated traffic leaves global room", crowd.tryAdmit("noise:a", "link-0"))
     }
 
@@ -46,12 +46,36 @@ class PublicInboundBudgetTest {
     }
 
     @Test
-    fun `an authenticated sender is not charged to the relaying link`() {
+    fun `an enrolled contact is not charged to the relaying link`() {
         val roomy = roomyBudget()
         val admitted = (0 until 50).count { roomy.tryAdmit(null, "link-1", "peer-$it") }
         assertEquals("the flood exhausts the link", 8, admitted)
-        assertTrue(roomy.tryAdmit("noise:a", "link-1"))
-        assertTrue(roomy.tryAdmit("noise:b", "link-1"))
+        assertTrue(roomy.tryAdmit("noise:a", "link-1", enrolledContact = true))
+        assertTrue(roomy.tryAdmit("noise:b", "link-1", enrolledContact = true))
+        assertFalse("a Noise key alone is not a contact", roomy.tryAdmit("noise:c", "link-1"))
+    }
+
+    @Test
+    fun `minted Noise identities on one link cannot starve a contact or an unrelated sender`() {
+        val defaults = PublicInboundBudget(now = { time })
+        var next = 0
+        var contact = 0
+        var stranger = 0
+        var anonymous = 0
+        repeat(130) { step ->
+            // One device answers with 30 fresh Noise identities, all relayed over link-1.
+            repeat(10) { defaults.tryAdmit("noise:minted-${next++ % 30}", "link-1") }
+            if (step % 10 == 0) {
+                val measured = step >= 30
+                if (defaults.tryAdmit("noise:contact", "link-1", enrolledContact = true)) contact++
+                if (defaults.tryAdmit("noise:other", "link-2") && measured) stranger++
+                if (defaults.tryAdmit(null, "link-3", "peer-anon") && measured) anonymous++
+            }
+            time += 100
+        }
+        assertEquals(13, contact)
+        assertEquals(10, stranger)
+        assertEquals(10, anonymous)
     }
 
     @Test
