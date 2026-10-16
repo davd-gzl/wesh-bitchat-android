@@ -27,7 +27,31 @@ class PublicInboundBudgetTest {
     fun `default shared bucket is sized for a crowd`() {
         val crowd = PublicInboundBudget(now = { time })
         val admitted = (0 until 100).count { crowd.tryAdmit(null, "link-$it", "peer-$it") }
-        assertEquals(60, admitted)
+        assertEquals(36, admitted)
+        assertTrue("unauthenticated traffic leaves global room", crowd.tryAdmit("noise:a", "link-0"))
+    }
+
+    @Test
+    fun `an authenticated sender keeps getting through an unauthenticated flood on its own link`() {
+        val defaults = PublicInboundBudget(now = { time })
+        var next = 0
+        var authenticatedAdmitted = 0
+        repeat(100) { step ->
+            // Four neighbours relay a flood from rotating peer IDs, well above every unauthenticated cap.
+            repeat(10) { defaults.tryAdmit(null, "link-${next % 4}", "peer-${next++}") }
+            if (step % 10 == 0 && defaults.tryAdmit("noise:a", "link-0")) authenticatedAdmitted++
+            time += 100
+        }
+        assertEquals(10, authenticatedAdmitted)
+    }
+
+    @Test
+    fun `an authenticated sender is not charged to the relaying link`() {
+        val roomy = roomyBudget()
+        val admitted = (0 until 50).count { roomy.tryAdmit(null, "link-1", "peer-$it") }
+        assertEquals("the flood exhausts the link", 8, admitted)
+        assertTrue(roomy.tryAdmit("noise:a", "link-1"))
+        assertTrue(roomy.tryAdmit("noise:b", "link-1"))
     }
 
     @Test
@@ -50,16 +74,17 @@ class PublicInboundBudgetTest {
 
     @Test
     fun `traffic without a link identity pays into the shared unauthenticated bucket`() {
-        val admitted = (0 until 10).count { budget.tryAdmit("noise:$it", null) }
+        val admitted = (0 until 10).count { budget.tryAdmit(null, null, "peer-$it") }
         assertEquals(4, admitted)
         assertFalse(budget.tryAdmit(null, null))
     }
 
     @Test
     fun `one flooding link is bounded`() {
-        val admitted = (0 until 50).count { budget.tryAdmit("noise:$it", "link-1") }
+        val roomy = roomyBudget()
+        val admitted = (0 until 50).count { roomy.tryAdmit(null, "link-1", "peer-$it") }
         assertEquals(8, admitted)
-        assertTrue("other links keep working", budget.tryAdmit("noise:z", "link-2"))
+        assertTrue("other links keep working", roomy.tryAdmit(null, "link-2", "peer-z"))
     }
 
     @Test
@@ -82,4 +107,12 @@ class PublicInboundBudgetTest {
         val admitted = (10 until 30).count { small.tryAdmit("noise:$it", "link") }
         assertEquals(3, admitted)
     }
+
+    /** Unauthenticated caps wide enough that only the link bucket binds. */
+    private fun roomyBudget() = PublicInboundBudget(
+        now = { time },
+        global = PublicInboundBudget.Rate(perSecond = 10.0, burst = 100.0),
+        perLink = PublicInboundBudget.Rate(perSecond = 4.0, burst = 8.0),
+        unauthenticated = PublicInboundBudget.Rate(perSecond = 1.0, burst = 50.0)
+    )
 }

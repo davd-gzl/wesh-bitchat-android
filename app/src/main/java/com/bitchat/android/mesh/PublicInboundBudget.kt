@@ -6,17 +6,18 @@ import java.util.concurrent.atomic.AtomicLong
  * Bounds how fast public messages may enter local state, so one sender or one flooding link
  * cannot bury the local channel. Over-budget messages are dropped silently and only counted.
  *
- * Only a Noise-authenticated key gets a bucket of its own. Every unauthenticated message (no
- * proven key, no link identity, or a full source table) pays into one shared bucket sized for a
- * crowd, plus a small per-peer-ID cap, so rotating peer IDs only drains the shared bucket and
- * one peer ID cannot take all of it.
+ * Only a Noise-authenticated key gets a bucket of its own, and it is not charged to the relaying
+ * link: its key bucket bounds it, so a flood relayed by the same neighbour cannot starve it.
+ * Every unauthenticated message (no proven key or a full source table) pays into one shared
+ * bucket sized for a crowd but kept below [global], plus a per-link and a small per-peer-ID cap,
+ * so rotating peer IDs only drain the shared bucket and never the whole global budget.
  */
 class PublicInboundBudget(
     private val now: () -> Long = System::currentTimeMillis,
     private val global: Rate = Rate(perSecond = 20.0, burst = 60.0),
     private val perAuthenticatedSource: Rate = Rate(perSecond = 1.0, burst = 8.0),
     private val perLink: Rate = Rate(perSecond = 5.0, burst = 30.0),
-    private val unauthenticated: Rate = Rate(perSecond = 20.0, burst = 60.0),
+    private val unauthenticated: Rate = Rate(perSecond = 12.0, burst = 36.0),
     private val perUnauthenticatedPeer: Rate = Rate(perSecond = 1.0, burst = 5.0),
     private val maxTrackedSources: Int = 512
 ) {
@@ -47,9 +48,8 @@ class PublicInboundBudget(
             charged[sharedUnauthenticated] = unauthenticated
             peerID?.let { tracked(unauthenticatedPeers, it, perUnauthenticatedPeer, time) }
                 ?.let { charged[it] = perUnauthenticatedPeer }
+            linkID?.let { tracked(links, it, perLink, time) }?.let { charged[it] = perLink }
         }
-        val link = linkID?.let { tracked(links, it, perLink, time) }
-        if (link != null) charged[link] = perLink else charged[sharedUnauthenticated] = unauthenticated
         charged.forEach { (bucket, rate) -> refill(bucket, rate, time) }
         if (charged.keys.any { it.tokens < 1.0 }) {
             droppedCount.incrementAndGet()
