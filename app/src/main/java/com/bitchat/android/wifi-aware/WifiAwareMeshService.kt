@@ -187,12 +187,20 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
         fragmentingSender = FragmentingPacketSender(serviceScope, meshCore.fragmentManager, TAG)
     }
 
+    // Wi-Fi Aware cannot prove a QR-enrolled identity here; Wesh keeps its private messages out.
+    private val weshQrEnrollment = if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) {
+        com.bitchat.android.services.IncomingMessageAdmission.QrEnrollment(
+            fingerprintOf = { null },
+            isEnrolled = { false }
+        )
+    } else null
+
     private fun handleMessageReceived(message: BitchatMessage): Boolean {
         // Match BLE admission semantics: a private message rejected during panic or as a
         // duplicate must not create a notification after the conversation state was cleared.
         if (
             !com.bitchat.android.services.IncomingMessageAdmission
-                .admitToAppState(message)
+                .admitToAppState(message, qrEnrollment = weshQrEnrollment)
         ) return false
 
         if (delegate == null && message.isPrivate) {

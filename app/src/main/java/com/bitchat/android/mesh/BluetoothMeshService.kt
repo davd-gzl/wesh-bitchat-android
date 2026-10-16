@@ -112,6 +112,18 @@ class BluetoothMeshService(
     private val securityManager = SecurityManager(encryptionService, myPeerID)
     private val storeForwardManager = StoreForwardManager()
     private val messageHandler = MessageHandler(myPeerID, context.applicationContext)
+
+    // Wesh: incoming files are never stored, and private messages need a QR-enrolled identity.
+    private val weshQrEnrollment = if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) {
+        com.bitchat.android.services.IncomingMessageAdmission.QrEnrollment(
+            fingerprintOf = { peerID ->
+                getAuthenticatedRemoteStaticKey(peerID)?.let(com.bitchat.android.services.ContactIdentityResolver::fingerprintHex)
+            },
+            isEnrolled = { fingerprint ->
+                com.bitchat.android.services.WeshContactStore.get(context).forFingerprint(fingerprint) != null
+            }
+        )
+    } else null
     internal val connectionManager = BluetoothConnectionManager(context, myPeerID, fragmentManager) // Made internal for access
     private val packetProcessor = PacketProcessor(myPeerID)
     private data class VoiceFrameRequest(val recipientPeerID: String?, val payload: ByteArray)
@@ -142,6 +154,7 @@ class BluetoothMeshService(
         VerificationService.configure(encryptionService)
         setupDelegates()
         messageHandler.packetProcessor = packetProcessor
+        messageHandler.acceptIncomingMedia = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
         //startPeriodicDebugLogging()
 
         // Flush queued private messages as soon as a BLE Noise session authenticates,
@@ -492,13 +505,13 @@ class BluetoothMeshService(
                 // callback or notify after panic mode rejected the message while wiping state.
                 if (
                     !com.bitchat.android.services.IncomingMessageAdmission
-                        .admitToAppState(message) { peerID ->
+                        .admitToAppState(message, isSenderBlocked = { peerID ->
                             val fingerprint = getAuthenticatedRemoteStaticKey(peerID)?.let {
                                 com.bitchat.android.services.ContactIdentityResolver.fingerprintHex(it)
                             } ?: getPeerFingerprint(peerID)
                             fingerprint != null && context.getSharedPreferences("bitchat_prefs", Context.MODE_PRIVATE)
                                 .getStringSet("blocked_users", emptySet())!!.contains(fingerprint)
-                        }
+                        }, qrEnrollment = weshQrEnrollment)
                 ) return
 
                 // And forward to UI delegate if attached

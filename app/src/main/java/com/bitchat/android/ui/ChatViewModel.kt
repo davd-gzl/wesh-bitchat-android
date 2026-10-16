@@ -196,6 +196,13 @@ class ChatViewModel(
     val verifiedFingerprints = verificationHandler.verifiedFingerprints
     private val weshContactStore = com.bitchat.android.services.WeshContactStore.get(application)
     val weshContacts = weshContactStore.contacts
+    val weshContactStoreFailed = weshContactStore.loadFailed
+    /** Unverified private senders: nickname and identity only, never their message text. */
+    val weshRequests: StateFlow<List<com.bitchat.android.services.WeshMessageRequests.Request>> =
+        combine(com.bitchat.android.services.WeshMessageRequests.requests, weshContactStore.contacts) { requests, contacts ->
+            val enrolled = contacts.map { ContactIdentityResolver.fingerprintHex(it.key) }.toSet()
+            requests.filter { it.fingerprint == null || it.fingerprint !in enrolled }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     internal val weshDraftStore = WeshDraftStore.get(application)
     val weshContactSheet = kotlinx.coroutines.flow.MutableStateFlow(false)
     val weshIncomingQR = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
@@ -714,6 +721,9 @@ class ChatViewModel(
     // MARK: - Private Chat Management (delegated)
     
     suspend fun startPrivateChat(peerID: String) {
+        // Wesh never opens a private conversation with an identity that was not enrolled by QR.
+        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY &&
+            weshContactStore.contact(ContactDirectory.canonicalConversationId(peerID)) == null) return
         // For geohash conversation keys, ensure DM subscription is active
         if (peerID.startsWith("nostr_")) {
             ensureGeohashDMSubscriptionIfNeeded(peerID)
@@ -1144,6 +1154,27 @@ class ChatViewModel(
         return true
     }
     fun weshUnblock(fingerprint: String) { dataManager.removeBlockedUser(fingerprint) }
+    fun retryWeshContacts() { weshContactStore.retryLoad() }
+    fun weshDismissRequest(request: com.bitchat.android.services.WeshMessageRequests.Request) {
+        com.bitchat.android.services.WeshMessageRequests.remove(request.peerID)
+    }
+    fun weshBlockRequest(request: com.bitchat.android.services.WeshMessageRequests.Request): Boolean {
+        val fingerprint = request.fingerprint
+            ?: meshService.getAuthenticatedRemoteStaticKey(request.peerID)?.let(ContactIdentityResolver::fingerprintHex)
+            ?: return false
+        dataManager.addBlockedUser(fingerprint)
+        com.bitchat.android.services.WeshMessageRequests.removeFingerprint(fingerprint)
+        com.bitchat.android.services.WeshMessageRequests.remove(request.peerID)
+        return true
+    }
+    /** Public senders rarely have a Noise session; their signed announce binds the key. Local only. */
+    fun weshBlockPublicSender(peerID: String): Boolean {
+        val key = meshService.getAuthenticatedRemoteStaticKey(peerID)
+            ?: meshService.getPeerInfo(peerID)?.noisePublicKey?.takeIf { it.size == 32 }
+            ?: return false
+        dataManager.addBlockedUser(ContactIdentityResolver.fingerprintHex(key))
+        return true
+    }
     fun removeWeshContact(conversationID: String) {
         verificationHandler.cancelWeshVerification(conversationID)
         weshContactStore.remove(conversationID)
@@ -1609,6 +1640,7 @@ class ChatViewModel(
         // Clear all cryptographic data
         verificationHandler.clearWeshVerifications()
         weshContactStore.clear()
+        com.bitchat.android.services.WeshMessageRequests.clear()
         clearAllCryptographicData()
         
         // Clear all notifications

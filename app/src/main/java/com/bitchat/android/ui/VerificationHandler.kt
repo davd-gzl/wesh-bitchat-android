@@ -155,7 +155,8 @@ class VerificationHandler(
 
             pendingQRVerifications.remove(peerID)
             val fp = fingerprintFromNoiseHex(pending.noiseKeyHex) ?: return@launch
-            contacts.record(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname)
+            // A contact list that could not be read must never be replaced by this single entry.
+            if (!contacts.record(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname)) return@launch
             completedAttempts[pending.noiseKeyHex.lowercase()] = nowMs()
             identityManager.setVerifiedFingerprint(fp, true)
             val current = _verifiedFingerprints.value.toMutableSet()

@@ -101,6 +101,9 @@ fun WeshScreen(viewModel: ChatViewModel) {
         return
     }
     val requestedContactSheet by viewModel.weshContactSheet.collectAsState()
+    val requests by viewModel.weshRequests.collectAsState()
+    val contactStoreFailed by viewModel.weshContactStoreFailed.collectAsState()
+    var requestAction by remember { mutableStateOf<com.bitchat.android.services.WeshMessageRequests.Request?>(null) }
     val conversations by viewModel.conversations.collectAsState()
     val nickname by viewModel.nickname.collectAsState()
     val selectedPrivate by viewModel.selectedPrivateChatPeer.collectAsState()
@@ -189,7 +192,8 @@ fun WeshScreen(viewModel: ChatViewModel) {
                             WeshMessage(message, viewModel.meshService.myPeerID, publicOpen,
                                 canRetry = !publicOpen && canSend && (message.deliveryStatus is com.bitchat.android.model.DeliveryStatus.Failed || message.deliveryStatus is com.bitchat.android.model.DeliveryStatus.Sending),
                                 onRetry = { privatePeer?.let { viewModel.retryWeshPrivate(it, message.id) } },
-                                onBlock = { message.senderPeerID?.let { contactAction = "block" to it } })
+                                onBlock = { message.senderPeerID?.let { contactAction = "publicBlock" to it } },
+                                onReport = { message.senderPeerID?.let { contactAction = "report" to it } })
                         }
                     }
                     // Keep the editor and every recovery action reachable with large fonts or the IME.
@@ -218,6 +222,10 @@ fun WeshScreen(viewModel: ChatViewModel) {
                         item { WeshInboxRow("Salon local", "Public · Bluetooth · sans QR", onClick = { viewModel.endPrivateChat(); publicOpen = true }) }
                         item { Text("Messages privés", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp).semantics { heading() }) }
                         item { Button(onClick = { contactOpen = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Ajouter un contact par QR") } }
+                        if (contactStoreFailed) item {
+                            Text("Contacts illisibles sur ce téléphone. Aucun contact ne peut être ajouté ni retiré pour ne rien écraser.", Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = MaterialTheme.colorScheme.error)
+                            TextButton(onClick = viewModel::retryWeshContacts, modifier = Modifier.heightIn(min = 48.dp)) { Text("Réessayer la lecture des contacts") }
+                        }
                         if (contacts.isEmpty()) item { Text("Rencontrez-vous, scannez vos QR et vérifiez chacun l’identité sur votre téléphone.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         items(contacts, key = { it.conversationID }) { contact ->
                             val summary = conversations.firstOrNull { it.conversationID == contact.conversationID }
@@ -225,6 +233,21 @@ fun WeshScreen(viewModel: ChatViewModel) {
                             WeshInboxRow(contact.nickname,
                                 if (blocked) "Bloqué sur ce téléphone" else "Identité vérifiée sur ce téléphone · ${summary?.latestMessagePreview.orEmpty()}",
                                 onClick = { publicOpen = false; scope.launch { viewModel.startPrivateChat(contact.conversationID) } })
+                        }
+                        if (requests.isNotEmpty()) {
+                            item { Text("Demandes", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp).semantics { heading() }) }
+                            item { Text("Messages de personnes non vérifiées. Leur contenu n’est ni affiché ni conservé. Scannez leur QR en personne pour échanger.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            items(requests, key = { it.fingerprint ?: it.peerID }) { request ->
+                                Column {
+                                    Text(request.nickname, style = MaterialTheme.typography.titleMedium)
+                                    Text("non vérifié", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    FlowRow {
+                                        TextButton(onClick = { contactOpen = true }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Scanner le QR de ${request.nickname} pour vérifier" }) { Text("Scanner son QR") }
+                                        TextButton(onClick = { viewModel.weshDismissRequest(request) }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Supprimer la demande de ${request.nickname}" }) { Text("Supprimer") }
+                                        TextButton(onClick = { requestAction = request }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Bloquer ${request.nickname}" }) { Text("Bloquer") }
+                                    }
+                                }
+                            }
                         }
                     }
                     1 -> LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -255,6 +278,12 @@ fun WeshScreen(viewModel: ChatViewModel) {
                         }
                         item { Text("Brouillons", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() }); Text("Les brouillons sont enregistrés chiffrés sur ce téléphone et restent disponibles après fermeture de Wesh. Quitter l’application ne les efface pas ; ils ne sont jamais envoyés automatiquement.") }
                         item { Text("Confidentialité", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() }); Text("Le salon local est public. Les messages privés utilisent le chiffrement du protocole existant. Les contacts et les messages peuvent rester stockés : fermer le salon ne les efface pas. Bloquer masque une identité sur ce téléphone, sans empêcher un relais de conserver ses messages.") }
+                        item {
+                            TextButton(onClick = {
+                                runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(WeshLinks.TERMS_URL))) }
+                                    .onFailure { feedback = "Aucun navigateur disponible pour ouvrir les conditions d’utilisation." }
+                            }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Conditions d’utilisation") }
+                        }
                         item {
                             Text("Effacement d’urgence", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
                             Text("Effacer vos données locales et renouveler votre identité Wesh.")
@@ -297,7 +326,7 @@ fun WeshScreen(viewModel: ChatViewModel) {
     }
     if (contactOpen) WeshContactSheet(viewModel, onDismiss = { dismissContact() })
     contactAction?.let { (action, target) ->
-        val title = when (action) { "remove" -> "Retirer ce contact ?"; "unblock" -> "Débloquer cette personne ?"; else -> "Bloquer cette personne ?" }
+        val title = when (action) { "remove" -> "Retirer ce contact ?"; "unblock" -> "Débloquer cette personne ?"; "report" -> "Signaler cette personne ?"; else -> "Bloquer cette personne ?" }
         val targetName = if (action == "unblock") viewModel.weshContactName(target)
             else contacts.firstOrNull { it.conversationID == target }?.nickname
                 ?: conversations.firstOrNull { it.conversationID == target }?.displayName
@@ -305,15 +334,28 @@ fun WeshScreen(viewModel: ChatViewModel) {
         AlertDialog(onDismissRequest = { contactAction = null }, title = { Text("$title\n$targetName", Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) },
             text = { WeshDialogText(if (action == "remove") "Un nouveau scan sera nécessaire avant l’envoi privé. Historique et brouillon restent conservés."
                 else if (action == "unblock") "Débloquer ne vérifie pas une nouvelle identité et ne restaure pas un contact retiré."
+                else if (action == "report") "Le signalement reste sur ce téléphone : cette personne est bloquée et ses messages sont masqués. Rien n’est envoyé à Wesh ni aux autres participants."
                 else "Le blocage est local ; il ne supprime pas les copies chez les autres participants.") },
             confirmButton = { TextButton(onClick = {
                 when (action) {
                     "remove" -> { viewModel.removeWeshContact(target); if (privatePeer == target) back() }
                     "unblock" -> viewModel.weshUnblock(target)
+                    "report", "publicBlock" -> feedback = if (viewModel.weshBlockPublicSender(target))
+                        if (action == "report") "Personne signalée et masquée sur ce téléphone." else "Personne bloquée sur ce téléphone."
+                        else "Identité inconnue : blocage indisponible."
                     else -> if (!viewModel.weshBlock(target)) feedback = "Identité inconnue : blocage indisponible."
                 }
                 revision++; contactAction = null
-            }) { Text(when (action) { "remove" -> "Retirer le contact"; "unblock" -> "Débloquer"; else -> "Bloquer" }) } }, dismissButton = { TextButton(onClick = { contactAction = null }) { Text("Annuler") } })
+            }) { Text(when (action) { "remove" -> "Retirer le contact"; "unblock" -> "Débloquer"; "report" -> "Signaler et masquer"; else -> "Bloquer" }) } }, dismissButton = { TextButton(onClick = { contactAction = null }) { Text("Annuler") } })
+    }
+    requestAction?.let { request ->
+        AlertDialog(onDismissRequest = { requestAction = null }, title = { Text("Bloquer cette personne ?\n${request.nickname}") },
+            text = { WeshDialogText("Le blocage est local. Ses prochaines demandes seront ignorées sur ce téléphone.") },
+            confirmButton = { TextButton(onClick = {
+                if (!viewModel.weshBlockRequest(request)) feedback = "Identité inconnue : blocage indisponible."
+                revision++; requestAction = null
+            }) { Text("Bloquer") } },
+            dismissButton = { TextButton(onClick = { requestAction = null }) { Text("Annuler") } })
     }
     if (noteOpen) ModalBottomSheet(onDismissRequest = { noteOpen = false }, modifier = Modifier.semantics { paneTitle = "Note personnelle" }) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -376,14 +418,15 @@ private fun WeshInboxRow(title: String, subtitle: String, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun WeshMessage(message: BitchatMessage, myPeerID: String, public: Boolean, canRetry: Boolean, onRetry: () -> Unit, onBlock: () -> Unit) {
+private fun WeshMessage(message: BitchatMessage, myPeerID: String, public: Boolean, canRetry: Boolean, onRetry: () -> Unit, onBlock: () -> Unit, onReport: () -> Unit) {
     val outgoing = message.senderPeerID == myPeerID
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (outgoing) Alignment.End else Alignment.Start) {
         Surface(shape = MaterialTheme.shapes.medium, color = if (outgoing) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer) {
             Column(Modifier.padding(14.dp).widthIn(max = 320.dp).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (!outgoing) Text(message.sender, style = MaterialTheme.typography.labelLarge)
-                Text(if (message.type == BitchatMessageType.Message) message.content else "Pièce jointe reçue · affichage indisponible", style = MaterialTheme.typography.bodyLarge)
+                Text(if (message.type == BitchatMessageType.Message) message.content else "Média non pris en charge", style = MaterialTheme.typography.bodyLarge)
                 Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(message.timestamp), style = MaterialTheme.typography.bodySmall)
                 if (!public && outgoing) Text(WeshMessagePolicy.deliveryLabel(message.deliveryStatus), style = MaterialTheme.typography.bodySmall)
             }
@@ -391,7 +434,10 @@ private fun WeshMessage(message: BitchatMessage, myPeerID: String, public: Boole
         if (!public && outgoing && canRetry) TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp).semantics {
             contentDescription = "Réessayer l’envoi du message du ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM).format(message.timestamp)}"
         }) { Text("Réessayer") }
-        if (public && !outgoing && message.senderPeerID != null) TextButton(onClick = onBlock, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Bloquer ${message.sender}" }) { Text("Bloquer") }
+        if (public && !outgoing && message.senderPeerID != null) FlowRow {
+            TextButton(onClick = onReport, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Signaler ${message.sender}" }) { Text("Signaler") }
+            TextButton(onClick = onBlock, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Bloquer ${message.sender}" }) { Text("Bloquer") }
+        }
     }
 }
 

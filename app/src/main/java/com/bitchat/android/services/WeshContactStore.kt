@@ -20,31 +20,51 @@ class WeshContactStore internal constructor(
         val conversationID: String get() = ContactIdentityResolver.contactConversationIdForNoiseKey(key)
     }
     private val storageKey = "wesh_qr_contacts_v1"
+    private val _loadFailed = MutableStateFlow(false)
+    /** True when stored contacts could not be read; writes stay blocked so they are never overwritten. */
+    val loadFailed = _loadFailed.asStateFlow()
     private val _contacts = MutableStateFlow(load())
     val contacts = _contacts.asStateFlow()
 
-    private fun load(): List<Contact> = runCatching {
+    private fun load(): List<Contact> = try {
         val array = JSONArray(identity.getSecureValue(storageKey) ?: "[]")
         (0 until array.length()).mapNotNull { index ->
             val row = array.getJSONObject(index)
             val hex = row.getString("noise")
             val name = row.getString("nickname")
             if (!hex.matches(Regex("[0-9a-f]{64}")) || name.toByteArray().size > 255) null else Contact(hex, name)
-        }.distinctBy { it.noiseHex }.takeLast(256)
-    }.getOrDefault(emptyList())
+        }.distinctBy { it.noiseHex }.takeLast(256).also { _loadFailed.value = false }
+    } catch (_: Exception) {
+        _loadFailed.value = true
+        emptyList()
+    }
 
-    @Synchronized fun record(key: ByteArray, nickname: String) {
+    /** Retries reading the stored contacts; returns true once they are readable. */
+    @Synchronized fun retryLoad(): Boolean {
+        val loaded = load()
+        if (!_loadFailed.value) _contacts.value = loaded
+        return !_loadFailed.value
+    }
+
+    @Synchronized fun record(key: ByteArray, nickname: String): Boolean {
         require(key.size == 32 && nickname.toByteArray().size <= 255)
+        if (_loadFailed.value) return false
         val hex = key.hexEncodedString()
         persist((_contacts.value.filterNot { it.noiseHex == hex } + Contact(hex, nickname)).takeLast(256))
+        return true
     }
     @Synchronized fun remove(conversationID: String): Boolean {
+        if (_loadFailed.value) return false
         val remaining = _contacts.value.filterNot { it.conversationID == conversationID }
         if (remaining.size == _contacts.value.size) return false
         persist(remaining)
         return true
     }
-    @Synchronized fun clear() = persist(emptyList())
+    /** Panic wipe is the only write allowed after a failed load: it removes what could not be read. */
+    @Synchronized fun clear() {
+        persist(emptyList())
+        _loadFailed.value = false
+    }
     fun contact(conversationID: String): Contact? = _contacts.value.firstOrNull { it.conversationID == conversationID }
     fun forFingerprint(fingerprint: String): Contact? = _contacts.value.firstOrNull {
         ContactIdentityResolver.fingerprintHex(it.key) == fingerprint
