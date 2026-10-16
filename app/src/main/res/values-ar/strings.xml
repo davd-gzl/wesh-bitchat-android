@@ -49,34 +49,19 @@
     <string name="notification_active_peers_title">مستخدمون قريبون!</string>
     <string name="notification_active_peers_one">شخص واحد قريب</string>
     <string name="notification_active_peers_many">%1$d أشخاص قريبون</string>
-    <string name="notification_new_messages">رسائل جديدة</string>
     <string name="notification_new_location_messages">رسائل موقع جديدة</string>
-    <string name="notification_mentions_in">تم ذكرك في %1$s</string>
-    <string name="notification_mentions_in_more">تم ذكرك في %1$s (+%2$d أخرى)</string>
-    <string name="notification_mentions_in_plural">%1$d من الإشارات في %2$s</string>
-    <string name="notification_new_activity_in">نشاط جديد في %1$s</string>
-    <string name="notification_messages_in">رسائل في %1$s</string>
-    <string name="notification_joined_conversation">%1$s انضم إلى المحادثة</string>
-    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d إشارات</string>
-    <string name="notification_geohash_summary_title">Wesh – محادثات المواقع</string>
-    <string name="notification_geohash_summary_text">%1$d رسائل من %2$d مواقع</string>
     <string name="notification_mesh_mention_title_singular">تم ذكرك في محادثة الشبكة</string>
     <string name="notification_mesh_mention_title_plural">%1$d من الإشارات في محادثة الشبكة</string>
-    <string name="notification_more_locations">و%1$d مواقع أخرى</string>
     <string name="notification_and_more">و%1$d إضافية</string>
 
     <!-- سهولة الوصول للمفضلة -->
     <string name="cd_add_favorite">إضافة إلى المفضلة</string>
     <string name="cd_remove_favorite">إزالة من المفضلة</string>
-    <string name="cd_add_bookmark">إضافة إشارة مرجعية</string>
 
     <!-- ترويسة الدردشة وسهولة الوصول -->
     <string name="cd_nostr_reachable">يمكن الوصول عبر Nostr</string>
     <string name="cd_unread_private_messages">رسائل خاصة غير مقروءة</string>
-    <string name="cd_teleported">تم الانتقال</string>
-    <string name="cd_open_location_channels">فتح إعدادات الموقع والقنوات</string>
     <string name="cd_connected_peers">الأقران المتصلون</string>
-    <string name="cd_geohash_participants">مشاركو geohash</string>
     <string name="cd_ready_for_handshake">جاهز للمصافحة</string>
     <string name="cd_handshake_in_progress">المصافحة جارية</string>
     <string name="cd_encrypted">تشفير طرف إلى طرف</string>
@@ -94,8 +79,6 @@
     <!-- ورقة حول التطبيق -->
     <string name="about_offline_mesh_title">دردشة شبكية دون اتصال</string>
     <string name="about_offline_mesh_desc">تواصل مباشرة عبر Bluetooth LE بدون إنترنت أو خوادم. تُعاد توجيه الرسائل عبر الأجهزة القريبة لتوسيع النطاق.</string>
-    <string name="about_online_geohash_title">قنوات geohash عبر الإنترنت</string>
-    <string name="about_online_geohash_desc">تواصل مع أشخاص بالقرب منك عبر قنوات تعتمد على geohash. وسّع الشبكة عبر مرحلات الإنترنت العامة.</string>
     <string name="about_e2e_title">تشفير طرف إلى طرف</string>
     <string name="about_e2e_desc">الرسائل الخاصة مشفّرة. رسائل القنوات عامة.</string>
     <string name="about_system">النظام</string>
@@ -137,15 +120,9 @@
     <string name="cd_not_supported_battery_optimization">تحسين البطارية غير مدعوم</string>
     <string name="cd_bluetooth">Bluetooth</string>
     <string name="cd_unread_message">رسالة غير مقروءة</string>
-    <string name="cd_open_map">فتح الخريطة</string>
-    <string name="cd_remove_bookmark">إزالة الإشارة المرجعية</string>
-    <string name="cd_teleport">انتقال</string>
     <string name="cd_leave_channel">مغادرة القناة</string>
     <string name="cd_reachable_via_nostr">يمكن الوصول عبر Nostr</string>
     <string name="cd_offline_favorite">مفضل (غير متصل)</string>
-    <string name="cd_decrease_precision">خفض الدقة</string>
-    <string name="cd_increase_precision">رفع الدقة</string>
-    <string name="cd_select_geohash">اختر geohash</string>
     <string name="cd_scroll_to_bottom">التمرير إلى الأسفل</string>
     <string name="cd_file">ملف</string>
     <string name="cd_image">صورة</string>
@@ -159,7 +136,6 @@
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">تسجيل مذكرة صوتية</string>
     <string name="cd_offline_mesh_chat">دردشة شبكية دون اتصال</string>
-    <string name="cd_online_geohash_channels">قنوات geohash عبر الإنترنت</string>
     <string name="cd_end_to_end_encryption">تشفير طرف إلى طرف</string>
 
     <!-- الصور والملفات -->
@@ -186,26 +162,9 @@
     <string name="action_block_subtitle">حظر جميع رسائل هذا المستخدم</string>
 
     <!-- ورقة قنوات geohash -->
-    <string name="location_channels_title">#قنوات الموقع</string>
-    <string name="location_channels_desc">دردش مع أشخاص قريبين منك عبر قنوات geohash. تتم مشاركة geohash تقريبي فقط، وليس بيانات GPS الدقيقة. للحفاظ على خصوصيتك، لا تلتقط لقطات شاشة ولا تشارك هذه الشاشة.</string>
-    <string name="grant_location_permission">منح إذن الموقع</string>
-    <string name="location_permission_denied">تم رفض إذن الموقع. فعّله من الإعدادات لاستخدام قنوات الموقع.</string>
     <string name="open_settings">فتح الإعدادات</string>
-    <string name="location_permission_granted">\u2713 تم منح إذن الموقع</string>
     <string name="checking_permissions">جارٍ التحقق من الأذونات…</string>
-    <string name="finding_nearby_channels">البحث عن قنوات قريبة…</string>
-    <string name="bookmarked">محفوظة</string>
-    <string name="geohash_placeholder">Geohash</string>
-    <string name="invalid_geohash">geohash غير صالح</string>
-    <string name="teleport">انتقال</string>
-    <string name="disable_location_services">تعطيل خدمات الموقع</string>
-    <string name="enable_location_services">تمكين خدمات الموقع</string>
     <string name="mesh_label">mesh</string>
-    <string name="location_level_block">مربّع سكني</string>
-    <string name="location_level_neighborhood">حيّ</string>
-    <string name="location_level_city">مدينة</string>
-    <string name="location_level_province">إقليم</string>
-    <string name="location_level_region">منطقة</string>
     <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
 
     <!-- التصحيح / التشخيص -->
@@ -333,19 +292,7 @@
         <item quantity="other">%d أشخاص</item>
     </plurals>
 
-  <plurals name="location_notes_title">
-    <item quantity="one">#%1$s ± 1 • %2$d ملاحظة</item>
-    <item quantity="other">#%1$s ± 1 • %2$d ملاحظات</item>
-  </plurals>
-  <string name="location_notes_description">أضف ملاحظات قصيرة ودائمة إلى هذا المكان ليتمكن الزوار الآخرون من العثور عليها.</string>
-  <string name="location_notes_relays_unavailable">قنوات الترحيل الجغرافية غير متاحة؛ تم إيقاف الملاحظات</string>
-  <string name="location_notes_no_relays_title">لا توجد قنوات ترحيل جغرافية قريبة</string>
-  <string name="location_notes_no_relays_desc">تعتمد الملاحظات على قنوات الترحيل الجغرافية. تحقق من الاتصال ثم أعد المحاولة.</string>
-  <string name="loading_location_notes">جارٍ تحميل الملاحظات…</string>
-  <string name="location_notes_empty_title">لا توجد ملاحظات بعد</string>
-  <string name="location_notes_empty_desc">كن أول من يضيف ملاحظة لهذا المكان.</string>
   <string name="dismiss">إغلاق</string>
-  <string name="location_notes_input_placeholder">أضف ملاحظة لهذا المكان</string>
     <string name="bluetooth_recommended">بلوتوث موصى به</string>
     <string name="mesh_service_notification_content">الشبكة تعمل — %1$d أقران</string>
 
@@ -385,9 +332,6 @@
   <string name="verify_success_body">You verified %1$s</string>
   <string name="verify_success_system_message">verified %1$s</string>
     <string name="cd_open_about">فتح قسم حول</string>
-  <string name="nearby_notes_reveal">تحقّق من الملاحظات المتروكة هنا</string>
-  <string name="nearby_notes_one">تُركت ملاحظة واحدة هنا — انقر للقراءة</string>
-  <string name="nearby_notes_many">تُركت %d ملاحظات هنا — انقر للقراءة</string>
     <string name="about_language">اللغة</string>
     <string name="about_app_language">لغة التطبيق</string>
     <string name="about_system_default">إعداد النظام الافتراضي</string>

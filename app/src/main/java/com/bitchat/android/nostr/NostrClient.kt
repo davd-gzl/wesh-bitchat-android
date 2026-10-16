@@ -156,71 +156,6 @@ class NostrClient private constructor(private val context: Context) {
     }
     
     /**
-     * Send a public message to a geohash channel
-     */
-    fun sendGeohashMessage(
-        content: String,
-        geohash: String,
-        nickname: String? = null,
-        onSuccess: (() -> Unit)? = null,
-        onError: ((String) -> Unit)? = null
-    ) {
-        scope.launch {
-            try {
-                // Derive geohash-specific identity
-                val geohashIdentity = NostrIdentityBridge.deriveIdentity(geohash, context)
-                
-                // Create ephemeral event (with PoW if enabled)
-                val event = NostrProtocol.createEphemeralGeohashEvent(
-                    content = content,
-                    geohash = geohash,
-                    senderIdentity = geohashIdentity,
-                    nickname = nickname
-                )
-                
-                relayManager.sendEvent(event)
-                
-                Log.i(TAG, "📤 Sent geohash message")
-                onSuccess?.invoke()
-                
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Failed to send geohash message: ${e.message}")
-                onError?.invoke("Failed to send message: ${e.message}")
-            }
-        }
-    }
-    
-    /**
-     * Subscribe to public messages in a geohash channel
-     */
-    fun subscribeToGeohash(
-        geohash: String,
-        handler: (content: String, senderPubkey: String, nickname: String?, timestamp: Int) -> Unit
-    ) {
-        val filter = NostrFilter.geohashEphemeral(
-            geohash = geohash,
-            since = System.currentTimeMillis() - 3600000L, // Last hour
-            limit = 200
-        )
-        
-        relayManager.subscribe(filter, "geohash-$geohash", { event ->
-            scope.launch {
-                handleGeohashMessage(event, handler)
-            }
-        })
-        
-        Log.i(TAG, "🌍 Subscribed to geohash channel")
-    }
-    
-    /**
-     * Unsubscribe from a geohash channel
-     */
-    fun unsubscribeFromGeohash(geohash: String) {
-        relayManager.unsubscribe("geohash-$geohash")
-        Log.i(TAG, "Unsubscribed from geohash channel")
-    }
-    
-    /**
      * Get current identity information
      */
     fun getCurrentIdentity(): NostrIdentity? = currentIdentity
@@ -274,40 +209,6 @@ class NostrClient private constructor(private val context: Context) {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error handling private message: ${e.message}")
-        }
-    }
-    
-    private suspend fun handleGeohashMessage(
-        event: NostrEvent,
-        handler: (content: String, senderPubkey: String, nickname: String?, timestamp: Int) -> Unit
-    ) {
-        try {
-            if (!event.isValidSignature()) {
-                Log.w(TAG, "🚫 Rejecting geohash event ${event.id.take(8)}... with invalid signature")
-                return
-            }
-
-            // Check Proof of Work validation for incoming geohash events
-            val powSettings = PoWPreferenceManager.getCurrentSettings()
-            if (powSettings.enabled && powSettings.difficulty > 0) {
-                if (!NostrProofOfWork.validateDifficulty(event, powSettings.difficulty)) {
-                    Log.w(TAG, "🚫 Rejecting geohash event ${event.id.take(8)}... due to insufficient PoW (required: ${powSettings.difficulty})")
-                    return
-                }
-                Log.v(TAG, "✅ PoW validation passed for geohash event ${event.id.take(8)}...")
-            }
-            
-            // Extract nickname from tags
-            val nickname = event.tags.find { it.size >= 2 && it[0] == "n" }?.get(1)
-            
-            Log.v(TAG, "📥 Received geohash message from ${event.pubkey.take(16)}...")
-            
-            // Dispatch to main thread for handler
-            withContext(Dispatchers.Main) {
-                handler(event.content, event.pubkey, nickname, event.createdAt)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error handling geohash message: ${e.message}")
         }
     }
 }

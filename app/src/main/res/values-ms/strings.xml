@@ -46,20 +46,9 @@
   <string name="notification_active_peers_title">👥 Weshter berdekatan!</string>
   <string name="notification_active_peers_one">1 orang berdekatan</string>
   <string name="notification_active_peers_many">%1$d orang berdekatan</string>
-  <string name="notification_new_messages">Mesej Baharu</string>
   <string name="notification_new_location_messages">Mesej Lokasi Baharu</string>
-  <string name="notification_mentions_in">Disebut dalam %1$s</string>
-  <string name="notification_mentions_in_more">Disebut dalam %1$s (+%2$d lagi)</string>
-  <string name="notification_mentions_in_plural">%1$d sebutan dalam %2$s</string>
-  <string name="notification_new_activity_in">Aktiviti baharu dalam %1$s</string>
-  <string name="notification_messages_in">Mesej dalam %1$s</string>
-  <string name="notification_joined_conversation">%1$s telah menyertai perbualan</string>
-  <string name="notification_geohash_summary_title_mentions">Wesh - %1$d sebutan</string>
-  <string name="notification_geohash_summary_title">Wesh - sembang lokasi</string>
-  <string name="notification_geohash_summary_text">%1$d mesej daripada %2$d lokasi</string>
   <string name="notification_mesh_mention_title_singular">Disebut dalam Sembang Mesh</string>
   <string name="notification_mesh_mention_title_plural">%1$d sebutan dalam Sembang Mesh</string>
-  <string name="notification_more_locations">dan %1$d lokasi lagi</string>
 
   <!-- Mesh Service Foreground Notification -->
   <string name="mesh_service_channel_name">Perkhidmatan Latar Belakang Mesh</string>
@@ -69,16 +58,11 @@
   <!-- Favorites accessibility -->
   <string name="cd_add_favorite">Tambah ke kegemaran</string>
   <string name="cd_remove_favorite">Alih keluar daripada kegemaran</string>
-  <string name="cd_add_bookmark">Tambah penanda buku</string>
 
   <!-- Chat header &amp; accessibility -->
   <string name="cd_nostr_reachable">Boleh dihubungi melalui Nostr</string>
   <string name="cd_unread_private_messages">Mesej peribadi belum dibaca</string>
-  <string name="cd_location_notes">Nota lokasi</string>
-  <string name="cd_teleported">Diteleport</string>
-  <string name="cd_open_location_channels">Buka tetapan lokasi dan saluran</string>
   <string name="cd_connected_peers">Rakan disambungkan</string>
-  <string name="cd_geohash_participants">Peserta geohash</string>
   <string name="cd_ready_for_handshake">Sedia untuk berjabat tangan</string>
   <string name="cd_handshake_in_progress">Jabat tangan sedang berlangsung</string>
   <string name="cd_encrypted">Disulitkan hujung-ke-hujung</string>
@@ -103,8 +87,6 @@
   <string name="about_tagline">Stay together, even offline</string>
   <string name="about_offline_mesh_title">Sembang Mesh Luar Talian</string>
   <string name="about_offline_mesh_desc">Berkomunikasi terus melalui Bluetooth LE tanpa internet atau pelayan. Mesej digeganti melalui peranti berdekatan untuk melanjutkan jarak.</string>
-  <string name="about_online_geohash_title">Saluran Geohash Dalam Talian</string>
-  <string name="about_online_geohash_desc">Berhubung dengan orang di kawasan anda menggunakan saluran berasaskan geohash. Melanjutkan mesh menggunakan geganti internet awam.</string>
   <string name="about_e2e_title">Penyulitan Hujung-ke-Hujung</string>
   <string name="about_e2e_desc">Mesej peribadi disulitkan. Mesej saluran adalah awam.</string>
   <string name="about_system">sistem</string>
@@ -147,18 +129,12 @@
   <string name="cd_not_supported_battery_optimization">Pengoptimuman Bateri Tidak Disokong</string>
   <string name="cd_bluetooth">Bluetooth</string>
   <string name="cd_unread_message">Mesej belum dibaca</string>
-  <string name="cd_open_map">Buka peta</string>
-  <string name="cd_remove_bookmark">Alih keluar penanda buku</string>
-  <string name="cd_teleport">Teleport</string>
   <string name="notification_action_quit_bitchat">Keluar Wesh</string>
   <string name="about_background_title">jalankan di latar belakang</string>
   <string name="about_background_desc">kekalkan mesh aktif apabila apl ditutup (perkhidmatan latar depan)</string>
   <string name="cd_leave_channel">Keluar saluran</string>
   <string name="cd_reachable_via_nostr">Boleh dihubungi melalui Nostr</string>
   <string name="cd_offline_favorite">Kegemaran luar talian</string>
-  <string name="cd_decrease_precision">Kurangkan ketepatan</string>
-  <string name="cd_increase_precision">Tingkatkan ketepatan</string>
-  <string name="cd_select_geohash">Pilih geohash</string>
   <string name="cd_scroll_to_bottom">Tatal ke bawah</string>
   <string name="cd_file">Fail</string>
   <string name="cd_image">Imej</string>
@@ -167,7 +143,6 @@
   <string name="cd_record_voice">Rakam nota suara</string>
   <string name="cd_pick_media">Pilih media</string>
   <string name="cd_offline_mesh_chat">Sembang Mesh Luar Talian</string>
-  <string name="cd_online_geohash_channels">Saluran Geohash Dalam Talian</string>
   <string name="cd_end_to_end_encryption">Penyulitan Hujung-ke-Hujung</string>
   <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
 
@@ -194,41 +169,10 @@
     <string name="action_private_message_subtitle">hantar mesej peribadi</string>
 
 
-  <!-- Location channels sheet -->
-  <string name="location_channels_title">#saluran lokasi</string>
-  <string name="location_channels_desc">berbual dengan orang berdekatan anda menggunakan saluran geohash. hanya geohash kasar dikongsi, tidak sekali-kali gps tepat. jangan ambil tangkapan skrin atau kongsi skrin ini untuk melindungi privasi anda.</string>
-  <string name="grant_location_permission">berikan kebenaran lokasi</string>
-  <string name="location_permission_denied">kebenaran lokasi ditolak. aktifkan dalam tetapan untuk menggunakan saluran lokasi.</string>
-
-  <string name="location_permission_granted">✓ kebenaran lokasi diberikan</string>
   <string name="checking_permissions">menyemak kebenaran…</string>
-  <string name="finding_nearby_channels">mencari saluran berdekatan…</string>
-  <string name="bookmarked">ditanda buku</string>
-  <string name="geohash_placeholder">geohash</string>
-  <string name="invalid_geohash">geohash tidak sah</string>
-  <string name="teleport">teleport</string>
-  <string name="disable_location_services">lumpuhkan perkhidmatan lokasi</string>
-  <string name="enable_location_services">aktifkan perkhidmatan lokasi</string>
   <string name="mesh_label">mesh</string>
-  <string name="location_level_block">blok</string>
-  <string name="location_level_neighborhood">kejiranan</string>
-  <string name="location_level_city">bandar</string>
-  <string name="location_level_province">wilayah</string>
-  <string name="location_level_region">rantau</string>
 
-  <!-- Location notes sheet -->
-  <plurals name="location_notes_title">
-    <item quantity="other">#%1$s ± 1 • %2$d nota</item>
-  </plurals>
-  <string name="location_notes_description">tambah nota kekal ringkas pada lokasi ini untuk pelawat lain temui.</string>
-  <string name="location_notes_relays_unavailable">geganti geo tidak tersedia; nota dijeda</string>
-  <string name="location_notes_no_relays_title">tiada geganti geo berdekatan</string>
-  <string name="location_notes_no_relays_desc">nota bergantung pada geganti geo. semak sambungan dan cuba lagi.</string>
-  <string name="loading_location_notes">memuatkan nota…</string>
-  <string name="location_notes_empty_title">belum ada nota</string>
-  <string name="location_notes_empty_desc">jadilah yang pertama menambah satu untuk tempat ini.</string>
   <string name="dismiss">tolak</string>
-  <string name="location_notes_input_placeholder">tambah nota untuk tempat ini</string>
 
   <!-- Debug / Diagnostics -->
   <string name="debug_tools">alat nyahpepijat</string>
@@ -309,15 +253,6 @@
   <string name="location_explanation">Wesh TIDAK menjejaki lokasi anda.\n\nPerkhidmatan lokasi diperlukan untuk imbasan Bluetooth dan untuk ciri sembang Geohash.</string>
   <string name="location_needs_for">Wesh memerlukan perkhidmatan lokasi untuk:</string>
   <string name="location_needs_bullets">• Imbasan peranti Bluetooth\n• Mengesan pengguna berdekatan pada rangkaian mesh\n• Ciri sembang Geohash\n• Tiada penjejakan atau pengumpulan lokasi</string>
-  <string name="background_location_required_title">Lokasi Latar Belakang Disyorkan</string>
-  <string name="background_location_required_subtitle">pilihan, meningkatkan kebolehpercayaan mesh</string>
-  <string name="background_location_explanation">Android mengesyorkan lokasi latar belakang supaya Wesh boleh mengimbas peranti berdekatan semasa apl tidak dibuka. Ini mengekalkan mesh aktif selepas but semula.</string>
-  <string name="background_location_settings_tip">Apabila tetapan dibuka, pilih "Benarkan sepanjang masa".</string>
-  <string name="background_location_needs_for">Wesh menggunakan lokasi latar belakang untuk:</string>
-  <string name="background_location_needs_bullets">- mengimbas peranti berdekatan semasa apl ditutup\n- menyambung semula selepas but semula\n- mengekalkan mesh berjalan di latar belakang</string>
-  <string name="background_location_privacy_note">Kami TIDAK PERNAH mengumpul atau menyimpan lokasi anda. Privasi anda selamat.</string>
-  <string name="grant_background_location">Benarkan Lokasi Latar Belakang</string>
-  <string name="skip_background_location">Teruskan tanpa lokasi latar belakang</string>
   <string name="open_location_settings">Buka Tetapan Lokasi</string>
   <string name="check_again">Semak Semula</string>
   <string name="location_services_unavailable">Perkhidmatan Lokasi Tidak Tersedia</string>
@@ -378,8 +313,6 @@
   <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
   <string name="perm_location_desc">Android 11 and earlier requires this permission for Bluetooth scanning. Wesh does not use GPS coordinates.</string>
   <string name="perm_location_system">Android permission needed for Bluetooth scanning on older phones.</string>
-  <string name="perm_background_location_desc">On Android 10 and 11 this system permission enables background Bluetooth scanning. Wesh does not use GPS coordinates.</string>
-  <string name="perm_background_location_system">Allow background Bluetooth scanning on this older Android.</string>
   <string name="perm_notifications_desc">Terima pemberitahuan apabila anda menerima mesej peribadi</string>
   <string name="perm_notifications_system">Allow Wesh to send notifications.</string>
   <string name="perm_battery_desc">Battery restrictions can interrupt mesh connections in the background.</string>
@@ -388,7 +321,6 @@
   <!-- Permission types -->
   <string name="perm_type_nearby_devices">Peranti Berdekatan</string>
   <string name="perm_type_precise_location">Lokasi Tepat</string>
-  <string name="perm_type_background_location">Lokasi Latar Belakang</string>
   <string name="perm_type_microphone">Mikrofon</string>
   <string name="perm_type_notifications">Pemberitahuan</string>
   <string name="perm_type_battery_optimization">Pengoptimuman Bateri</string>

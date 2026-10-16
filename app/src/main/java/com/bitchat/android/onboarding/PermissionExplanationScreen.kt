@@ -216,7 +216,6 @@ private fun getPermissionIcon(permissionType: PermissionType): ImageVector {
     return when (permissionType) {
         PermissionType.NEARBY_DEVICES -> Icons.Filled.Bluetooth
         PermissionType.PRECISE_LOCATION -> Icons.Filled.LocationOn
-        PermissionType.BACKGROUND_LOCATION -> Icons.Filled.LocationOn
         PermissionType.MICROPHONE -> Icons.Filled.Mic
         PermissionType.NOTIFICATIONS -> Icons.Filled.Notifications
         PermissionType.WIFI_AWARE -> Icons.Filled.Wifi
@@ -229,7 +228,6 @@ private fun getPermissionIcon(permissionType: PermissionType): ImageVector {
 private fun permissionCategoryName(type: PermissionType): String = when (type) {
     PermissionType.NEARBY_DEVICES -> stringResource(R.string.perm_type_nearby_devices)
     PermissionType.PRECISE_LOCATION -> stringResource(R.string.perm_type_precise_location)
-    PermissionType.BACKGROUND_LOCATION -> stringResource(R.string.perm_type_background_location)
     PermissionType.MICROPHONE -> stringResource(R.string.perm_type_microphone)
     PermissionType.NOTIFICATIONS -> stringResource(R.string.perm_type_notifications)
     PermissionType.BATTERY_OPTIMIZATION -> stringResource(R.string.perm_type_battery_optimization)

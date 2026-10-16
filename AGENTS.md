@@ -54,7 +54,7 @@ with a specific destination.
 ## Project Structure & Architecture
 
 `app/` is the Kotlin/Compose phone client; its main packages cover UI, services,
-BLE/Wi-Fi mesh, protocol, Noise/crypto, identity, Nostr, geohash, and media.
+BLE/Wi-Fi mesh, protocol, Noise/crypto, identity, Nostr, and media.
 `wear/` is the Wear OS client. Module resources live in `src/main/`
 and JVM tests in `src/test/`. Specifications are in `docs/`; tooling is in
 `tools/`.

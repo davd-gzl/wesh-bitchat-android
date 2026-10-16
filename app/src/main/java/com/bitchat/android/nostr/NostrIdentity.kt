@@ -5,8 +5,6 @@ import android.util.Log
 import com.bitchat.android.favorites.FavoritesPersistenceService
 import com.bitchat.android.identity.SecureIdentityStateManager
 import java.security.MessageDigest
-import java.security.SecureRandom
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Manages Nostr identity (secp256k1 keypair) for NIP-17 private messaging
@@ -93,15 +91,13 @@ data class NostrIdentity(
 
 /**
  * Bridge between Noise and Nostr identities
- * Manages persistent storage and per-geohash identity derivation
+ * Manages persistent storage of the account identity
  */
 object NostrIdentityBridge {
     private const val TAG = "NostrIdentityBridge"
     private const val NOSTR_PRIVATE_KEY = "nostr_private_key"
+    // Seed of the removed per-location identities; still erased in case an older build stored it.
     private const val DEVICE_SEED_KEY = "nostr_device_seed"
-    
-    // Cache for derived geohash identities to avoid repeated crypto operations
-    private val geohashIdentityCache = ConcurrentHashMap<String, NostrIdentity>()
     
     /**
      * Get or create the current Nostr identity
@@ -134,67 +130,17 @@ object NostrIdentityBridge {
     }.getOrNull()
 
     /**
-     * Derive a deterministic, unlinkable Nostr identity for a given geohash
-     * Uses HMAC-SHA256(deviceSeed, geohash) as private key material with fallback rehashing
-     * if the candidate is not a valid secp256k1 private key.
-     * 
-     * Cached for UI responsiveness.
+     * Every npub this device can sign as, read-only (never creates a key): the current identity.
+     * Null when the key store cannot be read: callers fail closed.
      */
-    fun deriveIdentity(forGeohash: String, context: Context): NostrIdentity {
-        // Check cache first for immediate response
-        geohashIdentityCache[forGeohash]?.let { cachedIdentity ->
-            //Log.v(TAG, "Using cached geohash identity for $forGeohash")
-            return cachedIdentity
-        }
-        
-        val stateManager = SecureIdentityStateManager(context)
-        val seed = getOrCreateDeviceSeed(stateManager)
-        val identity = identityFromSeed(seed, forGeohash)
-        // Cache the result for future UI responsiveness
-        geohashIdentityCache[forGeohash] = identity
-        return identity
-    }
+    fun ownedNpubs(context: Context): Set<String>? =
+        runCatching { ownedNpubs(SecureIdentityStateManager(context)) }.getOrNull()
 
-    private fun identityFromSeed(seed: ByteArray, forGeohash: String): NostrIdentity {
-        val geohashBytes = forGeohash.toByteArray(Charsets.UTF_8)
-
-        // Try a few iterations to ensure a valid key can be formed (exactly like iOS)
-        for (i in 0 until 10) {
-            val candidateKeyHex = candidateKey(seed, geohashBytes, i.toUInt()).toHexStringLocal()
-            if (NostrCrypto.isValidPrivateKey(candidateKeyHex)) return NostrIdentity.fromPrivateKey(candidateKeyHex)
-        }
-
-        // As a final fallback, hash the seed+msg and try again (exactly like iOS)
-        val fallbackKey = MessageDigest.getInstance("SHA-256").digest(seed + geohashBytes)
-        return NostrIdentity.fromPrivateKey(fallbackKey.toHexStringLocal())
-    }
-
-    /**
-     * Every npub this device can sign as, read-only (never creates a key or the device seed):
-     * the current identity, every cached geohash identity, and the geohash identity of each
-     * geohash in [persistedGeohashes]. Null when a source cannot be read: callers fail closed.
-     */
-    fun ownedNpubs(context: Context, persistedGeohashes: Collection<String>): Set<String>? =
-        runCatching { ownedNpubs(SecureIdentityStateManager(context), persistedGeohashes) }.getOrNull()
-
-    internal fun ownedNpubs(stateManager: SecureIdentityStateManager, persistedGeohashes: Collection<String>): Set<String>? = runCatching {
+    internal fun ownedNpubs(stateManager: SecureIdentityStateManager): Set<String>? = runCatching {
         buildSet {
             stateManager.getSecureValue(NOSTR_PRIVATE_KEY)?.let { add(NostrIdentity.fromPrivateKey(it).npub) }
-            geohashIdentityCache.values.forEach { add(it.npub) }
-            stateManager.getSecureValue(DEVICE_SEED_KEY)?.let { encoded ->
-                val seed = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
-                persistedGeohashes.forEach { add(identityFromSeed(seed, it).npub) }
-            }
         }
     }.getOrNull()
-    
-    /**
-     * Generate candidate key for a specific iteration (matches iOS implementation)
-     */
-    private fun candidateKey(seed: ByteArray, message: ByteArray, iteration: UInt): ByteArray {
-        val input = message + iteration.toLittleEndianBytes()
-        return hmacSha256(seed, input)
-    }
     
     /**
      * Associate a Nostr identity with a Noise public key (for favorites)
@@ -219,9 +165,6 @@ object NostrIdentityBridge {
     fun clearAllAssociations(context: Context) {
         val stateManager = SecureIdentityStateManager(context)
         
-        // Clear cache first
-        geohashIdentityCache.clear()
-        
         // Clear Nostr private key using public methods instead of reflection
         try {
             stateManager.clearSecureValues(NOSTR_PRIVATE_KEY, DEVICE_SEED_KEY)
@@ -232,18 +175,13 @@ object NostrIdentityBridge {
         }
     }
 
-    /** Panic path: the Nostr key and device seed are gone from disk when this returns true. */
+    /** Panic path: the Nostr key and any legacy device seed are gone from disk when this returns true. */
     fun panicClearKeys(context: Context): Boolean {
-        geohashIdentityCache.clear()
         val stateManager = SecureIdentityStateManager(context)
         return stateManager.clearSecureValuesSynchronously(NOSTR_PRIVATE_KEY, DEVICE_SEED_KEY) &&
             !stateManager.hasSecureValue(NOSTR_PRIVATE_KEY) && !stateManager.hasSecureValue(DEVICE_SEED_KEY)
     }
 
-    fun clearGeohashIdentityCache(geohashes: Collection<String>) {
-        geohashes.forEach(geohashIdentityCache::remove)
-    }
-    
     // MARK: - Private Methods
     
     private fun loadNostrPrivateKey(stateManager: SecureIdentityStateManager): String? {
@@ -267,52 +205,9 @@ object NostrIdentityBridge {
             throw e
         }
     }
-    
-    private fun getOrCreateDeviceSeed(stateManager: SecureIdentityStateManager): ByteArray {
-        try {
-            // Use public methods instead of reflection to access the encrypted preferences
-            val existingSeed = stateManager.getSecureValue(DEVICE_SEED_KEY)
-            if (existingSeed != null) {
-                return android.util.Base64.decode(existingSeed, android.util.Base64.DEFAULT)
-            }
-            
-            // Generate new seed
-            val seed = ByteArray(32)
-            SecureRandom().nextBytes(seed)
-            
-            val seedBase64 = android.util.Base64.encodeToString(seed, android.util.Base64.DEFAULT)
-            stateManager.storeSecureValue(DEVICE_SEED_KEY, seedBase64)
-                
-            Log.d(TAG, "Generated new device seed for geohash identity derivation")
-            return seed
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get/create device seed: ${e.message}")
-            throw e
-        }
-    }
-    
-    private fun hmacSha256(key: ByteArray, message: ByteArray): ByteArray {
-        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
-        val secretKeySpec = javax.crypto.spec.SecretKeySpec(key, "HmacSHA256")
-        mac.init(secretKeySpec)
-        return mac.doFinal(message)
-    }
 }
 
 // Extension functions for data conversion
 private fun String.hexToByteArrayLocal(): ByteArray {
     return chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-}
-
-private fun ByteArray.toHexStringLocal(): String {
-    return joinToString("") { "%02x".format(it) }
-}
-
-private fun UInt.toLittleEndianBytes(): ByteArray {
-    val bytes = ByteArray(4)
-    bytes[0] = (this and 0xFFu).toByte()
-    bytes[1] = ((this shr 8) and 0xFFu).toByte()
-    bytes[2] = ((this shr 16) and 0xFFu).toByte()
-    bytes[3] = ((this shr 24) and 0xFFu).toByte()
-    return bytes
 }

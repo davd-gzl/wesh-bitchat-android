@@ -49,34 +49,19 @@
     <string name="notification_active_peers_title">Weshter-ები ახლოს!</string>
     <string name="notification_active_peers_one">1 ადამიანი ახლოს</string>
     <string name="notification_active_peers_many">ახლოს %1$d ადამიანი</string>
-    <string name="notification_new_messages">ახალი შეტყობინებები</string>
     <string name="notification_new_location_messages">მდებარეობის ახალი შეტყობინებები</string>
-    <string name="notification_mentions_in">ხსენება %1$s-ში</string>
-    <string name="notification_mentions_in_more">ხსენება %1$s-ში (+%2$d)</string>
-    <string name="notification_mentions_in_plural">%2$s-ში %1$d ხსენება</string>
-    <string name="notification_new_activity_in">ახალი აქტივობა %1$s-ში</string>
-    <string name="notification_messages_in">შეტყობინებები %1$s-ში</string>
-    <string name="notification_joined_conversation">%1$s შეუერთდა საუბარს</string>
-    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d ხსენება</string>
-    <string name="notification_geohash_summary_title">Wesh – მდებარეობის ჩათები</string>
-    <string name="notification_geohash_summary_text">%2$d ადგილიდან %1$d შეტყობინება</string>
     <string name="notification_mesh_mention_title_singular">mesh-ჩათში ხსენება</string>
     <string name="notification_mesh_mention_title_plural">mesh-ჩათში %1$d ხსენება</string>
-    <string name="notification_more_locations">და კიდევ %1$d ადგილი</string>
     <string name="notification_and_more">და კიდევ %1$d</string>
 
     <!-- რჩეულების ხელმისაწვდომობა -->
     <string name="cd_add_favorite">რჩეულებში დამატება</string>
     <string name="cd_remove_favorite">რჩეულებიდან წაშლა</string>
-    <string name="cd_add_bookmark">სანიშნეს დამატება</string>
 
     <!-- ჩათის სათაური &amp; ხელმისაწვდომობა -->
     <string name="cd_nostr_reachable">მისაწვდომია Nostr-ით</string>
     <string name="cd_unread_private_messages">წაუკითხავი პირადი შეტყობინებები</string>
-    <string name="cd_teleported">ტელეპორტირებული</string>
-    <string name="cd_open_location_channels">მდებარეობისა და არხების პარამეტრების გახსნა</string>
     <string name="cd_connected_peers">დაკავშირებული პირები</string>
-    <string name="cd_geohash_participants">geohash მონაწილეები</string>
     <string name="cd_ready_for_handshake">მზადაა ხელის ჩამოსართმევად</string>
     <string name="cd_handshake_in_progress">მიმდინარეობს ხელის ჩამორთმევა</string>
     <string name="cd_encrypted">ბოლო-მდე დაშიფვრა</string>
@@ -94,8 +79,6 @@
     <!-- შიტი "შესახებ" -->
     <string name="about_offline_mesh_title">ოფლაინ mesh-ჩათი</string>
     <string name="about_offline_mesh_desc">ესაუბრეთ პირდაპირ Bluetooth LE-ის საშუალებით ინტერნეტის ან სერვერების გარეშე. შეტყობინებები გადაიგზავნება ახლომდებარე მოწყობილობებზე, რათა გაიზარდოს დაფარვა.</string>
-    <string name="about_online_geohash_title">ონლაინ geohash არხები</string>
-    <string name="about_online_geohash_desc">დაუკავშირდით ახლომდებარე ხალხს geohash-ზე დაფუძნებული არხებით. გააფართოვეთ mesh საჯარო ინტერნეტ რილეებით.</string>
     <string name="about_e2e_title">ბოლო-მდე დაშიფვრა</string>
     <string name="about_e2e_desc">პირადი შეტყობინებები დაშიფრულია. არხის შეტყობინებები საჯაროა.</string>
     <string name="about_system">სისტემა</string>
@@ -137,15 +120,9 @@
     <string name="cd_not_supported_battery_optimization">ბატარეის ოპტიმიზაცია მხარდაჭერილი არ არის</string>
     <string name="cd_bluetooth">Bluetooth</string>
     <string name="cd_unread_message">წაუკითხავი შეტყობინება</string>
-    <string name="cd_open_map">რუკის გახსნა</string>
-    <string name="cd_remove_bookmark">სანიშნეს წაშლა</string>
-    <string name="cd_teleport">ტელეპორტი</string>
     <string name="cd_leave_channel">არხიდან გამოსვლა</string>
     <string name="cd_reachable_via_nostr">მისაწვდომია Nostr-ით</string>
     <string name="cd_offline_favorite">რჩეული (ოფლაინ)</string>
-    <string name="cd_decrease_precision">სიზუსტის შემცირება</string>
-    <string name="cd_increase_precision">სიზუსტის გაზრდა</string>
-    <string name="cd_select_geohash">აირჩიეთ geohash</string>
     <string name="cd_scroll_to_bottom">ქვემოთ გადახვევა</string>
     <string name="cd_file">ფაილი</string>
     <string name="cd_image">სურათი</string>
@@ -159,7 +136,6 @@
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">ხმოვანი ჩანაწერის ჩაწერა</string>
     <string name="cd_offline_mesh_chat">ოფლაინ mesh-ჩათი</string>
-    <string name="cd_online_geohash_channels">ონლაინ geohash არხები</string>
     <string name="cd_end_to_end_encryption">ბოლო-მდე დაშიფვრა</string>
 
     <!-- სურათები &amp; ფაილები -->
@@ -186,26 +162,9 @@
     <string name="action_block_subtitle">ამ მომხმარებლის ყველა შეტყობინების დაბლოკვა</string>
 
     <!-- geohash არხების შიტი -->
-    <string name="location_channels_title">#მდებარეობის არხები</string>
-    <string name="location_channels_desc">ესაუბრეთ თქვენს ახლოს მყოფ ადამიანებს geohash არხებით. იზიარება მხოლოდApprox geohash, არასოდეს ზუსტი GPS მონაცემები. თქვენი კონფიდენციალურობის დასაცავად ნუ გადაიღებთ სკრინშოტებს და ნუ გააზიარებთ ამ ეკრანს.</string>
-    <string name="grant_location_permission">მდებარეობის ნებართვის მინიჭება</string>
-    <string name="location_permission_denied">მდებარეობის ნებართვა უარყოფილია. ჩართეთ პარამეტრებში მდებარეობის არხების გამოსაყენებლად.</string>
     <string name="open_settings">პარამეტრების გახსნა</string>
-    <string name="location_permission_granted">\u2713 მდებარეობის ნებართვა მინიჭებულია</string>
     <string name="checking_permissions">ნებართვების შემოწმება…</string>
-    <string name="finding_nearby_channels">ახლომდებარე არხების ძიება…</string>
-    <string name="bookmarked">სანიშნეები</string>
-    <string name="geohash_placeholder">Geohash</string>
-    <string name="invalid_geohash">არასწორი geohash</string>
-    <string name="teleport">ტელეპორტი</string>
-    <string name="disable_location_services">მდებარეობის სერვისების გამორთვა</string>
-    <string name="enable_location_services">მდებარეობის სერვისების ჩართვა</string>
     <string name="mesh_label">mesh</string>
-    <string name="location_level_block">კვარტალი</string>
-    <string name="location_level_neighborhood">ახლომდებარე რაიონი</string>
-    <string name="location_level_city">ქალაქი</string>
-    <string name="location_level_province">პროვინცია</string>
-    <string name="location_level_region">რეგიონი</string>
     <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
 
     <!-- დებაგი / დიაგნოსტიკა -->
@@ -372,9 +331,6 @@
   <string name="verify_success_body">You verified %1$s</string>
   <string name="verify_success_system_message">verified %1$s</string>
     <string name="cd_open_about">აპის შესახებ გახსნა</string>
-  <string name="nearby_notes_reveal">აქ დატოვებული ჩანაწერების შემოწმება</string>
-  <string name="nearby_notes_one">აქ 1 ჩანაწერია დატოვებული — წასაკითხად შეეხეთ</string>
-  <string name="nearby_notes_many">აქ %d ჩანაწერია დატოვებული — წასაკითხად შეეხეთ</string>
     <string name="about_language">ენა</string>
     <string name="about_app_language">აპის ენა</string>
     <string name="about_system_default">სისტემის ნაგულისხმევი</string>

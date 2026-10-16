@@ -49,34 +49,19 @@
     <string name="notification_active_peers_title">کاربران Wesh در نزدیکی!</string>
     <string name="notification_active_peers_one">۱ نفر در نزدیکی</string>
     <string name="notification_active_peers_many">%1$d نفر در نزدیکی</string>
-    <string name="notification_new_messages">پیام‌های جدید</string>
     <string name="notification_new_location_messages">پیام‌های مکانی جدید</string>
-    <string name="notification_mentions_in">ذکر شده در %1$s</string>
-    <string name="notification_mentions_in_more">ذکر شده در %1$s (+%2$d مورد دیگر)</string>
-    <string name="notification_mentions_in_plural">%1$d مورد ذکر در %2$s</string>
-    <string name="notification_new_activity_in">فعالیت جدید در %1$s</string>
-    <string name="notification_messages_in">پیام‌ها در %1$s</string>
-    <string name="notification_joined_conversation">%1$s به گفت‌وگو پیوست</string>
-    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d مورد ذکر</string>
-    <string name="notification_geohash_summary_title">Wesh – گفت‌وگوی مکانی</string>
-    <string name="notification_geohash_summary_text">%1$d پیام از %2$d موقعیت</string>
     <string name="notification_mesh_mention_title_singular">ذکر در گفت‌وگوی مِش</string>
     <string name="notification_mesh_mention_title_plural">%1$d مورد ذکر در گفت‌وگوی مِش</string>
-    <string name="notification_more_locations">و %1$d موقعیت دیگر</string>
     <string name="notification_and_more">و %1$d مورد دیگر</string>
 
     <!-- دسترسی‌پذیری موارد دلخواه -->
     <string name="cd_add_favorite">افزودن به موارد دلخواه</string>
     <string name="cd_remove_favorite">حذف از موارد دلخواه</string>
-    <string name="cd_add_bookmark">افزودن نشانک</string>
 
     <!-- سربرگ چت و دسترسی‌پذیری -->
     <string name="cd_nostr_reachable">قابل دسترس از طریق Nostr</string>
     <string name="cd_unread_private_messages">پیام‌های خصوصی خوانده‌نشده</string>
-    <string name="cd_teleported">انتقال مکانی</string>
-    <string name="cd_open_location_channels">باز کردن تنظیمات مکان و کانال‌ها</string>
     <string name="cd_connected_peers">همتایان متصل</string>
-    <string name="cd_geohash_participants">شرکت‌کنندگان geohash</string>
     <string name="cd_ready_for_handshake">آمادهٔ دست‌دهی</string>
     <string name="cd_handshake_in_progress">دست‌دهی در حال انجام</string>
     <string name="cd_encrypted">رمزگذاری سرتاسری</string>
@@ -94,8 +79,6 @@
     <!-- برگهٔ درباره -->
     <string name="about_offline_mesh_title">گفت‌وگوی مِش آفلاین</string>
     <string name="about_offline_mesh_desc">بدون اینترنت یا سرور، مستقیماً از طریق Bluetooth LE ارتباط برقرار کنید. پیام‌ها از طریق دستگاه‌های نزدیک رله می‌شوند تا بُرد افزایش یابد.</string>
-    <string name="about_online_geohash_title">کانال‌های geohash آنلاین</string>
-    <string name="about_online_geohash_desc">از طریق کانال‌های مبتنی بر geohash با افراد منطقهٔ خود ارتباط برقرار کنید. مِش را از طریق رله‌های عمومی اینترنت گسترش دهید.</string>
     <string name="about_e2e_title">رمزگذاری سرتاسری</string>
     <string name="about_e2e_desc">پیام‌های خصوصی رمزگذاری می‌شوند. پیام‌های کانال عمومی هستند.</string>
     <string name="about_system">سامانه</string>
@@ -137,15 +120,9 @@
     <string name="cd_not_supported_battery_optimization">بهینه‌سازی باتری پشتیبانی نمی‌شود</string>
     <string name="cd_bluetooth">بلوتوث</string>
     <string name="cd_unread_message">پیام خوانده‌نشده</string>
-    <string name="cd_open_map">باز کردن نقشه</string>
-    <string name="cd_remove_bookmark">حذف نشانک</string>
-    <string name="cd_teleport">انتقال</string>
     <string name="cd_leave_channel">خروج از کانال</string>
     <string name="cd_reachable_via_nostr">قابل دسترس از طریق Nostr</string>
     <string name="cd_offline_favorite">دلخواه (آفلاین)</string>
-    <string name="cd_decrease_precision">کاهش دقت</string>
-    <string name="cd_increase_precision">افزایش دقت</string>
-    <string name="cd_select_geohash">انتخاب geohash</string>
     <string name="cd_scroll_to_bottom">اسکرول به پایین</string>
     <string name="cd_file">فایل</string>
     <string name="cd_image">تصویر</string>
@@ -159,7 +136,6 @@
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">ضبط پیام صوتی</string>
     <string name="cd_offline_mesh_chat">گفت‌وگوی مِش آفلاین</string>
-    <string name="cd_online_geohash_channels">کانال‌های geohash آنلاین</string>
     <string name="cd_end_to_end_encryption">رمزگذاری سرتاسری</string>
 
     <!-- تصاویر و فایل‌ها -->
@@ -186,26 +162,9 @@
     <string name="action_block_subtitle">همهٔ پیام‌های این کاربر را مسدود کن</string>
 
     <!-- برگهٔ کانال‌های geohash -->
-    <string name="location_channels_title">#کانال‌های مکانی</string>
-    <string name="location_channels_desc">از طریق کانال‌های geohash با افراد نزدیک خود چت کنید. فقط geohash کلی به اشتراک گذاشته می‌شود، نه دادهٔ GPS دقیق. برای حفظ حریم خصوصی، لطفاً از این نما اسکرین‌شات نگیرید یا آن را به اشتراک نگذارید.</string>
-    <string name="grant_location_permission">اعطای مجوز مکان</string>
-    <string name="location_permission_denied">مجوز مکان رد شد. برای استفاده از کانال‌های مکانی، آن را در تنظیمات فعال کنید.</string>
     <string name="open_settings">باز کردن تنظیمات</string>
-    <string name="location_permission_granted">\u2713 مجوز مکان اعطا شد</string>
     <string name="checking_permissions">در حال بررسی مجوزها …</string>
-    <string name="finding_nearby_channels">در حال یافتن کانال‌های نزدیک …</string>
-    <string name="bookmarked">نشانک شده</string>
-    <string name="geohash_placeholder">Geohash</string>
-    <string name="invalid_geohash">geohash نامعتبر است</string>
-    <string name="teleport">انتقال مکانی</string>
-    <string name="disable_location_services">غیرفعال‌کردن خدمات مکان</string>
-    <string name="enable_location_services">فعال‌کردن خدمات مکان</string>
     <string name="mesh_label">mesh</string>
-    <string name="location_level_block">بلوک</string>
-    <string name="location_level_neighborhood">محله</string>
-    <string name="location_level_city">شهر</string>
-    <string name="location_level_province">استان</string>
-    <string name="location_level_region">منطقه</string>
     <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
 
     <!-- اشکال‌زدایی / عیب‌یابی -->
@@ -372,9 +331,6 @@
   <string name="verify_success_body">You verified %1$s</string>
   <string name="verify_success_system_message">verified %1$s</string>
     <string name="cd_open_about">باز کردن درباره</string>
-  <string name="nearby_notes_reveal">یادداشت‌های باقی‌مانده در اینجا را بررسی کنید</string>
-  <string name="nearby_notes_one">۱ یادداشت اینجا باقی مانده — برای خواندن ضربه بزنید</string>
-  <string name="nearby_notes_many">%d یادداشت اینجا باقی مانده — برای خواندن ضربه بزنید</string>
     <string name="about_language">زبان</string>
     <string name="about_app_language">زبان برنامه</string>
     <string name="about_system_default">پیش‌فرض سیستم</string>

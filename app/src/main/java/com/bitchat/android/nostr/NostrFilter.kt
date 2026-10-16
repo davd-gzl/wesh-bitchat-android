@@ -32,45 +32,6 @@ data class NostrFilter(
         }
         
         /**
-         * Create filter for geohash-scoped ephemeral events (kind 20000 and 20001)
-         */
-        fun geohashEphemeral(geohash: String, since: Long? = null, limit: Int = 1000): NostrFilter {
-            return NostrFilter(
-                kinds = listOf(NostrKind.EPHEMERAL_EVENT, NostrKind.GEOHASH_PRESENCE),
-                since = since?.let { (it / 1000).toInt() },
-                tagFilters = mapOf("g" to listOf(geohash)),
-                limit = limit
-            )
-        }
-
-        /**
-         * Create filter for geohash-scoped chat messages only (kind 20000).
-         * Low-volume; kept subscribed in the background so messages keep arriving.
-         */
-        fun geohashMessages(geohash: String, since: Long? = null, limit: Int = 1000): NostrFilter {
-            return NostrFilter(
-                kinds = listOf(NostrKind.EPHEMERAL_EVENT),
-                since = since?.let { (it / 1000).toInt() },
-                tagFilters = mapOf("g" to listOf(geohash)),
-                limit = limit
-            )
-        }
-
-        /**
-         * Create filter for geohash-scoped presence heartbeats only (kind 20001).
-         * High-volume firehose (every participant rebroadcasts ~every 60s); only used
-         * to refresh the participant list, so it is paused while backgrounded.
-         */
-        fun geohashPresence(geohash: String, since: Long? = null, limit: Int = 1000): NostrFilter {
-            return NostrFilter(
-                kinds = listOf(NostrKind.GEOHASH_PRESENCE),
-                since = since?.let { (it / 1000).toInt() },
-                tagFilters = mapOf("g" to listOf(geohash)),
-                limit = limit
-            )
-        }
-        
-        /**
          * Create filter for text notes from specific authors
          */
         fun textNotesFrom(authors: List<String>, since: Long? = null, limit: Int = 50): NostrFilter {
@@ -78,18 +39,6 @@ data class NostrFilter(
                 kinds = listOf(NostrKind.TEXT_NOTE),
                 authors = authors,
                 since = since?.let { (it / 1000).toInt() },
-                limit = limit
-            )
-        }
-        
-        /**
-         * Create filter for geohash-scoped text notes (kind=1 with g tag)
-         */
-        fun geohashNotes(geohash: String, since: Long? = null, limit: Int = 200): NostrFilter {
-            return NostrFilter(
-                kinds = listOf(NostrKind.TEXT_NOTE),
-                since = since?.let { (it / 1000).toInt() },
-                tagFilters = mapOf("g" to listOf(geohash)),
                 limit = limit
             )
         }
@@ -147,7 +96,6 @@ data class NostrFilter(
         
         fun tagP(vararg pubkeys: String) = apply { tagFilters["p"] = pubkeys.toList() }
         fun tagE(vararg eventIds: String) = apply { tagFilters["e"] = eventIds.toList() }
-        fun tagG(vararg geohashes: String) = apply { tagFilters["g"] = geohashes.toList() }
         fun tag(name: String, vararg values: String) = apply { tagFilters[name] = values.toList() }
         
         fun build(): NostrFilter {
@@ -231,13 +179,5 @@ data class NostrFilter(
         }
         
         return "NostrFilter(${parts.joinToString(", ")})"
-    }
-    
-    /**
-     * Get geohash value from g tag filter (if present)
-     * Returns the first geohash in the filter or null if none
-     */
-    fun getGeohash(): String? {
-        return tagFilters?.get("g")?.firstOrNull()
     }
 }

@@ -43,32 +43,17 @@
     <string name="notification_active_peers_title">Weshter i närheten!</string>
     <string name="notification_active_peers_one">1 person i närheten</string>
     <string name="notification_active_peers_many">%1$d personer i närheten</string>
-    <string name="notification_new_messages">Nya meddelanden</string>
     <string name="notification_new_location_messages">Nya platsmeddelanden</string>
-    <string name="notification_mentions_in">Nämnd i %1$s</string>
-    <string name="notification_mentions_in_more">Nämnd i %1$s (+%2$d till)</string>
-    <string name="notification_mentions_in_plural">%1$d nämningar i %2$s</string>
-    <string name="notification_new_activity_in">Ny aktivitet i %1$s</string>
-    <string name="notification_messages_in">Meddelanden i %1$s</string>
-    <string name="notification_joined_conversation">%1$s gick med i konversationen</string>
-    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d nämningar</string>
-    <string name="notification_geohash_summary_title">Wesh – platschattar</string>
-    <string name="notification_geohash_summary_text">%1$d meddelanden från %2$d platser</string>
     <string name="notification_mesh_mention_title_singular">Nämnd i Mesh‑chatt</string>
     <string name="notification_mesh_mention_title_plural">%1$d nämningar i Mesh‑chatt</string>
-    <string name="notification_more_locations">och %1$d fler platser</string>
     <string name="notification_and_more">och %1$d till</string>
 
     <string name="cd_add_favorite">Lägg till som favorit</string>
     <string name="cd_remove_favorite">Ta bort favorit</string>
-    <string name="cd_add_bookmark">Lägg till bokmärke</string>
 
     <string name="cd_nostr_reachable">Nås via Nostr</string>
     <string name="cd_unread_private_messages">Olästa privata meddelanden</string>
-    <string name="cd_teleported">Teleporterad</string>
-    <string name="cd_open_location_channels">Öppna plats- och kanalinställningar</string>
     <string name="cd_connected_peers">Anslutna noder</string>
-    <string name="cd_geohash_participants">Geohash‑deltagare</string>
     <string name="cd_ready_for_handshake">Redo för handshake</string>
     <string name="cd_handshake_in_progress">Handshake pågår</string>
     <string name="cd_encrypted">Ända‑till‑ända‑krypterat</string>
@@ -84,8 +69,6 @@
 
     <string name="about_offline_mesh_title">Offline Mesh‑chatt</string>
     <string name="about_offline_mesh_desc">Kommunicera direkt via Bluetooth LE utan internet eller servrar. Meddelanden reläas av enheter i närheten.</string>
-    <string name="about_online_geohash_title">Online Geohash‑kanaler</string>
-    <string name="about_online_geohash_desc">Anslut med personer i närheten via geohash‑kanaler. Utöka mesh via publika internetreläer.</string>
     <string name="about_e2e_title">Ända‑till‑ända‑kryptering</string>
     <string name="about_e2e_desc">Privata meddelanden är krypterade. Kanalmeddelanden är publika.</string>
     <string name="about_system">system</string>
@@ -126,15 +109,9 @@
     <string name="cd_not_supported_battery_optimization">Stöds ej</string>
     <string name="cd_bluetooth">Bluetooth</string>
     <string name="cd_unread_message">Oläst meddelande</string>
-    <string name="cd_open_map">Öppna karta</string>
-    <string name="cd_remove_bookmark">Ta bort bokmärke</string>
-    <string name="cd_teleport">Teleportera</string>
     <string name="cd_leave_channel">Lämna kanal</string>
     <string name="cd_reachable_via_nostr">Nås via Nostr</string>
     <string name="cd_offline_favorite">Favorit (offline)</string>
-    <string name="cd_decrease_precision">Minska precision</string>
-    <string name="cd_increase_precision">Öka precision</string>
-    <string name="cd_select_geohash">Välj geohash</string>
     <string name="cd_scroll_to_bottom">Rulla längst ned</string>
     <string name="cd_file">Fil</string>
     <string name="cd_image">Bild</string>
@@ -143,7 +120,6 @@
     <string name="cd_pick_media">Välj media</string>
     <string name="cd_record_voice">Spela in röstanteckning</string>
     <string name="cd_offline_mesh_chat">Offline Mesh‑chatt</string>
-    <string name="cd_online_geohash_channels">Online Geohash‑kanaler</string>
     <string name="cd_end_to_end_encryption">Ända‑till‑ända‑kryptering</string>
 
     <string name="image_page_of">Bild %1$d / %2$d</string>
@@ -165,27 +141,10 @@
     <string name="action_block_title">blockera %1$s</string>
     <string name="action_block_subtitle">blockera alla meddelanden från den här användaren</string>
 
-    <string name="location_channels_title">#platskanaler</string>
-    <string name="location_channels_desc">chatta med folk nära dig via geohash‑kanaler. endast en grov geohash delas, aldrig exakt gps. ta inte skärmdumpar eller dela skärmen för att skydda din integritet.</string>
-    <string name="grant_location_permission">ge platsbehörighet</string>
-    <string name="location_permission_denied">platsbehörighet nekades. aktivera i inställningar för att använda platskanaler.</string>
     <string name="open_settings">Öppna inställningar</string>
-    <string name="location_permission_granted">\u2713 platsbehörighet beviljad</string>
     <string name="checking_permissions">kontrollerar behörigheter…</string>
-    <string name="finding_nearby_channels">söker efter kanaler i närheten…</string>
-    <string name="bookmarked">bokmärkt</string>
-    <string name="geohash_placeholder">geohash</string>
-    <string name="invalid_geohash">ogiltig geohash</string>
-    <string name="teleport">teleportera</string>
-    <string name="disable_location_services">inaktivera platstjänster</string>
-    <string name="enable_location_services">aktivera platstjänster</string>
     <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
     <string name="mesh_label">mesh</string>
-    <string name="location_level_block">kvarter</string>
-    <string name="location_level_neighborhood">grannskap</string>
-    <string name="location_level_city">stad</string>
-    <string name="location_level_province">län</string>
-    <string name="location_level_region">region</string>
 
     <string name="debug_tools">felsökningsverktyg</string>
     <string name="debug_verbose_logging">utförlig loggning</string>
@@ -302,19 +261,7 @@
         <item quantity="one">1 person</item>
         <item quantity="other">%d personer</item>
     </plurals>
-  <plurals name="location_notes_title">
-    <item quantity="one">#%1$s ± 1 • %2$d anteckning</item>
-    <item quantity="other">#%1$s ± 1 • %2$d anteckningar</item>
-  </plurals>
-  <string name="location_notes_description">lägg till korta permanenta anteckningar för den här platsen så att andra besökare kan hitta dem.</string>
-  <string name="location_notes_relays_unavailable">geo-reläer är inte tillgängliga; anteckningar pausade</string>
-  <string name="location_notes_no_relays_title">inga geo-reläer i närheten</string>
-  <string name="location_notes_no_relays_desc">anteckningar är beroende av geo-reläer. kontrollera anslutningen och försök igen.</string>
-  <string name="loading_location_notes">laddar anteckningar…</string>
-  <string name="location_notes_empty_title">inga anteckningar ännu</string>
-  <string name="location_notes_empty_desc">var först med att lägga till en anteckning för den här platsen.</string>
   <string name="dismiss">stäng</string>
-  <string name="location_notes_input_placeholder">lägg till en anteckning för den här platsen</string>
     <string name="bluetooth_recommended">Bluetooth rekommenderas</string>
     <string name="mesh_service_notification_content">Mesh körs — %1$d peers</string>
 
@@ -354,9 +301,6 @@
   <string name="verify_success_body">You verified %1$s</string>
   <string name="verify_success_system_message">verified %1$s</string>
     <string name="cd_open_about">Öppna Om</string>
-  <string name="nearby_notes_reveal">kolla om anteckningar lämnats här</string>
-  <string name="nearby_notes_one">1 anteckning lämnad här — tryck för att läsa</string>
-  <string name="nearby_notes_many">%d anteckningar lämnade här — tryck för att läsa</string>
     <string name="about_language">Språk</string>
     <string name="about_app_language">Appspråk</string>
     <string name="about_system_default">Systemstandard</string>

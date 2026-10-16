@@ -3,8 +3,6 @@ package com.bitchat.android.nostr
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonParser
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * NIP-17 Protocol Implementation for Private Direct Messages
@@ -98,119 +96,6 @@ object NostrProtocol {
             Log.w(TAG, "Failed to decrypt private message: ${e.message}")
             null
         }
-    }
-    
-    /**
-     * Create a geohash-scoped text note (kind 1) with optional nickname
-     * This creates a persistent text note that can be retrieved later
-     */
-    suspend fun createGeohashTextNote(
-        content: String,
-        geohash: String,
-        senderIdentity: NostrIdentity,
-        nickname: String? = null
-    ): NostrEvent = withContext(Dispatchers.Default) {
-        val tags = mutableListOf<List<String>>()
-        tags.add(listOf("g", geohash))
-        
-        if (!nickname.isNullOrEmpty()) {
-            tags.add(listOf("n", nickname))
-        }
-        
-        val event = NostrEvent(
-            pubkey = senderIdentity.publicKeyHex,
-            createdAt = (System.currentTimeMillis() / 1000).toInt(),
-            kind = NostrKind.TEXT_NOTE,
-            tags = tags,
-            content = content
-        )
-        
-        return@withContext senderIdentity.signEvent(event)
-    }
-
-    /**
-     * Create a geohash-scoped presence event (kind 20001)
-     * Has no content and no nickname, used for participant counting
-     */
-    suspend fun createGeohashPresenceEvent(
-        geohash: String,
-        senderIdentity: NostrIdentity
-    ): NostrEvent = withContext(Dispatchers.Default) {
-        val tags = mutableListOf<List<String>>()
-        tags.add(listOf("g", geohash))
-
-        val event = NostrEvent(
-            pubkey = senderIdentity.publicKeyHex,
-            createdAt = (System.currentTimeMillis() / 1000).toInt(),
-            kind = NostrKind.GEOHASH_PRESENCE,
-            tags = tags,
-            content = ""
-        )
-
-        return@withContext senderIdentity.signEvent(event)
-    }
-    
-    /**
-     * Create a geohash-scoped ephemeral public message (kind 20000)
-     * Includes Proof of Work mining if enabled in settings
-     */
-    suspend fun createEphemeralGeohashEvent(
-        content: String,
-        geohash: String,
-        senderIdentity: NostrIdentity,
-        nickname: String? = null,
-        teleported: Boolean = false
-    ): NostrEvent = withContext(Dispatchers.Default) {
-        val tags = mutableListOf<List<String>>()
-        tags.add(listOf("g", geohash))
-        
-        if (!nickname.isNullOrEmpty()) {
-            tags.add(listOf("n", nickname))
-        }
-        
-        if (teleported) {
-            // Use tag consistent with event handlers ("t","teleport")
-            tags.add(listOf("t", "teleport"))
-        }
-        
-        var event = NostrEvent(
-            pubkey = senderIdentity.publicKeyHex,
-            createdAt = (System.currentTimeMillis() / 1000).toInt(),
-            kind = NostrKind.EPHEMERAL_EVENT,
-            tags = tags,
-            content = content
-        )
-        
-        // Check if Proof of Work is enabled
-        val powSettings = PoWPreferenceManager.getCurrentSettings()
-        if (powSettings.enabled && powSettings.difficulty > 0) {
-            Log.d(TAG, "PoW enabled for geohash event: difficulty=${powSettings.difficulty}")
-            
-            try {
-                // Start mining state for animated indicators
-                PoWPreferenceManager.startMining()
-                
-                // Mine the event before signing
-                val minedEvent = NostrProofOfWork.mineEvent(
-                    event = event,
-                    targetDifficulty = powSettings.difficulty,
-                    maxIterations = 2_000_000 // Allow up to 2M iterations for reasonable mining time
-                )
-                
-                if (minedEvent != null) {
-                    event = minedEvent
-                    val actualDifficulty = NostrProofOfWork.calculateDifficulty(event.id)
-                    Log.d(TAG, "✅ PoW mining successful: target=${powSettings.difficulty}, actual=$actualDifficulty, nonce=${NostrProofOfWork.getNonce(event)}")
-                } else {
-                    Log.w(TAG, "❌ PoW mining failed, proceeding without PoW")
-                }
-            } finally {
-                // Always stop mining state when done (success or failure)
-                PoWPreferenceManager.stopMining()
-            }
-        }
-        
-        return@withContext senderIdentity.signEvent(event)
     }
     
     // MARK: - Private Methods

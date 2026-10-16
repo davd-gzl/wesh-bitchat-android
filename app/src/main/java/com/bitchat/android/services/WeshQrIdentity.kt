@@ -36,19 +36,13 @@ internal object WeshQrIdentity {
         if (isActive()) NostrIdentityBridge.peekCurrentNostrIdentity(context) else null
 
     /**
-     * Every npub I own, for the enrollment self-check: my current identity plus every cached,
-     * derivable or persisted geohash identity (bookmarked or with a stored conversation). Null
-     * while Internet mode is off or fenced, without a current key, or when any source cannot be
-     * read, so the check fails closed.
+     * Every npub I own, for the enrollment self-check: my current identity. Null while Internet
+     * mode is off or fenced, without a current key, or when the key store cannot be read, so the
+     * check fails closed.
      */
     suspend fun ownedNpubs(context: Context): Set<String>? = withContext(io) {
         val current = mine(context)?.npub ?: return@withContext null
-        val geohashes = runCatching {
-            com.bitchat.android.nostr.GeohashConversationRegistry.initialize(context.applicationContext)
-            com.bitchat.android.geohash.GeohashBookmarksStore.getInstance(context).bookmarks.value +
-                com.bitchat.android.nostr.GeohashConversationRegistry.snapshot().values
-        }.getOrNull() ?: return@withContext null
-        NostrIdentityBridge.ownedNpubs(context, geohashes.toSet())?.takeIf { current in it }
+        NostrIdentityBridge.ownedNpubs(context)?.takeIf { current in it }
     }
 
     /** My signed QR, with a proven npub only while Internet mode is active. */

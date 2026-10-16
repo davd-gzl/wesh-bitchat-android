@@ -45,7 +45,7 @@ private val RowEnterSpec: FiniteAnimationSpec<Float> =
  * Deliberately not a `LazyColumn`: both people lists live *inside* an outer `LazyColumn` item, where
  * nesting another lazy list is not possible. [LookaheadScope] plus [Modifier.animateBounds] gives
  * the same reorder-and-resize animation that `LazyItemScope.animateItem` provides, without the list
- * needing to be lazy. These lists are bounded (and the geohash one is explicitly capped), so
+ * needing to be lazy. These lists are bounded, so
  * nothing is lost by composing every row.
  *
  * Rows are keyed so identity survives reordering. Without stable keys a row that moved would look

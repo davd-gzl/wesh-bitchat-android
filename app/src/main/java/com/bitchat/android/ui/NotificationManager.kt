@@ -29,12 +29,10 @@ import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Enhanced notification manager for direct messages and geohash chats with production-ready features:
- * - Notification grouping per sender/geohash
- * - Click handling to open specific DM or geohash chat
+ * Enhanced notification manager for direct messages with production-ready features:
+ * - Notification grouping per sender
+ * - Click handling to open a specific DM
  * - App background state awareness
- * - Support for mention notifications in geohash chats
- * - Support for first message notifications in geohash chats
  * - Proper notification management and cleanup
  */
 class NotificationManager(
@@ -48,21 +46,17 @@ class NotificationManager(
     companion object {
         private const val TAG = "NotificationManager"
         private const val CHANNEL_ID = "bitchat_dm_notifications"
-        private const val GEOHASH_CHANNEL_ID = "bitchat_geohash_notifications"
+        // Channel of the removed location chats; deleted at startup in case an older build made it.
+        private const val LEGACY_GEOHASH_CHANNEL_ID = "bitchat_geohash_notifications"
         private const val GROUP_KEY_DM = "bitchat_dm_group"
-        private const val GROUP_KEY_GEOHASH = "bitchat_geohash_group"
         private const val NOTIFICATION_REQUEST_CODE = 1000
-        private const val GEOHASH_NOTIFICATION_REQUEST_CODE = 2000
         private const val SUMMARY_NOTIFICATION_ID = 999
-      private const val GEOHASH_SUMMARY_NOTIFICATION_ID = 998
         private const val MAX_MESSAGES_IN_NOTIFICATION = 25
 
         // Intent extras for notification handling
         const val EXTRA_OPEN_PRIVATE_CHAT = "open_private_chat"
-        const val EXTRA_OPEN_GEOHASH_CHAT = "open_geohash_chat"
         const val EXTRA_PEER_ID = "peer_id"
         const val EXTRA_SENDER_NICKNAME = "sender_nickname"
-        const val EXTRA_GEOHASH = "geohash"
         const val ACTION_REPLY_TO_CONVERSATION =
             "com.bitchat.android.action.REPLY_TO_CONVERSATION"
         const val ACTION_MARK_CONVERSATION_READ =
@@ -96,7 +90,6 @@ class NotificationManager(
     
     // Track pending notifications per sender to enable grouping
     private val pendingNotifications = ConcurrentHashMap<String, MutableList<PendingNotification>>()
-    private val pendingGeohashNotifications = ConcurrentHashMap<String, MutableList<GeohashNotification>>()
 
     // Track app background state
     @Volatile
@@ -106,24 +99,11 @@ class NotificationManager(
     @Volatile
     private var currentPrivateChatPeer: String? = null
 
-    @Volatile
-    private var currentGeohash: String? = null
-
     data class PendingNotification(
         val senderPeerID: String,
         val senderNickname: String, 
         val messageContent: String,
         val timestamp: Long
-    )
-
-    data class GeohashNotification(
-        val geohash: String,
-        val senderNickname: String,
-        val messageContent: String,
-        val timestamp: Long,
-        val isMention: Boolean,
-        val isFirstMessage: Boolean,
-        val locationName: String? = null
     )
 
     init {
@@ -145,17 +125,7 @@ class NotificationManager(
             }
             systemNotificationManager.createNotificationChannel(dmChannel)
 
-            // Geohash notifications channel
-            val geohashName = context.getString(R.string.notification_channel_geohash)
-            val geohashDescriptionText =
-                context.getString(R.string.notification_channel_geohash_description)
-            val geohashImportance = AndroidNotificationManager.IMPORTANCE_HIGH
-            val geohashChannel = NotificationChannel(GEOHASH_CHANNEL_ID, geohashName, geohashImportance).apply {
-                description = geohashDescriptionText
-                enableVibration(true)
-                setShowBadge(true)
-            }
-            systemNotificationManager.createNotificationChannel(geohashChannel)
+            systemNotificationManager.deleteNotificationChannel(LEGACY_GEOHASH_CHANNEL_ID)
         }
     }
 
@@ -173,14 +143,6 @@ class NotificationManager(
     fun setCurrentPrivateChatPeer(peerID: String?) {
         currentPrivateChatPeer = peerID?.let { ContactDirectory.canonicalConversationId(it) }
         Log.d(TAG, "Current private chat peer changed: $currentPrivateChatPeer")
-    }
-
-    /**
-     * Update current geohash - affects notification logic for geohash chats
-     */
-    fun setCurrentGeohash(geohash: String?) {
-        currentGeohash = geohash
-        Log.d(TAG, "Current geohash changed")
     }
 
     /**
@@ -583,229 +545,6 @@ class NotificationManager(
     }
 
     /**
-     * Show a notification for a geohash message with mention or first message
-     */
-    fun showGeohashNotification(
-        geohash: String,
-        senderNickname: String,
-        messageContent: String,
-        isMention: Boolean = false,
-        isFirstMessage: Boolean = false,
-        locationName: String? = null
-    ) {
-        // Only show notifications if app is in background OR user is not viewing this specific geohash
-        val shouldNotify = isAppInBackground || (!isAppInBackground && currentGeohash != geohash)
-
-        if (!shouldNotify) {
-            Log.d(TAG, "Skipping geohash notification while viewing the channel")
-            return
-        }
-
-        Log.d(TAG, "Showing geohash notification (mention: $isMention, first: $isFirstMessage)")
-
-        val notification = GeohashNotification(
-            geohash = geohash,
-            senderNickname = senderNickname,
-            messageContent = messageContent,
-            timestamp = System.currentTimeMillis(),
-            isMention = isMention,
-            isFirstMessage = isFirstMessage,
-            locationName = locationName
-        )
-
-        // Add to pending notifications for this geohash
-        pendingGeohashNotifications.computeIfAbsent(geohash) { mutableListOf() }.add(notification)
-
-        // Create or update notification for this geohash
-        showNotificationForGeohash(geohash)
-
-        // Update summary notification if we have multiple geohashes
-        if (pendingGeohashNotifications.size > 1) {
-            showGeohashSummaryNotification()
-        }
-    }
-
-    private fun showNotificationForGeohash(geohash: String) {
-        val notifications = pendingGeohashNotifications[geohash] ?: return
-        if (notifications.isEmpty()) return
-
-        val latestNotification = notifications.last()
-        val messageCount = notifications.size
-        val mentionCount = notifications.count { it.isMention }
-        val firstMessageCount = notifications.count { it.isFirstMessage }
-
-        // Create intent to open the specific geohash chat
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(EXTRA_OPEN_GEOHASH_CHAT, true)
-            putExtra(EXTRA_GEOHASH, geohash)
-        }
-
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            GEOHASH_NOTIFICATION_REQUEST_CODE + geohash.hashCode(),
-            intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        // Build notification content with location name if available
-        val geohashDisplay = latestNotification.locationName?.let { "$it (#$geohash)" } ?: "#$geohash"
-        val contentTitle = when {
-            mentionCount > 0 && firstMessageCount > 0 && messageCount > 1 -> context.getString(R.string.notification_mentions_in_more, geohashDisplay, messageCount - 1)
-            mentionCount > 0 -> if (mentionCount == 1) context.getString(R.string.notification_mentions_in, geohashDisplay) else context.getString(R.string.notification_mentions_in_plural, mentionCount, geohashDisplay)
-            firstMessageCount > 0 -> context.getString(R.string.notification_new_activity_in, geohashDisplay)
-            else -> context.getString(R.string.notification_messages_in, geohashDisplay)
-        }
-
-        val contentText = when {
-            latestNotification.isMention -> "${latestNotification.senderNickname}: ${latestNotification.messageContent}"
-            latestNotification.isFirstMessage -> context.getString(R.string.notification_joined_conversation, latestNotification.senderNickname)
-            else -> "${latestNotification.senderNickname}: ${latestNotification.messageContent}"
-        }
-
-        val builder = NotificationCompat.Builder(context, GEOHASH_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(contentTitle)
-            .setContentText(contentText)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .setPriority(if (latestNotification.isMention) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
-            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setShowWhen(true)
-            .setWhen(latestNotification.timestamp)
-
-        // Add to notification group if we have multiple geohashes
-        if (pendingGeohashNotifications.size > 1) {
-            builder.setGroup(GROUP_KEY_GEOHASH)
-        }
-
-        // Add style for multiple messages
-        if (messageCount > 1) {
-            val style = NotificationCompat.InboxStyle()
-                .setBigContentTitle(contentTitle)
-
-            // Show last few messages in expanded view
-            notifications.takeLast(5).forEach { notif ->
-                val prefix = when {
-                    notif.isMention -> "💬 "
-                    notif.isFirstMessage -> "👋 "
-                    else -> ""
-                }
-                style.addLine("$prefix${notif.senderNickname}: ${notif.messageContent}")
-            }
-
-            if (messageCount > 5) {
-                val extra = messageCount - 5
-                style.setSummaryText(context.resources.getQuantityString(R.plurals.notification_and_more, extra, extra))
-            }
-
-            builder.setStyle(style)
-        } else {
-            // Single message - use BigTextStyle for long messages
-            builder.setStyle(
-                NotificationCompat.BigTextStyle()
-                    .bigText(contentText)
-            )
-        }
-
-        // Use geohash hash as notification ID to group messages from same geohash
-        val notificationId = 3000 + geohash.hashCode()
-        notifySafely(notificationId, builder.build())
-
-    }
-
-    private fun showGeohashSummaryNotification() {
-        if (pendingGeohashNotifications.isEmpty()) return
-
-        val totalMessages = pendingGeohashNotifications.values.sumOf { it.size }
-        val geohashCount = pendingGeohashNotifications.size
-        val totalMentions = pendingGeohashNotifications.values.sumOf { notifications ->
-            notifications.count { it.isMention }
-        }
-
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            GEOHASH_NOTIFICATION_REQUEST_CODE,
-            intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val contentTitle = if (totalMentions > 0) {
-            context.getString(R.string.notification_geohash_summary_title_mentions, totalMentions)
-        } else {
-            context.getString(R.string.notification_geohash_summary_title)
-        }
-
-        val contentText = context.getString(R.string.notification_geohash_summary_text, totalMessages, geohashCount)
-
-        val builder = NotificationCompat.Builder(context, GEOHASH_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(contentTitle)
-            .setContentText(contentText)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setGroup(GROUP_KEY_GEOHASH)
-            .setGroupSummary(true)
-
-        // Add inbox style showing recent geohashes
-        val style = NotificationCompat.InboxStyle()
-            .setBigContentTitle(context.getString(R.string.notification_new_messages))
-
-        pendingGeohashNotifications.entries.take(5).forEach { (geohash, notifications) ->
-            val mentionCount = notifications.count { it.isMention }
-            val messageCount = notifications.size
-            val latestNotification = notifications.last()
-            val geohashDisplay = latestNotification.locationName?.let { "$it (#$geohash)" } ?: "#$geohash"
-            val line = when {
-                mentionCount > 0 -> "$geohashDisplay: $mentionCount mentions (+${messageCount - mentionCount} more)"
-                messageCount == 1 -> "$geohashDisplay: 1 message"
-                else -> "$geohashDisplay: $messageCount messages"
-            }
-            style.addLine(line)
-        }
-
-        if (pendingGeohashNotifications.size > 5) {
-            style.setSummaryText(context.getString(R.string.notification_more_locations, pendingGeohashNotifications.size - 5))
-        }
-
-        builder.setStyle(style)
-
-        notifySafely(GEOHASH_SUMMARY_NOTIFICATION_ID, builder.build())
-
-        Log.d(TAG, "Displayed geohash summary notification for $geohashCount locations")
-    }
-
-    /**
-     * Clear notifications for a specific geohash (e.g., when user opens that chat)
-     */
-    fun clearNotificationsForGeohash(geohash: String) {
-        pendingGeohashNotifications.remove(geohash)
-
-        // Cancel the individual notification
-        val notificationId = 3000 + geohash.hashCode()
-        notificationManager.cancel(notificationId)
-
-        // Update or remove summary notification
-        if (pendingGeohashNotifications.isEmpty()) {
-            notificationManager.cancel(GEOHASH_SUMMARY_NOTIFICATION_ID)
-        } else if (pendingGeohashNotifications.size == 1) {
-            // Only one geohash left, remove group summary
-            notificationManager.cancel(GEOHASH_SUMMARY_NOTIFICATION_ID)
-        } else {
-            // Update summary notification
-            showGeohashSummaryNotification()
-        }
-
-        Log.d(TAG, "Cleared notifications for geohash")
-    }
-
-    /**
      * Show a notification for a mesh mention (@username format)
      */
     fun showMeshMentionNotification(
@@ -814,8 +553,8 @@ class NotificationManager(
         senderPeerID: String? = null
     ) {
         // Only show notifications if app is in background OR user is not viewing mesh chat
-        // User is viewing mesh chat when: not in private chat AND not in geohash chat
-        val isViewingMeshChat = currentPrivateChatPeer == null && currentGeohash == null
+        // User is viewing mesh chat when not in a private chat
+        val isViewingMeshChat = currentPrivateChatPeer == null
         val shouldNotify = isAppInBackground || (!isAppInBackground && !isViewingMeshChat)
 
         if (!shouldNotify) return
@@ -954,7 +693,6 @@ class NotificationManager(
     fun clearAllNotifications(removeConversationShortcuts: Boolean = false) {
         pendingNotifications.clear()
         notificationManager.cancelAll()
-        pendingGeohashNotifications.clear()
         if (removeConversationShortcuts) {
             val shortcutIDs = ShortcutManagerCompat.getDynamicShortcuts(context).map { it.id }
             ShortcutManagerCompat.removeAllDynamicShortcuts(context)
@@ -986,8 +724,7 @@ class NotificationManager(
      * Get pending notification count for UI badging
      */
     fun getPendingNotificationCount(): Int {
-        return pendingNotifications.values.sumOf { it.size } +
-               pendingGeohashNotifications.values.sumOf { it.size }
+        return pendingNotifications.values.sumOf { it.size }
     }
 
     /**
@@ -1012,16 +749,9 @@ class NotificationManager(
             appendLine("Notification Manager Debug Info:")
             appendLine("App in background: $isAppInBackground")
             appendLine("Current private chat peer: $currentPrivateChatPeer")
-            appendLine("Current geohash: $currentGeohash")
             appendLine("Pending DM notifications: ${pendingNotifications.size} senders")
             pendingNotifications.forEach { (peerID, notifications) ->
                 appendLine("  $peerID: ${notifications.size} messages")
-            }
-            appendLine("Pending geohash notifications: ${pendingGeohashNotifications.size} geohashes")
-            pendingGeohashNotifications.forEach { (geohash, notifications) ->
-                val mentions = notifications.count { it.isMention }
-                val firstMessages = notifications.count { it.isFirstMessage }
-                appendLine("  #$geohash: ${notifications.size} messages ($mentions mentions, $firstMessages first messages)")
             }
         }
     }

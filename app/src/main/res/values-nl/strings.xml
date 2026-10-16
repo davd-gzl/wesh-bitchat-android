@@ -49,34 +49,19 @@
     <string name="notification_active_peers_title">Wesh in de buurt!</string>
     <string name="notification_active_peers_one">1 persoon in de buurt</string>
     <string name="notification_active_peers_many">%1$d personen in de buurt</string>
-    <string name="notification_new_messages">Nieuwe berichten</string>
     <string name="notification_new_location_messages">Nieuwe locatieberichten</string>
-    <string name="notification_mentions_in">Vermeld in %1$s</string>
-    <string name="notification_mentions_in_more">Vermeld in %1$s (+%2$d meer)</string>
-    <string name="notification_mentions_in_plural">%1$d vermeldingen in %2$s</string>
-    <string name="notification_new_activity_in">Nieuwe activiteit in %1$s</string>
-    <string name="notification_messages_in">Berichten in %1$s</string>
-    <string name="notification_joined_conversation">%1$s is toegetreden tot het gesprek</string>
-    <string name="notification_geohash_summary_title_mentions">Wesh - %1$d vermeldingen</string>
-    <string name="notification_geohash_summary_title">Wesh - locatiechats</string>
-    <string name="notification_geohash_summary_text">%1$d berichten van %2$d locaties</string>
     <string name="notification_mesh_mention_title_singular">Vermeld in meshchat</string>
     <string name="notification_mesh_mention_title_plural">%1$d vermeldingen in meshchat</string>
-    <string name="notification_more_locations">en %1$d meer locaties</string>
     <string name="notification_and_more">en %1$d meer</string>
 
     <!-- Favorieten toegankelijkheid -->
     <string name="cd_add_favorite">Toevoegen aan favorieten</string>
     <string name="cd_remove_favorite">Verwijderen uit favorieten</string>
-    <string name="cd_add_bookmark">Bladwijzer toevoegen</string>
 
     <!-- Chatkop &amp; toegankelijkheid -->
     <string name="cd_nostr_reachable">Bereikbaar via Nostr</string>
     <string name="cd_unread_private_messages">Ongelezen privéberichten</string>
-    <string name="cd_teleported">Geteleporteerd</string>
-    <string name="cd_open_location_channels">Locatie- en kanaalinstellingen openen</string>
     <string name="cd_connected_peers">Verbonden peers</string>
-    <string name="cd_geohash_participants">Geohash-deelnemers</string>
     <string name="cd_ready_for_handshake">Klaar voor handshake</string>
     <string name="cd_handshake_in_progress">Handshake bezig</string>
     <string name="cd_encrypted">End-to-end versleuteld</string>
@@ -94,8 +79,6 @@
     <!-- Info-sheet -->
     <string name="about_offline_mesh_title">Offline meshchat</string>
     <string name="about_offline_mesh_desc">Communiceer rechtstreeks via Bluetooth LE zonder internet of servers. Berichten worden doorgestuurd via apparaten in de buurt om het bereik te vergroten.</string>
-    <string name="about_online_geohash_title">Online geohash-kanalen</string>
-    <string name="about_online_geohash_desc">Maak contact met mensen in uw omgeving met geohash-gebaseerde kanalen. Breid het mesh uit met openbare internetrelays.</string>
     <string name="about_e2e_title">End-to-end-versleuteling</string>
     <string name="about_e2e_desc">Privéberichten zijn versleuteld. Kanaalberichten zijn openbaar.</string>
     <string name="about_system">systeem</string>
@@ -137,15 +120,9 @@
     <string name="cd_not_supported_battery_optimization">Batterijoptimalisatie niet ondersteund</string>
     <string name="cd_bluetooth">Bluetooth</string>
     <string name="cd_unread_message">Ongelezen bericht</string>
-    <string name="cd_open_map">Kaart openen</string>
-    <string name="cd_remove_bookmark">Bladwijzer verwijderen</string>
-    <string name="cd_teleport">Teleporteren</string>
     <string name="cd_leave_channel">Kanaal verlaten</string>
     <string name="cd_reachable_via_nostr">Bereikbaar via Nostr</string>
     <string name="cd_offline_favorite">Offline favoriet</string>
-    <string name="cd_decrease_precision">Precisie verlagen</string>
-    <string name="cd_increase_precision">Precisie verhogen</string>
-    <string name="cd_select_geohash">Geohash selecteren</string>
     <string name="cd_scroll_to_bottom">Naar beneden scrollen</string>
     <string name="cd_file">Bestand</string>
     <string name="cd_image">Afbeelding</string>
@@ -159,7 +136,6 @@
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">Spraaknotitie opnemen</string>
     <string name="cd_offline_mesh_chat">Offline meshchat</string>
-    <string name="cd_online_geohash_channels">Online geohash-kanalen</string>
     <string name="cd_end_to_end_encryption">End-to-end-versleuteling</string>
 
     <!-- Afbeeldingen &amp; bestanden -->
@@ -186,26 +162,9 @@
     <string name="action_block_subtitle">blokkeer alle berichten van deze gebruiker</string>
 
     <!-- Locatiekanalen sheet -->
-    <string name="location_channels_title">#locatiekanalen</string>
-    <string name="location_channels_desc">chat met mensen in uw buurt via geohash-kanalen. alleen een grove geohash wordt gedeeld, nooit exacte GPS. maak geen screenshot of deel dit scherm niet om uw privacy te beschermen.</string>
-    <string name="grant_location_permission">locatietoestemming verlenen</string>
-    <string name="location_permission_denied">locatietoestemming geweigerd. schakel in instellingen in om locatiekanalen te gebruiken.</string>
     <string name="open_settings">Instellingen openen</string>
-    <string name="location_permission_granted">\u2713 locatietoestemming verleend</string>
     <string name="checking_permissions">toestemmingen controleren…</string>
-    <string name="finding_nearby_channels">nabije kanalen zoeken…</string>
-    <string name="bookmarked">bladwijzer toegevoegd</string>
-    <string name="geohash_placeholder">geohash</string>
-    <string name="invalid_geohash">ongeldige geohash</string>
-    <string name="teleport">teleporteren</string>
-    <string name="disable_location_services">locatiediensten uitschakelen</string>
-    <string name="enable_location_services">locatiediensten inschakelen</string>
     <string name="mesh_label">mesh</string>
-    <string name="location_level_block">blok</string>
-    <string name="location_level_neighborhood">buurt</string>
-    <string name="location_level_city">stad</string>
-    <string name="location_level_province">provincie</string>
-    <string name="location_level_region">regio</string>
     <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
 
     <!-- Debug / Diagnostiek -->
@@ -342,19 +301,7 @@
         <item quantity="other">%d personen</item>
     </plurals>
 
-  <plurals name="location_notes_title">
-    <item quantity="one">#%1$s ± 1 • %2$d notitie</item>
-    <item quantity="other">#%1$s ± 1 • %2$d notities</item>
-  </plurals>
-  <string name="location_notes_description">voeg korte permanente notities toe aan deze locatie zodat andere bezoekers ze kunnen vinden.</string>
-  <string name="location_notes_relays_unavailable">geo-relays niet beschikbaar; notities gepauzeerd</string>
-  <string name="location_notes_no_relays_title">geen geo-relays in de buurt</string>
-  <string name="location_notes_no_relays_desc">notities zijn afhankelijk van geo-relays. controleer de verbinding en probeer opnieuw.</string>
-  <string name="loading_location_notes">notities laden…</string>
-  <string name="location_notes_empty_title">nog geen notities</string>
-  <string name="location_notes_empty_desc">wees de eerste die een notitie voor deze plek toevoegt.</string>
   <string name="dismiss">sluiten</string>
-  <string name="location_notes_input_placeholder">voeg een notitie toe voor deze plek</string>
     <string name="bluetooth_recommended">Bluetooth aanbevolen</string>
     <string name="mesh_service_notification_content">Mesh actief — %1$d peers</string>
 
@@ -394,9 +341,6 @@
   <string name="verify_success_body">You verified %1$s</string>
   <string name="verify_success_system_message">verified %1$s</string>
     <string name="cd_open_about">Info openen</string>
-  <string name="nearby_notes_reveal">kijk of hier notities zijn achtergelaten</string>
-  <string name="nearby_notes_one">1 notitie hier achtergelaten — tik om te lezen</string>
-  <string name="nearby_notes_many">%d notities hier achtergelaten — tik om te lezen</string>
     <string name="about_language">Taal</string>
     <string name="about_app_language">App-taal</string>
     <string name="about_system_default">Systeemstandaard</string>
