@@ -27,6 +27,8 @@ class BitchatApplication : Application() {
 
         // Installs the Internet opt-in gate (default off) and keeps Tor's preference OFF while it is off.
         try { com.bitchat.android.net.WeshInternetMode.get(this) } catch (_: Exception) { }
+        // Receives Internet messages from QR contacts while the mode is On; opens no socket itself.
+        if (BuildConfig.WESH_POLICY) try { com.bitchat.android.services.WeshInternetReceiver.start(this) } catch (_: Exception) { }
 
         // Tor follows the runtime opt-in only (WeshInternetMode starts it when the user turns it on).
         if (com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) {
