@@ -16,4 +16,11 @@ class WeshLinksTest {
         assertTrue(File("src/main/java/com/bitchat/android/ui/pave/SettingsScreen.kt").readText().contains("WeshLinks.TERMS_URL"))
         assertTrue(File("src/main/java/com/bitchat/android/ui/pave/OnboardingFlow.kt").readText().contains("WeshLinks.TERMS_URL"))
     }
+
+    @Test
+    fun `the report address is defined once`() {
+        assertEquals("support@samourai.coop", WeshLinks.REPORT_EMAIL)
+        val sources = File("src/main/java").walkTopDown().filter { it.extension == "kt" }.toList()
+        assertEquals(listOf("WeshLinks.kt"), sources.filter { it.readText().contains("samourai.coop") }.map { it.name })
+    }
 }
