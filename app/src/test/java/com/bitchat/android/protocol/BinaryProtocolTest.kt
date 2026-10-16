@@ -436,9 +436,10 @@ class BinaryProtocolTest {
      */
     @Test
     fun `oversized packet bypasses padding and still round-trips`() {
-        // 2100-byte payload + 21 header = 2121 raw, exceeds 2048 block
+        // 2100-byte payload + 21 header = 2121 raw, exceeds 2048 block. Directed: public text
+        // is held to a shorter limit.
         val payload = ByteArray(2100) { (it % 13).toByte() }
-        val original = makePacket(payload = payload)
+        val original = makePacket(payload = payload, recipientID = hexToBytes("8877665544332211"))
 
         val encoded = BinaryProtocol.encode(original)
         assertNotNull("Encoding oversized packet must not return null", encoded)
@@ -1047,8 +1048,8 @@ class BinaryProtocolTest {
 
     @Test
     fun `v2 expanded payload at exact maximum passes bound without allocating output`() {
-        val max = com.bitchat.android.util.AppConstants.Protocol.MAX_PAYLOAD_LENGTH
-        // File transfers keep the frame-wide maximum; the body stays within DEFLATE's ratio.
+        // A compressed file inflates at most to what a fragment set may buffer.
+        val max = com.bitchat.android.util.AppConstants.Fragmentation.MAX_FRAGMENT_TOTAL_BYTES
         val raw = compressedPacket(
             version = 2u,
             originalSize = max,
@@ -1060,7 +1061,7 @@ class BinaryProtocolTest {
         val result = BinaryProtocol.decodeForTesting(raw) { _, requestedSize ->
             calls += 1
             assertEquals(max, requestedSize)
-            null // Prove the boundary reached this seam without allocating a 10 MiB result.
+            null // Prove the boundary reached this seam without allocating the result.
         }
 
         assertNull("The test decompressor deliberately returns no payload", result)
@@ -1146,7 +1147,8 @@ class BinaryProtocolTest {
         val raw = compressedPacket(
             version = 1u,
             originalSize = originalSize,
-            compressedData = ByteArray(originalSize / PacketPayloadLimits.MAX_DEFLATE_RATIO + 1) { 0x01 }
+            compressedData = ByteArray(originalSize / PacketPayloadLimits.MAX_DEFLATE_RATIO + 1) { 0x01 },
+            type = MessageType.FILE_TRANSFER.value
         )
         var calls = 0
 
@@ -1176,7 +1178,7 @@ class BinaryProtocolTest {
         val compressed = rawDeflate(payload)
 
         val decoded = BinaryProtocol.decode(
-            compressedPacket(version = 2u, originalSize = payload.size, compressedData = compressed)
+            compressedPacket(version = 2u, originalSize = payload.size, compressedData = compressed, type = MessageType.FILE_TRANSFER.value)
         )
 
         assertNotNull(decoded)
@@ -1189,7 +1191,7 @@ class BinaryProtocolTest {
         val compressed = zlibDeflate(payload)
 
         val decoded = BinaryProtocol.decode(
-            compressedPacket(version = 2u, originalSize = payload.size, compressedData = compressed)
+            compressedPacket(version = 2u, originalSize = payload.size, compressedData = compressed, type = MessageType.FILE_TRANSFER.value)
         )
 
         assertNotNull(decoded)

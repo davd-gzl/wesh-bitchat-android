@@ -54,6 +54,7 @@ class MessageHandler(
     /** Wesh accepts no incoming media, plaintext private text or favorite notices, on any transport. */
     fun applyInboundPolicy(weshLocalOnly: Boolean) {
         acceptIncomingMedia = !weshLocalOnly
+        com.bitchat.android.protocol.PacketPayloadLimits.acceptCompressedMedia = !weshLocalOnly
         acceptDirectedPlaintext = !weshLocalOnly
         acceptFavoriteNotices = !weshLocalOnly
     }

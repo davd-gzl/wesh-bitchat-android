@@ -6,6 +6,7 @@ import com.bitchat.android.protocol.MessagePadding
 import com.bitchat.android.model.FragmentPayload
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -320,11 +321,84 @@ class FragmentManagerTest {
         assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: 0"))
     }
 
-    private fun fragmentPacket(payload: ByteArray) = BitchatPacket(
+    @Test
+    fun `directed fragments for another peer are relayed without being buffered`() {
+        val manager = FragmentManager(myPeerID = "0102030405060708")
+        try {
+            val result = manager.receiveFragment(fragmentPacket(fragment(MessageType.NOISE_ENCRYPTED, index = 0, total = 2)))
+
+            assertEquals(FragmentResult.Skipped, result)
+            assertTrue(manager.getDebugInfo().contains("Active Fragment Sets: 0"))
+        } finally {
+            manager.shutdown()
+        }
+    }
+
+    @Test
+    fun `directed fragments for this peer are buffered`() {
+        val manager = FragmentManager(myPeerID = recipientID)
+        try {
+            val result = manager.receiveFragment(fragmentPacket(fragment(MessageType.NOISE_ENCRYPTED, index = 0, total = 2)))
+
+            assertEquals(FragmentResult.Pending, result)
+        } finally {
+            manager.shutdown()
+        }
+    }
+
+    @Test
+    fun `file fragments are not buffered when media is refused`() {
+        fragmentManager.acceptMediaFragments = false
+
+        val result = fragmentManager.receiveFragment(
+            fragmentPacket(fragment(MessageType.FILE_TRANSFER, index = 0, total = 2), recipient = com.bitchat.android.protocol.SpecialRecipients.BROADCAST)
+        )
+
+        assertEquals(FragmentResult.Skipped, result)
+        assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: 0"))
+    }
+
+    @Test
+    fun `public text fragment set is refused once it outgrows the public text frame`() {
+        val broadcast = com.bitchat.android.protocol.SpecialRecipients.BROADCAST
+        val chunk = 400
+        val total = com.bitchat.android.protocol.PacketPayloadLimits.PUBLIC_TEXT_FRAME_BYTES / chunk + 2
+        val results = (0..com.bitchat.android.protocol.PacketPayloadLimits.PUBLIC_TEXT_FRAME_BYTES / chunk).map { index ->
+            fragmentManager.receiveFragment(fragmentPacket(fragment(MessageType.MESSAGE, index, total, chunk), recipient = broadcast))
+        }
+
+        assertTrue(results.dropLast(1).all { it == FragmentResult.Pending })
+        assertEquals(FragmentResult.Refused, results.last())
+        assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: 0"))
+    }
+
+    @Test
+    fun `a complete set whose content is another type is refused`() {
+        val inner = BitchatPacket(
+            version = 1u, type = MessageType.LEAVE.value, senderID = hexStringToByteArray(senderID),
+            recipientID = hexStringToByteArray(recipientID), timestamp = 1u, payload = ByteArray(8), ttl = 7u
+        ).toBinaryData(padding = false)!!
+        val payload = FragmentPayload(ByteArray(8) { 6 }, 0, 1, MessageType.ANNOUNCE.value, inner).encode()
+
+        assertEquals(FragmentResult.Refused, fragmentManager.receiveFragment(fragmentPacket(payload)))
+    }
+
+    @Test
+    fun `only fragments accepted for reassembly are kept for sync`() {
+        assertTrue(FragmentResult.Pending.keptForSync)
+        assertTrue(FragmentResult.Complete(fragmentPacket(ByteArray(16))).keptForSync)
+        assertFalse(FragmentResult.Refused.keptForSync)
+        assertFalse(FragmentResult.Skipped.keptForSync)
+    }
+
+    private fun fragment(type: MessageType, index: Int, total: Int, size: Int = 32) =
+        FragmentPayload(ByteArray(8) { 5 }, index, total, type.value, ByteArray(size) { 1 }).encode()
+
+    private fun fragmentPacket(payload: ByteArray, recipient: ByteArray = hexStringToByteArray(recipientID)) = BitchatPacket(
         version = 1u,
         type = MessageType.FRAGMENT.value,
         senderID = hexStringToByteArray(senderID),
-        recipientID = hexStringToByteArray(recipientID),
+        recipientID = recipient,
         timestamp = 1u,
         payload = payload,
         ttl = 7u

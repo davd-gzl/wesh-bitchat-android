@@ -16,12 +16,13 @@ import java.util.concurrent.atomic.AtomicLong
  * Prevents race condition where multiple threads process packets
  * from the same peer simultaneously, causing session management conflicts.
  *
- * Queues are bounded per peer, in total packets and bytes, and in number of peers; a packet
- * that does not fit is dropped and counted.
+ * Pending packets are bounded per ingress link (the claimed sender is not trusted for quotas),
+ * in total packets and bytes, and in number of peer queues; a packet that does not fit is
+ * dropped and counted.
  */
 class PacketProcessor(
     private val myPeerID: String,
-    private val perPeerQueueCapacity: Int = 64,
+    private val perLinkQueueCapacity: Int = 256,
     private val maxQueuedPackets: Int = 1_024,
     private val maxQueuedBytes: Long = 16L * 1_048_576L,
     private val maxPeerQueues: Int = 256
@@ -57,6 +58,7 @@ class PacketProcessor(
 
     private val queueLock = Any()
     private val queues = LinkedHashMap<String, PeerQueue>()
+    private val linkPending = HashMap<String, Int>()
     private var queuedPackets = 0
     private var queuedBytes = 0L
     private val droppedPackets = AtomicLong()
@@ -82,11 +84,13 @@ class PacketProcessor(
         }
         
         val bytes = queuedSize(routed)
+        val link = quotaKey(routed, peerID)
         val queue = synchronized(queueLock) {
             if (queuedPackets >= maxQueuedPackets || queuedBytes + bytes > maxQueuedBytes) return@synchronized null
+            if ((linkPending[link] ?: 0) >= perLinkQueueCapacity) return@synchronized null
             val queue = queues[peerID] ?: newQueueLocked(peerID) ?: return@synchronized null
-            if (queue.pending >= perPeerQueueCapacity) return@synchronized null
             queue.pending += 1
+            linkPending[link] = (linkPending[link] ?: 0) + 1
             queuedPackets += 1
             queuedBytes += bytes
             queue
@@ -96,10 +100,14 @@ class PacketProcessor(
             return
         }
         if (!queue.channel.trySend(routed).isSuccess) {
-            release(queue, bytes)
+            release(queue, routed)
             droppedPackets.incrementAndGet()
         }
     }
+
+    /** Quotas follow the link a packet arrived on, never the sender ID it claims. */
+    private fun quotaKey(routed: RoutedPacket, peerID: String): String =
+        routed.ingressLinkID?.let { "link:$it" } ?: routed.relayAddress?.let { "addr:$it" } ?: "peer:$peerID"
 
     /** Starts a queue for a new peer, forgetting an idle one when the table is full. */
     private fun newQueueLocked(peerID: String): PeerQueue? {
@@ -108,7 +116,8 @@ class PacketProcessor(
             queues.remove(idle.key)
             idle.value.channel.close()
         }
-        val queue = PeerQueue(Channel(perPeerQueueCapacity))
+        // Bounded by the per-link and total quotas checked before every send.
+        val queue = PeerQueue(Channel(Channel.UNLIMITED))
         queues[peerID] = queue
         processorScope.launch {
             for (packet in queue.channel) {
@@ -119,18 +128,21 @@ class PacketProcessor(
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to process packet from ${formatPeerForLog(peerID)}: ${e.message}")
                 } finally {
-                    release(queue, queuedSize(packet))
+                    release(queue, packet)
                 }
             }
         }
         return queue
     }
 
-    private fun release(queue: PeerQueue, bytes: Long) {
+    private fun release(queue: PeerQueue, routed: RoutedPacket) {
+        val link = quotaKey(routed, routed.peerID ?: "")
         synchronized(queueLock) {
             queue.pending -= 1
             queuedPackets -= 1
-            queuedBytes -= bytes
+            queuedBytes -= queuedSize(routed)
+            val left = (linkPending[link] ?: 1) - 1
+            if (left <= 0) linkPending.remove(link) else linkPending[link] = left
         }
     }
 
@@ -195,7 +207,7 @@ class PacketProcessor(
             MessageType.FILE_TRANSFER -> handleMessage(routed) // treat same routing path; parsing happens in handler
             MessageType.VOICE_FRAME -> validPacket = delegate?.handleVoiceFrame(routed) ?: false
             MessageType.LEAVE -> handleLeave(routed)
-            MessageType.FRAGMENT -> handleFragment(routed)
+            MessageType.FRAGMENT -> validPacket = handleFragment(routed)
             MessageType.REQUEST_SYNC -> handleRequestSync(routed)
             else -> {
                 // Handle private packet types (address check required)
@@ -264,27 +276,28 @@ class PacketProcessor(
     }
     
     /**
-     * Handle message fragments
+     * Handle message fragments. Returns false for a refused fragment, which is then not relayed.
      */
-    private suspend fun handleFragment(routed: RoutedPacket) {
-        val reassembledPacket = delegate?.handleFragment(routed.packet)
-        if (reassembledPacket != null && reassembledPacket.type == MessageType.FRAGMENT.value) {
+    private suspend fun handleFragment(routed: RoutedPacket): Boolean {
+        val result = delegate?.handleFragment(routed.packet) ?: return false
+        if (result is FragmentResult.Refused) return false
+        if (result !is FragmentResult.Complete) return true
+        val reassembledPacket = result.packet
+        if (reassembledPacket.type == MessageType.FRAGMENT.value) {
             // Fragments are never nested: refuse a second level of reassembly.
             Log.w(TAG, "Dropping nested fragment from ${formatPeerForLog(routed.peerID ?: "unknown")}")
-            return
+            return false
         }
-        if (reassembledPacket != null) {
-            handleReceivedPacket(
-                RoutedPacket(
-                    packet = reassembledPacket,
-                    peerID = routed.peerID,
-                    relayAddress = routed.relayAddress,
-                    ingressLinkID = routed.ingressLinkID
-                )
+        handleReceivedPacket(
+            RoutedPacket(
+                packet = reassembledPacket,
+                peerID = routed.peerID,
+                relayAddress = routed.relayAddress,
+                ingressLinkID = routed.ingressLinkID
             )
-        }
-        
-        // Fragment relay is now handled by centralized PacketRelayManager
+        )
+        // Fragment relay is handled by the centralized PacketRelayManager
+        return true
     }
 
     private fun isOversizedPublicText(packet: BitchatPacket): Boolean {
@@ -369,7 +382,7 @@ interface PacketProcessorDelegate {
     fun handleVoiceFrame(routed: RoutedPacket): Boolean = false
     fun isRelaySuppressed(packet: BitchatPacket, peerID: String): Boolean = false
     fun handleLeave(routed: RoutedPacket)
-    fun handleFragment(packet: BitchatPacket): BitchatPacket?
+    fun handleFragment(packet: BitchatPacket): FragmentResult
     fun handleRequestSync(routed: RoutedPacket)
     
     // Communication

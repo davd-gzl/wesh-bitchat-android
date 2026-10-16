@@ -13,6 +13,7 @@ import com.bitchat.android.util.AppConstants
  * | Type                          | Largest legitimate payload                    | Cap                |
  * |-------------------------------|-----------------------------------------------|--------------------|
  * | FILE_TRANSFER, NOISE_ENCRYPTED| a file up to the Android media limit          | MAX_PAYLOAD_LENGTH |
+ * |                               | (compressed: see [maxInflatedBytes])          |                    |
  * | MESSAGE                       | 65,535 B (public text uses v1 frames)         | 128 KiB            |
  * | REQUEST_SYNC                  | ~2.1 KB of filters                            | 8 KiB              |
  * | FRAGMENT                      | ≤ 513 B: 13 B header + chunk                  | 1,280 B            |
@@ -49,4 +50,27 @@ object PacketPayloadLimits {
 
     /** Largest encoded frame, padding included, that can still decode as a packet of [type]. */
     fun maxFrameBytes(type: UByte): Int = maxPayloadBytes(type) + MAX_FRAME_OVERHEAD_BYTES
+
+    /** False when the inbound policy refuses media: compressed files are then not inflated at all. */
+    @Volatile
+    var acceptCompressedMedia: Boolean = true
+
+    /** Longest public text accepted, the same limit as outgoing Wesh public text. */
+    const val PUBLIC_TEXT_BYTES = 2_000
+
+    /** Largest frame, padding included, that can carry public text within [PUBLIC_TEXT_BYTES]. */
+    const val PUBLIC_TEXT_FRAME_BYTES = PUBLIC_TEXT_BYTES + MAX_FRAME_OVERHEAD_BYTES
+
+    /**
+     * Largest size a compressed payload of [type] may declare, or null when that type is never
+     * sent compressed. Ciphertext does not shrink, so no client compresses NOISE_ENCRYPTED; a
+     * compressed file inflates at most to what a fragment set may buffer; public text inflates
+     * at most to the public text limit.
+     */
+    fun maxInflatedBytes(type: UByte, broadcast: Boolean): Int? = when (MessageType.fromValue(type)) {
+        MessageType.NOISE_ENCRYPTED -> null
+        MessageType.FILE_TRANSFER -> if (acceptCompressedMedia) AppConstants.Fragmentation.MAX_FRAGMENT_TOTAL_BYTES else null
+        MessageType.MESSAGE -> if (broadcast) PUBLIC_TEXT_BYTES else maxPayloadBytes(type)
+        else -> maxPayloadBytes(type)
+    }
 }

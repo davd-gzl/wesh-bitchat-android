@@ -273,10 +273,7 @@ class BluetoothGattServerManager(
                             if (!isActive || serverGeneration != generation) return
                             val linkID = serverLinkIDs.remove(address)
                             val peerID = connectionTracker.addressPeerMap[address]
-                            if (linkID != null) {
-                                connectionTracker.cleanupDeviceConnectionIfCurrent(address, linkID)
-                                inboundLimiter.forget(linkID)
-                            }
+                            if (linkID != null) connectionTracker.cleanupDeviceConnectionIfCurrent(address, linkID)
                             linkID to peerID
                         }
                         delegate?.onDeviceDisconnected(device, disconnected.first, disconnected.second)
@@ -307,7 +304,7 @@ class BluetoothGattServerManager(
                 val valid = characteristic.uuid == AppConstants.Mesh.Gatt.CHARACTERISTIC_UUID &&
                     !preparedWrite && offset == 0 && linkID != null
                 // Rate-limited per link before any decoding or signature work.
-                val packet = if (valid && linkID != null && inboundLimiter.tryAcquire(linkID)) BitchatPacket.fromBinaryData(value) else null
+                val packet = if (valid && linkID != null && inboundLimiter.tryAcquire(address, linkID)) BitchatPacket.fromBinaryData(value) else null
                 if (responseNeeded && !sendResponse(generation, device, requestId,
                         if (packet != null) BluetoothGatt.GATT_SUCCESS else BluetoothGatt.GATT_FAILURE)) return
                 if (packet == null || linkID == null || callbackServer(generation) == null ||

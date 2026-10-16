@@ -507,10 +507,18 @@ object BinaryProtocol {
                     buffer.getShort().toUShort().toInt()
                 }
 
-                if (originalSize <= 0 || originalSize > maxPayloadSize) {
+                // Checked before signature verification or inflation: some types are never sent
+                // compressed, and compressed files and public text inflate only so far.
+                val isBroadcast = recipientID == null || recipientID.contentEquals(SpecialRecipients.BROADCAST)
+                val maxExpandedSize = PacketPayloadLimits.maxInflatedBytes(type, isBroadcast)
+                if (maxExpandedSize == null) {
+                    Log.w("BinaryProtocol", "Type $type is never sent compressed")
+                    return null
+                }
+                if (originalSize <= 0 || originalSize > minOf(maxPayloadSize, maxExpandedSize)) {
                     Log.w(
                         "BinaryProtocol",
-                        "Expanded payload size $originalSize is outside the allowed range 1..$maxPayloadSize"
+                        "Expanded payload size $originalSize is outside the allowed range for type $type"
                     )
                     return null
                 }

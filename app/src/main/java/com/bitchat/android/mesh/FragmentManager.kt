@@ -4,6 +4,7 @@ import android.util.Log
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.protocol.MessageType
 import com.bitchat.android.protocol.PacketPayloadLimits
+import com.bitchat.android.protocol.SpecialRecipients
 import com.bitchat.android.model.FragmentPayload
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
@@ -17,7 +18,10 @@ import java.util.concurrent.ConcurrentHashMap
  * - Same reassembly logic and timeout handling
  * - Uses new FragmentPayload model for type safety
  */
-class FragmentManager {
+class FragmentManager(
+    /** When set, directed fragments for other peers are relayed without being reassembled. */
+    private val myPeerID: String? = null
+) {
     
     companion object {
         private const val TAG = "FragmentManager"
@@ -36,6 +40,14 @@ class FragmentManager {
 
     private val fragmentStateLock = Any()
     private var globalBufferedBytes: Long = 0L
+
+    private val myPeerIDBytes: ByteArray? = myPeerID?.let { id ->
+        ByteArray(id.length / 2) { i -> id.substring(i * 2, i * 2 + 2).toInt(16).toByte() }
+    }
+
+    /** False when the inbound policy refuses media: file fragments are then never buffered. */
+    @Volatile
+    var acceptMediaFragments: Boolean = true
 
     // Delegate for callbacks
     var delegate: FragmentManagerDelegate? = null
@@ -158,49 +170,74 @@ class FragmentManager {
         }
     }
     
+    /** Returns the reassembled packet once the last fragment arrives, null otherwise. */
+    fun handleFragment(packet: BitchatPacket): BitchatPacket? =
+        (receiveFragment(packet) as? FragmentResult.Complete)?.packet
+
     /**
-     * Handle incoming fragment - 100% iOS Compatible  
-     * Matches iOS handleFragment() implementation exactly
+     * Handle incoming fragment - iOS compatible reassembly.
+     *
+     * [FragmentResult.Refused] marks a fragment no BitChat client sends (malformed, nested, or
+     * beyond what its claimed type can carry): it is neither kept, synced nor relayed.
+     * [FragmentResult.Skipped] fragments are not buffered here (addressed to another peer, media
+     * refused by policy, or buffers full) but may still be relayed.
      */
-    fun handleFragment(packet: BitchatPacket): BitchatPacket? {
+    fun receiveFragment(packet: BitchatPacket): FragmentResult {
         // iOS: guard packet.payload.count > 13 else { return }
         if (packet.payload.size < FragmentPayload.HEADER_SIZE) {
             Log.d(TAG, "Fragment packet too small: ${packet.payload.size}")
-            return null
+            return FragmentResult.Refused
         }
-        
-        // Don't process our own fragments - iOS equivalent check
-        // This would be done at a higher level but we'll include for safety
-        
+
         try {
-            // Use FragmentPayload for type-safe decoding
             val fragmentPayload = FragmentPayload.decode(packet.payload)
             if (fragmentPayload == null || !fragmentPayload.isValid()) {
                 Log.d(TAG, "Invalid fragment payload")
-                return null
+                return FragmentResult.Refused
             }
 
-            // iOS: let fragmentID = packet.payload[0..<8].map { String(format: "%02x", $0) }.joined()
             val fragmentIDString = fragmentPayload.getFragmentIDString()
 
             // A fragment never carries another fragment: no BitChat client nests them.
             if (fragmentPayload.originalType == MessageType.FRAGMENT.value) {
                 Log.w(TAG, "Rejecting nested fragment for $fragmentIDString")
-                return null
+                return FragmentResult.Refused
             }
 
             val maxFragments = com.bitchat.android.util.AppConstants.Fragmentation.MAX_FRAGMENTS_PER_ID
             if (fragmentPayload.total > maxFragments) {
                 Log.w(TAG, "Rejecting fragment with excessive total count: ${fragmentPayload.total} > $maxFragments")
-                return null
+                return FragmentResult.Refused
             }
+
+            val recipient = packet.recipientID
+            val isBroadcast = recipient == null || recipient.contentEquals(SpecialRecipients.BROADCAST)
+            // Only the addressee reassembles a directed packet; relays forward its fragments.
+            if (!isBroadcast && recipient != null && myPeerIDBytes != null && !recipient.contentEquals(myPeerIDBytes)) {
+                return FragmentResult.Skipped
+            }
+            if (!acceptMediaFragments && fragmentPayload.originalType == MessageType.FILE_TRANSFER.value) {
+                return FragmentResult.Skipped
+            }
+
+            // Never buffer more than the reassembled frame could decode to for its claimed type;
+            // public text is held to the public text limit.
+            val typeBound = if (isBroadcast && fragmentPayload.originalType == MessageType.MESSAGE.value) {
+                PacketPayloadLimits.PUBLIC_TEXT_FRAME_BYTES
+            } else {
+                PacketPayloadLimits.maxFrameBytes(fragmentPayload.originalType)
+            }
+            val maxTotalBytes = minOf(
+                com.bitchat.android.util.AppConstants.Fragmentation.MAX_FRAGMENT_TOTAL_BYTES,
+                typeBound
+            )
 
             synchronized(fragmentStateLock) {
                 fragmentMetadata[fragmentIDString]?.let { (expectedType, expectedTotal, _) ->
                     if (expectedTotal != fragmentPayload.total || expectedType != fragmentPayload.originalType) {
                         Log.w(TAG, "Rejecting fragment for $fragmentIDString: inconsistent metadata")
                         removeFragmentSetLocked(fragmentIDString)
-                        return null
+                        return FragmentResult.Refused
                     }
                 }
 
@@ -208,8 +245,8 @@ class FragmentManager {
                 if (isNewSet) {
                     val maxActive = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS
                     if (incomingFragments.size >= maxActive) {
-                        Log.w(TAG, "Rejecting new fragment set $fragmentIDString: active fragment sets ${incomingFragments.size} >= $maxActive")
-                        return null
+                        Log.w(TAG, "Not buffering fragment set $fragmentIDString: active fragment sets ${incomingFragments.size} >= $maxActive")
+                        return FragmentResult.Skipped
                     }
 
                     incomingFragments[fragmentIDString] = mutableMapOf()
@@ -222,40 +259,29 @@ class FragmentManager {
                 }
 
                 val fragmentMap = incomingFragments[fragmentIDString]
-                if (fragmentMap == null) {
-                    Log.w(TAG, "Dropping fragment set $fragmentIDString due to missing fragment map")
-                    removeFragmentSetLocked(fragmentIDString)
-                    return null
-                }
-
                 val currentSize = fragmentCumulativeSize[fragmentIDString]
-                if (currentSize == null) {
-                    Log.w(TAG, "Dropping fragment set $fragmentIDString due to missing size tracker")
+                if (fragmentMap == null || currentSize == null) {
+                    Log.w(TAG, "Dropping fragment set $fragmentIDString due to missing state")
                     removeFragmentSetLocked(fragmentIDString)
-                    return null
+                    return FragmentResult.Skipped
                 }
 
                 val oldEntrySize = fragmentMap[fragmentPayload.index]?.size ?: 0
                 val newSize = currentSize - oldEntrySize + fragmentPayload.data.size
-                // Never buffer more than the reassembled frame could decode to for its claimed type.
-                val maxTotalBytes = minOf(
-                    com.bitchat.android.util.AppConstants.Fragmentation.MAX_FRAGMENT_TOTAL_BYTES,
-                    PacketPayloadLimits.maxFrameBytes(fragmentPayload.originalType)
-                )
                 if (newSize > maxTotalBytes) {
                     Log.w(TAG, "Rejecting fragment for $fragmentIDString: cumulative size $newSize exceeds cap $maxTotalBytes")
                     removeFragmentSetLocked(fragmentIDString)
-                    return null
+                    return FragmentResult.Refused
                 }
 
                 val delta = (fragmentPayload.data.size - oldEntrySize).toLong()
                 val maxGlobalBytes = com.bitchat.android.util.AppConstants.Fragmentation.MAX_GLOBAL_FRAGMENT_TOTAL_BYTES
                 if (globalBufferedBytes + delta > maxGlobalBytes) {
-                    Log.w(TAG, "Rejecting fragment for $fragmentIDString: global buffered bytes exceed cap $maxGlobalBytes")
+                    Log.w(TAG, "Not buffering fragment for $fragmentIDString: global buffered bytes exceed cap $maxGlobalBytes")
                     if (isNewSet) {
                         removeFragmentSetLocked(fragmentIDString)
                     }
-                    return null
+                    return FragmentResult.Skipped
                 }
 
                 fragmentMap[fragmentPayload.index] = fragmentPayload.data
@@ -263,32 +289,28 @@ class FragmentManager {
                 globalBufferedBytes += delta
 
                 val expectedTotal = fragmentMetadata[fragmentIDString]?.second ?: fragmentPayload.total
-                if (fragmentMap.size == expectedTotal) {
-                    // iOS reassembly logic: for i in 0..<total { if let fragment = fragments[i] { reassembled.append(fragment) } }
-                    val reassembledData = java.io.ByteArrayOutputStream(newSize)
-                    for (i in 0 until expectedTotal) {
-                        fragmentMap[i]?.let { data -> reassembledData.write(data) }
-                    }
+                if (fragmentMap.size < expectedTotal) return FragmentResult.Pending
 
-                    val originalPacket = BitchatPacket.fromBinaryData(reassembledData.toByteArray())
-                        ?.takeIf { it.type == fragmentPayload.originalType }
-                    if (originalPacket != null) {
-                        removeFragmentSetLocked(fragmentIDString)
-
-                        val suppressedTtlPacket = originalPacket.copy(ttl = 0u.toUByte())
-                        return suppressedTtlPacket
-                    } else {
-                        val metadata = fragmentMetadata[fragmentIDString]
-                        Log.e(TAG, "Failed to decode reassembled packet (type=${metadata?.first}, total=${metadata?.second})")
-                    }
+                val reassembledData = java.io.ByteArrayOutputStream(newSize)
+                for (i in 0 until expectedTotal) {
+                    fragmentMap[i]?.let { data -> reassembledData.write(data) }
                 }
+                removeFragmentSetLocked(fragmentIDString)
+
+                // The reassembled packet must be the type its fragments announced.
+                val originalPacket = BitchatPacket.fromBinaryData(reassembledData.toByteArray())
+                    ?.takeIf { it.type == fragmentPayload.originalType }
+                if (originalPacket == null) {
+                    Log.e(TAG, "Failed to decode reassembled packet (type=${fragmentPayload.originalType}, total=$expectedTotal)")
+                    return FragmentResult.Refused
+                }
+                return FragmentResult.Complete(originalPacket.copy(ttl = 0u.toUByte()))
             }
-            
         } catch (e: Exception) {
             Log.e(TAG, "Failed to handle fragment: ${e.message}")
         }
-        
-        return null
+
+        return FragmentResult.Refused
     }
 
     private fun removeFragmentSetLocked(fragmentIDString: String) {
@@ -386,6 +408,20 @@ class FragmentManager {
         managerScope.cancel()
         clearAllFragments()
     }
+}
+
+/** Outcome of receiving one fragment. */
+sealed class FragmentResult {
+    /** Out of bounds or malformed: not kept, synced or relayed. */
+    object Refused : FragmentResult()
+    /** Not buffered here; relay rules still apply. */
+    object Skipped : FragmentResult()
+    /** Buffered, waiting for the remaining fragments. */
+    object Pending : FragmentResult()
+    data class Complete(val packet: BitchatPacket) : FragmentResult()
+
+    /** Only a fragment accepted for reassembly is kept for gossip sync. */
+    val keptForSync: Boolean get() = this is Pending || this is Complete
 }
 
 /**
