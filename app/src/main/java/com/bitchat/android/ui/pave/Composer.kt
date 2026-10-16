@@ -39,6 +39,9 @@ import com.bitchat.android.R
  * The message field at the bottom of a conversation. It carries the colour of its room so nobody
  * posts to the public room by mistake: public has a yellow top rule and a megaphone, private a lock.
  * The send button stays disabled while the field is empty or over 2,000 bytes.
+ *
+ * @param enabled whether sending is allowed right now (verified contact, transport ready).
+ * No default, so the caller always states it.
  */
 @Composable
 fun Composer(
@@ -46,9 +49,9 @@ fun Composer(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
     room: PaveRoom,
+    enabled: Boolean,
     modifier: Modifier = Modifier,
     recipient: String? = null,
-    enabled: Boolean = true,
 ) {
     val c = WeshPave.colors
     val haptics = rememberWeshHaptics()
@@ -148,10 +151,11 @@ fun Composer(
 @Composable
 private fun ComposerPreview() = PavePreview {
     Column(verticalArrangement = Arrangement.spacedBy(WeshSpace.s4)) {
-        Composer("", {}, {}, PaveRoom.Public)
-        Composer("", {}, {}, PaveRoom.Private, recipient = "Nora")
-        Composer("On arrive dans cinq minutes.", {}, {}, PaveRoom.Private, recipient = "Nora")
-        Composer("a".repeat(1850), {}, {}, PaveRoom.Public)
-        Composer("a".repeat(2010), {}, {}, PaveRoom.Private, recipient = "Nora")
+        Composer("", {}, {}, PaveRoom.Public, enabled = true)
+        Composer("", {}, {}, PaveRoom.Private, enabled = true, recipient = "Nora")
+        Composer("On arrive dans cinq minutes.", {}, {}, PaveRoom.Private, enabled = true, recipient = "Nora")
+        Composer("a".repeat(1850), {}, {}, PaveRoom.Public, enabled = true)
+        Composer("a".repeat(2010), {}, {}, PaveRoom.Private, enabled = true, recipient = "Nora")
+        Composer("", {}, {}, PaveRoom.Private, enabled = false, recipient = "Léo 17")
     }
 }
