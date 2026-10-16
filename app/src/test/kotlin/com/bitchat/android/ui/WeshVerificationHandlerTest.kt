@@ -91,6 +91,20 @@ class WeshVerificationHandlerTest {
         com.bitchat.android.services.WeshQrIdentity.resetForTesting()
     }
     private fun respond() = handler.didReceiveVerifyResponse(peer, VerificationService.buildVerifyResponse(qr.noiseKeyHex, nonce!!)!!)
+    @Test fun `they-scanned-you lights only for the contact being scanned, never for a neighbour`() = scope.runTest {
+        val myKey = ByteArray(32) { 21 }
+        val myHex = myKey.joinToString("") { "%02x".format(it) }
+        whenever(mesh.getStaticNoisePublicKey()).thenReturn(myKey)
+        handler.didReceiveVerifyChallenge("synthetic-neighbour", VerificationService.buildVerifyChallenge(myHex, ByteArray(16) { 3 }))
+        runCurrent()
+        assertFalse(handler.weshScannedMeSince(0, null))
+        assertFalse(handler.weshScannedMeSince(0, qr.noiseKeyHex))
+        handler.didReceiveVerifyChallenge(peer, VerificationService.buildVerifyChallenge(myHex, ByteArray(16) { 4 }))
+        runCurrent()
+        assertTrue(handler.weshScannedMeSince(0, qr.noiseKeyHex))
+        assertFalse(handler.weshScannedMeSince(time + 1, qr.noiseKeyHex))
+        assertFalse(handler.weshScannedMeSince(0, null))
+    }
     @Test fun `pending response completes local proof only within exact sixty second window`() = scope.runTest {
         assertTrue(handler.beginQRVerification(qr))
         assertTrue(store.contacts.value.isEmpty())

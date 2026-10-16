@@ -48,14 +48,23 @@ class SafeDisplayNameTest {
 
     @Test
     fun `the Wesh screen shows remote nicknames only through the remote nickname rule`() {
-        val screen = File("src/main/java/com/bitchat/android/ui/WeshScreen.kt").readText()
-        assertFalse(screen.contains("Text(message.sender"))
-        assertFalse(screen.contains("\${message.sender}"))
-        assertFalse(screen.contains("Text(request.nickname") || screen.contains("Text(contact.nickname"))
-        // Storage sanitizing is not the display rule: the screen never uses it to show a name.
-        assertFalse(screen.contains("safeDisplayName("))
-        assertTrue(screen.contains("remoteDisplayName(message.sender"))
+        val pave = File("src/main/java/com/bitchat/android/ui/pave").listFiles().orEmpty()
+            .filter { it.extension == "kt" && it.name !in setOf("PaveDisplayName.kt", "PaveIdentity.kt") }
+        assertTrue(pave.any { it.name == "WeshPaveApp.kt" })
+        pave.forEach { file ->
+            val screen = file.readText()
+            assertFalse(file.name, screen.contains("Text(message.sender") || screen.contains("Text(m.sender"))
+            assertFalse(file.name, screen.contains("\${message.sender}") || screen.contains("\${m.sender}"))
+            assertFalse(file.name, screen.contains("Text(request.nickname") || screen.contains("Text(contact.nickname") || screen.contains("Text(item.nickname"))
+            // Storage sanitizing is not the display rule: no Pavé screen uses it to show a name.
+            assertFalse(file.name, screen.contains("safeDisplayName("))
+        }
+        // Every component that draws a remote name applies the rule itself.
+        listOf("MessageBubble.kt", "InboxRow.kt", "RequestsScreen.kt", "ConversationScreens.kt", "SettingsDetailScreens.kt").forEach { name ->
+            assertTrue(name, File("src/main/java/com/bitchat/android/ui/pave/$name").readText().contains("remoteDisplayName("))
+        }
         // States drawn next to a name come from resources, so PaveReservedWords can reserve them.
-        assertFalse(screen.contains("\"Identité vérifiée sur ce téléphone\"") || screen.contains("\"Bloqué sur ce téléphone\""))
+        val app = File("src/main/java/com/bitchat/android/ui/pave/WeshPaveApp.kt").readText()
+        assertFalse(app.contains("\"Identité vérifiée sur ce téléphone\"") || app.contains("\"Bloqué sur ce téléphone\""))
     }
 }

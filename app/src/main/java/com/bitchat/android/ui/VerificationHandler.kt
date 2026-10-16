@@ -51,6 +51,7 @@ class VerificationHandler(
     private val pendingQRVerifications = ConcurrentHashMap<String, PendingVerification>()
     private val lastVerifyNonceByPeer = ConcurrentHashMap<String, ByteArray>()
     private val lastInboundVerifyChallengeAt = ConcurrentHashMap<String, Long>()
+    private val inboundChallengeAt = ConcurrentHashMap<String, Long>()
     private val lastMutualToastAt = ConcurrentHashMap<String, Long>()
 
     fun loadVerifiedFingerprints() {
@@ -137,7 +138,18 @@ class VerificationHandler(
             lastVerifyNonceByPeer[peerID] = parsed.second
 
             meshService.sendVerifyResponse(peerID, parsed.first, parsed.second)
+            inboundChallengeAt[peerID] = nowMs()
         }
+    }
+
+    /**
+     * Échanger's "they scanned you" check: a challenge for our key arrived since [sinceMs] from the
+     * peer whose session key is [noiseHex], the contact we are scanning. Nothing lights before our
+     * own scan names that key, so a neighbour's unrelated challenge never shows. Display only.
+     */
+    fun weshScannedMeSince(sinceMs: Long, noiseHex: String?): Boolean {
+        if (noiseHex == null) return false
+        return inboundChallengeAt.any { (peerID, at) -> at >= sinceMs && sessionMatches(peerID, noiseHex) }
     }
 
     fun didReceiveVerifyResponse(peerID: String, payload: ByteArray) {
@@ -206,7 +218,7 @@ class VerificationHandler(
     /** Bumped by panic and cancel so a verification resumed after either never writes. */
     @Volatile private var weshGeneration = 0L
 
-    fun clearWeshVerifications() { weshGeneration++; pendingQRVerifications.clear(); completedAttempts.clear() }
+    fun clearWeshVerifications() { weshGeneration++; pendingQRVerifications.clear(); completedAttempts.clear(); inboundChallengeAt.clear() }
 
     fun cancelWeshVerification(conversationID: String) {
         weshGeneration++

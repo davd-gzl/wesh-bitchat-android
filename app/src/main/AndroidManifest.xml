@@ -114,6 +114,10 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="bitchat" android:host="verify" />
             </intent-filter>
+            <!-- "Tout effacer" launcher shortcut: opens the hold-to-erase screen, never erases by itself. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <!-- Persistent foreground service to run the mesh in background -->
