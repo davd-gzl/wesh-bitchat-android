@@ -2,6 +2,7 @@ package info.guardianproject.arti
 
 import android.app.Application
 import android.util.Log
+import com.bitchat.android.net.SocksCredentials
 import org.torproject.arti.ArtiNative
 import java.io.File
 
@@ -9,7 +10,7 @@ import java.io.File
 internal interface ArtiNativeApi {
     fun setLogCallback(callback: ArtiLogListener)
     fun initialize(dataDir: String): Int
-    fun startSocksProxy(port: Int): Int
+    fun startSocksProxyWithAuth(port: Int, username: String, password: String): Int
     fun stop(): Int
 }
 
@@ -17,7 +18,8 @@ internal interface ArtiNativeApi {
 internal object DefaultArtiNative : ArtiNativeApi {
     override fun setLogCallback(callback: ArtiLogListener) = ArtiNative.setLogCallback(callback)
     override fun initialize(dataDir: String) = ArtiNative.initialize(dataDir)
-    override fun startSocksProxy(port: Int) = ArtiNative.startSocksProxy(port)
+    override fun startSocksProxyWithAuth(port: Int, username: String, password: String) =
+        ArtiNative.startSocksProxyWithAuth(port, username, password)
     override fun stop() = ArtiNative.stop()
 }
 
@@ -27,20 +29,16 @@ internal object DefaultArtiNative : ArtiNativeApi {
  * Usage:
  * ```
  * val proxy = ArtiProxy.Builder(application)
- *     .setSocksPort(9050)
- *     .setDnsPort(9051)
  *     .setLogListener { logLine -> Log.i("Arti", logLine ?: "") }
  *     .build()
  *
- * proxy.start()
+ * proxy.start(socksPort, credentials)
  * // ... use proxy ...
  * proxy.stop()
  * ```
  */
 class ArtiProxy internal constructor(
     private val application: Application,
-    private val socksPort: Int,
-    private val dnsPort: Int,
     private val logListener: ArtiLogListener?,
     private val native: ArtiNativeApi = DefaultArtiNative
 ) {
@@ -61,11 +59,11 @@ class ArtiProxy internal constructor(
      * This method:
      * 1. Registers log callback
      * 2. Bootstraps a fresh Tor client (blocks; [stop] from another thread cancels it)
-     * 3. Starts SOCKS proxy on configured port
+     * 3. Starts the authenticated SOCKS proxy on [socksPort]
      *
      * @throws ArtiException if initialization or startup fails
      */
-    fun start() {
+    fun start(socksPort: Int, credentials: SocksCredentials) {
         if (isRunning) {
             Log.w(TAG, "Arti already running")
             return
@@ -87,8 +85,8 @@ class ArtiProxy internal constructor(
                 else -> throw ArtiException("Failed to initialize Arti: error code $initResult")
             }
 
-            Log.i(TAG, "Starting SOCKS proxy on port $socksPort (DNS port: $dnsPort)")
-            val startResult = native.startSocksProxy(socksPort)
+            Log.i(TAG, "Starting SOCKS proxy on port $socksPort")
+            val startResult = native.startSocksProxyWithAuth(socksPort, credentials.username, credentials.password)
             when (startResult) {
                 0 -> {
                     isRunning = true
@@ -153,32 +151,10 @@ class ArtiProxy internal constructor(
     }
 
     /**
-     * Builder for ArtiProxy instances.
-     *
-     * Provides fluent API for configuring proxy settings before creation.
+     * Builder for ArtiProxy instances. The SOCKS port and credentials are chosen per start.
      */
     class Builder(private val application: Application) {
-        private var socksPort: Int = 9050
-        private var dnsPort: Int = 9051
         private var logListener: ArtiLogListener? = null
-
-        /**
-         * Set SOCKS proxy port.
-         * @param port Port number (default: 9050)
-         * @return this Builder for chaining
-         */
-        fun setSocksPort(port: Int) = apply {
-            this.socksPort = port
-        }
-
-        /**
-         * Set DNS port.
-         * @param port Port number (default: 9051)
-         * @return this Builder for chaining
-         */
-        fun setDnsPort(port: Int) = apply {
-            this.dnsPort = port
-        }
 
         /**
          * Set log listener for Arti log messages.
@@ -194,7 +170,7 @@ class ArtiProxy internal constructor(
          * @return Configured ArtiProxy (not yet started)
          */
         fun build(): ArtiProxy {
-            return ArtiProxy(application, socksPort, dnsPort, logListener)
+            return ArtiProxy(application, logListener)
         }
     }
 }

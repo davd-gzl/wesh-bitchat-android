@@ -1,6 +1,7 @@
 package info.guardianproject.arti
 
 import android.app.Application
+import com.bitchat.android.net.SocksCredentials
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -18,6 +19,7 @@ import kotlin.concurrent.thread
 @Config(sdk = [28], manifest = Config.NONE, application = Application::class)
 class ArtiProxyTest {
     private val app: Application get() = RuntimeEnvironment.getApplication()
+    private val credentials = SocksCredentials("synthetic-user", "synthetic-pass")
 
     private class FakeNative(var initResult: Int = 0) : ArtiNativeApi {
         val calls = mutableListOf<String>()
@@ -31,8 +33,8 @@ class ArtiProxyTest {
             blockBootstrap?.let { return if (it.await(30, TimeUnit.SECONDS)) -4 else 0 }
             return initResult
         }
-        override fun startSocksProxy(port: Int): Int {
-            synchronized(calls) { calls += "socks:$port" }
+        override fun startSocksProxyWithAuth(port: Int, username: String, password: String): Int {
+            synchronized(calls) { calls += "socks:$port:$username:$password" }
             return 0
         }
         override fun stop(): Int {
@@ -44,24 +46,24 @@ class ArtiProxyTest {
 
     @Test fun `a stop before any start never loads the native library`() {
         val native = FakeNative()
-        ArtiProxy(app, 23456, 23457, null, native).stop()
+        ArtiProxy(app, null, native).stop()
         assertTrue(native.calls.isEmpty())
     }
 
-    @Test fun `stop after a successful start reaches the native side`() {
+    @Test fun `start hands the per-start port and credentials to the native proxy`() {
         val native = FakeNative()
-        val proxy = ArtiProxy(app, 23456, 23457, null, native)
-        proxy.start()
-        assertEquals(listOf("initialize", "socks:23456"), native.calls)
+        val proxy = ArtiProxy(app, null, native)
+        proxy.start(23456, credentials)
+        assertEquals(listOf("initialize", "socks:23456:synthetic-user:synthetic-pass"), native.calls)
         proxy.stop()
         assertEquals("stop", native.calls.last())
     }
 
     @Test fun `stop cancels a start still bootstrapping and the start fails`() {
         val native = FakeNative().apply { blockBootstrap = CountDownLatch(1) }
-        val proxy = ArtiProxy(app, 23456, 23457, null, native)
+        val proxy = ArtiProxy(app, null, native)
         var failure: Throwable? = null
-        val starter = thread { failure = runCatching { proxy.start() }.exceptionOrNull() }
+        val starter = thread { failure = runCatching { proxy.start(23456, credentials) }.exceptionOrNull() }
         assertTrue(native.bootstrapping.await(5, TimeUnit.SECONDS))
 
         proxy.stop()
@@ -74,8 +76,8 @@ class ArtiProxyTest {
 
     @Test fun `a failed start still releases whatever the native side holds`() {
         val native = FakeNative(initResult = -3)
-        val proxy = ArtiProxy(app, 23456, 23457, null, native)
-        assertTrue(runCatching { proxy.start() }.exceptionOrNull() is ArtiException)
+        val proxy = ArtiProxy(app, null, native)
+        assertTrue(runCatching { proxy.start(23456, credentials) }.exceptionOrNull() is ArtiException)
         proxy.stop()
         assertEquals(listOf("initialize", "stop"), native.calls)
     }

@@ -53,7 +53,6 @@ class ArtiTorManager private constructor() {
 
     companion object {
         private const val TAG = "ArtiTorManager"
-        private const val DEFAULT_SOCKS_PORT = AppConstants.Tor.DEFAULT_SOCKS_PORT
         private const val RESTART_DELAY_MS = AppConstants.Tor.RESTART_DELAY_MS
         private const val INACTIVITY_TIMEOUT_MS = AppConstants.Tor.INACTIVITY_TIMEOUT_MS
         private const val MAX_RETRY_ATTEMPTS = AppConstants.Tor.MAX_RETRY_ATTEMPTS
@@ -82,8 +81,12 @@ class ArtiTorManager private constructor() {
     private val applyMutex = Mutex()
     @Volatile
     private var desiredMode: TorMode = TorMode.OFF
+    /** Random per start, so the port is not a fixed, well-known target on the phone. */
     @Volatile
-    private var currentSocksPort: Int = DEFAULT_SOCKS_PORT
+    private var currentSocksPort: Int = SocksCredentials.randomPort()
+    /** Per start; the SOCKS port refuses any client without them. */
+    @Volatile
+    private var socksCredentials: SocksCredentials? = null
     @Volatile
     private var lastLogTime = AtomicLong(0L)
     @Volatile
@@ -139,16 +142,12 @@ class ArtiTorManager private constructor() {
             }
 
             artiProxy = ArtiProxy.Builder(application)
-                .setSocksPort(currentSocksPort)
-                .setDnsPort(currentSocksPort + 1)
                 .setLogListener(logListener)
                 .build()
 
             val savedMode = TorPreferenceManager.get(application)
             if (savedMode == TorMode.ON) {
-                if (currentSocksPort < DEFAULT_SOCKS_PORT) {
-                    currentSocksPort = DEFAULT_SOCKS_PORT
-                }
+                currentSocksPort = SocksCredentials.randomPort()
                 desiredMode = savedMode
                 socksAddr = InetSocketAddress("127.0.0.1", currentSocksPort)
                 try {
@@ -169,6 +168,8 @@ class ArtiTorManager private constructor() {
     }
 
     fun currentSocksAddress(): InetSocketAddress? = socksAddr
+
+    fun currentSocksCredentials(): SocksCredentials? = socksCredentials
 
     /**
      * Wait until the currently selected HTTP route can be used.
@@ -226,7 +227,7 @@ class ArtiTorManager private constructor() {
                             bootstrapPercent = 0,
                             state = TorState.OFF
                         )
-                        currentSocksPort = DEFAULT_SOCKS_PORT
+                        currentSocksPort = SocksCredentials.randomPort()
                         bindRetryAttempts = 0
                         lifecycleState = LifecycleState.STOPPED
                         resetNetworkConnections()
@@ -242,9 +243,7 @@ class ArtiTorManager private constructor() {
                             return
                         }
                         Log.i(TAG, "applyMode: ON -> starting arti")
-                        if (currentSocksPort < DEFAULT_SOCKS_PORT) {
-                            currentSocksPort = DEFAULT_SOCKS_PORT
-                        }
+                        currentSocksPort = SocksCredentials.randomPort()
                         bindRetryAttempts = 0
                         lifecycleState = LifecycleState.STARTING
                         _statusFlow.value = _statusFlow.value.copy(
@@ -290,7 +289,9 @@ class ArtiTorManager private constructor() {
                 return
             }
 
-            proxy.start()
+            val credentials = SocksCredentials.random()
+            socksCredentials = credentials
+            proxy.start(currentSocksPort, credentials)
             lastLogTime.set(System.currentTimeMillis())
 
             _statusFlow.update {
@@ -315,7 +316,7 @@ class ArtiTorManager private constructor() {
             val isBindError = isBindError(e)
             if (isBindError && bindRetryAttempts < MAX_RETRY_ATTEMPTS) {
                 bindRetryAttempts++
-                currentSocksPort++
+                currentSocksPort = SocksCredentials.randomPort()
                 Log.w(TAG, "Port bind failed (attempt $bindRetryAttempts/$MAX_RETRY_ATTEMPTS), retrying with port $currentSocksPort")
                 socksAddr = InetSocketAddress("127.0.0.1", currentSocksPort)
                 resetNetworkConnections()
@@ -379,6 +380,7 @@ class ArtiTorManager private constructor() {
     private fun stopArti() {
         stopArtiInternal()
         socksAddr = null
+        socksCredentials = null
         _statusFlow.value = _statusFlow.value.copy(
             running = false,
             bootstrapPercent = 0,

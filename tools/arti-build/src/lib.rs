@@ -249,15 +249,30 @@ async fn wait_until_cancelled(start: &lifecycle::Start<'_, Session>) {
     }
 }
 
-/// Start SOCKS proxy on specified port
+/// Start the SOCKS proxy on 127.0.0.1:`port`, accepting only RFC 1929 username/password
+/// authentication with the given per-start credentials.
 #[no_mangle]
-pub extern "C" fn Java_org_torproject_arti_ArtiNative_startSocksProxy(
-    _env: JNIEnv,
+pub extern "C" fn Java_org_torproject_arti_ArtiNative_startSocksProxyWithAuth(
+    mut env: JNIEnv,
     _class: JClass,
     port: jint,
+    username: JString,
+    password: JString,
 ) -> jint {
     log_info!("AMEx: state changed to Starting");
     log_info!("Starting SOCKS proxy on port {}", port);
+
+    let username: Option<String> = env.get_string(&username).ok().map(Into::into);
+    let password: Option<String> = env.get_string(&password).ok().map(Into::into);
+    let credentials = match username.zip(password)
+        .and_then(|(u, p)| socks_auth::Credentials::new(u.into_bytes(), p.into_bytes()))
+    {
+        Some(c) => Arc::new(c),
+        None => {
+            log_error!("SOCKS credentials missing or invalid");
+            return -4;
+        }
+    };
 
     // Try to bind IMMEDIATELY to detect port conflicts before returning
     let addr = format!("127.0.0.1:{}", port);
@@ -298,9 +313,10 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_startSocksProxy(
                     Ok((stream, peer_addr)) => {
                         log_info!("SOCKS connection from: {}", peer_addr);
                         let client_clone = Arc::clone(&client);
+                        let credentials = Arc::clone(&credentials);
 
                         tokio::spawn(async move {
-                            if let Err(e) = handle_socks_connection(stream, client_clone).await {
+                            if let Err(e) = handle_socks_connection(stream, client_clone, credentials).await {
                                 log_error!("SOCKS connection error: {:?}", e);
                             }
                         });
@@ -337,20 +353,44 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_startSocksProxy(
 async fn handle_socks_connection(
     mut stream: tokio::net::TcpStream,
     client: Arc<TorClient<PreferredRuntime>>,
+    credentials: Arc<socks_auth::Credentials>,
 ) -> Result<()> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    // Simple SOCKS5 handshake
-    let mut buf = [0u8; 512];
-
-    // Read version + methods
-    let n = stream.read(&mut buf).await?;
-    if n < 2 {
-        return Err(anyhow::anyhow!("Invalid SOCKS handshake"));
+    // Greeting: VER NMETHODS METHODS. Only username/password is accepted, so another app
+    // on the phone cannot use this port without the per-start credentials.
+    let mut head = [0u8; 2];
+    stream.read_exact(&mut head).await?;
+    if head[0] != 0x05 {
+        return Err(anyhow::anyhow!("Unsupported SOCKS version: {}", head[0]));
+    }
+    let mut methods = vec![0u8; head[1] as usize];
+    stream.read_exact(&mut methods).await?;
+    let method = socks_auth::choose_method(&methods);
+    stream.write_all(&[0x05, method]).await?;
+    if method != socks_auth::USER_PASS {
+        return Err(anyhow::anyhow!("SOCKS client offered no username/password"));
     }
 
-    // Send "no auth required" response
-    stream.write_all(&[0x05, 0x00]).await?;
+    // RFC 1929: VER(1)=1 ULEN UNAME PLEN PASSWD
+    let mut auth_head = [0u8; 2];
+    stream.read_exact(&mut auth_head).await?;
+    if auth_head[0] != 0x01 {
+        return Err(anyhow::anyhow!("Unsupported SOCKS auth version: {}", auth_head[0]));
+    }
+    let mut user = vec![0u8; auth_head[1] as usize];
+    stream.read_exact(&mut user).await?;
+    let mut pass_len = [0u8; 1];
+    stream.read_exact(&mut pass_len).await?;
+    let mut pass = vec![0u8; pass_len[0] as usize];
+    stream.read_exact(&mut pass).await?;
+    let accepted = credentials.accepts(&user, &pass);
+    stream.write_all(&[0x01, if accepted { 0x00 } else { 0x01 }]).await?;
+    if !accepted {
+        return Err(anyhow::anyhow!("SOCKS authentication failed"));
+    }
+
+    let mut buf = [0u8; 512];
 
     // Read request
     let n = stream.read(&mut buf).await?;
@@ -730,6 +770,77 @@ mod lifecycle {
             let (start, _) = life.begin_start();
             assert!(!start.is_cancelled());
             assert!(start.install(3).is_ok());
+        }
+    }
+}
+
+// ============================================================================
+// SOCKS5 username/password rules (std only)
+// ============================================================================
+
+mod socks_auth {
+    pub const USER_PASS: u8 = 0x02;
+    pub const NO_ACCEPTABLE: u8 = 0xFF;
+
+    /// Username/password (RFC 1929) is the only method accepted.
+    pub fn choose_method(offered: &[u8]) -> u8 {
+        if offered.contains(&USER_PASS) { USER_PASS } else { NO_ACCEPTABLE }
+    }
+
+    /// Compares without stopping at the first difference.
+    fn same(expected: &[u8], given: &[u8]) -> bool {
+        let mut diff = expected.len() ^ given.len();
+        for (i, byte) in expected.iter().enumerate() {
+            diff |= usize::from(byte ^ given.get(i).copied().unwrap_or(0));
+        }
+        diff == 0
+    }
+
+    pub struct Credentials {
+        username: Vec<u8>,
+        password: Vec<u8>,
+    }
+
+    impl Credentials {
+        /// None for an empty or over-long value: an empty secret would let any local app in.
+        pub fn new(username: Vec<u8>, password: Vec<u8>) -> Option<Self> {
+            let valid = |v: &Vec<u8>| !v.is_empty() && v.len() <= 255;
+            (valid(&username) && valid(&password)).then_some(Self { username, password })
+        }
+
+        pub fn accepts(&self, username: &[u8], password: &[u8]) -> bool {
+            same(&self.username, username) & same(&self.password, password)
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn only_username_password_is_offered_back() {
+            assert_eq!(choose_method(&[0x00, 0x02]), USER_PASS);
+            assert_eq!(choose_method(&[0x02]), USER_PASS);
+            assert_eq!(choose_method(&[0x00]), NO_ACCEPTABLE);
+            assert_eq!(choose_method(&[]), NO_ACCEPTABLE);
+        }
+
+        #[test]
+        fn only_the_exact_credentials_are_accepted() {
+            let c = Credentials::new(b"synthetic-user".to_vec(), b"synthetic-pass".to_vec()).unwrap();
+            assert!(c.accepts(b"synthetic-user", b"synthetic-pass"));
+            assert!(!c.accepts(b"synthetic-user", b"synthetic-pas"));
+            assert!(!c.accepts(b"synthetic-user", b"synthetic-pass!"));
+            assert!(!c.accepts(b"other-user", b"synthetic-pass"));
+            assert!(!c.accepts(b"", b""));
+        }
+
+        #[test]
+        fn empty_or_oversized_credentials_are_rejected() {
+            assert!(Credentials::new(Vec::new(), b"p".to_vec()).is_none());
+            assert!(Credentials::new(b"u".to_vec(), Vec::new()).is_none());
+            assert!(Credentials::new(vec![b'u'; 256], b"p".to_vec()).is_none());
+            assert!(Credentials::new(vec![b'u'; 255], vec![b'p'; 255]).is_some());
         }
     }
 }

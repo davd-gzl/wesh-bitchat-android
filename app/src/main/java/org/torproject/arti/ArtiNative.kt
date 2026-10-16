@@ -40,11 +40,11 @@ object ArtiNative {
     external fun initialize(dataDir: String): Int
 
     /**
-     * Start SOCKS proxy on specified port
-     * @param port Port number for SOCKS proxy (e.g., 9050)
-     * @return 0 on success, error code otherwise
+     * Start the SOCKS proxy on 127.0.0.1:[port]. Only RFC 1929 username/password with exactly
+     * these credentials is accepted.
+     * @return 0 on success, -3 when the port is taken, another error code otherwise
      */
-    external fun startSocksProxy(port: Int): Int
+    external fun startSocksProxyWithAuth(port: Int, username: String, password: String): Int
 
     /**
      * Cancels a bootstrap in progress, drops the Tor client and shuts its runtime down. When it

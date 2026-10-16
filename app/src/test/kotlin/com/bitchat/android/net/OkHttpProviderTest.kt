@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 class OkHttpProviderTest {
     private val original = OkHttpProvider.socksAddressProvider
+    private val originalCredentials = OkHttpProvider.socksCredentialsProvider
     private val originalGate = OkHttpProvider.networkAllowed
 
     @Before fun openGate() {
@@ -30,6 +31,7 @@ class OkHttpProviderTest {
 
     @After fun restore() {
         OkHttpProvider.socksAddressProvider = original
+        OkHttpProvider.socksCredentialsProvider = originalCredentials
         OkHttpProvider.networkAllowed = originalGate
         OkHttpProvider.reset()
     }
@@ -108,5 +110,52 @@ class OkHttpProviderTest {
             assertEquals("SOCKS5 ATYP must be a domain name", 3, addressType)
             assertEquals("relay.example.invalid", host)
         }
+    }
+
+    @Test
+    fun `the SOCKS proxy receives this start's username and password`() {
+        val credentials = SocksCredentials("synthetic-user", "synthetic-pass")
+        ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { server ->
+            // Minimal SOCKS5 peer that requires RFC 1929 and records what it was given.
+            val seen = CompletableFuture.supplyAsync {
+                server.accept().use { socket ->
+                    val input = DataInputStream(socket.getInputStream())
+                    val output = socket.getOutputStream()
+                    check(input.readUnsignedByte() == 5)
+                    val methods = ByteArray(input.readUnsignedByte()).also(input::readFully)
+                    check(2.toByte() in methods) { "username/password not offered" }
+                    output.write(byteArrayOf(5, 2)); output.flush()
+                    check(input.readUnsignedByte() == 1)
+                    val user = String(ByteArray(input.readUnsignedByte()).also(input::readFully))
+                    val pass = String(ByteArray(input.readUnsignedByte()).also(input::readFully))
+                    output.write(byteArrayOf(1, 1)); output.flush()
+                    user to pass
+                }
+            }
+            OkHttpProvider.socksAddressProvider = { InetSocketAddress(InetAddress.getLoopbackAddress(), server.localPort) }
+            OkHttpProvider.socksCredentialsProvider = { credentials }
+            OkHttpProvider.reset()
+            runCatching {
+                OkHttpProvider.httpClient().newCall(Request.Builder().url("http://relay.example.invalid/").build()).execute().close()
+            }
+            assertEquals("synthetic-user" to "synthetic-pass", seen.get(10, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test
+    fun `the Tor credentials are never handed to another host, port or protocol`() {
+        val socks = InetSocketAddress(InetAddress.getLoopbackAddress(), 23456)
+        OkHttpProvider.socksAddressProvider = { socks }
+        OkHttpProvider.socksCredentialsProvider = { SocksCredentials("synthetic-user", "synthetic-pass") }
+        TorSocksAuthenticator.install()
+        val loopback = InetAddress.getLoopbackAddress()
+        fun ask(port: Int, protocol: String, site: InetAddress = loopback) =
+            java.net.Authenticator.requestPasswordAuthentication("synthetic", site, port, protocol, "prompt", null)
+        assertEquals("synthetic-user", ask(23456, "SOCKS5")?.userName)
+        assertEquals(null, ask(23457, "SOCKS5"))
+        assertEquals(null, ask(23456, "http"))
+        assertEquals(null, ask(23456, "SOCKS5", InetAddress.getByAddress(byteArrayOf(192.toByte(), 0, 2, 1))))
+        OkHttpProvider.socksCredentialsProvider = { null }
+        assertEquals("no credentials while Tor is stopped", null, ask(23456, "SOCKS5"))
     }
 }

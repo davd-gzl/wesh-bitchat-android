@@ -102,13 +102,14 @@ The wrapper exports the native methods used by `ArtiNative`:
 - `setLogCallback`
 - `initialize`: a fresh Tokio runtime and a freshly bootstrapped client per call;
   returns `-4` when `stop` cancelled the bootstrap
-- `startSocksProxy`
+- `startSocksProxyWithAuth`: SOCKS5 on `127.0.0.1:<port>`, RFC 1929
+  username/password only, with per-start credentials
 - `stop`: cancels a bootstrap in progress, drops the client and shuts its
   runtime down; when it returns no Tor task remains and the data directory can
   be deleted
 
-The start/stop bookkeeping is a std-only module of `src/lib.rs` with its own
-unit tests.
+The start/stop bookkeeping and the SOCKS credential checks are std-only modules
+of `src/lib.rs` with their own unit tests.
 
 The build fails if any expected symbol is absent. The pinned NDK `readelf`
 check requires every LOAD segment in each 64-bit library to have at least
