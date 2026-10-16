@@ -8,10 +8,10 @@ import java.text.Normalizer
  * so a caller cannot forget it: no control, format (bidi overrides, zero-width), surrogate,
  * private-use, unassigned or blank-glyph character (Hangul fillers, Braille blank, variation
  * selectors); NFKC; at most [MAX_COMBINING_MARKS] marks per character;
- * one line; at most [MAX_GRAPHEMES] graphemes; at least one visible letter, digit, symbol or
+ * one line; at most [MAX_GRAPHEMES] graphemes, elided in the middle; at least one visible letter, digit, symbol or
  * punctuation, otherwise the fallback.
- * Same rules as the shared `safeDisplayName()` (inbound admission work), plus the grapheme clamp
- * and the blank-glyph and visibility checks;
+ * Same rules as the shared `safeDisplayName()` (inbound admission work), plus the grapheme clamp,
+ * the blank-glyph and visibility checks and [remote]'s reserved-name masking;
  * it can delegate there once that lands.
  */
 object PaveDisplayName {
@@ -39,8 +39,36 @@ object PaveDisplayName {
         else -> false
     }
 
-    fun safe(raw: String?, fallback: String): String {
-        if (raw.isNullOrEmpty()) return fallback
+    /** Sanitized [raw], with long names elided in the middle; [fallback] when nothing visible is left. */
+    fun safe(raw: String?, fallback: String): String = clean(raw)?.let(::elideMiddle) ?: fallback
+
+    /**
+     * For a name that comes from someone else. Like [safe], but a name that reads as one of the
+     * app's own words ([reserved]: "Vous", "Sans surnom", fallbacks, badges) or that contains the
+     * masking marker shows [masked] applied to [fallback] instead of the remote text.
+     * Comparison ignores case, accents, spacing and punctuation.
+     */
+    fun remote(raw: String?, fallback: String, reserved: Collection<String>, masked: (String) -> String): String {
+        val name = clean(raw) ?: return fallback
+        val key = comparisonKey(name)
+        val markerKey = comparisonKey(masked(""))
+        val impersonates = reserved.any { comparisonKey(it).let { r -> r.isNotEmpty() && r == key } } ||
+            (markerKey.isNotEmpty() && key.contains(markerKey))
+        return if (impersonates) masked(fallback) else elideMiddle(name)
+    }
+
+    /** Lowercase letters and digits only, without accents: "V.ó-us" and "vous" compare equal. */
+    internal fun comparisonKey(text: String): String {
+        val decomposed = Normalizer.normalize(text, Normalizer.Form.NFKD)
+        val out = StringBuilder()
+        decomposed.codePoints().forEach { cp ->
+            if (Character.isLetterOrDigit(cp)) out.appendCodePoint(Character.toLowerCase(cp))
+        }
+        return out.toString()
+    }
+
+    private fun clean(raw: String?): String? {
+        if (raw.isNullOrEmpty()) return null
         val normalized = Normalizer.normalize(raw, Normalizer.Form.NFKC)
         val out = StringBuilder(normalized.length)
         var marks = 0
@@ -64,18 +92,26 @@ object PaveDisplayName {
             }
         }
         val clean = out.toString().trim()
-        if (clean.codePoints().noneMatch(::isVisible)) return fallback
-        return clampGraphemes(clean)
+        return if (clean.codePoints().noneMatch(::isVisible)) null else clean
     }
 
-    private fun clampGraphemes(text: String): String {
-        val graphemes = BreakIterator.getCharacterInstance().apply { setText(text) }
-        var end = 0
-        repeat(MAX_GRAPHEMES) {
-            val next = graphemes.next()
-            if (next == BreakIterator.DONE) return text
-            end = next
+    /**
+     * At most [MAX_GRAPHEMES] graphemes, ellipsis included. A long name keeps its start and its end
+     * ("Nora la vraie…ou pas"), so a suffix cannot be hidden behind a trusted-looking prefix.
+     */
+    internal fun elideMiddle(text: String): String {
+        val iterator = BreakIterator.getCharacterInstance().apply { setText(text) }
+        val bounds = mutableListOf(0)
+        while (true) {
+            val next = iterator.next()
+            if (next == BreakIterator.DONE) break
+            bounds += next
         }
-        return if (graphemes.next() == BreakIterator.DONE) text else text.substring(0, end).trimEnd() + ELLIPSIS
+        val count = bounds.size - 1
+        if (count <= MAX_GRAPHEMES) return text
+        val keep = MAX_GRAPHEMES - 1
+        val head = (keep + 1) / 2
+        val tail = keep - head
+        return text.substring(0, bounds[head]).trimEnd() + ELLIPSIS + text.substring(bounds[count - tail]).trimStart()
     }
 }

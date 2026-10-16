@@ -57,13 +57,51 @@ class PaveDisplayNameTest {
     }
 
     @Test
-    fun `long names are clamped to whole graphemes`() {
+    fun `long names are elided in the middle on whole graphemes`() {
         val grapheme = "x$acute$acute"
+        val max = PaveDisplayName.MAX_GRAPHEMES
         val result = safe(grapheme.repeat(40))
-        assertTrue(result.endsWith("…"))
-        assertEquals(grapheme.repeat(PaveDisplayName.MAX_GRAPHEMES), result.removeSuffix("…"))
-        val exact = "a".repeat(PaveDisplayName.MAX_GRAPHEMES)
+        val head = max / 2
+        val tail = max - 1 - head
+        assertEquals(grapheme.repeat(head) + "…" + grapheme.repeat(tail), result)
+        val exact = "a".repeat(max)
         assertEquals(exact, safe(exact))
+    }
+
+    @Test
+    fun `middle elision keeps the end of a long name visible`() {
+        val name = "Nora officielle verifiee par Wesh mais en fait Mallory"
+        val result = safe(name)
+        assertTrue(result.startsWith("Nora officielle…"))
+        assertTrue(result.endsWith("Mallory"))
+        assertTrue(result.contains("…"))
+    }
+
+    private val reserved = listOf("Sans surnom", "Vous", "Votre contact", "Code vérifié", "Non vérifié")
+    private fun remote(raw: String?, fallback: String = "Sans surnom") =
+        PaveDisplayName.remote(raw, fallback, reserved) { "$it · surnom masqué" }
+
+    @Test
+    fun `remote names that imitate the app's own words are masked`() {
+        assertEquals("Sans surnom · surnom masqué", remote("Vous"))
+        assertEquals("Sans surnom · surnom masqué", remote("  v.O-u_s "))
+        assertEquals("Sans surnom · surnom masqué", remote("SANS SURNOM"))
+        assertEquals("Votre contact · surnom masqué", remote("Code verifie", fallback = "Votre contact"))
+        assertEquals("Sans surnom · surnom masqué", remote("Vo${zwsp}us"))
+    }
+
+    @Test
+    fun `a remote name cannot fake the masking marker`() {
+        assertEquals("Sans surnom · surnom masqué", remote("Nora · surnom masqué"))
+        assertEquals("Sans surnom · surnom masqué", remote("Nora (surnom masque)"))
+    }
+
+    @Test
+    fun `ordinary remote names pass and empty ones get the plain fallback`() {
+        assertEquals("Nora", remote("Nora"))
+        assertEquals("Vousmann", remote("Vousmann"))
+        assertEquals("Sans surnom", remote(cp(0x3164)))
+        assertEquals("Sans surnom", remote(null))
     }
 
     @Test

@@ -96,7 +96,7 @@ fun ContactRow(
 ) {
     val c = WeshPave.colors
     InboxRowFrame(
-        title = PaveDisplayName.safe(nickname, stringResource(R.string.wesh_pave_unnamed)),
+        title = remoteDisplayName(nickname),
         badge = if (verified) stringResource(R.string.wesh_pave_verified) else stringResource(R.string.wesh_pave_unverified),
         badgeIcon = if (verified) Icons.Rounded.Verified else Icons.AutoMirrored.Rounded.HelpOutline,
         badgeColor = if (verified) c.success else c.warning,
@@ -118,7 +118,7 @@ fun RequestRow(
 ) {
     val c = WeshPave.colors
     InboxRowFrame(
-        title = PaveDisplayName.safe(nickname, stringResource(R.string.wesh_pave_unnamed)),
+        title = remoteDisplayName(nickname),
         badge = stringResource(R.string.wesh_pave_unverified),
         badgeIcon = Icons.AutoMirrored.Rounded.HelpOutline,
         badgeColor = c.warning,

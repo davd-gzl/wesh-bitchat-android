@@ -79,8 +79,7 @@ fun MessageBubble(
 ) {
     val c = WeshPave.colors
     // Remote nicknames are sanitized here so no caller can forget it.
-    val unnamed = stringResource(R.string.wesh_pave_unnamed)
-    val safeSender = sender?.let { PaveDisplayName.safe(it, unnamed) }
+    val safeSender = sender?.let { remoteDisplayName(it) }
     val failed = own && delivery == PaveDelivery.Failed
     val (fill, ink) = when {
         !own -> c.surface to c.ink

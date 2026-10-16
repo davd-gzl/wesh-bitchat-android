@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.NoPhotography
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,7 +41,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
@@ -50,15 +54,18 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
+import kotlinx.coroutines.delay
 
 /**
  * Échanger: your code on top, the camera below, both live so two people verify each other in one go.
- * Two checks: "they scanned you" and "you scanned them". With both, the screen calls [onCompleted]
- * after a success haptic, and the caller opens the private chat.
+ * Two checks: "they scanned you" and "you scanned them". With both, the camera stops and a success
+ * card shows the contact's name with a short key fingerprint, so the nickname is never the only
+ * identity cue; [onCompleted] follows after [EXCHANGE_SUCCESS_HOLD_MS] or on "Ouvrir la discussion".
  *
  * @param myQrPayload the `bitchat://verify` payload built by the app; null while it is not ready.
  * @param renewsInMinutes minutes before the code renews itself (it expires after five).
  * @param onScanned every newly decoded text, unparsed; the caller verifies it.
+ * @param contactNoiseKey the contact's verified Noise static key, once known; drives the fingerprint.
  */
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -68,6 +75,7 @@ fun ExchangeScreen(
     renewsInMinutes: Int,
     progress: ExchangeProgress,
     contactNickname: String?,
+    contactNoiseKey: ByteArray?,
     onScanned: (String) -> Unit,
     onCompleted: () -> Unit,
     onClose: () -> Unit,
@@ -78,11 +86,16 @@ fun ExchangeScreen(
     val haptics = rememberWeshHaptics()
     val currentOnCompleted by rememberUpdatedState(onCompleted)
     LaunchedEffect(progress.iScannedThem) { if (progress.iScannedThem) haptics.success() }
-    LaunchedEffect(progress.complete) { if (progress.complete) currentOnCompleted() }
+    LaunchedEffect(progress.complete) {
+        if (progress.complete) {
+            delay(EXCHANGE_SUCCESS_HOLD_MS)
+            currentOnCompleted()
+        }
+    }
 
     val modules = remember(myQrPayload) { myQrPayload?.let(::encodeQrModules) }
     // The contact's nickname comes from their QR code: sanitized here so no caller can forget it.
-    val contact = PaveDisplayName.safe(contactNickname, stringResource(R.string.wesh_pave_exchange_contact_fallback))
+    val contact = remoteDisplayName(contactNickname, R.string.wesh_pave_exchange_contact_fallback)
     val me = PaveDisplayName.safe(myNickname, stringResource(R.string.wesh_pave_unnamed))
     val shape = RoundedCornerShape(WeshRadius.control)
 
@@ -126,7 +139,11 @@ fun ExchangeScreen(
             color = c.inkMuted,
         )
 
-        CameraArea(onScanned, decoder)
+        if (progress.complete) {
+            ExchangeSuccess(contact, PaveFingerprint.short(contactNoiseKey), onOpen = { currentOnCompleted() })
+        } else {
+            CameraArea(onScanned, decoder)
+        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(WeshSpace.s3), modifier = Modifier.fillMaxWidth()) {
             ExchangeStep(
@@ -201,6 +218,45 @@ private fun CameraArea(onScanned: (String) -> Unit, decoder: QrFrameDecoder) {
     }
 }
 
+/** Time the success card stays up before the private chat opens by itself. */
+internal const val EXCHANGE_SUCCESS_HOLD_MS = 3000L
+
+@Composable
+private fun ExchangeSuccess(contact: String, fingerprint: String?, onOpen: () -> Unit) {
+    val c = WeshPave.colors
+    val shape = RoundedCornerShape(WeshRadius.control)
+    val label = stringResource(R.string.wesh_pave_fingerprint_label)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(c.surface)
+            .border(WeshStroke.s2, c.success, shape)
+            .padding(WeshSpace.s4),
+        verticalArrangement = Arrangement.spacedBy(WeshSpace.s2),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(WeshSpace.s2),
+            modifier = Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+        ) {
+            Icon(Icons.Rounded.Verified, contentDescription = null, tint = c.success, modifier = Modifier.size(24.dp))
+            Text(stringResource(R.string.wesh_pave_exchange_success), style = WeshType.label, color = c.success)
+        }
+        Text(contact, style = WeshType.headline, color = c.ink)
+        if (fingerprint != null) {
+            val spoken = "$label : ${PaveFingerprint.spoken(fingerprint)}"
+            Column(Modifier.clearAndSetSemantics { contentDescription = spoken }) {
+                Text(label, style = WeshType.caption, color = c.inkMuted)
+                Text(fingerprint, style = WeshType.fingerprint, color = c.ink)
+            }
+        } else {
+            Text(stringResource(R.string.wesh_pave_fingerprint_unavailable), style = WeshType.caption, color = c.warning)
+        }
+        PrimaryButton(stringResource(R.string.wesh_pave_exchange_open_chat), onOpen)
+    }
+}
+
 @Composable
 private fun Viewfinder() {
     val c = WeshPave.colors
@@ -248,6 +304,21 @@ private fun ExchangeScreenPreview() = PavePreview(padded = false) {
         renewsInMinutes = 4,
         progress = ExchangeProgress(theyScannedMe = true),
         contactNickname = "Nora",
+        contactNoiseKey = null,
+        onScanned = {}, onCompleted = {}, onClose = {},
+    )
+}
+
+@PaveScreenPreviews
+@Composable
+private fun ExchangeSuccessPreview() = PavePreview(padded = false) {
+    ExchangeScreen(
+        myQrPayload = "wesh-preview-code",
+        myNickname = "Renard 42",
+        renewsInMinutes = 4,
+        progress = ExchangeProgress(theyScannedMe = true, iScannedThem = true),
+        contactNickname = "Nora",
+        contactNoiseKey = ByteArray(32) { it.toByte() },
         onScanned = {}, onCompleted = {}, onClose = {},
     )
 }

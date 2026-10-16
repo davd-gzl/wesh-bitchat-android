@@ -81,4 +81,9 @@
     <string name="wesh_pave_licenses_intro">Wesh is free software, under the GPLv3 license.</string>
     <string name="wesh_pave_licenses_full">Read the GPLv3 license</string>
     <string name="wesh_pave_licenses_components">Components used</string>
+    <string name="wesh_pave_name_masked">%s · nickname hidden</string>
+    <string name="wesh_pave_exchange_success">Exchange done</string>
+    <string name="wesh_pave_fingerprint_label">Key fingerprint</string>
+    <string name="wesh_pave_fingerprint_unavailable">Fingerprint unavailable</string>
+    <string name="wesh_pave_exchange_open_chat">Open the chat</string>
 </resources>
