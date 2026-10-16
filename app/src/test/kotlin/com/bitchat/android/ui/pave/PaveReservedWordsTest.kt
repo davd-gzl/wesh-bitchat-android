@@ -20,6 +20,9 @@ class PaveReservedWordsTest {
         "wesh_pave_action_exchange", // "Échanger"
         "wesh_pave_section_requests", // "Demandes"
         "wesh_pave_fingerprint", // "Empreinte de la clé", "Empreinte indisponible"
+        "wesh_pave_exchange", // Échanger screen: title, checks, success card
+        "wesh_pave_step", // check states: "Fait", "En attente"
+        "wesh_pave_settings_profile", // "Profil", next to your own nickname
     )
 
     private fun inFamily(name: String) = families.any { name == it || name.startsWith(it + "_") }
@@ -54,6 +57,7 @@ class PaveReservedWordsTest {
             "Code vérifié", "Non vérifié", "En attente", "Envoyé", "Reçu", "Échec", "via Internet", "Bluetooth",
             "Salon public", "Public room", "Échanger", "Exchange", "Demandes", "Requests",
             "Empreinte de la clé", "Key fingerprint", "Empreinte indisponible", "Fingerprint unavailable",
+            "Échange réussi", "Exchange done", "Votre code", "Son code", "Fait", "Ouvrir la discussion", "Profil",
         ).forEach { word -> assertTrue("$word is not reserved", word in words) }
         assertEquals(PaveReservedWords.keys.size, PaveReservedWords.keys.toSet().size)
     }

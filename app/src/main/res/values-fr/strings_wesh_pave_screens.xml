@@ -6,9 +6,9 @@
     <string name="wesh_pave_exchange_my_code">Votre code Wesh</string>
     <string name="wesh_pave_exchange_renew">%1$s · se renouvelle dans %2$d min</string>
     <string name="wesh_pave_exchange_aim">Visez le code de votre contact</string>
-    <string name="wesh_pave_exchange_they_scanned">%s vous a scanné</string>
+    <string name="wesh_pave_exchange_they_scanned">Votre code est scanné</string>
     <string name="wesh_pave_exchange_they_pending">Votre code</string>
-    <string name="wesh_pave_exchange_i_scanned">Code de %s scanné</string>
+    <string name="wesh_pave_exchange_i_scanned">Son code est scanné</string>
     <string name="wesh_pave_exchange_i_pending">Son code</string>
     <string name="wesh_pave_exchange_footer">À deux coches, la discussion privée s’ouvre toute seule.</string>
     <string name="wesh_pave_step_done">Fait</string>

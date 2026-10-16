@@ -6,9 +6,9 @@
     <string name="wesh_pave_exchange_my_code">Your Wesh code</string>
     <string name="wesh_pave_exchange_renew">%1$s · renews in %2$d min</string>
     <string name="wesh_pave_exchange_aim">Aim at your contact’s code</string>
-    <string name="wesh_pave_exchange_they_scanned">%s scanned you</string>
+    <string name="wesh_pave_exchange_they_scanned">Your code was scanned</string>
     <string name="wesh_pave_exchange_they_pending">Your code</string>
-    <string name="wesh_pave_exchange_i_scanned">%s’s code scanned</string>
+    <string name="wesh_pave_exchange_i_scanned">Their code was scanned</string>
     <string name="wesh_pave_exchange_i_pending">Their code</string>
     <string name="wesh_pave_exchange_footer">With both checks, the private chat opens by itself.</string>
     <string name="wesh_pave_step_done">Done</string>
