@@ -154,6 +154,7 @@ class BluetoothMeshService(
         VerificationService.configure(encryptionService)
         setupDelegates()
         messageHandler.packetProcessor = packetProcessor
+        com.bitchat.android.services.IncomingMessageAdmission.install(context)
         messageHandler.acceptIncomingMedia = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
         messageHandler.acceptDirectedPlaintext = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
         //startPeriodicDebugLogging()
@@ -509,14 +510,11 @@ class BluetoothMeshService(
                 // callback or notify after panic mode rejected the message while wiping state.
                 if (
                     !com.bitchat.android.services.IncomingMessageAdmission
-                        .admitToAppState(message, isSenderBlocked = { peerID ->
-                            val fingerprint = getAuthenticatedRemoteStaticKey(peerID)?.let {
+                        .admitToAppState(message, qrEnrollment = weshQrEnrollment, senderFingerprint = { peerID ->
+                            getAuthenticatedRemoteStaticKey(peerID)?.let {
                                 com.bitchat.android.services.ContactIdentityResolver.fingerprintHex(it)
                             } ?: getPeerFingerprint(peerID)
-                            com.bitchat.android.services.SessionHiddenPeers.contains(peerID) ||
-                                fingerprint != null && context.getSharedPreferences("bitchat_prefs", Context.MODE_PRIVATE)
-                                .getStringSet("blocked_users", emptySet())!!.contains(fingerprint)
-                        }, qrEnrollment = weshQrEnrollment)
+                        })
                 ) return
 
                 // And forward to UI delegate if attached

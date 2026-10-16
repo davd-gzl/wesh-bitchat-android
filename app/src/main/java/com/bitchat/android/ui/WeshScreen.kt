@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.role
 import com.bitchat.android.model.BitchatMessage
+import com.bitchat.android.util.safeDisplayName
 import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.services.VerificationService
 import kotlinx.coroutines.delay
@@ -274,11 +275,12 @@ fun WeshScreen(viewModel: ChatViewModel) {
                         }
                         item { Text("Personnes bloquées", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() }) }
                         items(sessionHidden.toList(), key = { "session-$it" }) { peerID ->
-                            Text("${viewModel.peerNicknames.value[peerID] ?: "Identité non authentifiée"} · masqué jusqu’à la fermeture de Wesh")
-                            TextButton(onClick = { viewModel.weshUnhidePeer(peerID) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Débloquer") }
+                            val hiddenName = safeDisplayName(viewModel.peerNicknames.value[peerID].orEmpty(), "Identité non authentifiée")
+                            Text("$hiddenName · masqué jusqu’à la fermeture de Wesh")
+                            TextButton(onClick = { contactAction = "unhide" to peerID }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Débloquer $hiddenName" }) { Text("Débloquer") }
                         }
                         items(if (revision >= 0) viewModel.weshBlockedFingerprints().toList() else emptyList()) { fingerprint ->
-                            Text("${viewModel.weshContactName(fingerprint)} · ${fingerprint.take(8)}")
+                            Text("${safeDisplayName(viewModel.weshContactName(fingerprint), "Identité")} · ${fingerprint.take(8)}")
                             TextButton(onClick = { contactAction = "unblock" to fingerprint }, modifier = Modifier.semantics { contentDescription = "Débloquer ${viewModel.weshContactName(fingerprint)}" }) { Text("Débloquer") }
                         }
                         item { Text("Brouillons", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() }); Text("Les brouillons sont enregistrés chiffrés sur ce téléphone et restent disponibles après fermeture de Wesh. Quitter l’application ne les efface pas ; ils ne sont jamais envoyés automatiquement.") }
@@ -331,27 +333,28 @@ fun WeshScreen(viewModel: ChatViewModel) {
     }
     if (contactOpen) WeshContactSheet(viewModel, onDismiss = { dismissContact() })
     contactAction?.let { (action, target) ->
-        val title = when (action) { "remove" -> "Retirer ce contact ?"; "unblock" -> "Débloquer cette personne ?"; "report" -> "Signaler cette personne ?"; else -> "Bloquer cette personne ?" }
-        val targetName = if (action == "unblock") viewModel.weshContactName(target)
+        val title = when (action) { "remove" -> "Retirer ce contact ?"; "unblock", "unhide" -> "Débloquer cette personne ?"; "report" -> "Signaler cette personne ?"; else -> "Bloquer cette personne ?" }
+        val targetName = safeDisplayName(if (action == "unblock") viewModel.weshContactName(target)
             else contacts.firstOrNull { it.conversationID == target }?.nickname
                 ?: conversations.firstOrNull { it.conversationID == target }?.displayName
-                ?: viewModel.peerNicknames.value[target] ?: "Contact"
+                ?: viewModel.peerNicknames.value[target].orEmpty(), "Contact")
         AlertDialog(onDismissRequest = { contactAction = null }, title = { Text("$title\n$targetName", Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) },
             text = { WeshDialogText(if (action == "remove") "Un nouveau scan sera nécessaire avant l’envoi privé. Historique et brouillon restent conservés."
-                else if (action == "unblock") "Débloquer ne vérifie pas une nouvelle identité et ne restaure pas un contact retiré."
+                else if (action == "unblock" || action == "unhide") "Débloquer ne vérifie pas une nouvelle identité et ne restaure pas un contact retiré."
                 else if (action == "report") "Le signalement reste sur ce téléphone : cette personne est bloquée et ses messages sont masqués. Rien n’est envoyé à Wesh ni aux autres participants."
                 else "Le blocage est local ; il ne supprime pas les copies chez les autres participants.") },
             confirmButton = { TextButton(onClick = {
                 when (action) {
                     "remove" -> { viewModel.removeWeshContact(target); if (privatePeer == target) back() }
                     "unblock" -> viewModel.weshUnblock(target)
+                    "unhide" -> viewModel.weshUnhidePeer(target)
                     "report", "publicBlock" -> feedback = if (viewModel.weshBlockPublicSender(target))
                         if (action == "report") "Personne signalée et masquée sur ce téléphone." else "Personne bloquée sur ce téléphone."
                         else "Identité non authentifiée : ses messages sont masqués jusqu’à la fermeture de Wesh."
                     else -> if (!viewModel.weshBlock(target)) feedback = "Identité inconnue : blocage indisponible."
                 }
                 revision++; contactAction = null
-            }) { Text(when (action) { "remove" -> "Retirer le contact"; "unblock" -> "Débloquer"; "report" -> "Signaler et masquer"; else -> "Bloquer" }) } }, dismissButton = { TextButton(onClick = { contactAction = null }) { Text("Annuler") } })
+            }) { Text(when (action) { "remove" -> "Retirer le contact"; "unblock", "unhide" -> "Débloquer"; "report" -> "Signaler et masquer"; else -> "Bloquer" }) } }, dismissButton = { TextButton(onClick = { contactAction = null }) { Text("Annuler") } })
     }
     requestAction?.let { request ->
         AlertDialog(onDismissRequest = { requestAction = null }, title = { Text("Bloquer cette personne ?\n${request.nickname}") },
@@ -427,10 +430,11 @@ private fun WeshInboxRow(title: String, subtitle: String, onClick: () -> Unit) {
 @Composable
 private fun WeshMessage(message: BitchatMessage, myPeerID: String, public: Boolean, canRetry: Boolean, onRetry: () -> Unit, onBlock: () -> Unit, onReport: () -> Unit) {
     val outgoing = message.senderPeerID == myPeerID
+    val senderName = safeDisplayName(message.sender, "Anonyme")
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (outgoing) Alignment.End else Alignment.Start) {
         Surface(shape = MaterialTheme.shapes.medium, color = if (outgoing) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer) {
             Column(Modifier.padding(14.dp).widthIn(max = 320.dp).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (!outgoing) Text(message.sender, style = MaterialTheme.typography.labelLarge)
+                if (!outgoing) Text(senderName, style = MaterialTheme.typography.labelLarge)
                 Text(if (message.type == BitchatMessageType.Message) message.content else "Média non pris en charge", style = MaterialTheme.typography.bodyLarge)
                 Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(message.timestamp), style = MaterialTheme.typography.bodySmall)
                 if (!public && outgoing) Text(WeshMessagePolicy.deliveryLabel(message.deliveryStatus), style = MaterialTheme.typography.bodySmall)
@@ -440,8 +444,8 @@ private fun WeshMessage(message: BitchatMessage, myPeerID: String, public: Boole
             contentDescription = "Réessayer l’envoi du message du ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM).format(message.timestamp)}"
         }) { Text("Réessayer") }
         if (public && !outgoing && message.senderPeerID != null) FlowRow {
-            TextButton(onClick = onReport, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Signaler ${message.sender}" }) { Text("Signaler") }
-            TextButton(onClick = onBlock, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Bloquer ${message.sender}" }) { Text("Bloquer") }
+            TextButton(onClick = onReport, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Signaler $senderName" }) { Text("Signaler") }
+            TextButton(onClick = onBlock, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Bloquer $senderName" }) { Text("Bloquer") }
         }
     }
 }

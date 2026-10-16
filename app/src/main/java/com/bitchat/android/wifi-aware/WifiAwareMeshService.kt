@@ -139,6 +139,7 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
     fun isRunning(): Boolean = isActive
 
     init {
+        com.bitchat.android.services.IncomingMessageAdmission.install(context)
         // Ensure BluetoothMeshService is initialized so we share its GossipSyncManager
         // This avoids race conditions and ensures a single gossip source/delegate
         com.bitchat.android.service.MeshServiceHolder.getOrCreate(context)
@@ -200,7 +201,8 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
         // duplicate must not create a notification after the conversation state was cleared.
         if (
             !com.bitchat.android.services.IncomingMessageAdmission
-                .admitToAppState(message, qrEnrollment = weshQrEnrollment)
+                .admitToAppState(message, qrEnrollment = weshQrEnrollment,
+                    senderFingerprint = { peerID -> runCatching { meshCore.getPeerFingerprint(peerID) }.getOrNull() })
         ) return false
 
         if (delegate == null && message.isPrivate) {

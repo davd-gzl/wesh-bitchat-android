@@ -43,7 +43,8 @@ class WeshInboundMediaTest {
         File(cache, "files").deleteRecursively()
         handler = MessageHandler(myPeerID, RuntimeEnvironment.getApplication(),
             PublicInboundBudget(global = PublicInboundBudget.Rate(100.0, 100.0),
-                perPeer = PublicInboundBudget.Rate(0.0, 5.0), perLink = PublicInboundBudget.Rate(100.0, 100.0)))
+                perAuthenticatedSource = PublicInboundBudget.Rate(0.0, 5.0), perLink = PublicInboundBudget.Rate(100.0, 100.0),
+                unauthenticated = PublicInboundBudget.Rate(0.0, 5.0)))
         handler.acceptIncomingMedia = false
         delegate = mock()
         handler.delegate = delegate
@@ -114,12 +115,24 @@ class WeshInboundMediaTest {
     }
 
     @Test
-    fun `budget follows the Noise authenticated key, never the announced claim`() = runBlocking {
+    fun `unauthenticated senders share one budget whatever key they announce`() = runBlocking {
         val otherPeer = "1111aaaa2222bbbb"
         val otherInfo = delegate.getPeerInfo(peerID)!!.copy(id = otherPeer)
         whenever(delegate.getPeerInfo(otherPeer)).thenReturn(otherInfo)
         whenever(delegate.getPeerNickname(otherPeer)).thenReturn("Synthetic")
-        // Same announced key on two peer IDs, no session: separate per-peer budgets (5 each).
+        // No Noise session: an announced key earns no bucket; both peer IDs share one (5 total).
+        repeat(10) { handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, "a$it".toByteArray()), peerID, "link")) }
+        repeat(10) { handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, "b$it".toByteArray()).copy(senderID = otherPeer.hexToBytes()), otherPeer, "link")) }
+        verify(delegate, times(5)).onMessageReceived(any())
+    }
+
+    @Test
+    fun `distinct authenticated keys get separate budgets`() = runBlocking {
+        val otherPeer = "1111aaaa2222bbbb"
+        val otherInfo = delegate.getPeerInfo(peerID)!!.copy(id = otherPeer)
+        whenever(delegate.getPeerInfo(otherPeer)).thenReturn(otherInfo)
+        whenever(delegate.getAuthenticatedRemoteStaticKey(peerID)).thenReturn(ByteArray(32) { 7 })
+        whenever(delegate.getAuthenticatedRemoteStaticKey(otherPeer)).thenReturn(ByteArray(32) { 8 })
         repeat(10) { handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, "a$it".toByteArray()), peerID, "link")) }
         repeat(10) { handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, "b$it".toByteArray()).copy(senderID = otherPeer.hexToBytes()), otherPeer, "link")) }
         verify(delegate, times(10)).onMessageReceived(any())

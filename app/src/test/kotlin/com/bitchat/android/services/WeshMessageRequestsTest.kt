@@ -2,7 +2,6 @@ package com.bitchat.android.services
 
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -14,6 +13,7 @@ class WeshMessageRequestsTest {
     @After fun tearDown() = WeshMessageRequests.clear()
 
     private fun fp(index: Int) = index.toString().padStart(64, '0')
+    private fun nextWindowSlot() { time += WeshMessageRequests.NEW_SOURCE_WINDOW_MS / WeshMessageRequests.MAX_NEW_SOURCES_PER_WINDOW }
 
     @Test
     fun `one source refreshes its entry at most once per interval`() {
@@ -26,35 +26,47 @@ class WeshMessageRequestsTest {
     }
 
     @Test
-    fun `a flood of new sources stays bounded without refusing new authenticated requests`() {
-        repeat(100) { WeshMessageRequests.record("peer-$it", "Synthetic", fp(it), time) }
-        val requests = WeshMessageRequests.requests.value
-        assertEquals(WeshMessageRequests.MAX_REQUESTS, requests.size)
-        assertEquals(fp(99), requests.first().fingerprint)
+    fun `new distinct sources are capped per window`() {
+        repeat(25) { WeshMessageRequests.record("peer-$it", "Synthetic", fp(it), time) }
+        assertEquals(WeshMessageRequests.MAX_NEW_SOURCES_PER_WINDOW, WeshMessageRequests.requests.value.size)
+
+        time += WeshMessageRequests.NEW_SOURCE_WINDOW_MS
+        WeshMessageRequests.record("peer-late", "Synthetic", fp(99), time)
+        assertEquals(WeshMessageRequests.MAX_NEW_SOURCES_PER_WINDOW + 1, WeshMessageRequests.requests.value.size)
     }
 
     @Test
-    fun `the oldest unauthenticated request is dropped before any authenticated one`() {
-        repeat(WeshMessageRequests.MAX_REQUESTS - 1) { WeshMessageRequests.record("peer-$it", "Synthetic", fp(it), time) }
-        repeat(10) { WeshMessageRequests.record("anon-$it", "Synthetic", null, time) }
+    fun `authenticated requests are never evicted`() {
+        repeat(WeshMessageRequests.MAX_REQUESTS) { WeshMessageRequests.record("peer-$it", "Synthetic", fp(it), time); nextWindowSlot() }
+        WeshMessageRequests.record("peer-new", "Synthetic", fp(999), time)
+        WeshMessageRequests.record("anon", "Synthetic", null, time)
 
         val requests = WeshMessageRequests.requests.value
         assertEquals(WeshMessageRequests.MAX_REQUESTS, requests.size)
-        assertEquals(WeshMessageRequests.MAX_REQUESTS - 1, requests.count { it.fingerprint != null })
-        assertEquals(listOf("anon-9"), requests.filter { it.fingerprint == null }.map { it.peerID })
+        assertTrue(requests.all { it.fingerprint != null && it.fingerprint != fp(999) })
     }
 
     @Test
-    fun `display names drop controls and bidi overrides, normalize and bound combining marks`() {
-        val spoof = WeshMessageRequests.displayName("‮evil​\u0007name", "peer-a")
-        assertEquals("evilname", spoof)
-        assertEquals("ABC", WeshMessageRequests.displayName("ＡＢＣ", "peer-a"))
-        val zalgo = WeshMessageRequests.displayName("a" + "́".repeat(50) + "b", "peer-a")
-        assertEquals("\u00E1\u0301\u0301b", zalgo)
-        assertEquals("peer-abc", WeshMessageRequests.displayName("‏\u0000", "peer-abcdef"))
-        val long = WeshMessageRequests.displayName("x".repeat(200), "peer-a")
-        assertEquals(WeshMessageRequests.MAX_NICKNAME_CHARS + 1, long.length)
-        assertFalse(long.contains('\n'))
-        assertTrue(long.endsWith("…"))
+    fun `when full only an unauthenticated entry shown long enough is evicted`() {
+        repeat(WeshMessageRequests.MAX_REQUESTS - 1) { WeshMessageRequests.record("peer-$it", "Synthetic", fp(it), time); nextWindowSlot() }
+        WeshMessageRequests.record("anon-old", "Synthetic", null, time)
+        nextWindowSlot()
+
+        WeshMessageRequests.record("peer-early", "Synthetic", fp(500), time)
+        assertTrue("too recent to evict", WeshMessageRequests.requests.value.any { it.peerID == "anon-old" })
+        assertTrue(WeshMessageRequests.requests.value.none { it.peerID == "peer-early" })
+
+        time += WeshMessageRequests.MIN_DISPLAY_AGE_MS
+        WeshMessageRequests.record("peer-late", "Synthetic", fp(501), time)
+        val requests = WeshMessageRequests.requests.value
+        assertEquals(WeshMessageRequests.MAX_REQUESTS, requests.size)
+        assertTrue(requests.none { it.peerID == "anon-old" })
+        assertEquals("peer-late", requests.first().peerID)
+    }
+
+    @Test
+    fun `request nicknames go through the shared display name sanitizer`() {
+        WeshMessageRequests.record("peer-a", "‮evil​name", fp(1), time)
+        assertEquals("evilname", WeshMessageRequests.requests.value.single().nickname)
     }
 }

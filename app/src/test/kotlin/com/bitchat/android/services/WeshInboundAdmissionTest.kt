@@ -22,6 +22,7 @@ class WeshInboundAdmissionTest {
     private lateinit var repository: ConversationRepository
     private val enrolled = "e".repeat(64)
     private val stranger = "5".repeat(64)
+    private val blockedFingerprint = "b".repeat(64)
 
     @Before
     fun setUp() {
@@ -32,6 +33,8 @@ class WeshInboundAdmissionTest {
         AppStateStore.resumePrivateConversationsAfterPanic()
         AppStateStore.clear()
         WeshMessageRequests.clear()
+        SessionHiddenPeers.clear()
+        IncomingMessageAdmission.installForTesting { setOf(blockedFingerprint) }
     }
 
     @After
@@ -56,7 +59,7 @@ class WeshInboundAdmissionTest {
     @Test
     fun `private message from an identity not enrolled by QR is neither stored nor dispatched`() {
         val admitted = IncomingMessageAdmission.admitToAppState(
-            privateFrom("peer-b", "from-stranger"), qrEnrollment = gate(mapOf("peer-b" to stranger))
+            privateFrom("peer-b", "from-stranger"), qrEnrollment = gate(mapOf("peer-b" to stranger)), senderFingerprint = { null }
         )
 
         assertFalse(admitted)
@@ -72,7 +75,7 @@ class WeshInboundAdmissionTest {
     fun `private message without an authenticated identity fails closed`() {
         assertFalse(
             IncomingMessageAdmission.admitToAppState(
-                privateFrom("peer-c", "no-session"), qrEnrollment = gate(emptyMap())
+                privateFrom("peer-c", "no-session"), qrEnrollment = gate(emptyMap()), senderFingerprint = { null }
             )
         )
         assertTrue(AppStateStore.privateMessages.value.isEmpty())
@@ -83,7 +86,7 @@ class WeshInboundAdmissionTest {
     fun `private message from a QR enrolled identity is admitted`() {
         assertTrue(
             IncomingMessageAdmission.admitToAppState(
-                privateFrom("peer-a", "from-contact"), qrEnrollment = gate(mapOf("peer-a" to enrolled))
+                privateFrom("peer-a", "from-contact"), qrEnrollment = gate(mapOf("peer-a" to enrolled)), senderFingerprint = { null }
             )
         )
         assertTrue(WeshMessageRequests.requests.value.isEmpty())
@@ -92,7 +95,7 @@ class WeshInboundAdmissionTest {
     @Test
     fun `public messages are not gated by QR enrollment`() {
         val public = BitchatMessage(id = "public", sender = "Synthetic", content = "hello", timestamp = Date(1L), senderPeerID = "peer-b")
-        assertTrue(IncomingMessageAdmission.admitToAppState(public, qrEnrollment = gate(emptyMap())))
+        assertTrue(IncomingMessageAdmission.admitToAppState(public, qrEnrollment = gate(emptyMap()), senderFingerprint = { null }))
         assertTrue(WeshMessageRequests.requests.value.isEmpty())
     }
 
@@ -100,7 +103,21 @@ class WeshInboundAdmissionTest {
     fun `directed plain text from a stranger is held as a request like a Noise message`() {
         val directed = BitchatMessage(id = "directed", sender = "Synthetic", content = "Synthetic secret",
             timestamp = Date(1L), isPrivate = true, senderPeerID = "peer-d")
-        assertFalse(IncomingMessageAdmission.admitToAppState(directed, qrEnrollment = gate(emptyMap())))
+        assertFalse(IncomingMessageAdmission.admitToAppState(directed, qrEnrollment = gate(emptyMap()), senderFingerprint = { null }))
         assertTrue(AppStateStore.privateMessages.value.isEmpty())
+    }
+
+    @Test
+    fun `every transport is block gated by default and fails closed without a block list`() {
+        val public = BitchatMessage(id = "gate-public", sender = "Synthetic", content = "hello", timestamp = Date(1L), senderPeerID = "peer-b")
+        assertFalse("blocked identity", IncomingMessageAdmission.admitToAppState(public, null) { blockedFingerprint })
+        SessionHiddenPeers.hide("peer-b")
+        assertFalse("session hidden peer", IncomingMessageAdmission.admitToAppState(public, null) { null })
+        SessionHiddenPeers.clear()
+        assertFalse("identity lookup failure", IncomingMessageAdmission.admitToAppState(public, null) { error("synthetic") })
+        IncomingMessageAdmission.installForTesting(null)
+        assertFalse("no block list installed", IncomingMessageAdmission.admitToAppState(public, null) { null })
+        IncomingMessageAdmission.installForTesting { emptySet() }
+        assertTrue(IncomingMessageAdmission.admitToAppState(public, null) { null })
     }
 }

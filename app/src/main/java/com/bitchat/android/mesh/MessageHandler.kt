@@ -481,7 +481,7 @@ class MessageHandler(
         }
         // Only a Noise-authenticated key may name a long-lived budget; an announce can claim any key.
         val budgetSource = delegate?.getAuthenticatedRemoteStaticKey(peerID)?.takeIf { it.size == 32 }
-            ?.let { "noise:" + it.toHexString() } ?: "peer:$peerID"
+            ?.let { "noise:" + it.toHexString() }
         if (!publicBudget.tryAdmit(budgetSource, routed.ingressLinkID ?: routed.relayAddress)) return
         
         try {
