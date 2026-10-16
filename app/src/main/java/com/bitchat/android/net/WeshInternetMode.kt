@@ -305,6 +305,9 @@ class WeshInternetMode internal constructor(
         /** Product availability only; sockets still need the persisted opt-in, which defaults off. */
         internal fun productInternetAvailable(): Boolean = com.bitchat.android.BuildConfig.WESH_INTERNET_AVAILABLE
 
+        /** The process instance if startup created it; never starts Tor or reads preferences. */
+        fun current(): WeshInternetMode? = instance
+
         fun get(context: Context): WeshInternetMode = instance ?: synchronized(this) {
             instance ?: run {
                 val app = context.applicationContext as android.app.Application

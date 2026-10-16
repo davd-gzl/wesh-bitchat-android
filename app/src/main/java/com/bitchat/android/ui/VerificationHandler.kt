@@ -190,6 +190,8 @@ class VerificationHandler(
             }
             addVerificationSystemMessage(peerID, context.getString(R.string.verify_success_system_message, name))
             notificationManager.showVerificationSuccessNotification(name, peerID)
+            // BitChat peers learn my npub only from this notice; it is sent while Internet mode is active.
+            com.bitchat.android.services.MessageRouter.tryGetInstance()?.announceWeshInternetKey(peerID)
 
 
         }
