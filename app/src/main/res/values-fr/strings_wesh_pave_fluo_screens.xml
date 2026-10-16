@@ -68,4 +68,6 @@
     <string name="wesh_pave_fluo_link_body">Un lien ne prouve pas qui vous rencontrez. Confirmez que ce code est affiché en direct par la personne devant vous.</string>
     <string name="wesh_pave_fluo_link_confirm">Vérifier après contrôle en personne</string>
     <string name="wesh_pave_fluo_media_unsupported">Média non pris en charge</string>
+    <string name="wesh_pave_fluo_draft_retry">Réessayer l’enregistrement des brouillons</string>
+    <string name="wesh_pave_fluo_request_hidden">Message en attente, contenu masqué</string>
 </resources>

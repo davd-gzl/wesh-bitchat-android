@@ -497,11 +497,11 @@ class ChatViewModel(
                 val (canonicalChats, unreadConversationIDs) = withContext(Dispatchers.IO) {
                     val canonical = ContactDirectory.canonicalizePrivateChats(byPeer)
                     val unread = try {
-                        val myNick = state.getNicknameValue().ifBlank { mesh.myPeerID }
+                        val myNick = state.getNicknameValue()
                         canonical
                             .filterValues { messages ->
                                 messages.any { message ->
-                                    message.sender != myNick &&
+                                    !message.isFromSelf(myNick, mesh.myPeerID) &&
                                         message.sender != "system" &&
                                         !com.bitchat.android.services.AppStateStore
                                             .isPrivateMessageRead(message.id) &&
@@ -1146,8 +1146,9 @@ class ChatViewModel(
 
     fun weshIsBlocked(peerID: String): Boolean = privateChatManager.isPeerBlocked(peerID)
     fun weshBlockedFingerprints(): Set<String> = weshContactStore.blockedFingerprints()
-    fun weshContactName(fingerprint: String): String = weshContactStore.forFingerprint(fingerprint)?.nickname
-        ?: identityManager.getCachedFingerprintNickname(fingerprint) ?: "Identité ${fingerprint.take(8)}"
+    /** The remote nickname known for [fingerprint], as stored; shown only through the remote rule. */
+    fun weshContactName(fingerprint: String): String? = weshContactStore.forFingerprint(fingerprint)?.nickname
+        ?: identityManager.getCachedFingerprintNickname(fingerprint)
     fun weshBlock(peerID: String): Boolean {
         val resolution = ContactDirectory.resolve(peerID)
         val key = weshContactStore.contact(resolution.conversationID)?.key
@@ -1198,6 +1199,8 @@ class ChatViewModel(
     }
     fun weshVerificationProgress(noiseHex: String) = verificationHandler.weshProgress(noiseHex)
     fun weshScannedMeSince(sinceMs: Long, noiseHex: String?) = verificationHandler.weshScannedMeSince(sinceMs, noiseHex)
+    /** Noise static key proven by this peer's session, never the announced one; null when unproven. */
+    fun weshAuthenticatedKey(peerID: String): ByteArray? = meshService.getAuthenticatedRemoteStaticKey(peerID)
     fun requestWeshQRReview(raw: String) { weshIncomingQR.value = raw; weshContactSheet.value = true }
 
     fun sendWeshPrivate(content: String, peerID: String, onAccepted: (Boolean) -> Unit) {

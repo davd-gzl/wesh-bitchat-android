@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
+import com.bitchat.android.ui.sentByNickname
 import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.model.BitchatMessage
@@ -179,7 +180,7 @@ private fun ImageMessageCard(
                 },
                 onLongClick = { onLongPress?.invoke() },
             )
-        if (progressFraction != null && progressFraction < 1f && message.sender == currentUserNickname) {
+        if (progressFraction != null && progressFraction < 1f && message.sentByNickname(currentUserNickname)) {
             // Cyberpunk block-reveal while sending
             BlockRevealImage(
                 bitmap = img,
@@ -198,7 +199,7 @@ private fun ImageMessageCard(
             )
         }
         // Cancel button overlay during sending
-        val showCancel = message.sender == currentUserNickname && (message.deliveryStatus is com.bitchat.android.model.DeliveryStatus.PartiallyDelivered)
+        val showCancel = message.sentByNickname(currentUserNickname) && (message.deliveryStatus is com.bitchat.android.model.DeliveryStatus.PartiallyDelivered)
         if (showCancel) {
             Box(
                 modifier = Modifier

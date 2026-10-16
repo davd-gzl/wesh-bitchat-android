@@ -70,6 +70,8 @@ data class PaveComposerState(
     val editable: Boolean = true,
     val blockedReason: String? = null,
     val feedback: String? = null,
+    /** Set while drafts cannot be saved or restored: offers to try again. */
+    val onRetryPersistence: (() -> Unit)? = null,
 )
 
 /**
@@ -292,6 +294,9 @@ private fun ComposerFooter(
             Text(it, style = WeshType.caption, color = c.danger, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         }
         state.blockedReason?.let { Text(it, style = WeshType.caption, color = c.warning) }
+        state.onRetryPersistence?.let { retry ->
+            SecondaryButton(stringResource(R.string.wesh_pave_fluo_draft_retry), retry, Modifier.fillMaxWidth())
+        }
         Composer(
             value = state.draft,
             onValueChange = { if (state.editable) onDraftChange(it) },

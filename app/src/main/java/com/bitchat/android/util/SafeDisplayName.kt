@@ -26,7 +26,10 @@ private fun isVisible(codePoint: Int): Boolean = when (Character.getType(codePoi
 }
 
 /**
- * The one sanitizer for every remote nickname shown in Wesh. It NFKC-normalizes, strips control,
+ * Storage sanitizer for a remote nickname, applied before it is kept (contacts, requests, caches).
+ * It is not the display rule: what the phone shows goes through the Pavé remote nickname rule
+ * (reserved words, fingerprint look-alikes, scripts), which this shared file cannot reach.
+ * It NFKC-normalizes, strips control,
  * format (bidi overrides, zero-width), surrogate, private-use and unassigned code points, caps
  * blank fillers, caps stacked combining marks, collapses whitespace and truncates. A name with no
  * visible letter, digit, symbol or punctuation uses [fallback].

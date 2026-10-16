@@ -98,6 +98,14 @@ internal fun paveDelivery(status: DeliveryStatus?, public: Boolean): PaveDeliver
     else -> PaveDelivery.Sent
 }
 
+/**
+ * The fingerprint shown under a remote nickname: from the key the peer proved in its Noise session
+ * only. An announced key can be copied by anyone, so without proof the line reads "Empreinte
+ * indisponible" (null here).
+ */
+internal fun paveSenderFingerprint(peerID: String?, authenticatedKey: (String) -> ByteArray?): String? =
+    peerID?.let { PaveFingerprint.short(authenticatedKey(it)) }
+
 internal fun parseAppearance(name: String): WeshAppearance =
     WeshAppearance.entries.firstOrNull { it.name == name } ?: WeshAppearance.Nuit
 
@@ -171,7 +179,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
     }
     val timeFormat = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
     fun time(message: BitchatMessage) = timeFormat.format(message.timestamp)
-    fun peerFingerprint(peerID: String?) = peerID?.let { PaveFingerprint.short(viewModel.getMeshPeerInfo(it)?.noisePublicKey) }
+    fun peerFingerprint(peerID: String?) = paveSenderFingerprint(peerID, viewModel::weshAuthenticatedKey)
 
     LaunchedEffect(eraseRequested) {
         if (eraseRequested) {
@@ -242,6 +250,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
             else -> stringResource(R.string.wesh_pave_fluo_private_needs_qr)
         },
         feedback = feedback,
+        onRetryPersistence = if (draftPersistence == WeshDraftStore.Persistence.Error) viewModel::retryWeshDrafts else null,
     )
     val msgDestinationChanged = stringResource(R.string.wesh_pave_fluo_destination_changed)
     val msgDraftChanged = stringResource(R.string.wesh_pave_fluo_draft_changed)
@@ -277,7 +286,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
     Box(Modifier.fillMaxSize()) {
         when (route) {
             PaveRoute.Home -> {
-                val lastPublic = publicMessages.lastOrNull { isPublicText(it) && (it.senderPeerID == null || !viewModel.weshIsBlocked(it.senderPeerID)) }
+                val lastPublic = publicMessages.lastOrNull { isPublicText(it, myPeerID, viewModel::weshIsBlocked) }
                 val lastPublicOwn = lastPublic?.senderPeerID == myPeerID
                 HomeScreen(
                     state = PaveHomeState(
@@ -312,7 +321,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
             PaveRoute.Public -> PublicRoomScreen(
                 phonesInReach = peers.size,
                 messages = publicMessages
-                    .filter { isPublicText(it) && (it.senderPeerID == null || !viewModel.weshIsBlocked(it.senderPeerID)) }
+                    .filter { isPublicText(it, myPeerID, viewModel::weshIsBlocked) }
                     .map { m ->
                         val own = m.senderPeerID == myPeerID
                         PaveMessageItem(
@@ -364,7 +373,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                         id = r.fingerprint ?: r.peerID,
                         nickname = r.nickname,
                         fingerprint = paveShortFingerprintFromHex(r.fingerprint),
-                        pendingMessages = 1,
+                        pendingMessages = null,
                         verifiedNamesakeFingerprint = contacts.firstOrNull { weshNamesakes(it.nickname, r.nickname) }?.let { PaveFingerprint.short(it.key) },
                     )
                 },
@@ -405,7 +414,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
             PaveRoute.Blocked -> BlockedScreen(
                 items = if (revision < 0) emptyList() else
                     viewModel.weshBlockedFingerprints().map { fp ->
-                        PaveBlockedItem(fp, viewModel.weshContactName(fp), paveShortFingerprintFromHex(fp), sessionOnly = false)
+                        PaveBlockedItem(fp, viewModel.weshContactName(fp).orEmpty(), paveShortFingerprintFromHex(fp), sessionOnly = false)
                     } + sessionHidden.map { peerID ->
                         PaveBlockedItem(peerID, peerNicknames[peerID].orEmpty(), peerFingerprint(peerID), sessionOnly = true)
                     },
@@ -515,7 +524,8 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
     }
 }
 
-private fun isPublicText(m: BitchatMessage) = !m.isPrivate && m.channel == null && m.type == BitchatMessageType.Message
+private fun isPublicText(m: BitchatMessage, myPeerID: String, isBlocked: (String) -> Boolean) =
+    m.type == BitchatMessageType.Message && WeshMessagePolicy.showsInPublicRoom(m, myPeerID, isBlocked)
 
 @Composable
 private fun PaveDialog(title: String, body: String, confirm: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
@@ -533,7 +543,7 @@ private fun PaveDialog(title: String, body: String, confirm: String, onConfirm: 
 private fun ErasingScreen() {
     val c = WeshPave.colors
     Column(
-        Modifier.fillMaxSize().background(c.bg).paveGrain(c.isNight).padding(WeshSpace.gutter),
+        Modifier.fillMaxSize().background(c.bg).paveGrain(c.isNight).verticalScroll(rememberScrollState()).padding(WeshSpace.gutter),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

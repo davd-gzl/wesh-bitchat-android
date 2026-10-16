@@ -424,7 +424,7 @@ fun MessageItem(
             ) {
                 // Provide a small end padding for own private messages so overlay doesn't cover text.
                 // Bubble mode draws the status beneath the bubble instead, so no inset is needed.
-                val endPad = if (!bubbles && message.isPrivate && message.sender == currentUserNickname) 16.dp else 0.dp
+                val endPad = if (!bubbles && message.isPrivate && message.sentByNickname(currentUserNickname)) 16.dp else 0.dp
                 // Create a custom layout that combines selectable text with clickable nickname areas
                 MessageTextWithClickableNicknames(
                     message = message,
@@ -448,7 +448,7 @@ fun MessageItem(
 
             // Delivery status for private messages (overlay, non-displacing). Bubble mode aligns
             // own messages to the end edge where this overlay lives, so it renders below instead.
-            if (!bubbles && message.isPrivate && message.sender == currentUserNickname) {
+            if (!bubbles && message.isPrivate && message.sentByNickname(currentUserNickname)) {
                 message.deliveryStatus?.let { status ->
                     Box(
                         modifier = Modifier
@@ -464,7 +464,7 @@ fun MessageItem(
         // Bubble mode: text and media bubbles carry the marker inline, trailing the timestamp.
         // File rows have no bubble shell, so their marker stays beneath the end-aligned row.
         if (bubbles && message.type == BitchatMessageType.File &&
-            message.isPrivate && message.sender == currentUserNickname
+            message.isPrivate && message.sentByNickname(currentUserNickname)
         ) {
             message.deliveryStatus?.let { status ->
                 Box(
@@ -634,7 +634,7 @@ fun MessageItem(
                         }
 
                         // Cancel button overlay during sending
-                        val showCancel = message.sender == currentUserNickname && (message.deliveryStatus is DeliveryStatus.PartiallyDelivered)
+                        val showCancel = message.sentByNickname(currentUserNickname) && (message.deliveryStatus is DeliveryStatus.PartiallyDelivered)
                         if (showCancel) {
                             Box(
                                 modifier = Modifier

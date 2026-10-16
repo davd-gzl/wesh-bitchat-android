@@ -68,4 +68,6 @@
     <string name="wesh_pave_fluo_link_body">A link does not prove who you are meeting. Confirm this code is shown live by the person in front of you.</string>
     <string name="wesh_pave_fluo_link_confirm">Check after confirming in person</string>
     <string name="wesh_pave_fluo_media_unsupported">Media not supported</string>
+    <string name="wesh_pave_fluo_draft_retry">Try saving drafts again</string>
+    <string name="wesh_pave_fluo_request_hidden">Message waiting, content hidden</string>
 </resources>
