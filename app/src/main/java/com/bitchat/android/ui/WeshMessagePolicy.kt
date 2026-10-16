@@ -171,7 +171,9 @@ internal suspend fun resumeAfterWeshPanicWipe(
     conversationsCleared: Boolean,
     mediaCleared: Boolean,
     clearPreferences: suspend () -> Boolean,
-    resume: suspend () -> Boolean
+    resume: suspend () -> Boolean,
+    /** Internet off, Tor state deleted and Nostr keys erased. */
+    internetCleared: Boolean = true
 ): Boolean {
     val preferencesCleared = try {
         clearPreferences()
@@ -180,6 +182,6 @@ internal suspend fun resumeAfterWeshPanicWipe(
     } catch (_: Exception) {
         false
     }
-    if (!draftsCleared || !conversationsCleared || !mediaCleared || !preferencesCleared) return false
+    if (!draftsCleared || !conversationsCleared || !mediaCleared || !internetCleared || !preferencesCleared) return false
     return resume()
 }

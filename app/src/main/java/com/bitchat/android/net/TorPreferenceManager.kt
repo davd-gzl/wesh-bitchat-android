@@ -18,9 +18,11 @@ object TorPreferenceManager {
         _modeFlow.value = mode
     }
 
-    fun set(context: Context, mode: TorMode) {
+    /** [commit]: write synchronously (panic and fail-closed paths). */
+    fun set(context: Context, mode: TorMode, commit: Boolean = false) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putString(KEY_TOR_MODE, mode.name).apply()
+        val editor = prefs.edit().putString(KEY_TOR_MODE, mode.name)
+        if (commit) editor.commit() else editor.apply()
         _modeFlow.value = mode
     }
 

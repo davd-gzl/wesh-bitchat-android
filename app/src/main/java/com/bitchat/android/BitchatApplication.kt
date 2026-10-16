@@ -25,6 +25,9 @@ class BitchatApplication : Application() {
         // Start the single process-wide power policy before transport components are constructed.
         com.bitchat.android.mesh.PowerManager.getInstance(this).start()
 
+        // Installs the Internet opt-in gate (default off) and keeps Tor's preference OFF while it is off.
+        try { com.bitchat.android.net.WeshInternetMode.get(this) } catch (_: Exception) { }
+
         // Wesh's native validation product has no Internet or location route.
         if (!BuildConfig.WESH_LOCAL_ONLY) {
             try { ArtiTorManager.getInstance().init(this) } catch (_: Exception) { }

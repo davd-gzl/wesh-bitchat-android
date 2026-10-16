@@ -1604,6 +1604,7 @@ class ChatViewModel(
         }
         weshDraftStore.fenceForPanic()
         weshPreferences.fenceForPanic()
+        com.bitchat.android.net.WeshInternetMode.get(getApplication()).fenceForPanic()
         viewModelScope.launch {
             try {
                 performPanicClearAllData()
@@ -1688,8 +1689,10 @@ class ChatViewModel(
         state.setNickname(newNickname)
         dataManager.saveNickname(newNickname)
 
+        val internetCleared = com.bitchat.android.net.WeshInternetMode.get(getApplication()).panicReset()
         val resumed = resumeAfterWeshPanicWipe(
             draftsCleared = draftsCleared,
+            internetCleared = internetCleared,
             conversationsCleared = conversationsCleared,
             mediaCleared = mediaCleared,
             clearPreferences = {

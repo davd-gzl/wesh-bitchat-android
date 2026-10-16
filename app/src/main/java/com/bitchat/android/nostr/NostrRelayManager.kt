@@ -22,6 +22,17 @@ import java.util.concurrent.atomic.AtomicBoolean
 class NostrRelayManager private constructor() {
     
     companion object {
+        /**
+         * Wesh pins the relays every BitChat client listens on (intersection of the upstream iOS
+         * and Android defaults). No custom or directory relay is ever dialed.
+         * Declared before [shared]: the instance initializer reads it.
+         */
+        val WESH_PINNED_RELAYS = listOf(
+            "wss://relay.damus.io",
+            "wss://relay.primal.net",
+            "wss://offchain.pub"
+        )
+
         @JvmStatic
         val shared = NostrRelayManager()
         
@@ -38,13 +49,7 @@ class NostrRelayManager private constructor() {
             return shared
         }
 
-        // Default relay list (same as iOS)
-        private val DEFAULT_RELAYS = listOf(
-            "wss://relay.damus.io",
-            "wss://relay.primal.net",
-            "wss://offchain.pub",
-            "wss://nostr21.com"
-        )
+        private val DEFAULT_RELAYS = WESH_PINNED_RELAYS
         
         // Reconnect backoff lives in RelayReconnectPolicy.
 
@@ -247,8 +252,10 @@ class NostrRelayManager private constructor() {
 
     // --- Internal helpers ---
 
+    /** Every socket, REQ and EVENT path checks the Wesh Internet gate first. */
     private fun isNetworkActionAllowed(liveLocationToken: Long?): Boolean =
-        liveLocationToken == null || LiveLocationPrivacyGate.accepts(liveLocationToken)
+        com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork() &&
+            (liveLocationToken == null || LiveLocationPrivacyGate.accepts(liveLocationToken))
 
     private fun runNetworkAction(
         liveLocationToken: Long?,
@@ -369,12 +376,7 @@ class NostrRelayManager private constructor() {
     init {
         // Initialize with default relays - avoid static initialization order issues
         try {
-            val defaultRelayUrls = listOf(
-                "wss://relay.damus.io",
-                "wss://relay.primal.net",
-                "wss://offchain.pub",
-                "wss://nostr21.com"
-            )
+            val defaultRelayUrls = WESH_PINNED_RELAYS
             relaysList.addAll(defaultRelayUrls.map { Relay(it) })
             nonLiveRelayUrls.addAll(defaultRelayUrls)
             _relays.value = relaysList.toList()
@@ -393,6 +395,7 @@ class NostrRelayManager private constructor() {
      */
     fun connect() {
         if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) return
+        if (!com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) return
         desiredConnected.set(true)
         Log.i(TAG, "Connecting to ${relaysList.size} Nostr relays")
         scope.launch {
@@ -449,6 +452,7 @@ class NostrRelayManager private constructor() {
         relayUrls: List<String>? = null,
         liveLocationToken: Long? = null
     ) {
+        if (!com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) return
         val targetRelays = (relayUrls ?: relaysList.map { it.url })
             .filter { it.isNotBlank() }
             .distinct()
@@ -680,17 +684,16 @@ class NostrRelayManager private constructor() {
      */
     fun clearAllOnPanic() {
         try {
-            val wasConnected = desiredConnected.get()
             clearAllSubscriptions()
             clearDeduplicationCache()
+            // Panic turns Internet off: relays stay disconnected until the user opts in again.
             disconnect()
-            if (wasConnected) {
-                desiredConnected.set(true)
-            }
         } catch (_: Exception) {
         }
     }
     
+    internal fun isConnectionDesired(): Boolean = desiredConnected.get()
+
     /**
      * Get detailed status for all relays
      */
@@ -838,6 +841,7 @@ class NostrRelayManager private constructor() {
         liveLocationToken: Long? = null
     ) {
         if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) return
+        if (urlString !in WESH_PINNED_RELAYS || !com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) return
         if (!desiredConnected.get()) return
         val connectionToken = liveLocationToken
             ?.takeIf { urlString !in nonLiveRelayUrls }
