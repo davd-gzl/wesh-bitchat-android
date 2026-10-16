@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,14 +81,18 @@ fun PublicRoomCard(
 }
 
 /**
- * A contact: nickname, verification badge, last message preview (never a status in its place).
+ * A contact: nickname and key fingerprint, verification badge, last message preview (never a
+ * status in its place).
  *
+ * @param fingerprint [PaveFingerprint.short] of the contact's Noise static key, null when unknown.
+ * No default, so no call site can show a remote name without its fingerprint.
  * @param verified the real QR verification state of this contact. Deliberately has no default,
  * so no call site can show the verified badge without stating it.
  */
 @Composable
 fun ContactRow(
     nickname: String,
+    fingerprint: String?,
     verified: Boolean,
     lastMessage: String?,
     time: String?,
@@ -97,6 +102,7 @@ fun ContactRow(
     val c = WeshPave.colors
     InboxRowFrame(
         title = remoteDisplayName(nickname),
+        fingerprint = fingerprint,
         badge = if (verified) stringResource(R.string.wesh_pave_verified) else stringResource(R.string.wesh_pave_unverified),
         badgeIcon = if (verified) Icons.Rounded.Verified else Icons.AutoMirrored.Rounded.HelpOutline,
         badgeColor = if (verified) c.success else c.warning,
@@ -107,10 +113,15 @@ fun ContactRow(
     )
 }
 
-/** An unverified message request (nickname sanitized here, like every remote name): preview hidden; a tap opens it read-only with Exchange, Block, Delete. */
+/**
+ * An unverified message request (nickname sanitized here, like every remote name, and followed by
+ * its key [fingerprint], see [ContactRow]): preview hidden; a tap opens it read-only with Exchange,
+ * Block, Delete.
+ */
 @Composable
 fun RequestRow(
     nickname: String,
+    fingerprint: String?,
     messageCount: Int,
     time: String?,
     onClick: () -> Unit,
@@ -119,6 +130,7 @@ fun RequestRow(
     val c = WeshPave.colors
     InboxRowFrame(
         title = remoteDisplayName(nickname),
+        fingerprint = fingerprint,
         badge = stringResource(R.string.wesh_pave_unverified),
         badgeIcon = Icons.AutoMirrored.Rounded.HelpOutline,
         badgeColor = c.warning,
@@ -143,6 +155,7 @@ fun InboxSectionTitle(text: String, modifier: Modifier = Modifier) {
 @Composable
 private fun InboxRowFrame(
     title: String,
+    fingerprint: String?,
     badge: String,
     badgeIcon: ImageVector,
     badgeColor: Color,
@@ -170,8 +183,27 @@ private fun InboxRowFrame(
             Text(badge, style = WeshType.caption, color = badgeColor, modifier = Modifier.weight(1f))
             if (time != null) Text(time, style = WeshType.caption, color = c.inkMuted)
         }
+        RowFingerprint(fingerprint)
         Text(preview, style = WeshType.body, color = c.inkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+/** The short fingerprint after a remote name, in monospace; TalkBack reads it character by character. */
+@Composable
+private fun RowFingerprint(fingerprint: String?) {
+    val c = WeshPave.colors
+    if (fingerprint == null) {
+        Text(stringResource(R.string.wesh_pave_fingerprint_unavailable), style = WeshType.caption, color = c.warning)
+        return
+    }
+    val spoken = stringResource(R.string.wesh_pave_fingerprint_label) + " : " + PaveFingerprint.spoken(fingerprint)
+    Text(
+        fingerprint,
+        style = WeshType.fingerprint,
+        color = c.inkMuted,
+        maxLines = 1,
+        modifier = Modifier.semantics { contentDescription = spoken },
+    )
 }
 
 @PavePreviews
@@ -180,10 +212,10 @@ private fun InboxRowPreview() = PavePreview {
     Column(verticalArrangement = Arrangement.spacedBy(WeshSpace.s2)) {
         PublicRoomCard(7, "Point d’eau ouvert au coin de la place.", "18:01", {})
         InboxSectionTitle("Contacts")
-        ContactRow("Nora", verified = true, lastMessage = "Oui, j’arrive par la rue de la Paix.", time = "17:53", onClick = {})
-        ContactRow("Sami", verified = true, lastMessage = null, time = "hier", onClick = {})
-        ContactRow("Inès", verified = false, lastMessage = "À tout à l’heure.", time = "16:20", onClick = {})
+        ContactRow("Nora", "7F3A 91C2 0B5E 44D8", verified = true, lastMessage = "Oui, j’arrive par la rue de la Paix.", time = "17:53", onClick = {})
+        ContactRow("Sami", "A1B2 C3D4 E5F6 0718", verified = true, lastMessage = null, time = "hier", onClick = {})
+        ContactRow("Inès", null, verified = false, lastMessage = "À tout à l’heure.", time = "16:20", onClick = {})
         InboxSectionTitle("Demandes")
-        RequestRow("Léo 17", 1, "18:02", {})
+        RequestRow("Léo 17", "0B5E 44D8 7F3A 91C2", 1, "18:02", {})
     }
 }

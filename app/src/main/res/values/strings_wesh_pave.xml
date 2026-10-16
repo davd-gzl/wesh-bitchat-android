@@ -41,6 +41,8 @@
     <string name="wesh_pave_unnamed_reserved">No nickname (reserved)</string>
     <string name="wesh_pave_section_requests">Requests</string>
     <string name="wesh_pave_action_exchange">Exchange</string>
+    <string name="wesh_pave_fingerprint_label">Key fingerprint</string>
+    <string name="wesh_pave_fingerprint_unavailable">Fingerprint unavailable</string>
     <string name="wesh_pave_unverified">Not verified</string>
     <plurals name="wesh_pave_request_preview">
         <item quantity="one">%d message · exchange codes to reply</item>

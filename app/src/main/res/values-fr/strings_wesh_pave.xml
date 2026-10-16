@@ -42,6 +42,8 @@
     <string name="wesh_pave_unnamed_reserved">Sans surnom (réservé)</string>
     <string name="wesh_pave_section_requests">Demandes</string>
     <string name="wesh_pave_action_exchange">Échanger</string>
+    <string name="wesh_pave_fingerprint_label">Empreinte de la clé</string>
+    <string name="wesh_pave_fingerprint_unavailable">Empreinte indisponible</string>
     <string name="wesh_pave_unverified">Non vérifié</string>
     <plurals name="wesh_pave_request_preview">
         <item quantity="one">%d message · échangez vos codes pour répondre</item>

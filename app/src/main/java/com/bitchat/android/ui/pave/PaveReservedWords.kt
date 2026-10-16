@@ -9,8 +9,9 @@ import java.util.Locale
 /**
  * The single list of app labels a remote nickname may not imitate: every label drawn next to a
  * nickname ("Vous", "Sans surnom", badges, delivery states, transport, public room, Échanger,
- * Demandes). Checked in French and English whatever the phone language, so a peer cannot pick the
- * other language's word. PaveReservedWordsTest fails when a label of these families is missing.
+ * Demandes, fingerprint). Checked in French and English whatever the phone language, so a peer
+ * cannot pick the other language's word. PaveReservedWordsTest fails when a label of these
+ * families is missing.
  */
 object PaveReservedWords {
     @StringRes
@@ -32,6 +33,8 @@ object PaveReservedWords {
         R.string.wesh_pave_public_room_readable,
         R.string.wesh_pave_action_exchange,
         R.string.wesh_pave_section_requests,
+        R.string.wesh_pave_fingerprint_label,
+        R.string.wesh_pave_fingerprint_unavailable,
     )
 
     private val locales = listOf(Locale.FRENCH, Locale.ENGLISH)

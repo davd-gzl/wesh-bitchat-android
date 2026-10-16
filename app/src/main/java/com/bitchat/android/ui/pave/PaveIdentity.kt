@@ -6,6 +6,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import com.bitchat.android.R
+import com.bitchat.android.services.ContactIdentityResolver
+import java.util.Locale
 
 /**
  * A remote nickname ready to display, through [PaveDisplayName.remote] with the central
@@ -27,3 +29,23 @@ internal fun remoteDisplayName(raw: String?, label: (Int) -> String, reservedWor
         reserved = label(R.string.wesh_pave_unnamed_reserved),
         reservedWords = reservedWords,
     )
+
+/** Short key fingerprint shown after a remote name, so the nickname is never the only identity cue. */
+object PaveFingerprint {
+    private const val NOISE_KEY_BYTES = 32
+    private const val GROUPS = 4
+    private const val GROUP_SIZE = 4
+
+    /** "7F3A 91C2 0B5E 44D8": first 16 hex characters of the SHA-256 of a Noise static key, uppercase. */
+    fun short(noiseKey: ByteArray?): String? {
+        if (noiseKey == null || noiseKey.size != NOISE_KEY_BYTES) return null
+        return ContactIdentityResolver.fingerprintHex(noiseKey)
+            .take(GROUPS * GROUP_SIZE)
+            .uppercase(Locale.ROOT)
+            .chunked(GROUP_SIZE)
+            .joinToString(" ")
+    }
+
+    /** One character at a time for TalkBack: "7 F 3 A, 9 1 C 2, ...". */
+    fun spoken(short: String): String = short.split(' ').joinToString(", ") { it.toList().joinToString(" ") }
+}
