@@ -78,7 +78,6 @@ class PeerFingerprintManager private constructor() {
      */
     fun updatePeerIDMapping(oldPeerID: String?, newPeerID: String, fingerprint: String) {
         if (newPeerID.isBlank()) {
-            Log.w(TAG, "Attempted to update mapping with blank newPeerID")
             return
         }
         
@@ -88,18 +87,11 @@ class PeerFingerprintManager private constructor() {
         }
         
         // Remove old mapping if exists
-        oldPeerID?.takeIf { it.isNotBlank() }?.let { oldID ->
-            val removedFingerprint = peerIDToFingerprint.remove(oldID)
-            if (removedFingerprint != null && removedFingerprint == fingerprint) {
-                Log.d(TAG, "Removed old mapping: $oldID -> ${removedFingerprint.take(16)}...")
-            }
-        }
+        oldPeerID?.takeIf { it.isNotBlank() }?.let { oldID -> peerIDToFingerprint.remove(oldID) }
         
         // Add new mapping
         peerIDToFingerprint[newPeerID] = fingerprint
         fingerprintToPeerID[fingerprint] = newPeerID
-        
-        Log.d(TAG, "Updated peer ID mapping: $newPeerID (was: $oldPeerID), fingerprint: ${fingerprint.take(16)}...")
     }
     
     // MARK: - Fingerprint Retrieval

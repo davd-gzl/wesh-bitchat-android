@@ -28,8 +28,16 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun StartupScreen(failed: Boolean, onRetry: () -> Unit, modifier: Modifier = Modifier, draftWipeRequired: Boolean = false, recovery: InterruptedPanicRecovery.State = InterruptedPanicRecovery.State.Idle, onEraseAll: () -> Unit = {}) {
+internal fun StartupScreen(failed: Boolean, onRetry: () -> Unit, modifier: Modifier = Modifier, draftWipeRequired: Boolean = false, recovery: InterruptedPanicRecovery.State = InterruptedPanicRecovery.State.Idle, onEraseAll: () -> Unit = {}, offerIdentityReset: Boolean = false, onResetIdentity: () -> Unit = {}) {
     var confirmErase by remember { mutableStateOf(false) }
+    var confirmReset by remember { mutableStateOf(false) }
+    if (confirmReset) AlertDialog(
+        onDismissRequest = { confirmReset = false },
+        title = { Text("Réinitialiser l’identité ?", Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) },
+        text = { Text("Votre identité ne peut pas être lue sur ce téléphone. Réinitialiser efface toutes les données de Wesh : identité, contacts, messages, brouillons et réglages. Une nouvelle identité sera créée et vos contacts devront être vérifiés à nouveau.", Modifier.verticalScroll(rememberScrollState())) },
+        confirmButton = { TextButton(onClick = { confirmReset = false; onResetIdentity() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Réinitialiser") } },
+        dismissButton = { TextButton(onClick = { confirmReset = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Annuler") } }
+    )
     if (confirmErase) AlertDialog(
         onDismissRequest = { confirmErase = false },
         title = { Text("Effacer toutes les données de Wesh ?", Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) },
@@ -50,6 +58,11 @@ internal fun StartupScreen(failed: Boolean, onRetry: () -> Unit, modifier: Modif
             Button(onClick = { if (draftWipeRequired) confirmErase = true else onRetry() }, enabled = recovery != InterruptedPanicRecovery.State.Running && recovery != InterruptedPanicRecovery.State.Requested,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                 Text(if (draftWipeRequired) "Effacer toutes les données de Wesh" else "Réessayer")
+            }
+            if (offerIdentityReset && !draftWipeRequired) {
+                Text("Plusieurs tentatives ont échoué. Si le problème persiste, vous pouvez réinitialiser votre identité.")
+                TextButton(onClick = { confirmReset = true }, enabled = recovery != InterruptedPanicRecovery.State.Running && recovery != InterruptedPanicRecovery.State.Requested,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Réinitialiser l’identité") }
             }
         } else {
             CircularProgressIndicator()

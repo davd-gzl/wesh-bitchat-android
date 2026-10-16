@@ -29,12 +29,12 @@
     <string name="battery_optimization_not_required">ब्याट्री अनुकूलन आवश्यक छैन</string>
     <string name="battery_optimization_checking">ब्याट्री अनुकूलन जाँचिँदै</string>
     <string name="battery_optimization_why_disable">ब्याट्री अनुकूलन किन बन्द गर्ने?</string>
-    <string name="battery_optimization_explanation">bitchat पछाडिबाट चल्छ ताकि नजिकका यन्त्रहरूसँग मेष जडान कायम रहोस्। ब्याट्री अनुकूलनले यी जडान विच्छेद गराउन सक्छ, जसले सन्देश ढिलो वा हराउन सक्छ।\n\nअनुकूलन बन्द गर्दा भरपर्दो peer‑to‑peer सन्देश सुनिश्चित हुन्छ।</string>
+    <string name="battery_optimization_explanation">Wesh पछाडिबाट चल्छ ताकि नजिकका यन्त्रहरूसँग मेष जडान कायम रहोस्। ब्याट्री अनुकूलनले यी जडान विच्छेद गराउन सक्छ, जसले सन्देश ढिलो वा हराउन सक्छ।\n\nअनुकूलन बन्द गर्दा भरपर्दो peer‑to‑peer सन्देश सुनिश्चित हुन्छ।</string>
     <string name="battery_optimization_disable_button">ब्याट्री अनुकूलन बन्द गर्नुहोस्</string>
-    <string name="battery_optimization_note">नोट: यो सेटिङ पछि Android सेटिङहरू &gt; Apps &gt; bitchat &gt; Battery मा परिवर्तन गर्न सकिन्छ।</string>
-    <string name="battery_optimization_not_supported_explanation">तपाईंको यन्त्रलाई ब्याट्री अनुकूलन सेटिङ आवश्यक छैन। bitchat सामान्य रूपमा चल्नेछ।</string>
-    <string name="battery_optimization_not_supported_message">तपाईंको यन्त्रलाई ब्याट्री अनुकूलन सेटिङ आवश्यक छैन। bitchat सामान्य रूपमा चल्नेछ।</string>
-    <string name="battery_optimization_success_message">bitchat पछाडिबाट भरपर्दो रूपमा चल्न सक्छ</string>
+    <string name="battery_optimization_note">नोट: यो सेटिङ पछि Android सेटिङहरू &gt; Apps &gt; Wesh &gt; Battery मा परिवर्तन गर्न सकिन्छ।</string>
+    <string name="battery_optimization_not_supported_explanation">तपाईंको यन्त्रलाई ब्याट्री अनुकूलन सेटिङ आवश्यक छैन। Wesh सामान्य रूपमा चल्नेछ।</string>
+    <string name="battery_optimization_not_supported_message">तपाईंको यन्त्रलाई ब्याट्री अनुकूलन सेटिङ आवश्यक छैन। Wesh सामान्य रूपमा चल्नेछ।</string>
+    <string name="battery_optimization_success_message">Wesh पछाडिबाट भरपर्दो रूपमा चल्न सक्छ</string>
     <string name="battery_optimization_benefits">• सन्देश विश्वसनीय डेलिभरी\n• मेष जडान कायम राख्ने\n• पृष्ठभूमिमा रिले\n• जडान विच्छेद हुन नदिने</string>
     <string name="battery_optimization_check_again">फेरि जाँच्नुहोस्</string>
     <string name="battery_optimization_skip">अहिलेलाई बेवास्ता गर्नुहोस्</string>
@@ -46,7 +46,7 @@
     <string name="notification_summary_more">र %1$d थप</string>
     <string name="notification_messages_from_people">%1$d सन्देश %2$d जनाबाट</string>
     <string name="notification_more_conversations">र %1$d अरू कुराकानी</string>
-    <string name="notification_active_peers_title">नजिकै bitchatter हरू!</string>
+    <string name="notification_active_peers_title">नजिकै Weshter हरू!</string>
     <string name="notification_active_peers_one">१ जना नजिकै</string>
     <string name="notification_active_peers_many">%1$d जना नजिकै</string>
     <string name="notification_new_messages">नयाँ सन्देश</string>
@@ -57,8 +57,8 @@
     <string name="notification_new_activity_in">%1$s मा नयाँ गतिविधि</string>
     <string name="notification_messages_in">%1$s मा सन्देश</string>
     <string name="notification_joined_conversation">%1$s वार्तालापमा सामेल भयो</string>
-    <string name="notification_geohash_summary_title_mentions">bitchat – %1$d उल्लेख</string>
-    <string name="notification_geohash_summary_title">bitchat – स्थान च्याट</string>
+    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d उल्लेख</string>
+    <string name="notification_geohash_summary_title">Wesh – स्थान च्याट</string>
     <string name="notification_geohash_summary_text">%2$d स्थानबाट %1$d सन्देश</string>
     <string name="notification_mesh_mention_title_singular">मेष च्याटमा उल्लेख</string>
     <string name="notification_mesh_mention_title_plural">मेष च्याटमा %1$d उल्लेख</string>
@@ -235,8 +235,8 @@
     <!-- अनबोर्डिङ स्क्रिन -->
     <string name="location_services_required">स्थान सेवाहरू आवश्यक</string>
     <string name="privacy_first">गोपनीयता पहिलो</string>
-    <string name="location_explanation">bitchat ले तपाईंको स्थान पछ्याउँदैन।\n\nब्लुटुथ स्क्यान र Geohash च्याट सुविधा लागि स्थान सेवा आवश्यक छन्।</string>
-    <string name="location_needs_for">bitchat लाई स्थान सेवा आवश्यक पर्छ:</string>
+    <string name="location_explanation">Wesh ले तपाईंको स्थान पछ्याउँदैन।\n\nब्लुटुथ स्क्यान र Geohash च्याट सुविधा लागि स्थान सेवा आवश्यक छन्।</string>
+    <string name="location_needs_for">Wesh लाई स्थान सेवा आवश्यक पर्छ:</string>
     <string name="location_needs_bullets">• ब्लुटुथ यन्त्र स्क्यान\n• मेष सञ्जालमा नजिकका प्रयोगकर्ता पत्ता लगाउने\n• Geohash च्याट सुविधा\n• कुनै ट्र्याकिङ वा स्थान सङ्कलन छैन</string>
     <string name="open_location_settings">स्थान सेटिङ खोल्नुहोस्</string>
     <string name="check_again">फेरि जाँच्नुहोस्</string>
@@ -268,7 +268,7 @@
     <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">अनुमति</string>
     <string name="grant_permissions">अनुमति दिनुहोस्</string>
-    <string name="location_tracking_warning">bitchat ले तपाईंको स्थान पछ्याउँदैन</string>
+    <string name="location_tracking_warning">Wesh ले तपाईंको स्थान पछ्याउँदैन</string>
     <string name="nobody_around">वरिपरि कोही छैन…</string>
     <string name="you_suffix"> (तपाईं)</string>
     <string name="pan_zoom_instruction">geohash छान्न प्यान र जुम गर्नुहोस्</string>

@@ -119,9 +119,12 @@ fun WeshScreen(viewModel: ChatViewModel) {
     var feedback by remember { mutableStateOf<String?>(null) }
     var muted by remember(preferencesEpoch) { mutableStateOf(prefs.publicMuted) }
     var editedNickname by rememberSaveable(nickname) { mutableStateOf(nickname) }
+    // Bumped by local actions (block, unblock) whose effect is not observable as a flow.
     var revision by remember { mutableIntStateOf(0) }
-    // Session invalidation must disable sending even when a persisted contact does not change.
-    LaunchedEffect(viewModel) { while (true) { delay(1000); revision++ } }
+    // Session invalidation must disable sending even when a persisted contact does not change:
+    // observe the session and Bluetooth state flows instead of recomposing on a timer.
+    val sessionStates by viewModel.peerSessionStates.collectAsState()
+    val bluetoothReadyState by viewModel.weshBluetoothReadyState.collectAsState()
     LaunchedEffect(selectedPrivate) { if (selectedPrivate != null) publicOpen = false }
     LaunchedEffect(requestedContactSheet) { if (requestedContactSheet) contactOpen = true }
     val privatePeer = selectedPrivate
@@ -129,8 +132,9 @@ fun WeshScreen(viewModel: ChatViewModel) {
     val conversationTitle = if (publicOpen) "Salon local" else if (privatePeer != null)
         conversations.firstOrNull { it.conversationID == privatePeer }?.displayName ?: "Contact"
         else listOf("Discussions", "Réglages")[tab]
-    val bluetoothReady = revision >= 0 && viewModel.weshBluetoothReady()
-    val canSend = if (publicOpen) bluetoothReady else privatePeer != null && revision >= 0 && viewModel.weshCanSendPrivate(privatePeer)
+    val bluetoothReady = bluetoothReadyState || viewModel.weshBluetoothReady()
+    val canSend = if (publicOpen) bluetoothReady else privatePeer != null && revision >= 0 &&
+        sessionStates.let { viewModel.weshCanSendPrivate(privatePeer) }
     fun back() { publicOpen = false; viewModel.endPrivateChat(); feedback = null }
     fun dismissContact() { contactOpen = false; viewModel.weshContactSheet.value = false; viewModel.weshIncomingQR.value = null }
     BackHandler(inConversation || contactOpen) { if (contactOpen) dismissContact() else back() }
@@ -239,6 +243,13 @@ fun WeshScreen(viewModel: ChatViewModel) {
                         item { Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = muted, role = Role.Switch, onValueChange = { muted = it; prefs.publicMuted = it }), verticalAlignment = Alignment.CenterVertically) {
                             Text("Couper les notifications du salon public", Modifier.weight(1f)); Switch(muted, onCheckedChange = null)
                         } }
+                        item {
+                            var showSender by remember(preferencesEpoch) { mutableStateOf(prefs.notificationShowsSender) }
+                            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = showSender, role = Role.Switch, onValueChange = { showSender = it; prefs.notificationShowsSender = it }), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Afficher le pseudonyme dans les notifications", Modifier.weight(1f)); Switch(showSender, onCheckedChange = null)
+                            }
+                            Text("Le contenu des messages n’apparaît jamais dans les notifications.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         item { Text("État du Bluetooth", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() }); Text("${if (bluetoothReady) "Bluetooth activé" else "Bluetooth indisponible"}. ${peers.size} connexion(s) au mesh. La présence ne confirme pas la réception d’un message.") }
                         item { Text("Pour tester hors ligne", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() }); Text("Activez le mode avion, puis réactivez Bluetooth. Gardez Wesh ouvert pour le premier échange. La disponibilité en arrière-plan dépend du téléphone et de ses réglages de batterie.") }
                         item { TextButton(onClick = { noteOpen = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Note personnelle de rendez-vous") } }
@@ -404,7 +415,21 @@ private fun WeshContactSheet(viewModel: ChatViewModel, onDismiss: () -> Unit) {
     var attemptRevision by remember { mutableIntStateOf(0) }
     var qr by remember { mutableStateOf<String?>(null) }
     val nickname by viewModel.nickname.collectAsState()
-    LaunchedEffect(nickname) { while (true) { qr = viewModel.buildMyQRString(nickname, null); delay(60_000) } }
+    val context = LocalContext.current
+    LaunchedEffect(nickname) {
+        // Rebuild every minute, and at once when Internet mode or a panic fence changes the npub rule.
+        var shownActive: Boolean? = null
+        var builtAt = 0L
+        while (true) {
+            val active = com.bitchat.android.services.WeshQrIdentity.isActive()
+            if (active != shownActive || System.currentTimeMillis() - builtAt >= 60_000) {
+                qr = com.bitchat.android.services.WeshQrIdentity.myQR(context, nickname)
+                shownActive = active
+                builtAt = System.currentTimeMillis()
+            }
+            delay(1_000)
+        }
+    }
     val incoming by viewModel.weshIncomingQR.collectAsState()
     var reviewedLink by remember(incoming) { mutableStateOf(incoming) }
     LaunchedEffect(pendingNoise, attemptRevision) {

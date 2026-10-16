@@ -688,9 +688,7 @@ class NostrRelayManager private constructor() {
             clearDeduplicationCache()
             // Panic turns Internet off: relays stay disconnected until the user opts in again.
             disconnect()
-            Log.w(TAG, "🚨 Cleared NostrRelayManager subscriptions, cache, and connections for panic mode")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to clear NostrRelayManager on panic: ${e.message}")
+        } catch (_: Exception) {
         }
     }
     
