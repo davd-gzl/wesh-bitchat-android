@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Pastille d’état -->
+    <plurals name="wesh_pave_status_in_range">
+        <item quantity="one">%d téléphone à portée</item>
+        <item quantity="many">%d téléphones à portée</item>
+        <item quantity="other">%d téléphones à portée</item>
+    </plurals>
+    <string name="wesh_pave_status_in_range_short">%d à portée</string>
+    <string name="wesh_pave_status_nobody">Aucun téléphone à portée</string>
+    <string name="wesh_pave_status_bluetooth_off">Bluetooth coupé</string>
+    <string name="wesh_pave_status_internet">Via Internet · %d à portée</string>
+    <string name="wesh_pave_status_open">Ouvrir Connexion</string>
+
+    <!-- Bulles et remise -->
+    <string name="wesh_pave_delivery_waiting">En attente</string>
+    <string name="wesh_pave_delivery_sent">Envoyé</string>
+    <string name="wesh_pave_delivery_received">Reçu</string>
+    <string name="wesh_pave_delivery_failed">Échec</string>
+    <string name="wesh_pave_failed_retry">Échec · Réessayer</string>
+    <string name="wesh_pave_retry">Réessayer</string>
+    <string name="wesh_pave_via_internet">via Internet</string>
+    <string name="wesh_pave_via_bluetooth">Bluetooth</string>
+    <string name="wesh_pave_message_detail">Voir l’état du message</string>
+    <string name="wesh_pave_message_from_you">Vous</string>
+
+    <!-- Composeur -->
+    <string name="wesh_pave_composer_public_hint">Message public — tout le monde autour</string>
+    <string name="wesh_pave_composer_private_hint">Message à %s</string>
+    <string name="wesh_pave_send_public">Envoyer en public</string>
+    <string name="wesh_pave_send_private">Envoyer à %s</string>
+    <string name="wesh_pave_composer_counter">%1$d / %2$d octets</string>
+    <string name="wesh_pave_composer_too_long">Message trop long</string>
+
+    <!-- Discussions -->
+    <string name="wesh_pave_public_room">Salon public</string>
+    <string name="wesh_pave_public_room_footer">Lisible par tous les téléphones autour · %s</string>
+    <string name="wesh_pave_public_room_readable">Lisible par tous les téléphones autour</string>
+    <string name="wesh_pave_no_message_yet">Pas encore de message</string>
+    <string name="wesh_pave_verified">Code vérifié</string>
+    <string name="wesh_pave_unverified">Non vérifié</string>
+    <plurals name="wesh_pave_request_preview">
+        <item quantity="one">%d message · échangez vos codes pour répondre</item>
+        <item quantity="many">%d messages · échangez vos codes pour répondre</item>
+        <item quantity="other">%d messages · échangez vos codes pour répondre</item>
+    </plurals>
+
+    <!-- Effacement -->
+    <string name="wesh_pave_erase_hold">Maintenir pour tout effacer</string>
+    <string name="wesh_pave_erase_scope">Messages, contacts, clés et brouillons de ce téléphone.</string>
+    <string name="wesh_pave_erase_shortcut_hint">Aussi depuis l’icône de l’app.</string>
+    <string name="wesh_pave_erase_action">Tout effacer</string>
+    <string name="wesh_pave_erase_hold_a11y">Maintenir trois secondes pour tout effacer</string>
+    <string name="wesh_pave_erase_confirm_question">Tout effacer de ce téléphone ?</string>
+    <string name="wesh_pave_erase_confirm">Effacer maintenant</string>
+    <string name="wesh_pave_erase_holding">Maintien en cours, %d %%</string>
+    <string name="wesh_pave_erased_title">Wesh est vide</string>
+    <string name="wesh_pave_erased_body">Tout a été effacé de ce téléphone.</string>
+    <string name="wesh_pave_erased_restart">Recommencer</string>
+    <string name="wesh_pave_erase_failed_title">L’effacement a échoué</string>
+    <string name="wesh_pave_erase_failed_body">Des données restent peut-être sur ce téléphone.</string>
+    <string name="wesh_pave_cancel">Annuler</string>
+    <string name="wesh_pave_close">Fermer</string>
+    <string name="wesh_pave_back">Retour</string>
+
+    <!-- Raccourci de l’icône -->
+    <string name="wesh_pave_shortcut_erase_short">Tout effacer</string>
+    <string name="wesh_pave_shortcut_erase_long">Maintenir pour tout effacer</string>
+    <string name="wesh_pave_shortcut_disabled">Ouvrez Wesh une première fois</string>
+</resources>

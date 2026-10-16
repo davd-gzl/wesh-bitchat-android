@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Static launcher shortcut "Tout effacer". It only opens the hold-to-erase screen:
+  nothing is erased until the person holds the button for three seconds.
+  Wired from the launcher activity with the android.app.shortcuts meta-data.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="wesh_hold_to_erase"
+        android:enabled="true"
+        android:icon="@drawable/ic_wesh_shortcut_erase"
+        android:shortcutShortLabel="@string/wesh_pave_shortcut_erase_short"
+        android:shortcutLongLabel="@string/wesh_pave_shortcut_erase_long"
+        android:shortcutDisabledMessage="@string/wesh_pave_shortcut_disabled">
+        <intent
+            android:action="org.samouraiworld.wesh.action.HOLD_TO_ERASE"
+            android:targetPackage="org.samouraiworld.wesh.android"
+            android:targetClass="com.bitchat.android.MainActivity" />
+    </shortcut>
+</shortcuts>

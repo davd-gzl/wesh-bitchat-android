@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- Status pill -->
+    <plurals name="wesh_pave_status_in_range">
+        <item quantity="one">%d phone in range</item>
+        <item quantity="other">%d phones in range</item>
+    </plurals>
+    <string name="wesh_pave_status_in_range_short">%d in range</string>
+    <string name="wesh_pave_status_nobody">No phone in range</string>
+    <string name="wesh_pave_status_bluetooth_off">Bluetooth off</string>
+    <string name="wesh_pave_status_internet">Via Internet · %d in range</string>
+    <string name="wesh_pave_status_open">Open Connection</string>
+
+    <!-- Bubbles and delivery -->
+    <string name="wesh_pave_delivery_waiting">Waiting</string>
+    <string name="wesh_pave_delivery_sent">Sent</string>
+    <string name="wesh_pave_delivery_received">Received</string>
+    <string name="wesh_pave_delivery_failed">Failed</string>
+    <string name="wesh_pave_failed_retry">Failed · Retry</string>
+    <string name="wesh_pave_retry">Retry</string>
+    <string name="wesh_pave_via_internet">via Internet</string>
+    <string name="wesh_pave_via_bluetooth">Bluetooth</string>
+    <string name="wesh_pave_message_detail">See message status</string>
+    <string name="wesh_pave_message_from_you">You</string>
+
+    <!-- Composer -->
+    <string name="wesh_pave_composer_public_hint">Public message — everyone around</string>
+    <string name="wesh_pave_composer_private_hint">Message to %s</string>
+    <string name="wesh_pave_send_public">Send in public</string>
+    <string name="wesh_pave_send_private">Send to %s</string>
+    <string name="wesh_pave_composer_counter">%1$d / %2$d bytes</string>
+    <string name="wesh_pave_composer_too_long">Message too long</string>
+
+    <!-- Chats -->
+    <string name="wesh_pave_public_room">Public room</string>
+    <string name="wesh_pave_public_room_footer">Readable by every phone around · %s</string>
+    <string name="wesh_pave_public_room_readable">Readable by every phone around</string>
+    <string name="wesh_pave_no_message_yet">No message yet</string>
+    <string name="wesh_pave_verified">Code verified</string>
+    <string name="wesh_pave_unverified">Not verified</string>
+    <plurals name="wesh_pave_request_preview">
+        <item quantity="one">%d message · exchange codes to reply</item>
+        <item quantity="other">%d messages · exchange codes to reply</item>
+    </plurals>
+
+    <!-- Erase -->
+    <string name="wesh_pave_erase_hold">Hold to erase everything</string>
+    <string name="wesh_pave_erase_scope">Messages, contacts, keys and drafts on this phone.</string>
+    <string name="wesh_pave_erase_shortcut_hint">Also from the app icon.</string>
+    <string name="wesh_pave_erase_action">Erase everything</string>
+    <string name="wesh_pave_erase_hold_a11y">Hold three seconds to erase everything</string>
+    <string name="wesh_pave_erase_confirm_question">Erase everything on this phone?</string>
+    <string name="wesh_pave_erase_confirm">Erase now</string>
+    <string name="wesh_pave_erase_holding">Holding, %d %%</string>
+    <string name="wesh_pave_erased_title">Wesh is empty</string>
+    <string name="wesh_pave_erased_body">Everything was erased from this phone.</string>
+    <string name="wesh_pave_erased_restart">Start again</string>
+    <string name="wesh_pave_erase_failed_title">Erasing failed</string>
+    <string name="wesh_pave_erase_failed_body">Some data may remain on this phone.</string>
+    <string name="wesh_pave_cancel">Cancel</string>
+    <string name="wesh_pave_close">Close</string>
+    <string name="wesh_pave_back">Back</string>
+
+    <!-- App icon shortcut -->
+    <string name="wesh_pave_shortcut_erase_short">Erase everything</string>
+    <string name="wesh_pave_shortcut_erase_long">Hold to erase everything</string>
+    <string name="wesh_pave_shortcut_disabled">Open Wesh once first</string>
+</resources>
