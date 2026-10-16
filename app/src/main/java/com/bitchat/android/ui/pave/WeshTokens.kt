@@ -3,15 +3,15 @@ package com.bitchat.android.ui.pave
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.DeviceFontFamilyName
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import com.bitchat.android.R
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Transposition of `docs/plan/design/system/tokens.json` ("Wesh Pavé").
+ * Transposition of `docs/plan/design/system/tokens.json` ("Wesh Pavé Fluo", v2).
  * No colour, size or duration used by the Pavé UI lives anywhere else.
  */
 @Immutable
@@ -46,54 +46,54 @@ enum class WeshThemeId { Nuit, Jour }
 
 object WeshTokens {
     val Nuit = WeshColors(
-        bg = Color(0xFF0A0A0A),
-        surface = Color(0xFF161616),
-        surfaceRaised = Color(0xFF232323),
-        ink = Color(0xFFF5F5F0),
-        inkMuted = Color(0xFFA3A3A3),
-        line = Color(0xFF3A3A3A),
-        lineStrong = Color(0xFF8A8A85),
-        publicColor = Color(0xFFE8FF3A),
-        onPublic = Color(0xFF0A0A0A),
-        privateColor = Color(0xFFF5F5F0),
-        onPrivate = Color(0xFF0A0A0A),
-        internet = Color(0xFF7FB2FF),
-        onInternet = Color(0xFF0A0A0A),
-        danger = Color(0xFFFF5A4E),
-        onDanger = Color(0xFF0A0A0A),
+        bg = Color(0xFF0B0B0A),
+        surface = Color(0xFF171716),
+        surfaceRaised = Color(0xFF242422),
+        ink = Color(0xFFF4F3EE),
+        inkMuted = Color(0xFFA6A59F),
+        line = Color(0xFF3A3A37),
+        lineStrong = Color(0xFF8B8A84),
+        publicColor = Color(0xFFE4FF1A),
+        onPublic = Color(0xFF0B0B0A),
+        privateColor = Color(0xFFF4F3EE),
+        onPrivate = Color(0xFF0B0B0A),
+        internet = Color(0xFF86B6FF),
+        onInternet = Color(0xFF0B0B0A),
+        danger = Color(0xFFFF5640),
+        onDanger = Color(0xFF0B0B0A),
         success = Color(0xFF7CE0A3),
         warning = Color(0xFFFFB547),
-        focus = Color(0xFFE8FF3A),
+        focus = Color(0xFFE4FF1A),
         isNight = true,
     )
 
     val Jour = WeshColors(
-        bg = Color(0xFFF5F5F0),
+        bg = Color(0xFFEFEDE4),
         surface = Color(0xFFFFFFFF),
-        surfaceRaised = Color(0xFFE9E9E2),
-        ink = Color(0xFF0A0A0A),
-        inkMuted = Color(0xFF55554F),
-        line = Color(0xFFCFCFC6),
-        lineStrong = Color(0xFF6B6B64),
-        publicColor = Color(0xFFE8FF3A),
-        onPublic = Color(0xFF0A0A0A),
-        privateColor = Color(0xFF0A0A0A),
-        onPrivate = Color(0xFFF5F5F0),
+        surfaceRaised = Color(0xFFE3E0D5),
+        ink = Color(0xFF0B0B0A),
+        inkMuted = Color(0xFF54534D),
+        line = Color(0xFFCAC7BC),
+        lineStrong = Color(0xFF6B6A63),
+        publicColor = Color(0xFFE4FF1A),
+        onPublic = Color(0xFF0B0B0A),
+        privateColor = Color(0xFF0B0B0A),
+        onPrivate = Color(0xFFF4F3EE),
         internet = Color(0xFF1D4ED8),
         onInternet = Color(0xFFFFFFFF),
         danger = Color(0xFFC4302B),
         onDanger = Color(0xFFFFFFFF),
         success = Color(0xFF1F7A47),
         warning = Color(0xFF8A5A00),
-        focus = Color(0xFF0A0A0A),
+        focus = Color(0xFF0B0B0A),
         isNight = false,
     )
 
     fun colors(theme: WeshThemeId): WeshColors = if (theme == WeshThemeId.Nuit) Nuit else Jour
 
     /** QR modules stay dark on light in both themes so every scanner reads them. */
-    val QrModule = Color(0xFF0A0A0A)
-    val QrBackground = Color(0xFFF5F5F0)
+    val QrModule = Color(0xFF0B0B0A)
+    val QrBackground = Color(0xFFFFFFFF)
 }
 
 object WeshSpace {
@@ -133,6 +133,21 @@ object WeshMotion {
     const val STATE_CHANGE_MS = 120
     const val SHEET_MS = 200
 
+    /** One pavé of the reach gauge lights per step; the whole wave stays under [MESH_MAX_MS]. */
+    const val MESH_RING_MS = 120
+    const val MESH_MAX_MS = 900
+
+    /** Relayed message: slide, then the "relayé par N" stamp. */
+    const val RELAY_SLIDE_MS = 240
+    const val RELAY_STAMP_MS = 180
+
+    /** QR success: the viewfinder closes, then the VÉRIFIÉ stamp lands. */
+    const val QR_LOCK_MS = 250
+    const val QR_STAMP_MS = 350
+
+    /** Paint-over after a real wipe. */
+    const val ERASE_COVER_MS = 400
+
     /** "Remove animations" (animator scale 0) turns every duration into an instant change. */
     fun duration(baseMs: Int, animationsEnabled: Boolean): Int = if (animationsEnabled) baseMs else 0
 }
@@ -141,13 +156,17 @@ object WeshMotion {
 object WeshType {
     private val text = FontFamily.Default
 
-    /** Condensed system face (Roboto Condensed) for the wordmark only; falls back to the default family. */
-    val Wordmark = FontFamily(
-        Font(DeviceFontFamilyName("sans-serif-condensed"), weight = FontWeight.Black),
-        Font(DeviceFontFamilyName("sans-serif-condensed"), weight = FontWeight.Bold),
-    )
+    /**
+     * Poster face: Archivo ExtraCondensed Black (static OFL instance, bundled, never fetched).
+     * Display styles only, always in capitals; running text stays in the system face.
+     */
+    val Display = FontFamily(Font(R.font.archivo_extracondensed_black, weight = FontWeight.Black))
 
-    val wordmark = TextStyle(fontFamily = Wordmark, fontSize = 40.sp, lineHeight = 40.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp)
+    val wordmark = TextStyle(fontFamily = Display, fontSize = 56.sp, lineHeight = 48.sp, fontWeight = FontWeight.Black, letterSpacing = (-1).sp)
+    /** The one giant figure of a screen (phones in reach). */
+    val numeral = TextStyle(fontFamily = Display, fontSize = 96.sp, lineHeight = 76.sp, fontWeight = FontWeight.Black, letterSpacing = (-2).sp)
+    val display = TextStyle(fontFamily = Display, fontSize = 44.sp, lineHeight = 40.sp, fontWeight = FontWeight.Black)
+    val displaySmall = TextStyle(fontFamily = Display, fontSize = 26.sp, lineHeight = 26.sp, fontWeight = FontWeight.Black)
     val title = TextStyle(fontFamily = text, fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.ExtraBold)
     val headline = TextStyle(fontFamily = text, fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold)
     val body = TextStyle(fontFamily = text, fontSize = 17.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal)
