@@ -15,8 +15,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 /**
- * Utility functions for ChatScreen UI components
- * Extracted from ChatScreen.kt for better organization
+ * Shared helpers for rendering chat messages and nicknames
  */
 
 /** Opacity applied to the `#abcd` disambiguation suffix so the readable name dominates. */
