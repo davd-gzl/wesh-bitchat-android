@@ -62,6 +62,18 @@ class WeshInternetHookupTest {
         assertEquals(TorMode.OFF, TorPreferenceManager.get(app))
     }
 
+    @Test fun `an opt-in persisted by an earlier build stays off in this build`() {
+        app.getSharedPreferences(WeshInternetMode.PREFS, android.content.Context.MODE_PRIVATE).edit()
+            .putBoolean(WeshInternetMode.KEY_ENABLED, true)
+            .putBoolean(WeshInternetMode.KEY_DISCLOSURE, true)
+            .commit()
+        val mode = WeshInternetMode.get(app)
+        assertFalse(mode.enabled.value)
+        assertFalse(mode.allowsNetwork())
+        assertFalse(WeshNetworkPolicy.allowsNetwork())
+        assertEquals(TorMode.OFF, TorPreferenceManager.get(app))
+    }
+
     @Test fun `with the toggle off nothing network-related starts`() = runBlocking {
         TorPreferenceManager.set(app, TorMode.ON)
         val mode = WeshInternetMode.get(app)
