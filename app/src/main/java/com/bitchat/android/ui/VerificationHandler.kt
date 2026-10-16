@@ -157,13 +157,15 @@ class VerificationHandler(
             )
             if (!ok) return@launch
 
-            // Read my npubs (key store, off the Main thread) before claiming the attempt. A panic
-            // during that read clears the attempt and bumps the generation; nothing suspends between
-            // the claim below and the writes, so a wiped contact can never be re-enrolled.
+            // Claim the attempt first so duplicate responses bail before any key store work.
+            if (!pendingQRVerifications.remove(peerID, pending)) return@launch
+            // Read my npubs off the Main thread. A panic during that read bumps the generation, and
+            // nothing suspends between the checks below and the writes, so a wiped contact can never
+            // be re-enrolled.
             val generation = weshGeneration
             val owned = ownedNpubs()
-            if (generation != weshGeneration || !pendingQRVerifications.remove(peerID, pending)) return@launch
-            if (!isFreshAttempt(pending)) return@launch
+            if (generation != weshGeneration || !isFreshAttempt(pending)) return@launch
+            if (contacts.isBlocked(pending.noiseKeyHex.dataFromHexString() ?: return@launch)) return@launch
             val fp = fingerprintFromNoiseHex(pending.noiseKeyHex) ?: return@launch
             // The QR signature covers the npub and this response proves the signer holds the Noise session.
             // A contact list that could not be read must never be replaced: abort the verification.

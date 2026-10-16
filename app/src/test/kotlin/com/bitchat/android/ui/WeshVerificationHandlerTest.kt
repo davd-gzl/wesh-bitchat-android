@@ -240,6 +240,23 @@ class WeshVerificationHandlerTest {
         verify(identity, never()).setVerifiedFingerprint(any(), any())
         assertEquals("unavailable", handler.weshProgress(qr.noiseKeyHex))
     }
+    @Test fun `a duplicate response for a claimed attempt never reaches the npub reader`() = scope.runTest {
+        var reads = 0
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        handler = VerificationHandler(mock<Context>().also {
+            whenever(it.getString(any())).thenReturn("Synthetic verification title")
+            whenever(it.getString(any(), any())).thenReturn("Synthetic verification notice")
+        }, scope, { mesh }, mock(), state(), mock(), mock(), { time }, { reads++; release.await(); null })
+        qr = npubQR(syntheticNpub, "Synthetic duplicate", syntheticSigner)
+        assertTrue(handler.beginQRVerification(qr))
+        // The first response waits on the key store; the peer repeats it meanwhile.
+        respond(); runCurrent()
+        repeat(3) { respond() }; runCurrent()
+        assertEquals(1, reads)
+        release.complete(Unit); runCurrent()
+        assertEquals(1, reads)
+        assertEquals(1, store.contacts.value.size)
+    }
     @Test fun `my own or unknown own npub enrolls the contact Bluetooth only`() = scope.runTest {
         enroll(npubQR(syntheticNpub), mine = syntheticNpub)
         assertNull(store.contacts.value.single().npub)
