@@ -243,6 +243,13 @@ fun WeshScreen(viewModel: ChatViewModel) {
                         item { Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = muted, role = Role.Switch, onValueChange = { muted = it; prefs.publicMuted = it }), verticalAlignment = Alignment.CenterVertically) {
                             Text("Couper les notifications du salon public", Modifier.weight(1f)); Switch(muted, onCheckedChange = null)
                         } }
+                        item {
+                            var showSender by remember(preferencesEpoch) { mutableStateOf(prefs.notificationShowsSender) }
+                            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = showSender, role = Role.Switch, onValueChange = { showSender = it; prefs.notificationShowsSender = it }), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Afficher le pseudonyme dans les notifications", Modifier.weight(1f)); Switch(showSender, onCheckedChange = null)
+                            }
+                            Text("Le contenu des messages n’apparaît jamais dans les notifications.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         item { Text("État du Bluetooth", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() }); Text("${if (bluetoothReady) "Bluetooth activé" else "Bluetooth indisponible"}. ${peers.size} connexion(s) au mesh. La présence ne confirme pas la réception d’un message.") }
                         item { Text("Pour tester hors ligne", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() }); Text("Activez le mode avion, puis réactivez Bluetooth. Gardez Wesh ouvert pour le premier échange. La disponibilité en arrière-plan dépend du téléphone et de ses réglages de batterie.") }
                         item { TextButton(onClick = { noteOpen = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Note personnelle de rendez-vous") } }

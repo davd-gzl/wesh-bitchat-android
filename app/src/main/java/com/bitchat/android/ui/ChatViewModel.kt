@@ -1568,7 +1568,7 @@ class ChatViewModel(
             try {
                 performPanicClearAllData()
             } catch (_: Exception) {
-                Log.e(TAG, "PANIC MODE INCOMPLETE - recovery required")
+                // The durable recovery marker stays set; StartupScreen offers recovery.
             } finally {
                 weshPanicInProgress.value = false
             }
@@ -1576,7 +1576,6 @@ class ChatViewModel(
     }
 
     private suspend fun performPanicClearAllData() {
-        Log.w(TAG, "🚨 PANIC MODE ACTIVATED - Clearing all sensitive data")
         try {
             com.bitchat.android.geohash.LocationChannelManager
                 .getInstance(getApplication())
@@ -1657,12 +1656,8 @@ class ChatViewModel(
             // This also finishes the durable draft marker; never enter it on an uncertain wipe.
             resume = { recreateMeshServiceAfterPanic() }
         )
-        if (!resumed) {
-            Log.e(TAG, "PANIC MODE INCOMPLETE - application wipe or fresh identity unconfirmed")
-            return
-        }
+        if (!resumed) return
         weshPreferences.resumeAfterVerifiedPanic()
-        Log.w(TAG, "🚨 PANIC MODE COMPLETED - New identity: ${mesh.myPeerID}")
     }
 
     /**
@@ -1670,8 +1665,6 @@ class ChatViewModel(
      * This ensures the new cryptographic keys are used for a new peer ID.
      */
     private suspend fun recreateMeshServiceAfterPanic(): Boolean {
-        val oldPeerID = mesh.myPeerID
-
         // Clear the holder so getOrCreate() returns a fresh instance
         MeshServiceHolder.clear()
 
@@ -1699,11 +1692,6 @@ class ChatViewModel(
         // Restart mesh operations with new identity
         mesh.startServices()
         mesh.sendBroadcastAnnounce()
-
-        Log.d(
-            TAG,
-            "✅ Mesh service recreated. Old peerID: $oldPeerID, New peerID: ${mesh.myPeerID}"
-        )
         return true
     }
     

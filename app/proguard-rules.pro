@@ -38,3 +38,13 @@
 -keepclassmembers class * implements android.location.LocationListener {
     public <methods>;
 }
+
+# Release builds drop verbose, debug, info and warning logs (and their message building) so peer
+# IDs, nicknames and routing details never reach logcat. Errors stay for crash diagnosis.
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+    public static int w(...);
+}

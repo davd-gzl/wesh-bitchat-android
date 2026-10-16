@@ -253,14 +253,7 @@ class PeerManager {
             else -> false
         }
 
-        if (isNewPeer && isVerified) {
-            announcedPeers.add(peerID)
-            Log.d(TAG, "🆕 New verified peer: $nickname ($peerID)")
-        } else if (isVerified) {
-            Log.d(TAG, "🔄 Updated verified peer: $nickname ($peerID)")
-        } else {
-            Log.d(TAG, "⚠️ Unverified peer announcement from: $nickname ($peerID)")
-        }
+        if (isNewPeer && isVerified) announcedPeers.add(peerID)
 
         if (shouldNotify) {
             notifyPeerListUpdate()
@@ -364,7 +357,6 @@ class PeerManager {
             notifyPeerListUpdate()
             return true
         }
-        Log.d(TAG, "Updated peer: $peerID ($nickname)")
         return false
     }
     

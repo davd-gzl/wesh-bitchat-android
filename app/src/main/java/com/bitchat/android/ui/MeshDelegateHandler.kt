@@ -205,8 +205,6 @@ class MeshDelegateHandler(
             val isMention = checkForMeshMention(message.content, currentNickname)
 
             if (isMention) {
-                android.util.Log.d("MeshDelegateHandler", "🔔 Triggering mesh mention notification from ${message.sender}")
-
                 notificationManager.showMeshMentionNotification(
                     senderNickname = message.sender,
                     messageContent = message.content,

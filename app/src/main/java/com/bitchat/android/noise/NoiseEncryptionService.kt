@@ -160,8 +160,6 @@ class NoiseEncryptionService(private val context: Context) {
      * Clear persistent identity (for panic mode)
      */
     fun clearPersistentIdentity() {
-        Log.w(TAG, "Panic: clearing persistent identity and rotating in-memory keys")
-        
         // 1. Clear storage
         identityStateManager.clearIdentityData()
         
