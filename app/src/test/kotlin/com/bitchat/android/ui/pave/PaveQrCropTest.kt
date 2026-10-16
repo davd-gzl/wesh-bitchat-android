@@ -1,6 +1,7 @@
 package com.bitchat.android.ui.pave
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /** Mapping the on-screen viewfinder square to the camera frame, which is shown center-cropped. */
@@ -37,8 +38,16 @@ class PaveQrCropTest {
     }
 
     @Test
-    fun `the crop never leaves the frame`() {
-        // A viewfinder larger than what the frame shows is clamped to the frame.
-        assertEquals(QrCrop(0, 0, 640, 480), viewfinderCrop(640, 480, 0, 640f, 480f, 2000f))
+    fun `a square that does not fit inside the frame gives no crop, never the whole frame`() {
+        assertNull(viewfinderCrop(640, 480, 0, 640f, 480f, 2000f))
+        // A stale, tiny view would blow the square up past the frame: skipped.
+        assertNull(viewfinderCrop(640, 480, 0, 120f, 90f, 200f))
+    }
+
+    @Test
+    fun `an unknown or implausible view size gives no crop`() {
+        assertNull(viewfinderCrop(640, 480, 0, 0f, 0f, 200f))
+        assertNull(viewfinderCrop(640, 480, 0, 150f, 600f, 200f)) // narrower than the viewfinder itself
+        assertNull(viewfinderCrop(0, 480, 0, 640f, 480f, 200f))
     }
 }

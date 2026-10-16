@@ -70,8 +70,9 @@ val PAVE_QR_VIEWFINDER = 160.dp
  * The part of a camera frame under the viewfinder. The preview shows the frame rotated by
  * [rotationDegrees] and center-cropped to fill a [viewWidth] x [viewHeight] box, with a centered
  * square of [finderSize] (view sizes in pixels). The rotation decides which frame side fills the box
- * width; since the square is centered, it maps to a centered square of the frame. Null until the
- * view has a size, so nothing is read before the crop is known.
+ * width; since the square is centered, it maps to a centered square of the frame. Fails closed:
+ * null (the frame is skipped) while the view size is unknown or smaller than the viewfinder, or when
+ * the square does not fit inside the frame; never the whole frame.
  */
 internal fun viewfinderCrop(
     imageWidth: Int,
@@ -81,16 +82,18 @@ internal fun viewfinderCrop(
     viewHeight: Float,
     finderSize: Float,
 ): QrCrop? {
-    if (imageWidth <= 0 || imageHeight <= 0 || viewWidth <= 0f || viewHeight <= 0f || finderSize <= 0f) return null
+    if (imageWidth <= 0 || imageHeight <= 0 || finderSize <= 0f) return null
+    if (viewWidth < finderSize || viewHeight < finderSize) return null
     val quarterTurn = rotationDegrees % 180 != 0
     val uprightWidth = if (quarterTurn) imageHeight else imageWidth
     val uprightHeight = if (quarterTurn) imageWidth else imageHeight
     val scale = maxOf(viewWidth / uprightWidth, viewHeight / uprightHeight)
     val half = finderSize / scale / 2f
-    val left = floor(imageWidth / 2f - half).toInt().coerceIn(0, imageWidth)
-    val top = floor(imageHeight / 2f - half).toInt().coerceIn(0, imageHeight)
-    val right = ceil(imageWidth / 2f + half).toInt().coerceIn(left, imageWidth)
-    val bottom = ceil(imageHeight / 2f + half).toInt().coerceIn(top, imageHeight)
+    val left = floor(imageWidth / 2f - half).toInt()
+    val top = floor(imageHeight / 2f - half).toInt()
+    val right = ceil(imageWidth / 2f + half).toInt()
+    val bottom = ceil(imageHeight / 2f + half).toInt()
+    if (left < 0 || top < 0 || right > imageWidth || bottom > imageHeight || right <= left || bottom <= top) return null
     return QrCrop(left, top, right - left, bottom - top)
 }
 
