@@ -1595,10 +1595,6 @@ class ChatViewModel(
             try { NostrIdentityBridge.clearAllAssociations(getApplication()) } catch (_: Exception) {}
             com.bitchat.android.nostr.NostrBackgroundRuntime.resetSubscriptions()
             try { com.bitchat.android.nostr.NostrRelayManager.getInstance(getApplication()).clearAllOnPanic() } catch (_: Exception) {}
-            // Stores of the removed location features, in case an older build created them.
-            listOf("geohash_prefs", "geohash_conversation_registry").forEach { name ->
-                runCatching { getApplication<Application>().deleteSharedPreferences(name) }
-            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to reset Nostr: ${e.message}")
         }
@@ -1608,12 +1604,16 @@ class ChatViewModel(
         state.setNickname(newNickname)
         dataManager.saveNickname(newNickname)
 
+        val legacyStoresCleared = withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+            deleteLegacyFeaturePreferences(getApplication())
+        }
         val internetCleared = com.bitchat.android.net.WeshInternetMode.get(getApplication()).panicReset()
         val resumed = resumeAfterWeshPanicWipe(
             draftsCleared = draftsCleared,
             internetCleared = internetCleared,
             conversationsCleared = conversationsCleared,
             mediaCleared = mediaCleared,
+            legacyStoresCleared = legacyStoresCleared,
             clearPreferences = {
                 withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { weshPreferences.clearForPanic() }
             },
