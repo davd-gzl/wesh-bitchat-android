@@ -399,4 +399,19 @@ class AppStateStoreTest {
             AppStateStore.privateMessages.value.getValue("peer-a")
         )
     }
+
+    @Test
+    fun `an unnamed remote private message is never counted as mine when my nickname is empty`() {
+        val previous = AppStateStore.nickname.value
+        AppStateStore.setNickname("")
+        try {
+            val remote = BitchatMessage(id = "unnamed-remote", sender = "", content = "synthetic",
+                timestamp = Date(1), isPrivate = true, senderPeerID = "peer-a")
+            AppStateStore.addPrivateMessage("peer-a", remote)
+            assertFalse(AppStateStore.isPrivateMessageRead(remote.id))
+            assertEquals(1, AppStateStore.unreadPrivateMessageCounts.value.values.sum())
+        } finally {
+            AppStateStore.setNickname(previous)
+        }
+    }
 }

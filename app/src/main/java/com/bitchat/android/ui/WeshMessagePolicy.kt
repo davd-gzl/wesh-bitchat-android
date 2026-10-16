@@ -45,6 +45,16 @@ internal object WeshMessagePolicy {
         return true
     }
 
+    /**
+     * The Wesh public room: public text not from a blocked peer, and no system line. No local system
+     * line sets senderPeerID to ours today, so every public system line is hidden; one without a known
+     * local origin could carry a remote name or a BitChat notice.
+     */
+    fun showsInPublicRoom(message: BitchatMessage, myPeerID: String, isBlocked: (String) -> Boolean): Boolean =
+        !message.isPrivate && message.channel == null &&
+            (message.sender != "system" || message.senderPeerID == myPeerID) &&
+            (message.senderPeerID == null || !isBlocked(message.senderPeerID))
+
     fun deliveryLabel(status: DeliveryStatus?): String = when (status) {
         null, DeliveryStatus.Sending -> "En attente d’envoi"
         DeliveryStatus.Sent -> "Transmis · réception non confirmée"
