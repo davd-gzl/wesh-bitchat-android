@@ -33,6 +33,9 @@ internal fun remoteDisplayName(raw: String?, label: (Int) -> String, reservedWor
 /** Short key fingerprint shown after a remote name, so the nickname is never the only identity cue. */
 object PaveFingerprint {
     private const val NOISE_KEY_BYTES = 32
+
+    // 4 groups of 4 hex characters = 64 bits. A cue to tell two identical names apart, not a
+    // verification (the QR exchange is); do not shorten it.
     private const val GROUPS = 4
     private const val GROUP_SIZE = 4
 

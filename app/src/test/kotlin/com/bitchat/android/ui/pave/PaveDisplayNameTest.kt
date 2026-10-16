@@ -71,7 +71,7 @@ class PaveDisplayNameTest {
         val result = safe(grapheme.repeat(40))
         assertEquals(grapheme.repeat(16) + "…" + grapheme.repeat(15), result)
         assertEquals("Nora la vraie qu…ongtemps ou pas", safe("Nora la vraie qui ecrit trop longtemps ou pas"))
-        val exact = "a".repeat(PaveDisplayName.MAX_GRAPHEMES)
+        val exact = "x".repeat(PaveDisplayName.MAX_GRAPHEMES)
         assertEquals(exact, safe(exact))
     }
 
@@ -211,5 +211,15 @@ class PaveDisplayNameTest {
         val coder = cp(0x1F469, 0x1F3FD, 0x200D, 0x1F4BB)
         assertEquals("$coder Nora", safe("$coder Nora"))
         assertEquals("?", safe("Nora" + cp(0x1F3FD, 0x200D, 0x1F4BB))) // tone without a symbol before it
+    }
+
+    @Test
+    fun `a name imitating the short fingerprint is masked`() {
+        assertEquals("!", safe("Nora A1B2 C3D4"))
+        assertEquals("!", safe("a1b2c3d4"))
+        assertEquals("!", safe("A1B2-C3D4 Nora"))
+        assertEquals("!", safe("Nora 1010 1010")) // checked before 1 and 0 are folded to l and o
+        assertEquals("Nora 2024", safe("Nora 2024"))
+        assertEquals("A1B2 Nora C3D4", safe("A1B2 Nora C3D4"))
     }
 }

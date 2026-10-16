@@ -15,7 +15,8 @@ import java.text.Normalizer
  * 3. At most [MAX_COMBINING_MARKS] marks per character; one line.
  * 4. Letters mixing confusable scripts (Latin, Greek, Cyrillic, Armenian, Cherokee) make it unnamed.
  * 5. At most [MAX_GRAPHEMES] graphemes, elided in the middle.
- * 6. A name whose skeleton reads as a reserved word, in full or elided, is masked as reserved.
+ * 6. A name whose skeleton reads as a reserved word, in full or elided, is masked as reserved;
+ *    so is one that imitates the short key fingerprint ([FINGERPRINT_LIKE]).
  */
 object PaveDisplayName {
     const val MAX_GRAPHEMES = 32
@@ -279,9 +280,17 @@ object PaveDisplayName {
         return setOf(name, elided).any { candidate ->
             val words = skeletonWords(candidate)
             words.joinToString("") in whole ||
-                startsWithAffix(words, affixes, longest) || startsWithAffix(words.asReversed(), affixes, longest, reversed = true)
+                startsWithAffix(words, affixes, longest) || startsWithAffix(words.asReversed(), affixes, longest, reversed = true) ||
+                FINGERPRINT_LIKE.containsMatchIn(skeletonWords(candidate, afterLowercase = false).joinToString(" "))
         }
     }
+
+    /**
+     * Two groups of 4 hex characters, joined or one space apart ("A1B2 C3D4", "a1b2c3d4"): a name
+     * like that would pass for the short key fingerprint. Matched before [AFTER_LOWERCASE], which
+     * would turn 1 and 0 into letters.
+     */
+    private val FINGERPRINT_LIKE = Regex("[0-9a-f]{4} ?[0-9a-f]{4}")
 
     /**
      * Whether whole leading [words] (trailing ones when [reversed]) join into one of [affixes].
@@ -298,14 +307,15 @@ object PaveDisplayName {
     }
 
     /**
-     * Words of [text] as skeletons: NFKD, [CONFUSABLES], lowercase, [AFTER_LOWERCASE], marks dropped, letters and digits
-     * only. Anything that is not a letter, digit or mark separates words: "V.ó-us" is v, o, us.
+     * Words of [text] as skeletons: NFKD, [CONFUSABLES], lowercase, [AFTER_LOWERCASE] unless
+     * [afterLowercase] is false, marks dropped, letters and digits only. Anything that is not a
+     * letter, digit or mark separates words: "V.ó-us" is v, o, us.
      */
-    internal fun skeletonWords(text: String): List<String> {
+    internal fun skeletonWords(text: String, afterLowercase: Boolean = true): List<String> {
         val words = mutableListOf<String>()
         val word = StringBuilder()
         Normalizer.normalize(text, Normalizer.Form.NFKD).codePoints().forEach { codePoint ->
-            val folded = fold(codePoint)
+            val folded = fold(codePoint, afterLowercase)
             when {
                 Character.isLetterOrDigit(folded) -> word.appendCodePoint(folded)
                 isMark(folded) -> Unit
@@ -319,10 +329,11 @@ object PaveDisplayName {
         return words
     }
 
-    private fun fold(codePoint: Int): Int {
+    private fun fold(codePoint: Int, afterLowercase: Boolean): Int {
         if (!Character.isBmpCodePoint(codePoint)) return Character.toLowerCase(codePoint)
         val lower = Character.toLowerCase(CONFUSABLES[codePoint.toChar()]?.code ?: codePoint)
-        return if (Character.isBmpCodePoint(lower)) AFTER_LOWERCASE[lower.toChar()]?.code ?: lower else lower
+        if (!afterLowercase || !Character.isBmpCodePoint(lower)) return lower
+        return AFTER_LOWERCASE[lower.toChar()]?.code ?: lower
     }
 
     /**

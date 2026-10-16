@@ -262,6 +262,19 @@
       "input": "👩🏽‍💻 Nora",
       "expect": "display",
       "display": "👩🏽‍💻 Nora"
+    },
+    {
+      "input": "Nora A1B2 C3D4",
+      "expect": "reserved"
+    },
+    {
+      "input": "a1b2c3d4",
+      "expect": "reserved"
+    },
+    {
+      "input": "Nora 2024",
+      "expect": "display",
+      "display": "Nora 2024"
     }
   ],
   "afterLowercase": {
