@@ -63,14 +63,27 @@ class WeshMessageRequestsTest {
     }
 
     @Test
-    fun `a newcomer after a full window replaces the oldest request shown long enough`() {
-        repeat(WeshMessageRequests.MAX_NEW_SOURCES_PER_WINDOW) { WeshMessageRequests.record("flood-$it", "Synthetic", fp(it), time) }
-        time += WeshMessageRequests.MIN_DISPLAY_AGE_MS
+    fun `replacements count against the new-source window`() {
+        repeat(WeshMessageRequests.MAX_REQUESTS) { WeshMessageRequests.record("peer-$it", "Synthetic", fp(it), time); nextWindowSlot() }
+        time += WeshMessageRequests.NEW_SOURCE_WINDOW_MS
 
-        WeshMessageRequests.record("peer-legit", "Synthetic", fp(500), time)
+        repeat(WeshMessageRequests.MAX_NEW_SOURCES_PER_WINDOW + 5) { WeshMessageRequests.record("new-$it", "Synthetic", fp(100 + it), time) }
         val requests = WeshMessageRequests.requests.value
-        assertEquals("the window still bounds growth", WeshMessageRequests.MAX_NEW_SOURCES_PER_WINDOW, requests.size)
-        assertEquals("peer-legit", requests.first().peerID)
+        assertEquals(WeshMessageRequests.MAX_REQUESTS, requests.size)
+        assertEquals(WeshMessageRequests.MAX_NEW_SOURCES_PER_WINDOW, requests.count { it.peerID.startsWith("new-") })
+    }
+
+    @Test
+    fun `refreshing a request does not protect it from eviction`() {
+        repeat(WeshMessageRequests.MAX_REQUESTS) { WeshMessageRequests.record("peer-$it", "Synthetic", fp(it), time); nextWindowSlot() }
+        WeshMessageRequests.record("peer-0", "Synthetic", fp(0), time)
+        assertEquals("peer-0", WeshMessageRequests.requests.value.first().peerID)
+        time += WeshMessageRequests.NEW_SOURCE_WINDOW_MS
+
+        WeshMessageRequests.record("peer-new", "Synthetic", fp(999), time)
+        val requests = WeshMessageRequests.requests.value
+        assertTrue("the oldest first-seen entry goes", requests.none { it.peerID == "peer-0" })
+        assertTrue(requests.any { it.peerID == "peer-1" })
     }
 
     @Test

@@ -9,12 +9,11 @@ import kotlinx.coroutines.flow.asStateFlow
  * Private messages from people not enrolled by QR are never stored, shown or notified. Only a
  * minimal, memory-only request (nickname, identity) is kept so the person can verify or block.
  *
- * Flood bounds: one update per source (fingerprint, else peer ID) per [SOURCE_INTERVAL_MS]; the
- * list grows by at most [MAX_NEW_SOURCES_PER_WINDOW] new sources per [NEW_SOURCE_WINDOW_MS] (past
- * that, a newcomer replaces an old entry instead of being refused, so a steady trickle of cheap
- * identities cannot keep everyone else out); at most [MAX_REQUESTS] entries. When full, the
- * least recently updated entry shown for at least [MIN_DISPLAY_AGE_MS] is evicted, whatever its
- * type: Noise keys are cheap, so authenticated entries must not be able to lock the inbox.
+ * Flood bounds: one update per source (fingerprint, else peer ID) per [SOURCE_INTERVAL_MS]; at
+ * most [MAX_NEW_SOURCES_PER_WINDOW] new sources, added or replacing one, per [NEW_SOURCE_WINDOW_MS];
+ * at most [MAX_REQUESTS] entries. When full, the entry first seen longest ago, if shown for at
+ * least [MIN_DISPLAY_AGE_MS], is evicted whatever its type: Noise keys are cheap, so authenticated
+ * entries must not lock the inbox, and refreshing an entry cannot protect it.
  */
 object WeshMessageRequests {
     data class Request(
@@ -48,13 +47,13 @@ object WeshMessageRequests {
             return
         }
         while (newSourceTimes.isNotEmpty() && now - newSourceTimes.first() >= NEW_SOURCE_WINDOW_MS) newSourceTimes.removeFirst()
-        val windowFull = newSourceTimes.size >= MAX_NEW_SOURCES_PER_WINDOW
+        if (newSourceTimes.size >= MAX_NEW_SOURCES_PER_WINDOW) return
         var kept = current
-        if (windowFull || kept.size >= MAX_REQUESTS) {
-            val victim = kept.lastOrNull { now - it.firstSeen >= MIN_DISPLAY_AGE_MS } ?: return
+        if (kept.size >= MAX_REQUESTS) {
+            val victim = kept.filter { now - it.firstSeen >= MIN_DISPLAY_AGE_MS }.minByOrNull { it.firstSeen } ?: return
             kept = kept.filterNot { it === victim }
         }
-        if (!windowFull) newSourceTimes.addLast(now)
+        newSourceTimes.addLast(now)
         _requests.value = listOf(Request(peerID, name, fingerprint, now)) + kept
     }
 
