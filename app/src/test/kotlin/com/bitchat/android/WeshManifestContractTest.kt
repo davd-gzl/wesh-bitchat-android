@@ -45,16 +45,23 @@ class WeshManifestContractTest {
     }
 
     @Test
-    fun `Wesh settings and Tor state never leave the phone by backup or device transfer`() {
+    fun `no app data leaves the phone by backup or device transfer`() {
+        val domains = listOf("root", "sharedpref", "database", "file", "external")
+        fun excludesAll(rules: String) = domains.forEach { domain ->
+            assertTrue("$domain must be excluded whole", rules.contains("""<exclude domain="$domain" path="."/>"""))
+        }
+        fun noIncludes(rules: String) = assertFalse("no include may re-add data", rules.contains("<include"))
         val transfer = File("src/main/res/xml/data_extraction_rules.xml").readText()
         listOf("cloud-backup", "device-transfer").forEach { section ->
-            val rules = Regex("<$section>(.*?)</$section>", RegexOption.DOT_MATCHES_ALL).find(transfer)?.groupValues?.get(1).orEmpty()
-            assertTrue("$section keeps wesh_ui.xml", rules.contains("""<exclude domain="sharedpref" path="wesh_ui.xml"/>"""))
-            assertTrue("$section keeps files/arti", rules.contains("""<exclude domain="file" path="arti/"/>"""))
+            val rules = Regex("<$section>(.*?)</$section>", RegexOption.DOT_MATCHES_ALL).find(transfer)?.groupValues?.get(1)
+            assertTrue("$section section missing", rules != null)
+            excludesAll(rules!!)
+            noIncludes(rules)
         }
         val legacy = File("src/main/res/xml/backup_rules.xml").readText()
-        assertTrue(legacy.contains("""<exclude domain="sharedpref" path="wesh_ui.xml"/>"""))
-        assertTrue(legacy.contains("""<exclude domain="file" path="arti/"/>"""))
+        excludesAll(legacy)
+        noIncludes(legacy)
+        assertTrue(manifest.contains("""android:allowBackup="false""""))
         assertTrue(manifest.contains("""android:dataExtractionRules="@xml/data_extraction_rules""""))
         assertTrue(manifest.contains("""android:fullBackupContent="@xml/backup_rules""""))
     }
