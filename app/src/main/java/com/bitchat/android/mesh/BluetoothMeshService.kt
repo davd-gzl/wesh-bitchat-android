@@ -450,11 +450,10 @@ class BluetoothMeshService(
             override fun getAuthenticatedRemoteStaticKey(peerID: String): ByteArray? =
                 this@BluetoothMeshService.getAuthenticatedRemoteStaticKey(peerID)
 
-            override fun isEnrolledContactKey(noisePublicKey: ByteArray): Boolean = runCatching {
-                weshQrEnrollment?.isEnrolled?.invoke(
-                    com.bitchat.android.services.ContactIdentityResolver.fingerprintHex(noisePublicKey)
-                ) == true
-            }.getOrDefault(false)
+            // Runs for every authenticated public packet before the budget drop: a set lookup only.
+            override fun isEnrolledContactKey(noisePublicKey: ByteArray): Boolean = weshQrEnrollment != null &&
+                runCatching { com.bitchat.android.services.WeshContactStore.get(context).isEnrolledKey(noisePublicKey) }
+                    .getOrDefault(false)
 
             override fun removeNoiseSession(peerID: String) {
                 try {

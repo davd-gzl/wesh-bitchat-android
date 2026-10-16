@@ -42,6 +42,13 @@ class WeshContactStore internal constructor(
     val loadFailed = _loadFailed.asStateFlow()
     private val _contacts = MutableStateFlow(load())
     val contacts = _contacts.asStateFlow()
+    /** Noise keys (hex) of [contacts], rebuilt with every change, so a lookup never hashes keys. */
+    @Volatile private var enrolledKeys: Set<String> = _contacts.value.mapTo(HashSet()) { it.noiseHex }
+
+    private fun publish(contacts: List<Contact>) {
+        enrolledKeys = contacts.mapTo(HashSet()) { it.noiseHex }
+        _contacts.value = contacts
+    }
 
     private fun load(): List<Contact> = try {
         val array = JSONArray(identity.getSecureValue(storageKey) ?: "[]")
@@ -63,7 +70,7 @@ class WeshContactStore internal constructor(
     /** Retries reading the stored contacts; returns true once they are readable. */
     @Synchronized fun retryLoad(): Boolean {
         val loaded = load()
-        if (!_loadFailed.value) _contacts.value = loaded
+        if (!_loadFailed.value) publish(loaded)
         return !_loadFailed.value
     }
 
@@ -127,6 +134,8 @@ class WeshContactStore internal constructor(
         val holders = _contacts.value.filter { it.npub == npub }
         return holders.firstOrNull { it.npubProven } ?: holders.singleOrNull()
     }
+    /** Cheap enough for every inbound packet: a set lookup, no per-contact hashing. */
+    fun isEnrolledKey(noisePublicKey: ByteArray): Boolean = noisePublicKey.hexEncodedString() in enrolledKeys
     fun contact(conversationID: String): Contact? = _contacts.value.firstOrNull { it.conversationID == conversationID }
     fun forFingerprint(fingerprint: String): Contact? = _contacts.value.firstOrNull {
         ContactIdentityResolver.fingerprintHex(it.key) == fingerprint
@@ -145,7 +154,7 @@ class WeshContactStore internal constructor(
             .putOpt("npubProven", if (it.npubProven) true else null)
             .putOpt("npubWarning", if (it.npubWarning) true else null)) }
         identity.storeSecureValue(storageKey, array.toString())
-        _contacts.value = contacts
+        publish(contacts)
     }
     companion object {
         @Volatile private var instance: WeshContactStore? = null
