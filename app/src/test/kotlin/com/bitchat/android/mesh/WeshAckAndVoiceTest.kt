@@ -75,6 +75,16 @@ class WeshAckAndVoiceTest {
     }
 
     @Test
+    fun `a delegate that does not opt in never acknowledges`() = runBlocking<Unit> {
+        // Real interface default, as for any transport that does not run admission itself.
+        org.mockito.kotlin.doCallRealMethod().whenever(delegate).onPrivateMessageReceived(any())
+        handler.handleNoiseEncrypted(encrypted(privateText()))
+        verify(delegate).onMessageReceived(any())
+        verify(delegate, never()).encryptForPeer(any(), any())
+        verify(delegate, never()).sendPacket(any())
+    }
+
+    @Test
     fun `a delivery ACK follows an admitted message`() = runBlocking<Unit> {
         whenever(delegate.onPrivateMessageReceived(any())).thenReturn(true)
         handler.handleNoiseEncrypted(encrypted(privateText()))

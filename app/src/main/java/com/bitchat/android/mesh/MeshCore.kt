@@ -406,6 +406,18 @@ class MeshCore(
                 delegate?.didReceiveMessage(message)
             }
 
+            // Acknowledge only when the transport's admission hook ran and accepted the message.
+            override fun onPrivateMessageReceived(message: BitchatMessage): Boolean {
+                val admit = hooks.onMessageReceived
+                if (admit == null) {
+                    delegate?.didReceiveMessage(message)
+                    return false
+                }
+                if (!admit(message)) return false
+                delegate?.didReceiveMessage(message)
+                return true
+            }
+
             override fun onChannelLeave(channel: String, fromPeer: String) {
                 delegate?.didReceiveChannelLeave(channel, fromPeer)
             }

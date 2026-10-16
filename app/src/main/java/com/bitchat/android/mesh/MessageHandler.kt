@@ -786,10 +786,11 @@ interface MessageHandlerDelegate {
     /**
      * Delivers a private message and returns true only when admission accepted it. A delivery
      * ACK is sent only then, so a stranger never learns that this phone received anything.
+     * Fail-closed default: a transport that does not run admission here never acknowledges.
      */
     fun onPrivateMessageReceived(message: BitchatMessage): Boolean {
         onMessageReceived(message)
-        return true
+        return false
     }
     fun onChannelLeave(channel: String, fromPeer: String)
     fun onDeliveryAckReceived(messageID: String, peerID: String)
