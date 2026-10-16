@@ -112,6 +112,22 @@ class BluetoothMeshService(
     private val securityManager = SecurityManager(encryptionService, myPeerID)
     private val storeForwardManager = StoreForwardManager()
     private val messageHandler = MessageHandler(myPeerID, context.applicationContext)
+
+    private fun admissionFingerprint(peerID: String): String? =
+        getAuthenticatedRemoteStaticKey(peerID)?.let(com.bitchat.android.services.ContactIdentityResolver::fingerprintHex)
+            ?: getPeerFingerprint(peerID)
+
+    // Wesh: incoming files are never stored, and private messages need a QR-enrolled identity.
+    private val weshQrEnrollment = if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) {
+        com.bitchat.android.services.IncomingMessageAdmission.QrEnrollment(
+            fingerprintOf = { peerID ->
+                getAuthenticatedRemoteStaticKey(peerID)?.let(com.bitchat.android.services.ContactIdentityResolver::fingerprintHex)
+            },
+            isEnrolled = { fingerprint ->
+                com.bitchat.android.services.WeshContactStore.get(context).forFingerprint(fingerprint) != null
+            }
+        )
+    } else null
     internal val connectionManager = BluetoothConnectionManager(context, myPeerID, fragmentManager) // Made internal for access
     private val packetProcessor = PacketProcessor(myPeerID)
     private data class VoiceFrameRequest(val recipientPeerID: String?, val payload: ByteArray)
@@ -142,6 +158,9 @@ class BluetoothMeshService(
         VerificationService.configure(encryptionService)
         setupDelegates()
         messageHandler.packetProcessor = packetProcessor
+        com.bitchat.android.services.IncomingMessageAdmission.install(context)
+        messageHandler.applyInboundPolicy(com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY)
+        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) com.bitchat.android.features.voice.LiveVoicePreferences.forceDisabled = true
         //startPeriodicDebugLogging()
 
         // Flush queued private messages as soon as a BLE Noise session authenticates,
@@ -428,6 +447,14 @@ class BluetoothMeshService(
                 return encryptionService.hasEstablishedSession(peerID)
             }
 
+            override fun getAuthenticatedRemoteStaticKey(peerID: String): ByteArray? =
+                this@BluetoothMeshService.getAuthenticatedRemoteStaticKey(peerID)
+
+            // Runs for every authenticated public packet before the budget drop: a set lookup only.
+            override fun isEnrolledContactKey(noisePublicKey: ByteArray): Boolean = weshQrEnrollment != null &&
+                runCatching { com.bitchat.android.services.WeshContactStore.get(context).isEnrolledKey(noisePublicKey) }
+                    .getOrDefault(false)
+
             override fun removeNoiseSession(peerID: String) {
                 try {
                     encryptionService.removePeer(peerID)
@@ -487,19 +514,24 @@ class BluetoothMeshService(
             }
             
             // Callbacks
+            override fun onPrivateMessageReceived(message: BitchatMessage): Boolean {
+                val admitted = deliverIncoming(message)
+                return admitted || com.bitchat.android.services.IncomingMessageAdmission
+                    .mayAcknowledge(message, weshQrEnrollment, this@BluetoothMeshService::admissionFingerprint)
+            }
+
             override fun onMessageReceived(message: BitchatMessage) {
+                deliverIncoming(message)
+            }
+
+            /** Returns true when admission accepted the message and it was dispatched. */
+            private fun deliverIncoming(message: BitchatMessage): Boolean {
                 // Private-message admission is authoritative. In particular, do not forward a
                 // callback or notify after panic mode rejected the message while wiping state.
                 if (
                     !com.bitchat.android.services.IncomingMessageAdmission
-                        .admitToAppState(message) { peerID ->
-                            val fingerprint = getAuthenticatedRemoteStaticKey(peerID)?.let {
-                                com.bitchat.android.services.ContactIdentityResolver.fingerprintHex(it)
-                            } ?: getPeerFingerprint(peerID)
-                            fingerprint != null && context.getSharedPreferences("bitchat_prefs", Context.MODE_PRIVATE)
-                                .getStringSet("blocked_users", emptySet())!!.contains(fingerprint)
-                        }
-                ) return
+                        .admitToAppState(message, qrEnrollment = weshQrEnrollment, senderFingerprint = this@BluetoothMeshService::admissionFingerprint)
+                ) return false
 
                 // And forward to UI delegate if attached
                 delegate?.didReceiveMessage(message)
@@ -516,6 +548,7 @@ class BluetoothMeshService(
                         }
                     } catch (_: Exception) { }
                 }
+                return true
             }
             
             override fun onChannelLeave(channel: String, fromPeer: String) {
@@ -558,6 +591,9 @@ class BluetoothMeshService(
             override fun validatePacketSecurity(packet: BitchatPacket, peerID: String): Boolean {
                 return securityManager.validatePacket(packet, peerID)
             }
+
+            override fun isRelaySuppressed(packet: BitchatPacket, peerID: String): Boolean =
+                securityManager.isRelaySuppressed(packet, peerID)
             
             override fun updatePeerLastSeen(peerID: String) {
                 peerManager.updatePeerLastSeen(peerID)
@@ -612,15 +648,22 @@ class BluetoothMeshService(
             }
             
             override fun handleMessage(routed: RoutedPacket) {
-                serviceScope.launch { messageHandler.handleMessage(routed) }
-                // Track broadcast messages for sync
-                try {
-                    val pkt = routed.packet
-                    val isBroadcast = (pkt.recipientID == null || pkt.recipientID.contentEquals(SpecialRecipients.BROADCAST))
-                    if (isBroadcast && pkt.type == MessageType.MESSAGE.value) {
-                        gossipSyncManager.onPublicPacketSeen(pkt)
+                serviceScope.launch {
+                    // A packet dropped by the inbound budget is not marked seen (gossip or dedup),
+                    // so a later copy is delivered once the budget refills; it is not relayed twice.
+                    if (!messageHandler.handleMessage(routed)) {
+                        securityManager.forgetForRedelivery(routed.packet, routed.peerID ?: "unknown")
+                        return@launch
                     }
-                } catch (_: Exception) { }
+                    // Track broadcast messages for sync
+                    try {
+                        val pkt = routed.packet
+                        val isBroadcast = (pkt.recipientID == null || pkt.recipientID.contentEquals(SpecialRecipients.BROADCAST))
+                        if (isBroadcast && pkt.type == MessageType.MESSAGE.value) {
+                            gossipSyncManager.onPublicPacketSeen(pkt)
+                        }
+                    } catch (_: Exception) { }
+                }
             }
 
             override fun handleVoiceFrame(routed: RoutedPacket): Boolean =

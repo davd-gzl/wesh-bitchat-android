@@ -4,6 +4,7 @@ import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.model.DeliveryStatus
 import com.bitchat.android.services.PrivateMessageArrivalOrder
+import com.bitchat.android.util.safeDisplayName
 
 /**
  * Presence-independent presentation state for every retained private conversation.
@@ -140,7 +141,8 @@ internal fun resolveConversationDisplayName(
     resolvedContactName: String?,
     persistedDisplayName: String?
 ): String {
-    fun String?.usableName(): String? = this?.takeUnless {
+    // Every candidate may come from a remote announce or message: sanitize before use.
+    fun String?.usableName(): String? = this?.let { safeDisplayName(it, "") }?.takeUnless {
         it.isBlank() || it.equals("Unknown", ignoreCase = true)
     }
 
@@ -155,7 +157,7 @@ internal fun resolveConversationDisplayName(
     return liveName.usableName()
         ?: resolvedContactName.usableName()
         ?: persistedDisplayName.usableName()
-        ?: fallbackName
+        ?: safeDisplayName(fallbackName, "Contact")
 }
 
 internal fun sortConversationSummaries(

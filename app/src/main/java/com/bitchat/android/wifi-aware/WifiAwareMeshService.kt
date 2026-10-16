@@ -139,6 +139,7 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
     fun isRunning(): Boolean = isActive
 
     init {
+        com.bitchat.android.services.IncomingMessageAdmission.install(context)
         // Ensure BluetoothMeshService is initialized so we share its GossipSyncManager
         // This avoids race conditions and ensures a single gossip source/delegate
         com.bitchat.android.service.MeshServiceHolder.getOrCreate(context)
@@ -182,17 +183,27 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
                 leavePayloadProvider = {
                     (delegate?.getNickname() ?: myPeerID).toByteArray(Charsets.UTF_8)
                 }
-            )
+            ),
+            weshLocalOnly = com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
         )
         fragmentingSender = FragmentingPacketSender(serviceScope, meshCore.fragmentManager, TAG)
     }
+
+    // Wi-Fi Aware cannot prove a QR-enrolled identity here; Wesh keeps its private messages out.
+    private val weshQrEnrollment = if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) {
+        com.bitchat.android.services.IncomingMessageAdmission.QrEnrollment(
+            fingerprintOf = { null },
+            isEnrolled = { false }
+        )
+    } else null
 
     private fun handleMessageReceived(message: BitchatMessage): Boolean {
         // Match BLE admission semantics: a private message rejected during panic or as a
         // duplicate must not create a notification after the conversation state was cleared.
         if (
             !com.bitchat.android.services.IncomingMessageAdmission
-                .admitToAppState(message)
+                .admitToAppState(message, qrEnrollment = weshQrEnrollment,
+                    senderFingerprint = { peerID -> runCatching { meshCore.getPeerFingerprint(peerID) }.getOrNull() })
         ) return false
 
         if (delegate == null && message.isPrivate) {

@@ -204,6 +204,40 @@ class ConversationSummaryTest {
     }
 
     @Test
+    fun `live and fallback names go through the shared display name sanitizer`() {
+        assertEquals(
+            "evilname",
+            resolveConversationDisplayName(
+                fallbackName = "Alice From Message",
+                connectedPeerID = "peer-a",
+                peerNicknames = mapOf("peer-a" to "\u202Eevil\u200Bname"),
+                resolvedContactName = null,
+                persistedDisplayName = null
+            )
+        )
+        assertEquals(
+            "Alice Persisted",
+            resolveConversationDisplayName(
+                fallbackName = "Alice From Message",
+                connectedPeerID = "peer-a",
+                peerNicknames = mapOf("peer-a" to "\u3164\u200B"),
+                resolvedContactName = null,
+                persistedDisplayName = "Alice Persisted"
+            )
+        )
+        assertEquals(
+            "Contact",
+            resolveConversationDisplayName(
+                fallbackName = "\u202E\u200B",
+                connectedPeerID = null,
+                peerNicknames = emptyMap(),
+                resolvedContactName = null,
+                persistedDisplayName = null
+            )
+        )
+    }
+
+    @Test
     fun `persisted nickname is used when no live or contact name remains`() {
         assertEquals(
             "Alice Persisted",
