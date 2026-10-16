@@ -47,7 +47,9 @@ data class PaveContactItem(
 data class PaveHomeState(
     val phonesInReach: Int,
     val bluetoothOn: Boolean,
-    val publicPreview: String?,
+    /** Raw nickname of the last public sender; sanitized by [HomeScreen], never pre-flattened. */
+    val publicPreviewSender: String?,
+    val publicPreviewText: String?,
     val publicTime: String?,
     val contacts: List<PaveContactItem>,
     val requestCount: Int,
@@ -95,7 +97,12 @@ fun HomeScreen(
                 }
             }
             item(key = "reach") { PaveReachCard(state.phonesInReach, state.bluetoothOn) }
-            item(key = "public") { PublicRoomCard(state.phonesInReach, state.publicPreview, state.publicTime, onOpenPublicRoom) }
+            item(key = "public") {
+                val preview = state.publicPreviewText?.let { text ->
+                    state.publicPreviewSender?.let { remoteDisplayName(it) + " : " + text } ?: text
+                }
+                PublicRoomCard(state.phonesInReach, preview, state.publicTime, onOpenPublicRoom)
+            }
             item(key = "private-title") {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     InboxSectionTitle(stringResource(R.string.wesh_pave_home_private), Modifier.weight(1f))
@@ -164,7 +171,8 @@ private fun HomeScreenPreview() = PavePreview(padded = false) {
         PaveHomeState(
             phonesInReach = 7,
             bluetoothOn = true,
-            publicPreview = "Mehdi : Ça bouge vers République, restez groupés.",
+            publicPreviewSender = "Mehdi",
+            publicPreviewText = "Ça bouge vers République, restez groupés.",
             publicTime = "18:04",
             contacts = listOf(
                 PaveContactItem("n", "Nora", "A1B2 C3D4 E5F6 0718", true, "Je suis à l’angle, côté pharmacie.", "18:06"),

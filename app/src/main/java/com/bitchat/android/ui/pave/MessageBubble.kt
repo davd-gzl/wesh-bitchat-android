@@ -115,8 +115,12 @@ fun MessageBubble(
         transportText?.let(::add)
     }
     val fingerprintLabel = stringResource(R.string.wesh_pave_fingerprint_label)
-    val shownFingerprint = senderFingerprint?.takeIf { header != null }
-    val spokenFingerprint = shownFingerprint?.let { "$fingerprintLabel : " + PaveFingerprint.spoken(it) }
+    // Under a remote nickname, always a fingerprint line: the key, or "Empreinte indisponible".
+    val fingerprintUnavailable = stringResource(R.string.wesh_pave_fingerprint_unavailable)
+    val showFingerprintLine = header != null && room == PaveRoom.Public
+    val shownFingerprint = (senderFingerprint ?: fingerprintUnavailable).takeIf { showFingerprintLine }
+    val spokenFingerprint = if (!showFingerprintLine) null
+        else senderFingerprint?.let { "$fingerprintLabel : " + PaveFingerprint.spoken(it) } ?: fingerprintUnavailable
     val description = listOfNotNull(if (own) you else safeSender, spokenFingerprint, text, if (headerWithTime) time else null)
         .plus(metaParts)
         .plus(if (failed) listOfNotNull(deliveryText) else emptyList())
@@ -146,8 +150,8 @@ fun MessageBubble(
                     if (shownFingerprint != null) {
                         Text(
                             shownFingerprint,
-                            style = WeshType.fingerprint.copy(fontSize = WeshType.caption.fontSize, lineHeight = WeshType.caption.lineHeight),
-                            color = c.inkMuted,
+                            style = if (senderFingerprint != null) WeshType.fingerprint.copy(fontSize = WeshType.caption.fontSize, lineHeight = WeshType.caption.lineHeight) else WeshType.caption,
+                            color = if (senderFingerprint != null) c.inkMuted else c.warning,
                             maxLines = 1,
                             modifier = Modifier.padding(start = WeshSpace.s1, bottom = WeshSpace.s1),
                         )
