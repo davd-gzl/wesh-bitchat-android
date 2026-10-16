@@ -79,15 +79,20 @@ fun PublicRoomCard(
     }
 }
 
-/** A verified contact: nickname, verified badge, last message preview (never a status in its place). */
+/**
+ * A contact: nickname, verification badge, last message preview (never a status in its place).
+ *
+ * @param verified the real QR verification state of this contact. Deliberately has no default,
+ * so no call site can show the verified badge without stating it.
+ */
 @Composable
 fun ContactRow(
     nickname: String,
+    verified: Boolean,
     lastMessage: String?,
     time: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    verified: Boolean = true,
 ) {
     val c = WeshPave.colors
     InboxRowFrame(
@@ -175,8 +180,9 @@ private fun InboxRowPreview() = PavePreview {
     Column(verticalArrangement = Arrangement.spacedBy(WeshSpace.s2)) {
         PublicRoomCard(7, "Point d’eau ouvert au coin de la place.", "18:01", {})
         InboxSectionTitle("Contacts")
-        ContactRow("Nora", "Oui, j’arrive par la rue de la Paix.", "17:53", {})
-        ContactRow("Sami", null, "hier", {})
+        ContactRow("Nora", verified = true, lastMessage = "Oui, j’arrive par la rue de la Paix.", time = "17:53", onClick = {})
+        ContactRow("Sami", verified = true, lastMessage = null, time = "hier", onClick = {})
+        ContactRow("Inès", verified = false, lastMessage = "À tout à l’heure.", time = "16:20", onClick = {})
         InboxSectionTitle("Demandes")
         RequestRow("Léo 17", 1, "18:02", {})
     }
