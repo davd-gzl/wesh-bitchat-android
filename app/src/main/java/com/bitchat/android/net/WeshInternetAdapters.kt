@@ -10,38 +10,54 @@ import com.bitchat.android.nostr.NostrRelayManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 /** Arti behind [WeshInternetMode]. TorPreferenceManager only ever mirrors the Wesh toggle. */
-internal class ArtiTorControl(private val app: Application) : WeshTorControl {
-    private val manager: ArtiTorManager get() = ArtiTorManager.getInstance()
-
-    override val progress: Flow<Pair<Int, Boolean>> =
-        ArtiTorManager.getInstance().statusFlow.map { it.bootstrapPercent to manager.isProxyEnabled() }
+internal class ArtiTorControl(
+    private val app: Application,
+    private val status: StateFlow<ArtiTorManager.TorStatus> = ArtiTorManager.getInstance().statusFlow,
+    private val applyOff: suspend () -> Unit = { ArtiTorManager.getInstance().applyMode(app, TorMode.OFF) },
+    private val stopTimeoutMs: Long = STOP_TIMEOUT_MS
+) : WeshTorControl {
+    override val progress: Flow<Pair<Int, Boolean>> = status.map { it.bootstrapPercent to it.isReady() }
 
     override fun start() {
         TorPreferenceManager.set(app, TorMode.ON)
-        manager.init(app)
+        ArtiTorManager.getInstance().init(app)
     }
 
     override fun stop() {
         TorPreferenceManager.set(app, TorMode.OFF)
     }
 
+    /** Always stops Arti and waits for it; a timeout keeps the state on disk and reports false. */
     override suspend fun stopAndWipe(): Boolean {
         stop()
-        val status = manager.statusFlow.value
-        if (status.mode != TorMode.OFF || status.running || status.state != ArtiTorManager.TorState.OFF) {
-            manager.applyMode(app, TorMode.OFF)
-        }
+        val stopped = withTimeoutOrNull(stopTimeoutMs) {
+            applyOff()
+            status.first { it.state == ArtiTorManager.TorState.OFF && !it.running }
+        } != null
         OkHttpProvider.reset()
-        return withContext(Dispatchers.IO) { artiDirectory(app).let { it.deleteRecursively() && !it.exists() } }
+        if (!stopped) return false
+        return withContext(Dispatchers.IO) {
+            val dir = artiDirectory(app)
+            dir.deleteRecursively() && !dir.exists()
+        }
     }
 
+    private fun ArtiTorManager.TorStatus.isReady(): Boolean =
+        mode == TorMode.ON && running && bootstrapPercent >= 100 && state == ArtiTorManager.TorState.RUNNING
+
     companion object {
+        /** Above ArtiTorManager's own 7 s stop wait. */
+        const val STOP_TIMEOUT_MS = 15_000L
+
         /** ArtiProxy keeps its `cache` and `state` directories here. */
         fun artiDirectory(context: Context): File = File(context.filesDir, "arti")
     }

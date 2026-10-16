@@ -30,6 +30,15 @@ fun interface WeshNetworkGate {
     fun allowsNetwork(): Boolean
 }
 
+/**
+ * Process-wide gate read by OkHttpProvider and NostrRelayManager before any socket, REQ or
+ * EVENT. Closed until [WeshInternetMode.get] installs the runtime opt-in at startup.
+ */
+object WeshNetworkPolicy {
+    @Volatile internal var gate: WeshNetworkGate = WeshNetworkGate { false }
+    fun allowsNetwork(): Boolean = runCatching { gate.allowsNetwork() }.getOrDefault(false)
+}
+
 /** Inputs the state machine observes; pure data so transitions are testable. */
 internal data class WeshInternetInputs(
     val network: Boolean = true,
@@ -117,6 +126,8 @@ class WeshInternetMode internal constructor(
     /** Product policy: false keeps Internet impossible whatever the toggle says. */
     private val internetAvailable: () -> Boolean,
     private val scope: CoroutineScope,
+    /** Creates my Nostr key on opt-in; the QR path only ever reads it. */
+    private val ensureNostrIdentity: () -> Unit = {},
     private val stallMs: Long = STALL_MS
 ) : WeshNetworkGate {
     private val lock = Any()
@@ -168,6 +179,7 @@ class WeshInternetMode internal constructor(
         if (fenced || !internetAvailable() || !disclosureAccepted) return false
         if (_enabled.value) return true
         persistEnabled(true)
+        runCatching(ensureNostrIdentity)
         tor.start()
         apply(WeshInternetMachine.Event.Enable)
         true
@@ -188,17 +200,22 @@ class WeshInternetMode internal constructor(
     }
 
     /**
-     * Panic: Internet off and persisted off, relays cleared without reconnecting, Tor stopped
-     * and its state deleted, Nostr keys erased. True only when each step is confirmed.
+     * Panic: Internet off and persisted off, disclosure forgotten, relays cleared without
+     * reconnecting, Tor stopped and its state deleted, Nostr keys erased. True only when each
+     * step is confirmed; otherwise the fence stays up so nothing can re-enable Internet.
      */
     suspend fun panicReset(): Boolean {
         fenceForPanic()
         val relaysCleared = runCatching { relays.clearOnPanic(); relays.disconnect() }.isSuccess
         val torWiped = runCatching { tor.stopAndWipe() }.getOrDefault(false)
         val keysWiped = runCatching { wipeNostrKeys() }.getOrDefault(false)
-        val persisted = prefs.edit().putBoolean(KEY_ENABLED, false).commit()
-        synchronized(lock) { fenced = false }
-        return relaysCleared && torWiped && keysWiped && persisted
+        val persisted = runCatching {
+            prefs.edit(commit = true) { putBoolean(KEY_ENABLED, false); remove(KEY_DISCLOSURE) }
+            !prefs.getBoolean(KEY_ENABLED, false) && !prefs.contains(KEY_DISCLOSURE)
+        }.getOrDefault(false)
+        val cleared = relaysCleared && torWiped && keysWiped && persisted
+        if (cleared) synchronized(lock) { fenced = false }
+        return cleared
     }
 
     private fun persistEnabled(value: Boolean) {
@@ -275,8 +292,12 @@ class WeshInternetMode internal constructor(
                     wipeNostrKeys = { wipeNostrKeys(app) },
                     // Task #1 replaces this with the product Internet flag; until then nothing changes.
                     internetAvailable = { !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY },
-                    scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-                ).also { instance = it }
+                    scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                    ensureNostrIdentity = { com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(app) }
+                ).also {
+                    instance = it
+                    WeshNetworkPolicy.gate = it
+                }
             }
         }
     }

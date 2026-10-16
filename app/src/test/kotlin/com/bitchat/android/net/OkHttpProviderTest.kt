@@ -2,6 +2,7 @@ package com.bitchat.android.net
 
 import okhttp3.Request
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertThrows
@@ -21,9 +22,15 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 class OkHttpProviderTest {
     private val original = OkHttpProvider.socksAddressProvider
+    private val originalGate = OkHttpProvider.networkAllowed
+
+    @Before fun openGate() {
+        OkHttpProvider.networkAllowed = { true }
+    }
 
     @After fun restore() {
         OkHttpProvider.socksAddressProvider = original
+        OkHttpProvider.networkAllowed = originalGate
         OkHttpProvider.reset()
     }
 
@@ -44,6 +51,21 @@ class OkHttpProviderTest {
         assertEquals(OkHttpProvider.Route.TOR, routed.route)
         assertEquals(Proxy(Proxy.Type.SOCKS, socks), routed.client.proxy)
         assertEquals(Proxy(Proxy.Type.SOCKS, socks), OkHttpProvider.webSocketClient().proxy)
+    }
+
+    @Test
+    fun `Internet mode off refuses every client, including one cached while it was on`() {
+        OkHttpProvider.socksAddressProvider = { InetSocketAddress(InetAddress.getLoopbackAddress(), 9060) }
+        OkHttpProvider.reset()
+        OkHttpProvider.routedHttpClient()
+        OkHttpProvider.webSocketClient()
+        OkHttpProvider.networkAllowed = { false }
+        assertThrows(TorRequiredException::class.java) { OkHttpProvider.routedHttpClient() }
+        assertThrows(TorRequiredException::class.java) { OkHttpProvider.webSocketClient() }
+        // The production default reads the process gate, which is closed until startup installs it.
+        OkHttpProvider.networkAllowed = originalGate
+        WeshNetworkPolicy.gate = WeshNetworkGate { false }
+        assertThrows(TorRequiredException::class.java) { OkHttpProvider.httpClient() }
     }
 
     @Test

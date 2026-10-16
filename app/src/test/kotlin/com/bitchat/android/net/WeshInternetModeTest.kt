@@ -50,16 +50,18 @@ class WeshInternetModeTest {
     private lateinit var relays: FakeRelays
     private lateinit var network: MutableSharedFlow<Boolean>
     private var keysWiped = false
+    private var keysCreated = 0
     private var available = true
 
     @Before fun setup() {
         prefs.edit().clear().commit()
         scope = TestScope()
         tor = FakeTor(); relays = FakeRelays(); network = MutableSharedFlow(replay = 1)
-        keysWiped = false; available = true
+        keysWiped = false; keysCreated = 0; available = true
     }
 
-    private fun mode() = WeshInternetMode(prefs, tor, relays, network, { keysWiped = true; true }, { available }, scope.backgroundScope)
+    private fun mode() = WeshInternetMode(prefs, tor, relays, network, { keysWiped = true; true }, { available }, scope.backgroundScope,
+        ensureNostrIdentity = { keysCreated++ })
 
     private fun connected(mode: WeshInternetMode) {
         prefs.edit().putBoolean(WeshInternetMode.KEY_DISCLOSURE, true).commit()
@@ -81,9 +83,20 @@ class WeshInternetModeTest {
         assertFalse(mode.setEnabled(true))
         assertFalse(prefs.getBoolean(WeshInternetMode.KEY_ENABLED, false))
         available = true
+        assertEquals(0, keysCreated)
         assertTrue(mode.setEnabled(true))
+        assertEquals("The Nostr key is created on opt-in only", 1, keysCreated)
         assertTrue(prefs.getBoolean(WeshInternetMode.KEY_ENABLED, false))
         assertTrue(mode.allowsNetwork())
+    }
+
+    @Test fun `startup installs a closed process gate and keeps Tor preference off`() {
+        val app = RuntimeEnvironment.getApplication()
+        TorPreferenceManager.set(app, TorMode.ON)
+        WeshNetworkPolicy.gate = WeshNetworkGate { true }
+        WeshInternetMode.get(app)
+        assertFalse(WeshNetworkPolicy.allowsNetwork())
+        assertEquals(TorMode.OFF, TorPreferenceManager.get(app))
     }
 
     @Test fun `relays are dialed only once Tor is ready and On needs a connected relay`() = scope.runTest {
@@ -162,6 +175,8 @@ class WeshInternetModeTest {
         assertFalse(relays.desired)
         assertTrue(tor.wiped)
         assertTrue(keysWiped)
+        assertFalse("Disclosure must be shown again after panic", prefs.contains(WeshInternetMode.KEY_DISCLOSURE))
+        assertFalse(mode.setEnabled(true))
         // Late Tor and relay callbacks after the wipe cannot bring Internet back.
         tor.status.value = 100 to true; relays.count.value = 1; runCurrent()
         assertEquals(WeshInternetState.Off, mode.state.value)
@@ -169,11 +184,19 @@ class WeshInternetModeTest {
         assertFalse(mode.allowsNetwork())
     }
 
-    @Test fun `an unconfirmed Tor wipe fails the panic`() = scope.runTest {
+    @Test fun `an unconfirmed Tor wipe fails the panic and keeps the fence up`() = scope.runTest {
         val mode = mode(); runCurrent()
+        connected(mode)
         tor.wipeResult = false
         assertFalse(mode.panicReset())
         assertEquals(WeshInternetState.Off, mode.state.value)
+        prefs.edit().putBoolean(WeshInternetMode.KEY_DISCLOSURE, true).commit()
+        assertFalse(mode.setEnabled(true))
+        assertFalse(mode.allowsNetwork())
+        tor.wipeResult = true
+        assertTrue(mode.panicReset())
+        prefs.edit().putBoolean(WeshInternetMode.KEY_DISCLOSURE, true).commit()
+        assertTrue(mode.setEnabled(true))
     }
 
     @Test fun `transition table`() {

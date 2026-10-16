@@ -252,8 +252,10 @@ class NostrRelayManager private constructor() {
 
     // --- Internal helpers ---
 
+    /** Every socket, REQ and EVENT path checks the Wesh Internet gate first. */
     private fun isNetworkActionAllowed(liveLocationToken: Long?): Boolean =
-        liveLocationToken == null || LiveLocationPrivacyGate.accepts(liveLocationToken)
+        com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork() &&
+            (liveLocationToken == null || LiveLocationPrivacyGate.accepts(liveLocationToken))
 
     private fun runNetworkAction(
         liveLocationToken: Long?,
@@ -393,6 +395,7 @@ class NostrRelayManager private constructor() {
      */
     fun connect() {
         if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) return
+        if (!com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) return
         desiredConnected.set(true)
         Log.i(TAG, "Connecting to ${relaysList.size} Nostr relays")
         scope.launch {
@@ -449,6 +452,7 @@ class NostrRelayManager private constructor() {
         relayUrls: List<String>? = null,
         liveLocationToken: Long? = null
     ) {
+        if (!com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) return
         val targetRelays = (relayUrls ?: relaysList.map { it.url })
             .filter { it.isNotBlank() }
             .distinct()
@@ -839,7 +843,7 @@ class NostrRelayManager private constructor() {
         liveLocationToken: Long? = null
     ) {
         if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) return
-        if (urlString !in WESH_PINNED_RELAYS) return
+        if (urlString !in WESH_PINNED_RELAYS || !com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) return
         if (!desiredConnected.get()) return
         val connectionToken = liveLocationToken
             ?.takeIf { urlString !in nonLiveRelayUrls }

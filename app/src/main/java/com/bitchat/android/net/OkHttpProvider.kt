@@ -9,8 +9,8 @@ import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
-/** No SOCKS address: Wesh never falls back to a direct connection. */
-class TorRequiredException : IOException("Tor is not available; direct connections are disabled")
+/** Internet mode off or no SOCKS address: Wesh never falls back to a direct connection. */
+class TorRequiredException : IOException("Internet mode is off or Tor is unavailable; direct connections are disabled")
 
 /**
  * Centralized OkHttp provider. Every client goes through Tor's SOCKS proxy; without a SOCKS
@@ -32,6 +32,8 @@ object OkHttpProvider {
     private val clientLock = Any()
 
     internal var socksAddressProvider: () -> InetSocketAddress? = { ArtiTorManager.getInstance().currentSocksAddress() }
+    /** The Wesh Internet opt-in: closed means no client at all, even with a SOCKS port. */
+    internal var networkAllowed: () -> Boolean = { WeshNetworkPolicy.allowsNetwork() }
 
     /** Host names go to Tor unresolved (SOCKS5 ATYP 0x03); a local lookup would leak them. */
     private val noLocalDns = Dns { hostname -> throw UnknownHostException("Local DNS disabled: $hostname") }
@@ -52,6 +54,8 @@ object OkHttpProvider {
      * key cooldowns by network identity must use this value rather than re-reading the preference.
      */
     fun routedHttpClient(): RoutedClient {
+        // Checked on every access: a client cached while Internet was on is not handed out after.
+        if (!networkAllowed()) throw TorRequiredException()
         httpClientRef.get()?.let { return it }
         return synchronized(clientLock) {
             httpClientRef.get() ?: run {
@@ -67,6 +71,7 @@ object OkHttpProvider {
     }
 
     fun webSocketClient(): OkHttpClient {
+        if (!networkAllowed()) throw TorRequiredException()
         wsClientRef.get()?.let { return it }
         return synchronized(clientLock) {
             wsClientRef.get() ?: baseBuilderForCurrentProxy().first
