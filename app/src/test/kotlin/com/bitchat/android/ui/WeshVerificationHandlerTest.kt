@@ -123,8 +123,11 @@ class WeshVerificationHandlerTest {
         respond(); runCurrent()
         assertTrue(store.contacts.value.isEmpty())
     }
-    private fun npubQR(npub: String): VerificationService.VerificationQR =
-        VerificationService.verifyScannedQR(VerificationService.buildMyQRString("Synthetic contact", npub)!!)!!
+    // Distinct nicknames keep the 60 s QR cache from reusing another case's code.
+    private fun npubQR(npub: String, nickname: String = "Synthetic contact", signer: ((ByteArray) -> String?)? = null): VerificationService.VerificationQR =
+        VerificationService.verifyScannedQR(VerificationService.buildMyQRString(nickname, npub, signer)!!)!!
+    // syntheticNpub encodes the generator x, the public key of the synthetic secret 1.
+    private val syntheticSigner: (ByteArray) -> String? = { com.bitchat.android.nostr.NostrCrypto.schnorrSign(it, "00".repeat(31) + "01") }
     private fun enroll(scanned: VerificationService.VerificationQR, mine: String?) {
         qr = scanned
         val context: Context = mock()
@@ -139,6 +142,30 @@ class WeshVerificationHandlerTest {
         enroll(npubQR(syntheticNpub), mine = mineNpub)
         assertEquals(syntheticNpub, store.contacts.value.single().npub)
         assertTrue(store.contacts.value.single().internetReachable)
+    }
+    @Test fun `a valid npub proof marks the claim proven and a bad one drops the npub`() = scope.runTest {
+        enroll(npubQR(syntheticNpub, "Synthetic proven", syntheticSigner), mine = mineNpub)
+        assertTrue(store.contacts.value.single().npubProven)
+        store.clear()
+        enroll(npubQR(syntheticNpub, "Synthetic bad proof") { "ab".repeat(64) }, mine = mineNpub)
+        assertNull(store.contacts.value.single().npub)
+        store.clear()
+        enroll(npubQR(syntheticNpub), mine = mineNpub)
+        assertEquals(syntheticNpub, store.contacts.value.single().npub)
+        assertFalse(store.contacts.value.single().npubProven)
+    }
+    @Test fun `with Internet mode closed my QR has no npub and enrollment binds none`() = scope.runTest {
+        com.bitchat.android.services.WeshQrIdentity.internetActive = { false }
+        val mine = com.bitchat.android.services.WeshQrIdentity.myQR(RuntimeEnvironment.getApplication(), "Synthetic contact")!!
+        assertNull(VerificationService.VerificationQR.fromUrlString(mine)!!.npub)
+        handler = VerificationHandler(mock<Context>().also {
+            whenever(it.getString(any())).thenReturn("Synthetic verification title")
+            whenever(it.getString(any(), any())).thenReturn("Synthetic verification notice")
+        }, scope, { mesh }, mock(), state(), mock(), mock(), { time })
+        qr = npubQR(syntheticNpub, "Synthetic closed", syntheticSigner)
+        assertTrue(handler.beginQRVerification(qr))
+        respond(); runCurrent()
+        assertNull(store.contacts.value.single().npub)
     }
     @Test fun `my own or unknown own npub enrolls the contact Bluetooth only`() = scope.runTest {
         enroll(npubQR(syntheticNpub), mine = syntheticNpub)

@@ -404,7 +404,21 @@ private fun WeshContactSheet(viewModel: ChatViewModel, onDismiss: () -> Unit) {
     var attemptRevision by remember { mutableIntStateOf(0) }
     var qr by remember { mutableStateOf<String?>(null) }
     val nickname by viewModel.nickname.collectAsState()
-    LaunchedEffect(nickname) { while (true) { qr = viewModel.buildMyQRString(nickname, viewModel.getCurrentNpub()); delay(60_000) } }
+    val context = LocalContext.current
+    LaunchedEffect(nickname) {
+        // Rebuild every minute, and at once when Internet mode or a panic fence changes the npub rule.
+        var shownActive: Boolean? = null
+        var builtAt = 0L
+        while (true) {
+            val active = com.bitchat.android.services.WeshQrIdentity.isActive()
+            if (active != shownActive || System.currentTimeMillis() - builtAt >= 60_000) {
+                qr = com.bitchat.android.services.WeshQrIdentity.myQR(context, nickname)
+                shownActive = active
+                builtAt = System.currentTimeMillis()
+            }
+            delay(1_000)
+        }
+    }
     val incoming by viewModel.weshIncomingQR.collectAsState()
     var reviewedLink by remember(incoming) { mutableStateOf(incoming) }
     LaunchedEffect(pendingNoise, attemptRevision) {

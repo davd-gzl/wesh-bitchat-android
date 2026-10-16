@@ -128,6 +128,11 @@ object NostrIdentityBridge {
         return newIdentity
     }
     
+    /** Read-only: the stored identity, or null. Never generates or persists key material. */
+    fun peekCurrentNostrIdentity(context: Context): NostrIdentity? = runCatching {
+        loadNostrPrivateKey(SecureIdentityStateManager(context))?.let(NostrIdentity::fromPrivateKey)
+    }.getOrNull()
+
     /**
      * Derive a deterministic, unlinkable Nostr identity for a given geohash
      * Uses HMAC-SHA256(deviceSeed, geohash) as private key material with fallback rehashing

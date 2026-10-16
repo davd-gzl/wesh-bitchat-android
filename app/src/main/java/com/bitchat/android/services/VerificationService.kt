@@ -17,6 +17,7 @@ import java.lang.ref.WeakReference
 object VerificationService {
     private const val CONTEXT = "bitchat-verify-v1"
     private const val RESPONSE_CONTEXT = "bitchat-verify-resp-v1"
+    private const val NPUB_PROOF_DOMAIN = "wesh-npub-proof-v1"
 
     private var encryptionServiceRef: WeakReference<EncryptionService>? = null
 
@@ -32,7 +33,9 @@ object VerificationService {
         val nickname: String,
         val ts: Long,
         val nonceB64: String,
-        val sigHex: String
+        val sigHex: String,
+        /** Optional Wesh proof that the npub key endorses this QR; outside the canonical bytes. */
+        val npubSigHex: String? = null
     ) {
         fun canonicalBytes(): ByteArray {
             val out = ByteArrayOutputStream()
@@ -68,6 +71,7 @@ object VerificationService {
                 .appendQueryParameter("sig", sigHex)
             if (npub != null) {
                 builder.appendQueryParameter("npub", npub)
+                npubSigHex?.let { builder.appendQueryParameter("npubsig", it) }
             }
             return builder.build().toString()
         }
@@ -79,7 +83,7 @@ object VerificationService {
                 if (uri.scheme != "bitchat" || uri.encodedAuthority != "verify" || uri.host != "verify" || !uri.isHierarchical ||
                     uri.userInfo != null || uri.port != -1 || uri.fragment != null ||
                     !uri.path.isNullOrEmpty()) return@parser null
-                val allowed = setOf("v", "noise", "sign", "nick", "ts", "nonce", "sig", "npub")
+                val allowed = setOf("v", "noise", "sign", "nick", "ts", "nonce", "sig", "npub", "npubsig")
                 if (uri.queryParameterNames.any { it !in allowed || uri.getQueryParameters(it).size != 1 }) return@parser null
 
                 val vStr = uri.getQueryParameter("v") ?: return@parser null
@@ -92,11 +96,14 @@ object VerificationService {
                 val nonce = uri.getQueryParameter("nonce") ?: return@parser null
                 val sig = uri.getQueryParameter("sig") ?: return@parser null
                 val npub = uri.getQueryParameter("npub")
+                // A malformed proof is kept so enrollment treats it as a failed proof.
+                val npubSig = uri.getQueryParameter("npubsig")
 
                 if (v != 1 || !noise.matches(Regex("[0-9a-fA-F]{64}")) ||
                     !sign.matches(Regex("[0-9a-fA-F]{64}")) || !sig.matches(Regex("[0-9a-fA-F]{128}")) ||
                     nick.toByteArray(Charsets.UTF_8).size > 255 ||
-                    (npub?.toByteArray(Charsets.UTF_8)?.size ?: 0) > 255 || ts <= 0 ||
+                    (npub?.toByteArray(Charsets.UTF_8)?.size ?: 0) > 255 ||
+                    (npubSig?.toByteArray(Charsets.UTF_8)?.size ?: 0) > 255 || ts <= 0 ||
                     !nonce.matches(Regex("[A-Za-z0-9_-]{22}"))) return@parser null
                 val decoded = runCatching { Base64.decode(nonce, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING) }.getOrNull() ?: return@parser null
                 if (decoded.size != 16 || Base64.encodeToString(decoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING) != nonce) return@parser null
@@ -109,18 +116,38 @@ object VerificationService {
                     nickname = nick,
                     ts = ts,
                     nonceB64 = nonce,
-                    sigHex = sig
+                    sigHex = sig,
+                    npubSigHex = npubSig
                 )
             }.getOrNull()
         }
     }
 
-    fun buildMyQRString(nickname: String, npub: String?): String? {
+    /** BIP-340 message for the npub proof: SHA-256(domain || canonical bytes). */
+    fun npubProofMessage(qr: VerificationQR): ByteArray = java.security.MessageDigest.getInstance("SHA-256").run {
+        update(NPUB_PROOF_DOMAIN.toByteArray(Charsets.UTF_8))
+        digest(qr.canonicalBytes())
+    }
+
+    /** True only for a well-formed proof made by the key the npub encodes. */
+    fun hasValidNpubProof(qr: VerificationQR): Boolean = runCatching {
+        val npub = qr.npub ?: return false
+        val sig = qr.npubSigHex ?: return false
+        if (!sig.matches(Regex("[0-9a-f]{128}")) || !WeshNpubPolicy.isValid(npub)) return false
+        val key = com.bitchat.android.nostr.Bech32.decode(npub).second.hexEncodedString()
+        com.bitchat.android.nostr.NostrCrypto.schnorrVerify(npubProofMessage(qr), sig, key)
+    }.getOrDefault(false)
+
+    /**
+     * [npubSigner] signs the npub proof message with the npub's secret key. Without a signer the
+     * npub is unproven (BitChat behavior). A failed signature builds no QR; callers drop the npub.
+     */
+    fun buildMyQRString(nickname: String, npub: String?, npubSigner: ((ByteArray) -> String?)? = null): String? {
         val service = encryptionServiceRef?.get() ?: return null
         val noiseKey = service.getStaticPublicKey()?.hexEncodedString() ?: return null
         val signKey = service.getSigningPublicKey()?.hexEncodedString() ?: return null
         val cache = Cache.last
-        if (cache != null && cache.nickname == nickname && cache.npub == npub && VerificationQR.fromUrlString(cache.value)?.let { it.noiseKeyHex == noiseKey && it.signKeyHex == signKey } == true) {
+        if (cache != null && cache.nickname == nickname && cache.npub == npub && cache.proven == (npubSigner != null) && VerificationQR.fromUrlString(cache.value)?.let { it.noiseKeyHex == noiseKey && it.signKeyHex == signKey } == true) {
             if (System.currentTimeMillis() - cache.builtAtMs < 60_000L) {
                 return cache.value
             }
@@ -146,9 +173,12 @@ object VerificationService {
         )
 
         val signature = service.signData(payload.canonicalBytes()) ?: return null
-        val signed = payload.copy(sigHex = signature.hexEncodedString())
+        val signed = payload.copy(sigHex = signature.hexEncodedString()).let { qr ->
+            if (npub == null || npubSigner == null) qr
+            else qr.copy(npubSigHex = npubSigner(npubProofMessage(qr)) ?: return null)
+        }
         val out = signed.toUrlString()
-        Cache.last = CacheEntry(nickname, npub, System.currentTimeMillis(), out)
+        Cache.last = CacheEntry(nickname, npub, npubSigner != null, System.currentTimeMillis(), out)
         return out
     }
 
@@ -293,6 +323,7 @@ object VerificationService {
     private data class CacheEntry(
         val nickname: String,
         val npub: String?,
+        val proven: Boolean,
         val builtAtMs: Long,
         val value: String
     )

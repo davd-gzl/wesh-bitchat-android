@@ -53,6 +53,23 @@ class SharedSignedQRNpubInteropTest {
         assertNull(VerificationService.verifyScannedQR(url.substringBefore("&npub=")))
     }
 
+    @Test fun sharedNpubProofVerifiesAndLeavesTheSignedPayloadUnchanged() {
+        val proof = javaClass.classLoader!!.getResourceAsStream("fixtures/wesh-signed-qr-v1-npub-proof.json")!!.use {
+            JSONObject(it.bufferedReader(Charsets.UTF_8).readText())
+        }
+        val url = proof.getString("url")
+        val parsed = VerificationService.verifyScannedQR(url)!!
+        assertEquals(fixture.getString("canonicalHex"), parsed.canonicalBytes().hex())
+        assertEquals(proof.getString("npubSigHex"), parsed.npubSigHex)
+        assertEquals(proof.getString("npubProofMessageHex"), VerificationService.npubProofMessage(parsed).hex())
+        assertTrue(VerificationService.hasValidNpubProof(parsed))
+        assertEquals(url, parsed.toUrlString())
+        // The fixture URL without the proof is exactly the unproven npub fixture.
+        assertEquals(fixture.getString("url"), url.substringBefore("&npubsig="))
+        val fresh = NostrCrypto.schnorrSign(VerificationService.npubProofMessage(parsed), proof.getString("nostrSecretHex"))
+        assertTrue(VerificationService.hasValidNpubProof(parsed.copy(npubSigHex = fresh)))
+    }
+
     @Test fun fixtureNpubIsTheEncodedPublicSyntheticNostrKeyAndPassesEnrollment() {
         val xOnly = NostrCrypto.derivePublicKey(fixture.getString("nostrSecretHex"))
         assertEquals(fixture.getString("nostrXOnlyPublicKeyHex"), xOnly)

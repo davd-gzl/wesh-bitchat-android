@@ -33,9 +33,8 @@ class VerificationHandler(
     private val notificationManager: NotificationManager,
     private val messageManager: MessageManager,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
-    private val ownNpub: () -> String? = {
-        runCatching { com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(context)?.npub }.getOrNull()
-    }
+    /** Read-only and null while Internet mode is off or fenced: enrollment never creates keys. */
+    private val ownNpub: () -> String? = { com.bitchat.android.services.WeshQrIdentity.mine(context)?.npub }
 ) {
     // Helper to get current mesh service (may change after panic clear)
     private val meshService: MeshService
@@ -90,7 +89,8 @@ class VerificationHandler(
         }
         val nonce = ByteArray(16)
         java.security.SecureRandom().nextBytes(nonce)
-        val pending = PendingVerification(qr.noiseKeyHex, qr.signKeyHex, nonce, nowMs(), false, qr.nickname, qr.npub)
+        val npubProof = qr.npubSigHex?.let { VerificationService.hasValidNpubProof(qr) }
+        val pending = PendingVerification(qr.noiseKeyHex, qr.signKeyHex, nonce, nowMs(), false, qr.nickname, qr.npub, npubProof)
         pendingQRVerifications[peerID] = pending
 
         if (meshService.getSessionState(peerID) is NoiseSession.NoiseSessionState.Established) {
@@ -159,8 +159,8 @@ class VerificationHandler(
             pendingQRVerifications.remove(peerID)
             val fp = fingerprintFromNoiseHex(pending.noiseKeyHex) ?: return@launch
             // The QR signature covers the npub and this response proves the signer holds the Noise session.
-            val npub = com.bitchat.android.services.WeshNpubPolicy.acceptedNpub(pending.npub, ownNpub(), contacts.contacts.value, pending.noiseKeyHex)
-            contacts.record(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname, npub)
+            val claim = com.bitchat.android.services.WeshNpubPolicy.accept(pending.npub, pending.npubProof, ownNpub(), contacts.contacts.value, pending.noiseKeyHex)
+            contacts.record(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname, claim)
             completedAttempts[pending.noiseKeyHex.lowercase()] = nowMs()
             identityManager.setVerifiedFingerprint(fp, true)
             val current = _verifiedFingerprints.value.toMutableSet()
@@ -373,7 +373,9 @@ class VerificationHandler(
         val startedAtMs: Long,
         val sent: Boolean,
         val nickname: String,
-        val npub: String? = null
+        val npub: String?,
+        /** null: no proof in the QR; else whether it verified. */
+        val npubProof: Boolean?
     ) {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
