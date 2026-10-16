@@ -1,5 +1,7 @@
 package com.bitchat.android.ui
 
+import com.bitchat.android.util.booleanOr
+import com.bitchat.android.util.stringOr
 import android.content.Context
 import android.content.SharedPreferences
 import kotlinx.coroutines.CancellationException
@@ -79,7 +81,7 @@ internal class WeshPreferences(
         /** Notifications show no sender unless the person explicitly opted in on this phone. */
         fun notificationShowsSender(context: Context): Boolean =
             context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-                .getBoolean(NOTIFICATION_SENDER, false)
+                .booleanOr(NOTIFICATION_SENDER, false)
     }
 
     private val lock = Any()
@@ -89,32 +91,38 @@ internal class WeshPreferences(
     private data class MeetingSnapshot(val text: String, val epoch: Long, val revision: Long)
     private val _resetEpoch = MutableStateFlow(0L)
     val resetEpoch = _resetEpoch.asStateFlow()
-    private val _meetingDraft = MutableStateFlow(prefs.getString("meeting_note", "") ?: "")
+    private val _meetingDraft = MutableStateFlow(prefs.stringOr("meeting_note", "") ?: "")
     val meetingDraft = _meetingDraft.asStateFlow()
 
     var publicMuted: Boolean
-        get() = prefs.getBoolean("public_muted", false)
+        get() = prefs.booleanOr("public_muted", false)
         set(value) {
             synchronized(lock) { if (!fenced) prefs.edit { putBoolean("public_muted", value) } }
         }
     var publicDisclosureAccepted: Boolean
-        get() = prefs.getBoolean("public_disclosure", false)
+        get() = prefs.booleanOr("public_disclosure", false)
         set(value) {
             synchronized(lock) { if (!fenced) prefs.edit { putBoolean("public_disclosure", value) } }
         }
     var notificationShowsSender: Boolean
-        get() = prefs.getBoolean(NOTIFICATION_SENDER, false)
+        get() = prefs.booleanOr(NOTIFICATION_SENDER, false)
         set(value) {
             synchronized(lock) { if (!fenced) prefs.edit { putBoolean(NOTIFICATION_SENDER, value) } }
         }
+    /** True once the Pavé welcome was completed on this phone (cleared by an erase). */
+    var welcomed: Boolean
+        get() = prefs.getBoolean("welcomed", false)
+        set(value) {
+            synchronized(lock) { if (!fenced) prefs.edit { putBoolean("welcomed", value) } }
+        }
     /** Pavé appearance name ("Nuit", "Jour", "Automatique"); Nuit when unset or after an erase. */
     var appearance: String
-        get() = prefs.getString("appearance", "Nuit") ?: "Nuit"
+        get() = prefs.stringOr("appearance", "Nuit") ?: "Nuit"
         set(value) {
             synchronized(lock) { if (!fenced) prefs.edit { putString("appearance", value) } }
         }
     val meetingNote: String
-        get() = prefs.getString("meeting_note", "") ?: ""
+        get() = prefs.stringOr("meeting_note", "") ?: ""
 
     fun editMeetingDraft(value: String, expectedEpoch: Long): Boolean = synchronized(lock) {
         if (fenced || expectedEpoch != _resetEpoch.value) return@synchronized false
@@ -134,7 +142,7 @@ internal class WeshPreferences(
                 try {
                     // Retry the actual commit even when a failed prior commit changed the RAM cache.
                     val committed = commitEditor(prefs.edit().putString("meeting_note", snapshot.text))
-                    committed && prefs.getString("meeting_note", null) == snapshot.text && isCurrent(snapshot)
+                    committed && prefs.stringOr("meeting_note", null) == snapshot.text && isCurrent(snapshot)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
