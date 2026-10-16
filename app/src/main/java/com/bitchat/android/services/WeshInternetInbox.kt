@@ -43,7 +43,6 @@ internal class WeshInternetInbox(
     private val seen = LinkedHashSet<String>()
 
     suspend fun onGiftWrap(event: NostrEvent): Outcome {
-        if (!firstSight(event.id)) return Outcome.DROPPED
         val identity = myIdentity() ?: return Outcome.DROPPED
         val (content, rawSender, rumorSeconds) = runCatching { NostrProtocol.decryptPrivateMessage(event, identity) }
             .getOrNull() ?: return Outcome.DROPPED
@@ -52,6 +51,9 @@ internal class WeshInternetInbox(
         val contact = runCatching { contacts.forNpub(senderNpub) }.getOrNull()
             ?.takeIf { it.deliveryNpub == senderNpub && !contacts.isBlocked(it.key) }
             ?: return Outcome.DROPPED
+        // Recorded only once the sealed sender is a QR contact, so strangers cannot evict entries.
+        // Message IDs are deduplicated durably by the store; this only saves repeated work and acks.
+        if (!firstSight(event.id)) return Outcome.DROPPED
         val payload = decodePayload(content) ?: return Outcome.DROPPED
         val conversationID = contact.conversationID
         return when (payload.type) {
