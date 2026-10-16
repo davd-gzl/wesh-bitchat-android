@@ -85,7 +85,9 @@ class MainActivity : OrientationAwareActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         routeGate.pending = savedInstanceState?.getBoolean("wesh_pending_route", true) ?: true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        if (BuildConfig.WESH_LOCAL_ONLY) {
+            com.bitchat.android.ui.WeshWindowPrivacy.apply(this)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             this.setRecentsScreenshotEnabled(false)
         }
         // Register receiver for force finish signal from shutdown coordinator
@@ -162,10 +164,13 @@ class MainActivity : OrientationAwareActivity() {
                         val startup by com.bitchat.android.startup.WeshRuntime.get(applicationContext).state.collectAsState()
                         val draftWipeRequired by com.bitchat.android.startup.WeshRuntime.draftWipeRequired.collectAsState()
                         val panicRecovery by com.bitchat.android.startup.WeshRuntime.recoveryState.collectAsState()
+                        val startupFailures by com.bitchat.android.startup.WeshRuntime.get(applicationContext).failures.collectAsState()
                         com.bitchat.android.startup.StartupScreen(
                             draftWipeRequired = draftWipeRequired,
                             recovery = panicRecovery,
                             onEraseAll = { com.bitchat.android.startup.WeshRuntime.clearInterruptedPanic(applicationContext) },
+                            offerIdentityReset = com.bitchat.android.startup.StartupRecoveryPolicy.offersIdentityReset(startupFailures, startup, draftWipeRequired),
+                            onResetIdentity = { com.bitchat.android.startup.WeshRuntime.resetIdentityAfterFailures(applicationContext) },
                             failed = startup is com.bitchat.android.startup.StartupCoordinator.State.Failed,
                             onRetry = {
                                 com.bitchat.android.startup.WeshRuntime.get(applicationContext).start(retry = true)
@@ -863,11 +868,7 @@ class MainActivity : OrientationAwareActivity() {
         when {
             shouldOpenPrivateChat -> {
                 val peerID = intent.getStringExtra(com.bitchat.android.ui.NotificationManager.EXTRA_PEER_ID)
-                val senderNickname = intent.getStringExtra(com.bitchat.android.ui.NotificationManager.EXTRA_SENDER_NICKNAME)
-                
                 if (peerID != null) {
-                    Log.d("MainActivity", "Opening private chat with $senderNickname (peerID: $peerID) from notification")
-                    
                     // Open the private chat sheet with this peer
                     if (BuildConfig.WESH_LOCAL_ONLY) lifecycleScope.launch { chatViewModel.startPrivateChat(peerID) }
                     else { chatViewModel.showMeshPeerList(); chatViewModel.showPrivateChatSheet(peerID) }

@@ -24,7 +24,11 @@ sealed class AnnounceHandlingResult {
  * Handles processing of different message types
  * Extracted from BluetoothMeshService for better separation of concerns
  */
-class MessageHandler(private val myPeerID: String, private val appContext: android.content.Context) {
+class MessageHandler(
+    private val myPeerID: String,
+    private val appContext: android.content.Context,
+    internal val publicBudget: PublicInboundBudget = PublicInboundBudget()
+) {
     
     companion object {
         private const val TAG = "MessageHandler"
@@ -34,6 +38,31 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
 
     // Delegate for callbacks
     var delegate: MessageHandlerDelegate? = null
+
+    /**
+     * When false, incoming files are never written to storage; the conversation only receives a
+     * typed placeholder with empty content.
+     */
+    var acceptIncomingMedia: Boolean = true
+
+    /** When false, unencrypted directed text is dropped: private messages travel only over Noise. */
+    var acceptDirectedPlaintext: Boolean = true
+
+    /** When false, favorite control notices are ignored and never acknowledged. */
+    var acceptFavoriteNotices: Boolean = true
+
+    /** Wesh accepts no incoming media, plaintext private text or favorite notices, on any transport. */
+    fun applyInboundPolicy(weshLocalOnly: Boolean) {
+        acceptIncomingMedia = !weshLocalOnly
+        acceptDirectedPlaintext = !weshLocalOnly
+        acceptFavoriteNotices = !weshLocalOnly
+    }
+
+    private fun storeIncomingFile(file: com.bitchat.android.model.BitchatFilePacket): String =
+        if (acceptIncomingMedia) com.bitchat.android.features.file.FileUtils.saveIncomingFile(appContext, file) else ""
+
+    private fun absorbVoiceNote(message: BitchatMessage): Boolean =
+        acceptIncomingMedia && LiveVoiceManager.getInstance(appContext).absorbFinalizedVoiceNote(message)
 
     // Reference to PacketProcessor for recursive packet handling
     var packetProcessor: PacketProcessor? = null
@@ -95,6 +124,8 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                         // Handle favorite/unfavorite notifications embedded as PMs
                         val pmContent = privateMessage.content
                         if (FavoriteControlMessage.parse(pmContent) != null) {
+                            // Wesh has no favorites: never act on or acknowledge these notices.
+                            if (!acceptFavoriteNotices) return true
                             handleFavoriteNotificationFromMesh(pmContent, peerID)
                             // Acknowledge delivery for UX parity
                             sendDeliveryAck(privateMessage.messageID, peerID)
@@ -115,11 +146,10 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                             mentions = null
                         )
                         
-                        // Notify delegate
-                        delegate?.onMessageReceived(message)
-                        
-                        // Send delivery ACK exactly like iOS
-                        sendDeliveryAck(privateMessage.messageID, peerID)
+                        // Acknowledge only what admission accepted (QR-enrolled sender in Wesh).
+                        if (delegate?.onPrivateMessageReceived(message) == true) {
+                            sendDeliveryAck(privateMessage.messageID, peerID)
+                        }
                     }
                 }
                 
@@ -129,7 +159,7 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                     if (file != null) {
                         Log.d(TAG, "Encrypted file from $peerID: ${file.fileSize} bytes")
                         val uniqueMsgId = java.util.UUID.randomUUID().toString().uppercase()
-                        val savedPath = com.bitchat.android.features.file.FileUtils.saveIncomingFile(appContext, file)
+                        val savedPath = storeIncomingFile(file)
                         val message = BitchatMessage(
                             id = uniqueMsgId,
                             sender = delegate?.getPeerNickname(peerID) ?: "Unknown",
@@ -142,18 +172,17 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                             senderPeerID = peerID
                         )
 
-                        if (!LiveVoiceManager.getInstance(appContext).absorbFinalizedVoiceNote(message)) {
-                            delegate?.onMessageReceived(message)
-                        }
-
-                        // Send delivery ACK with generated message ID
-                        sendDeliveryAck(uniqueMsgId, peerID)
+                        val admitted = absorbVoiceNote(message) || delegate?.onPrivateMessageReceived(message) == true
+                        // Send delivery ACK with generated message ID, only once admitted
+                        if (admitted) sendDeliveryAck(uniqueMsgId, peerID)
                     } else {
                         Log.w(TAG, "Failed to decode encrypted file transfer from $peerID")
                     }
                 }
 
                 com.bitchat.android.model.NoisePayloadType.VOICE_FRAME -> {
+                    // Wesh has no voice: drop before any assembly, file or state.
+                    if (!acceptIncomingMedia) return true
                     return LiveVoiceManager.getInstance(appContext).handleFrame(
                         peerID = peerID,
                         nickname = delegate?.getPeerNickname(peerID) ?: peerID,
@@ -355,7 +384,6 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                 .updateFromAnnouncement(peerID, nickname, neighborsOrNull, packet.timestamp)
         } catch (_: Exception) { }
 
-        Log.d(TAG, "Verified announce from $peerID (${announcement.nickname})")
         return AnnounceHandlingResult.Accepted(isFirstAnnounce)
     }
     
@@ -404,13 +432,16 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
     /**
      * Handle broadcast or private message
      */
-    suspend fun handleMessage(routed: RoutedPacket) {
+    /**
+     * Returns false only when a public message was dropped by the inbound budget, so the caller
+     * does not mark it seen for gossip and it can be fetched again later.
+     */
+    suspend fun handleMessage(routed: RoutedPacket): Boolean {
         val packet = routed.packet
         val peerID = routed.peerID ?: "unknown"
-        if (peerID == myPeerID) return
+        if (peerID == myPeerID) return true
         val senderNickname = delegate?.getPeerNickname(peerID)
         if (senderNickname != null) {
-            Log.d(TAG, "Received message from $senderNickname")
             delegate?.updatePeerNickname(peerID, senderNickname)
         }
         
@@ -418,16 +449,18 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
         
         if (recipientID == null) {
             // BROADCAST MESSAGE
-            handleBroadcastMessage(routed)
+            return handleBroadcastMessage(routed)
         } else if (recipientID.toHexString() == myPeerID) {
             // PRIVATE MESSAGE FOR US
             handlePrivateMessage(packet, peerID)
         }
         // Message relay is now handled by centralized PacketRelayManager
+        return true
     }
 
     /** Validate and ingest an ephemeral public push-to-talk frame. */
     fun handlePublicVoiceFrame(routed: RoutedPacket): Boolean {
+        if (!acceptIncomingMedia) return false
         val packet = routed.packet
         val peerID = routed.peerID ?: return false
         if (peerID == myPeerID) return true
@@ -450,7 +483,7 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
     /**
      * Handle broadcast message with verification enforcement
      */
-    private suspend fun handleBroadcastMessage(routed: RoutedPacket) {
+    private suspend fun handleBroadcastMessage(routed: RoutedPacket): Boolean {
         val packet = routed.packet
         val peerID = routed.peerID ?: "unknown"
         
@@ -458,8 +491,13 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
         val peerInfo = delegate?.getPeerInfo(peerID)
         if (peerInfo == null || !peerInfo.isVerifiedNickname) {
             Log.w(TAG, "Dropping public message from unverified peer ${peerID.take(8)}")
-            return
+            return true
         }
+        // Only a Noise-authenticated key may name a long-lived budget; an announce can claim any key.
+        val budgetKey = delegate?.getAuthenticatedRemoteStaticKey(peerID)?.takeIf { it.size == 32 }
+        val budgetSource = budgetKey?.let { "noise:" + it.toHexString() }
+        val enrolledContact = budgetKey?.let { delegate?.isEnrolledContactKey(it) } == true
+        if (!publicBudget.tryAdmit(budgetSource, routed.ingressLinkID ?: routed.relayAddress, peerID, enrolledContact)) return false
         
         try {
             // Try file packet first (voice, image, etc.) and log outcome for FILE_TRANSFER
@@ -467,7 +505,7 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
             val file = com.bitchat.android.model.BitchatFilePacket.decode(packet.payload)
             if (file != null) {
 
-                val savedPath = com.bitchat.android.features.file.FileUtils.saveIncomingFile(appContext, file)
+                val savedPath = storeIncomingFile(file)
                 val message = BitchatMessage(
                     id = PacketIdUtil.computeIdHex(packet).uppercase(),
                     sender = delegate?.getPeerNickname(peerID) ?: "unknown",
@@ -476,15 +514,19 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                     senderPeerID = peerID,
                     timestamp = Date(packet.timestamp.toLong())
                 )
-                if (!LiveVoiceManager.getInstance(appContext).absorbFinalizedVoiceNote(message)) {
+                if (!absorbVoiceNote(message)) {
                     delegate?.onMessageReceived(message)
                 }
-                return
+                return true
             } else if (isFileTransfer) {
                 Log.w(TAG, "FILE_TRANSFER decode failed (broadcast) from ${peerID.take(8)}")
             }
 
-            // Fallback: plain text
+            // Fallback: plain text, bounded like outgoing Wesh public text.
+            if (packet.payload.size > PublicInboundBudget.MAX_PUBLIC_TEXT_BYTES) {
+                publicBudget.recordDrop()
+                return true
+            }
             val message = BitchatMessage(
                 id = PacketIdUtil.computeIdHex(packet).uppercase(),
                 sender = delegate?.getPeerNickname(peerID) ?: "unknown",
@@ -496,11 +538,9 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
         } catch (e: Exception) {
             Log.e(TAG, "Failed to process broadcast message: ${e.message}")
         }
+        return true
     }
     
-    /**
-     * Handle (decrypted) private message addressed to us
-     */
     private suspend fun handlePrivateMessage(packet: BitchatPacket, peerID: String) {
         try {
             val isFileTransfer = com.bitchat.android.protocol.MessageType.fromValue(packet.type) ==
@@ -526,7 +566,7 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
             val file = com.bitchat.android.model.BitchatFilePacket.decode(packet.payload)
             if (file != null) {
 
-                val savedPath = com.bitchat.android.features.file.FileUtils.saveIncomingFile(appContext, file)
+                val savedPath = storeIncomingFile(file)
                 val message = BitchatMessage(
                     id = java.util.UUID.randomUUID().toString().uppercase(),
                     sender = delegate?.getPeerNickname(peerID) ?: "unknown",
@@ -537,8 +577,7 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                     isPrivate = true,
                     recipientNickname = delegate?.getMyNickname()
                 )
-                Log.d(TAG, "📄 Saved incoming file to $savedPath")
-                if (!LiveVoiceManager.getInstance(appContext).absorbFinalizedVoiceNote(message)) {
+                if (!absorbVoiceNote(message)) {
                     delegate?.onMessageReceived(message)
                 }
                 return
@@ -546,12 +585,27 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                 Log.w(TAG, "⚠️ FILE_TRANSFER decode failed (private) from ${peerID.take(8)} payloadSize=${packet.payload.size}")
             }
 
-            // Fallback: plain text
+            // Fallback: directed plain text. It was addressed to us, so it is private by
+            // transport and must pass private admission; relays see it, so require a signature.
+            if (!acceptDirectedPlaintext) {
+                publicBudget.recordDrop()
+                return
+            }
+            if (!signatureIsValid) {
+                Log.w(TAG, "Unsigned or invalid signed directed text from ${peerID.take(8)}")
+                return
+            }
+            if (packet.payload.size > PublicInboundBudget.MAX_PUBLIC_TEXT_BYTES) {
+                publicBudget.recordDrop()
+                return
+            }
             val message = BitchatMessage(
                 sender = delegate?.getPeerNickname(peerID) ?: "unknown",
                 content = String(packet.payload, Charsets.UTF_8),
                 senderPeerID = peerID,
-                timestamp = Date(packet.timestamp.toLong())
+                timestamp = Date(packet.timestamp.toLong()),
+                isPrivate = true,
+                recipientNickname = delegate?.getMyNickname()
             )
             delegate?.onMessageReceived(message)
 
@@ -716,6 +770,10 @@ interface MessageHandlerDelegate {
     ): com.bitchat.android.noise.NoiseDecryptionResult?
     fun verifyEd25519Signature(signature: ByteArray, data: ByteArray, publicKey: ByteArray): Boolean
     fun getAuthenticatedSigningKey(noisePublicKey: ByteArray): ByteArray? = null
+    /** Static key proven by an established Noise session with this peer, if any. */
+    fun getAuthenticatedRemoteStaticKey(peerID: String): ByteArray? = null
+    /** True when this Noise static key belongs to a QR-enrolled contact. */
+    fun isEnrolledContactKey(noisePublicKey: ByteArray): Boolean = false
     
     // Noise protocol operations
     fun hasNoiseSession(peerID: String): Boolean
@@ -733,6 +791,15 @@ interface MessageHandlerDelegate {
 
     // Callbacks
     fun onMessageReceived(message: BitchatMessage)
+    /**
+     * Delivers a private message and returns true only when admission accepted it. A delivery
+     * ACK is sent only then, so a stranger never learns that this phone received anything.
+     * Fail-closed default: a transport that does not run admission here never acknowledges.
+     */
+    fun onPrivateMessageReceived(message: BitchatMessage): Boolean {
+        onMessageReceived(message)
+        return false
+    }
     fun onChannelLeave(channel: String, fromPeer: String)
     fun onDeliveryAckReceived(messageID: String, peerID: String)
     fun onReadReceiptReceived(messageID: String, peerID: String)

@@ -1,0 +1,134 @@
+package com.bitchat.android.services
+
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import com.bitchat.android.model.BitchatMessage
+import kotlinx.coroutines.Dispatchers
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import java.util.Date
+import java.util.UUID
+
+@RunWith(RobolectricTestRunner::class)
+class WeshInboundAdmissionTest {
+    private lateinit var context: Context
+    private lateinit var databaseName: String
+    private lateinit var repository: ConversationRepository
+    private val enrolled = "e".repeat(64)
+    private val stranger = "5".repeat(64)
+    private val blockedFingerprint = "b".repeat(64)
+
+    @Before
+    fun setUp() {
+        context = ApplicationProvider.getApplicationContext()
+        databaseName = "wesh-admission-${UUID.randomUUID()}.db"
+        repository = ConversationRepository(context, Dispatchers.Unconfined, databaseName, InMemoryConversationStorageCipher())
+        AppStateStore.setConversationRepositoryForTest(repository)
+        AppStateStore.resumePrivateConversationsAfterPanic()
+        AppStateStore.clear()
+        WeshMessageRequests.clear()
+        SessionHiddenPeers.clear()
+        IncomingMessageAdmission.installForTesting { setOf(blockedFingerprint) }
+    }
+
+    @After
+    fun tearDown() {
+        AppStateStore.clear()
+        AppStateStore.setConversationRepositoryForTest(null)
+        repository.closeForTest()
+        context.deleteDatabase(databaseName)
+        WeshMessageRequests.clear()
+    }
+
+    private fun gate(fingerprints: Map<String, String?>) = IncomingMessageAdmission.QrEnrollment(
+        fingerprintOf = { fingerprints[it] },
+        isEnrolled = { it == enrolled }
+    )
+
+    private fun privateFrom(peerID: String, id: String) = BitchatMessage(
+        id = id, sender = "Synthetic $peerID", content = "Synthetic secret", timestamp = Date(1L),
+        isPrivate = true, senderPeerID = peerID
+    )
+
+    @Test
+    fun `private message from an identity not enrolled by QR is neither stored nor dispatched`() {
+        val admitted = IncomingMessageAdmission.admitToAppState(
+            privateFrom("peer-b", "from-stranger"), qrEnrollment = gate(mapOf("peer-b" to stranger)), senderFingerprint = { null }
+        )
+
+        assertFalse(admitted)
+        assertTrue(AppStateStore.privateMessages.value.isEmpty())
+        val request = WeshMessageRequests.requests.value.single()
+        assertEquals("peer-b", request.peerID)
+        assertEquals("Synthetic peer-b", request.nickname)
+        assertEquals(stranger, request.fingerprint)
+        assertFalse(request.toString().contains("Synthetic secret"))
+    }
+
+    @Test
+    fun `private message without an authenticated identity fails closed`() {
+        assertFalse(
+            IncomingMessageAdmission.admitToAppState(
+                privateFrom("peer-c", "no-session"), qrEnrollment = gate(emptyMap()), senderFingerprint = { null }
+            )
+        )
+        assertTrue(AppStateStore.privateMessages.value.isEmpty())
+        assertEquals(listOf("peer-c"), WeshMessageRequests.requests.value.map { it.peerID })
+    }
+
+    @Test
+    fun `private message from a QR enrolled identity is admitted`() {
+        assertTrue(
+            IncomingMessageAdmission.admitToAppState(
+                privateFrom("peer-a", "from-contact"), qrEnrollment = gate(mapOf("peer-a" to enrolled)), senderFingerprint = { null }
+            )
+        )
+        assertTrue(WeshMessageRequests.requests.value.isEmpty())
+    }
+
+    @Test
+    fun `public messages are not gated by QR enrollment`() {
+        val public = BitchatMessage(id = "public", sender = "Synthetic", content = "hello", timestamp = Date(1L), senderPeerID = "peer-b")
+        assertTrue(IncomingMessageAdmission.admitToAppState(public, qrEnrollment = gate(emptyMap()), senderFingerprint = { null }))
+        assertTrue(WeshMessageRequests.requests.value.isEmpty())
+    }
+
+    @Test
+    fun `directed plain text from a stranger is held as a request like a Noise message`() {
+        val directed = BitchatMessage(id = "directed", sender = "Synthetic", content = "Synthetic secret",
+            timestamp = Date(1L), isPrivate = true, senderPeerID = "peer-d")
+        assertFalse(IncomingMessageAdmission.admitToAppState(directed, qrEnrollment = gate(emptyMap()), senderFingerprint = { null }))
+        assertTrue(AppStateStore.privateMessages.value.isEmpty())
+    }
+
+    @Test
+    fun `every transport is block gated by default and fails closed without a block list`() {
+        val public = BitchatMessage(id = "gate-public", sender = "Synthetic", content = "hello", timestamp = Date(1L), senderPeerID = "peer-b")
+        assertFalse("blocked identity", IncomingMessageAdmission.admitToAppState(public, null) { blockedFingerprint })
+        SessionHiddenPeers.hide("peer-b")
+        assertFalse("session hidden peer", IncomingMessageAdmission.admitToAppState(public, null) { null })
+        SessionHiddenPeers.clear()
+        assertFalse("identity lookup failure", IncomingMessageAdmission.admitToAppState(public, null) { error("synthetic") })
+        IncomingMessageAdmission.installForTesting(null)
+        assertFalse("no block list installed", IncomingMessageAdmission.admitToAppState(public, null) { null })
+        IncomingMessageAdmission.installForTesting { emptySet() }
+        assertTrue(IncomingMessageAdmission.admitToAppState(public, null) { null })
+    }
+
+    @Test
+    fun `only an unblocked enrolled sender may be acknowledged`() {
+        val fromContact = privateFrom("peer-a", "ack-contact")
+        val fromStranger = privateFrom("peer-b", "ack-stranger")
+        val enrollment = gate(mapOf("peer-a" to enrolled, "peer-b" to stranger))
+        assertTrue(IncomingMessageAdmission.mayAcknowledge(fromContact, enrollment) { null })
+        assertFalse(IncomingMessageAdmission.mayAcknowledge(fromStranger, enrollment) { null })
+        assertFalse("blocked", IncomingMessageAdmission.mayAcknowledge(fromContact, enrollment) { blockedFingerprint })
+        assertTrue("checking never records a request", WeshMessageRequests.requests.value.isEmpty())
+    }
+}

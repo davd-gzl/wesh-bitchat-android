@@ -259,7 +259,7 @@ class GeohashViewModel(
         if (pubkey != null) {
             startGeohashDM(pubkey, onStartPrivateChat)
         } else {
-            Log.w(TAG, "Cannot start geohash DM: nickname '$nickname' not found in repo")
+            Log.w(TAG, "Cannot start geohash DM: nickname not found in repo")
             // Optionally notify user
         }
     }

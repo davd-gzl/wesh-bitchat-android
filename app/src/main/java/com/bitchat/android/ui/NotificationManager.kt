@@ -23,6 +23,7 @@ import com.bitchat.android.R
 import com.bitchat.android.service.ConversationNotificationReceiver
 import com.bitchat.android.services.ContactDirectory
 import com.bitchat.android.services.ConversationListPreferences
+import com.bitchat.android.util.safeDisplayName
 import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
@@ -38,7 +39,10 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class NotificationManager(
   private val context: Context,
-  private val notificationManager: NotificationManagerCompat
+  private val notificationManager: NotificationManagerCompat,
+  private val isConversationMuted: (String) -> Boolean = { conversationID ->
+      ConversationListPreferences.getInstance(context.applicationContext).isMuted(conversationID)
+  }
 ) {
 
     companion object {
@@ -84,8 +88,11 @@ class NotificationManager(
 
     private val systemNotificationManager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as AndroidNotificationManager
-    private val conversationPreferences =
-        ConversationListPreferences.getInstance(context.applicationContext)
+    /**
+     * Wesh notifications never carry message text, publish conversation shortcuts or bridge to a
+     * watch; the sender name appears only after an explicit opt-in on this phone.
+     */
+    private val weshPrivacy = com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
     
     // Track pending notifications per sender to enable grouping
     private val pendingNotifications = ConcurrentHashMap<String, MutableList<PendingNotification>>()
@@ -181,7 +188,7 @@ class NotificationManager(
      */
     fun showPrivateMessageNotification(senderPeerID: String, senderNickname: String, messageContent: String) {
         val conversationID = ContactDirectory.canonicalConversationId(senderPeerID)
-        if (conversationPreferences.isMuted(conversationID)) {
+        if (isConversationMuted(conversationID)) {
             Log.d(TAG, "Skipping muted conversation notification")
             return
         }
@@ -189,16 +196,11 @@ class NotificationManager(
         val shouldNotify = isAppInBackground ||
             (!isAppInBackground && currentPrivateChatPeer != conversationID)
         
-        if (!shouldNotify) {
-            Log.d(TAG, "Skipping notification - app in foreground and viewing chat with $senderNickname")
-            return
-        }
-
-        Log.d(TAG, "Showing notification for message from $senderNickname (conversationID: $conversationID)")
+        if (!shouldNotify) return
 
         val notification = PendingNotification(
             senderPeerID = conversationID,
-            senderNickname = senderNickname,
+            senderNickname = safeDisplayName(senderNickname, senderPeerID.take(8)),
             messageContent = messageContent,
             timestamp = System.currentTimeMillis()
         )
@@ -218,6 +220,7 @@ class NotificationManager(
     private fun showNotificationForSender(senderPeerID: String) {
         val notifications = pendingNotifications[senderPeerID] ?: return
         if (notifications.isEmpty()) return
+        if (weshPrivacy) return showRedactedNotificationForSender(senderPeerID, notifications)
 
         val latestNotification = notifications.last()
         val messageCount = notifications.size
@@ -351,8 +354,68 @@ class NotificationManager(
         val notificationId = senderPeerID.hashCode()
         notifySafely(notificationId, builder.build())
 
-        Log.d(TAG, "Displayed notification for $contentTitle with ID $notificationId")
     }
+
+    private fun showRedactedNotificationForSender(senderPeerID: String, notifications: List<PendingNotification>) {
+        val latest = notifications.last()
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_OPEN_PRIVATE_CHAT, true)
+            putExtra(EXTRA_PEER_ID, senderPeerID)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            NOTIFICATION_REQUEST_CODE + senderPeerID.hashCode(),
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val markReadIntent = Intent(context, ConversationNotificationReceiver::class.java).apply {
+            action = ACTION_MARK_CONVERSATION_READ
+            putExtra(EXTRA_PEER_ID, senderPeerID)
+        }
+        val markReadPendingIntent = PendingIntent.getBroadcast(
+            context,
+            NOTIFICATION_REQUEST_CODE + senderPeerID.hashCode() + 1,
+            markReadIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val title = if (WeshPreferences.notificationShowsSender(context)) latest.senderNickname
+            else context.getString(R.string.wesh_notification_new_message)
+        val builder = redactedBuilder(title, notifications.size, latest.timestamp)
+            .setContentIntent(pendingIntent)
+            .addAction(
+                NotificationCompat.Action.Builder(
+                    R.drawable.ic_notification,
+                    context.getString(R.string.notification_mark_read),
+                    markReadPendingIntent
+                ).build()
+            )
+        if (pendingNotifications.size > 1) builder.setGroup(GROUP_KEY_DM)
+        notifySafely(senderPeerID.hashCode(), builder.build())
+    }
+
+    private fun redactedBuilder(title: String, count: Int, timestamp: Long): NotificationCompat.Builder =
+        NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(
+                if (count == 1) context.getString(R.string.wesh_notification_open_to_read)
+                else context.getString(R.string.wesh_notification_message_count, count)
+            )
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(
+                NotificationCompat.Builder(context, CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setContentTitle(context.getString(R.string.wesh_notification_new_message))
+                    .setLocalOnly(true)
+                    .build()
+            )
+            .setLocalOnly(true)
+            .setShowWhen(true)
+            .setWhen(timestamp)
 
     private fun conversationShortcutID(conversationID: String): String =
         "dm_" + java.util.UUID.nameUUIDFromBytes(
@@ -375,13 +438,22 @@ class NotificationManager(
         ShortcutManagerCompat.pushDynamicShortcut(context, shortcut)
     }
 
+    /** Wesh shows the verified contact's nickname only after the sender opt-in. */
+    fun showVerificationSuccessNotification(nickname: String, peerID: String?) {
+        val body = if (!weshPrivacy || WeshPreferences.notificationShowsSender(context)) {
+            context.getString(R.string.verify_success_body, nickname)
+        } else {
+            context.getString(R.string.wesh_notification_verified_body)
+        }
+        showVerificationNotification(context.getString(R.string.verify_success_title), body, peerID)
+    }
+
     fun showVerificationNotification(title: String, body: String, peerID: String? = null) {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             if (peerID != null) {
                 putExtra(EXTRA_OPEN_PRIVATE_CHAT, true)
                 putExtra(EXTRA_PEER_ID, peerID)
-                putExtra(EXTRA_SENDER_NICKNAME, body)
             }
         }
 
@@ -402,6 +474,7 @@ class NotificationManager(
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setShowWhen(true)
             .setWhen(System.currentTimeMillis())
+        if (weshPrivacy) builder.setLocalOnly(true).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
 
         notifySafely(
             (System.currentTimeMillis() and 0x7FFFFFFF).toInt(),
@@ -436,6 +509,15 @@ class NotificationManager(
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setGroup(GROUP_KEY_DM)
             .setGroupSummary(true)
+
+        if (weshPrivacy) {
+            builder.setContentTitle(context.getString(R.string.wesh_notification_new_message))
+                .setContentText(context.getString(R.string.wesh_notification_message_count, totalMessages))
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setLocalOnly(true)
+            notifySafely(SUMMARY_NOTIFICATION_ID, builder.build())
+            return
+        }
 
         // Add inbox style showing recent senders
         val style = NotificationCompat.InboxStyle()
@@ -630,7 +712,6 @@ class NotificationManager(
         val notificationId = 3000 + geohash.hashCode()
         notifySafely(notificationId, builder.build())
 
-        Log.d(TAG, "Displayed geohash notification for $contentTitle with ID $notificationId")
     }
 
     private fun showGeohashSummaryNotification() {
@@ -737,12 +818,7 @@ class NotificationManager(
         val isViewingMeshChat = currentPrivateChatPeer == null && currentGeohash == null
         val shouldNotify = isAppInBackground || (!isAppInBackground && !isViewingMeshChat)
 
-        if (!shouldNotify) {
-            Log.d(TAG, "Skipping mesh mention notification - app in foreground and viewing mesh chat")
-            return
-        }
-
-        Log.d(TAG, "Showing mesh mention notification from $senderNickname")
+        if (!shouldNotify) return
 
         // Use a special key for mesh mentions to group them together
         val meshMentionKey = "mesh_mentions"
@@ -790,6 +866,13 @@ class NotificationManager(
             context.getString(R.string.notification_mesh_mention_title_singular)
         } else {
             context.getString(R.string.notification_mesh_mention_title_plural, messageCount)
+        }
+        if (weshPrivacy) {
+            val builder = redactedBuilder(contentTitle, messageCount, latestNotification.timestamp)
+                .setContentIntent(pendingIntent)
+            if (pendingNotifications.size > 1) builder.setGroup(GROUP_KEY_DM)
+            notifySafely(4000, builder.build())
+            return
         }
 
         val contentText = "${latestNotification.senderNickname}: ${latestNotification.messageContent}"

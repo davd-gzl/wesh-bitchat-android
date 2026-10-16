@@ -93,6 +93,11 @@ android {
         }
     }
 
+    bundle {
+        // Every phone needs the French and English labels so remote nicknames are checked against both.
+        language { enableSplit = false }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -109,7 +114,7 @@ android {
     lint {
         baseline = file("lint-baseline.xml")
         abortOnError = false
-        checkReleaseBuilds = false
+        checkReleaseBuilds = true
     }
 }
 
@@ -149,7 +154,6 @@ dependencies {
 
     // QR
     implementation(libs.zxing.core)
-    implementation(libs.mlkit.barcode.scanning)
 
     // CameraX
     implementation(libs.androidx.camera.camera2)
@@ -170,12 +174,6 @@ dependencies {
 
     // WebSocket
     implementation(libs.okhttp)
-
-    // WorkManager for background APK downloads
-    implementation(libs.androidx.work.runtime.ktx)
-
-    // HTTP Server for hotspot APK sharing
-    implementation(libs.nanohttpd)
 
     // Arti JNI libraries are vendored in src/main/jniLibs for all four ABIs.
     // tools/arti-build pins their source, dependencies, and native toolchain.

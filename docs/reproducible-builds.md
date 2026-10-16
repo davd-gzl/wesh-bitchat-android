@@ -1,7 +1,8 @@
 # Reproducible builds
 
 Bitchat's canonical release build produces byte-for-byte reproducible unsigned
-phone and Wear OS APKs and Android App Bundles (AABs). CI builds the release
+phone APKs and Android App Bundles (AABs); the Wear module has no release
+variant. CI builds the release
 twice in independent jobs and exposes a verified release artifact only when
 every canonical byte matches.
 
@@ -76,8 +77,6 @@ The output contains:
 
 - unsigned APKs for arm64, armv7, x86, x86_64, and universal installs
 - `bitchat-android-release-unsigned.aab`
-- `bitchat-android-wear-unsigned.apk`
-- `bitchat-android-wear-release-unsigned.aab`
 - `BUILDINFO.json`
 - `SHA256SUMS.unsigned`
 
@@ -161,7 +160,7 @@ gh attestation verify bitchat-android-universal-unsigned.apk \
 
 Google Play App Signing changes the verification boundary:
 
-- maintainers upload signed phone and Wear AABs using the upload key;
+- maintainers upload the signed phone AAB using the upload key;
 - Google Play generates optimized, device-specific APK splits from those AABs;
 - Google signs the delivered APKs with the app-signing key.
 
@@ -171,7 +170,7 @@ GitHub universal APK or to a locally built APK. Use this procedure instead:
 1. In Play Console, open **Test and release > App bundle explorer**, select the
    release/version code, and download the original app bundle if that option is
    available to your account. Compare its unsigned payload with the matching
-   reproduced phone or Wear AAB:
+   reproduced phone AAB:
 
    ```bash
    tools/reproducible-builds/compare-archive-payloads.sh \
@@ -211,10 +210,9 @@ maintainers to retain the uploaded AAB, publish its digest and provenance, and
 record the Play version code and app-signing certificate fingerprint alongside
 the release.
 
-The GitHub workflow builds and attests both canonical unsigned AABs. A
-maintainer locally creates `bitchat-android-play-upload.aab` and
-`bitchat-android-wear-play-upload.aab` from those exact files and uploads them
-manually to Google Play.
+The GitHub workflow builds and attests the canonical unsigned AAB. A
+maintainer locally creates `bitchat-android-play-upload.aab` from that exact
+file and uploads it manually to Google Play.
 
 ## Maintainer release process
 

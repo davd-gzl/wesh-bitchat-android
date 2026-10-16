@@ -24,12 +24,12 @@
     <string name="battery_optimization_not_required">Pil optimizasyonu gerekmiyor</string>
     <string name="battery_optimization_checking">Pil optimizasyonu kontrol ediliyor</string>
     <string name="battery_optimization_why_disable">Neden devre dışı bırakmalı?</string>
-    <string name="battery_optimization_explanation">bitchat yakındaki cihazlarla mesh bağlantısını sürdürmek için arka planda çalışır. Pil optimizasyonu bu bağlantıları kesebilir ve mesajlar gecikebilir/ kaybolabilir.\n\nDevre dışı bırakmak güvenilir eşler arası mesajlaşmayı sağlar.</string>
+    <string name="battery_optimization_explanation">Wesh yakındaki cihazlarla mesh bağlantısını sürdürmek için arka planda çalışır. Pil optimizasyonu bu bağlantıları kesebilir ve mesajlar gecikebilir/ kaybolabilir.\n\nDevre dışı bırakmak güvenilir eşler arası mesajlaşmayı sağlar.</string>
     <string name="battery_optimization_disable_button">Optimizasyonu kapat</string>
-    <string name="battery_optimization_note">Not: Daha sonra Ayarlar &gt; Uygulamalar &gt; bitchat &gt; Pil üzerinden değiştirebilirsin.</string>
-    <string name="battery_optimization_not_supported_explanation">Cihazının pil optimizasyonu ayarlarına ihtiyacı yok. bitchat normal çalışır.</string>
-    <string name="battery_optimization_not_supported_message">Cihazının pil optimizasyonu ayarlarına ihtiyacı yok. bitchat normal çalışır.</string>
-    <string name="battery_optimization_success_message">bitchat arka planda güvenle çalışabilir</string>
+    <string name="battery_optimization_note">Not: Daha sonra Ayarlar &gt; Uygulamalar &gt; Wesh &gt; Pil üzerinden değiştirebilirsin.</string>
+    <string name="battery_optimization_not_supported_explanation">Cihazının pil optimizasyonu ayarlarına ihtiyacı yok. Wesh normal çalışır.</string>
+    <string name="battery_optimization_not_supported_message">Cihazının pil optimizasyonu ayarlarına ihtiyacı yok. Wesh normal çalışır.</string>
+    <string name="battery_optimization_success_message">Wesh arka planda güvenle çalışabilir</string>
     <string name="battery_optimization_benefits">• Güvenilir mesaj teslimi\n• Mesh bağlantısını korur\n• Arka planda iletim\n• Kopmaları önler</string>
     <string name="battery_optimization_check_again">Tekrar kontrol et</string>
     <string name="battery_optimization_skip">Şimdilik atla</string>
@@ -40,7 +40,7 @@
     <string name="notification_summary_more">ve %1$d daha</string>
     <string name="notification_messages_from_people">%2$d kişiden %1$d mesaj</string>
     <string name="notification_more_conversations">ve %1$d sohbet daha</string>
-    <string name="notification_active_peers_title">yakında bitchatter’lar!</string>
+    <string name="notification_active_peers_title">yakında Weshter’lar!</string>
     <string name="notification_active_peers_one">Yakında 1 kişi</string>
     <string name="notification_active_peers_many">Yakında %1$d kişi</string>
     <string name="notification_new_messages">Yeni mesajlar</string>
@@ -51,8 +51,8 @@
     <string name="notification_new_activity_in">%1$s içinde yeni etkinlik</string>
     <string name="notification_messages_in">%1$s içindeki mesajlar</string>
     <string name="notification_joined_conversation">%1$s sohbete katıldı</string>
-    <string name="notification_geohash_summary_title_mentions">bitchat – %1$d bahsetme</string>
-    <string name="notification_geohash_summary_title">bitchat – konum sohbetleri</string>
+    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d bahsetme</string>
+    <string name="notification_geohash_summary_title">Wesh – konum sohbetleri</string>
     <string name="notification_geohash_summary_text">%2$d konumdan %1$d mesaj</string>
     <string name="notification_mesh_mention_title_singular">Mesh sohbette bahsedildi</string>
     <string name="notification_mesh_mention_title_plural">Mesh sohbette %1$d bahsetme</string>
@@ -219,8 +219,8 @@
 
     <string name="location_services_required">Konum servisleri gerekli</string>
     <string name="privacy_first">Önce gizlilik</string>
-    <string name="location_explanation">bitchat KONUMUNU takip etmez.\n\nBluetooth tarama ve Geohash sohbet için konum servisleri gerekir.</string>
-    <string name="location_needs_for">bitchat konum servislerini şunlar için kullanır:</string>
+    <string name="location_explanation">Wesh KONUMUNU takip etmez.\n\nBluetooth tarama ve Geohash sohbet için konum servisleri gerekir.</string>
+    <string name="location_needs_for">Wesh konum servislerini şunlar için kullanır:</string>
     <string name="location_needs_bullets">• Bluetooth cihaz tarama\n• Mesh ağında yakın kullanıcıları bulma\n• Geohash sohbet özelliği\n• Takip veya konum toplama yok</string>
     <string name="open_location_settings">Konum ayarlarını aç</string>
     <string name="check_again">Tekrar kontrol et</string>
@@ -252,7 +252,7 @@
     <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">izinler</string>
     <string name="grant_permissions">İzin ver</string>
-    <string name="location_tracking_warning">bitchat konumunu takip etmez</string>
+    <string name="location_tracking_warning">Wesh konumunu takip etmez</string>
     <string name="nobody_around">yakında kimse yok…</string>
     <string name="you_suffix"> (sen)</string>
     <string name="pan_zoom_instruction">geohash seçmek için kaydır/zoom yap</string>

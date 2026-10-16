@@ -196,6 +196,13 @@ class ChatViewModel(
     val verifiedFingerprints = verificationHandler.verifiedFingerprints
     private val weshContactStore = com.bitchat.android.services.WeshContactStore.get(application)
     val weshContacts = weshContactStore.contacts
+    val weshContactStoreFailed = weshContactStore.loadFailed
+    /** Unverified private senders: nickname and identity only, never their message text. */
+    val weshRequests: StateFlow<List<com.bitchat.android.services.WeshMessageRequests.Request>> =
+        combine(com.bitchat.android.services.WeshMessageRequests.requests, weshContactStore.contacts) { requests, contacts ->
+            val enrolled = contacts.map { ContactIdentityResolver.fingerprintHex(it.key) }.toSet()
+            requests.filter { it.fingerprint == null || it.fingerprint !in enrolled }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     internal val weshDraftStore = WeshDraftStore.get(application)
     val weshContactSheet = kotlinx.coroutines.flow.MutableStateFlow(false)
     val weshIncomingQR = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
@@ -714,6 +721,9 @@ class ChatViewModel(
     // MARK: - Private Chat Management (delegated)
     
     suspend fun startPrivateChat(peerID: String) {
+        // Wesh never opens a private conversation with an identity that was not enrolled by QR.
+        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY &&
+            weshContactStore.contact(ContactDirectory.canonicalConversationId(peerID)) == null) return
         // For geohash conversation keys, ensure DM subscription is active
         if (peerID.startsWith("nostr_")) {
             ensureGeohashDMSubscriptionIfNeeded(peerID)
@@ -1117,6 +1127,10 @@ class ChatViewModel(
         }
     }
 
+    private val _weshBluetoothReadyState = MutableStateFlow(false)
+    /** Emits only on change, so the Wesh screen recomposes when Bluetooth flips, not every second. */
+    val weshBluetoothReadyState: StateFlow<Boolean> = _weshBluetoothReadyState.asStateFlow()
+
     fun weshBluetoothReady(): Boolean {
         val application = getApplication<Application>()
         if (android.os.Build.VERSION.SDK_INT >= 31 && androidx.core.content.ContextCompat.checkSelfPermission(
@@ -1143,7 +1157,37 @@ class ChatViewModel(
         clearNotificationsForSender(resolution.conversationID)
         return true
     }
-    fun weshUnblock(fingerprint: String) { dataManager.removeBlockedUser(fingerprint) }
+    fun weshUnblock(fingerprint: String) {
+        dataManager.removeBlockedUser(fingerprint)
+        // Unblocking an identity also lifts any session-only hide of its current peer IDs.
+        com.bitchat.android.services.SessionHiddenPeers.peers.value
+            .filter { privateChatManager.getAllPeerFingerprints()[it] == fingerprint }
+            .forEach(com.bitchat.android.services.SessionHiddenPeers::unhide)
+    }
+    fun retryWeshContacts() { weshContactStore.retryLoad() }
+    fun weshDismissRequest(request: com.bitchat.android.services.WeshMessageRequests.Request) {
+        com.bitchat.android.services.WeshMessageRequests.remove(request.peerID)
+    }
+    fun weshBlockRequest(request: com.bitchat.android.services.WeshMessageRequests.Request): Boolean {
+        val fingerprint = request.fingerprint
+            ?: meshService.getAuthenticatedRemoteStaticKey(request.peerID)?.let(ContactIdentityResolver::fingerprintHex)
+            ?: return false
+        dataManager.addBlockedUser(fingerprint)
+        com.bitchat.android.services.WeshMessageRequests.removeFingerprint(fingerprint)
+        com.bitchat.android.services.WeshMessageRequests.remove(request.peerID)
+        return true
+    }
+    val weshSessionHiddenPeers = com.bitchat.android.services.SessionHiddenPeers.peers
+    fun weshUnhidePeer(peerID: String) = com.bitchat.android.services.SessionHiddenPeers.unhide(peerID)
+    /**
+     * Blocks a public sender locally. Returns true when the block is durable (authenticated
+     * identity), false when the sender is only hidden by peer ID until Wesh restarts.
+     */
+    fun weshBlockPublicSender(peerID: String): Boolean =
+        when (val target = WeshPublicBlockPolicy.target(peerID, meshService.getAuthenticatedRemoteStaticKey(peerID))) {
+            is WeshPublicBlockPolicy.Target.Identity -> { dataManager.addBlockedUser(target.fingerprint); true }
+            is WeshPublicBlockPolicy.Target.Session -> { com.bitchat.android.services.SessionHiddenPeers.hide(target.peerID); false }
+        }
     fun removeWeshContact(conversationID: String) {
         verificationHandler.cancelWeshVerification(conversationID)
         weshContactStore.remove(conversationID)
@@ -1303,6 +1347,7 @@ class ChatViewModel(
             while (true) {
                 delay(1000) // Check session states every second
                 updateReactiveStates()
+                _weshBluetoothReadyState.value = weshBluetoothReady()
             }
         }
     }
@@ -1559,11 +1604,12 @@ class ChatViewModel(
         }
         weshDraftStore.fenceForPanic()
         weshPreferences.fenceForPanic()
+        com.bitchat.android.net.WeshInternetMode.get(getApplication()).fenceForPanic()
         viewModelScope.launch {
             try {
                 performPanicClearAllData()
             } catch (_: Exception) {
-                Log.e(TAG, "PANIC MODE INCOMPLETE - recovery required")
+                // The durable recovery marker stays set; StartupScreen offers recovery.
             } finally {
                 weshPanicInProgress.value = false
             }
@@ -1571,7 +1617,6 @@ class ChatViewModel(
     }
 
     private suspend fun performPanicClearAllData() {
-        Log.w(TAG, "🚨 PANIC MODE ACTIVATED - Clearing all sensitive data")
         try {
             com.bitchat.android.geohash.LocationChannelManager
                 .getInstance(getApplication())
@@ -1609,6 +1654,8 @@ class ChatViewModel(
         // Clear all cryptographic data
         verificationHandler.clearWeshVerifications()
         weshContactStore.clear()
+        com.bitchat.android.services.WeshMessageRequests.clear()
+        com.bitchat.android.services.SessionHiddenPeers.clear()
         clearAllCryptographicData()
         
         // Clear all notifications
@@ -1642,8 +1689,10 @@ class ChatViewModel(
         state.setNickname(newNickname)
         dataManager.saveNickname(newNickname)
 
+        val internetCleared = com.bitchat.android.net.WeshInternetMode.get(getApplication()).panicReset()
         val resumed = resumeAfterWeshPanicWipe(
             draftsCleared = draftsCleared,
+            internetCleared = internetCleared,
             conversationsCleared = conversationsCleared,
             mediaCleared = mediaCleared,
             clearPreferences = {
@@ -1652,12 +1701,8 @@ class ChatViewModel(
             // This also finishes the durable draft marker; never enter it on an uncertain wipe.
             resume = { recreateMeshServiceAfterPanic() }
         )
-        if (!resumed) {
-            Log.e(TAG, "PANIC MODE INCOMPLETE - application wipe or fresh identity unconfirmed")
-            return
-        }
+        if (!resumed) return
         weshPreferences.resumeAfterVerifiedPanic()
-        Log.w(TAG, "🚨 PANIC MODE COMPLETED - New identity: ${mesh.myPeerID}")
     }
 
     /**
@@ -1665,8 +1710,6 @@ class ChatViewModel(
      * This ensures the new cryptographic keys are used for a new peer ID.
      */
     private suspend fun recreateMeshServiceAfterPanic(): Boolean {
-        val oldPeerID = mesh.myPeerID
-
         // Clear the holder so getOrCreate() returns a fresh instance
         MeshServiceHolder.clear()
 
@@ -1694,11 +1737,6 @@ class ChatViewModel(
         // Restart mesh operations with new identity
         mesh.startServices()
         mesh.sendBroadcastAnnounce()
-
-        Log.d(
-            TAG,
-            "✅ Mesh service recreated. Old peerID: $oldPeerID, New peerID: ${mesh.myPeerID}"
-        )
         return true
     }
     

@@ -59,6 +59,7 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.bitchat.android.R
+import com.bitchat.android.ui.WeshLinks
 
 private enum class OnboardingStep { Welcome, Bluetooth }
 
@@ -204,7 +205,7 @@ private fun TermsLine() {
     val parts = stringResource(R.string.wesh_pave_terms, "\u0000").split("\u0000")
     val text = buildAnnotatedString {
         append(parts.first())
-        withLink(LinkAnnotation.Url(WeshLinks.TERMS, TextLinkStyles(SpanStyle(color = c.ink, textDecoration = TextDecoration.Underline)))) {
+        withLink(LinkAnnotation.Url(WeshLinks.TERMS_URL, TextLinkStyles(SpanStyle(color = c.ink, textDecoration = TextDecoration.Underline)))) {
             append(link)
         }
         append(parts.getOrElse(1) { "" })

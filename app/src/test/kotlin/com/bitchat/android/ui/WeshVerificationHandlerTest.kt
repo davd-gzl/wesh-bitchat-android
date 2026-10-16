@@ -94,6 +94,35 @@ class WeshVerificationHandlerTest {
         assertEquals(qr.nickname, store.contacts.value.single().nickname)
         assertEquals("verified", handler.weshProgress(qr.noiseKeyHex))
     }
+    @Test fun `announced nickname is sanitized in the system message, notification and nickname cache`() = scope.runTest {
+        val key = qr.noiseKeyHex.dataFromHexString()!!
+        whenever(mesh.getPeerInfo(peer)).thenReturn(PeerInfo(id = peer, nickname = "\u202Eevil\u200Bname", noisePublicKey = key, isConnected = true, isDirectConnection = true, signingPublicKey = qr.signKeyHex.dataFromHexString(), isVerifiedNickname = true, lastSeen = 1L))
+        val identity: SecureIdentityStateManager = mock()
+        val notifications: NotificationManager = mock()
+        val context: Context = mock()
+        whenever(context.getString(any(), any())).thenReturn("Synthetic verification notice")
+        val state: ChatState = mock()
+        whenever(state.getConnectedPeersValue()).thenReturn(listOf(peer))
+        handler = VerificationHandler(context, scope, { mesh }, identity, state, notifications, mock(), { time })
+
+        assertTrue(handler.beginQRVerification(qr))
+        respond(); runCurrent()
+
+        val fingerprint = handler.fingerprintFromNoiseBytes(key)
+        verify(identity).cacheFingerprintNickname(fingerprint, "evilname")
+        verify(notifications).showVerificationSuccessNotification("evilname", peer)
+        verify(context).getString(any(), eq("evilname"))
+    }
+    @Test fun `fingerprint display name sanitizes live and announced nicknames`() {
+        val state: ChatState = mock()
+        whenever(state.peerNicknames).thenReturn(kotlinx.coroutines.flow.MutableStateFlow(mapOf(peer to "\u202Eevil\u200Bname")))
+        handler = VerificationHandler(mock(), scope, { mesh }, mock(), state, mock(), mock(), { time })
+        assertEquals("evilname", handler.resolvePeerDisplayNameForFingerprint(peer))
+
+        whenever(state.peerNicknames).thenReturn(kotlinx.coroutines.flow.MutableStateFlow(emptyMap()))
+        whenever(mesh.getPeerInfo(peer)).thenReturn(PeerInfo(id = peer, nickname = "\u3164\u200B", noisePublicKey = qr.noiseKeyHex.dataFromHexString(), isConnected = true, isDirectConnection = true, signingPublicKey = qr.signKeyHex.dataFromHexString(), isVerifiedNickname = true, lastSeen = 1L))
+        assertEquals(peer.take(8), handler.resolvePeerDisplayNameForFingerprint(peer))
+    }
     @Test fun `response after deadline and late handshake cannot enroll`() = scope.runTest {
         assertTrue(handler.beginQRVerification(qr))
         time += 60_001
@@ -123,4 +152,74 @@ class WeshVerificationHandlerTest {
         respond(); runCurrent()
         assertTrue(store.contacts.value.isEmpty())
     }
+    // Distinct nicknames keep the 60 s QR cache from reusing another case's code.
+    private fun npubQR(npub: String, nickname: String = "Synthetic contact", signer: ((ByteArray) -> String?)? = null): VerificationService.VerificationQR =
+        VerificationService.verifyScannedQR(VerificationService.buildMyQRString(nickname, npub, signer)!!)!!
+    // syntheticNpub encodes the generator x, the public key of the synthetic secret 1.
+    private val syntheticSigner: (ByteArray) -> String? = { com.bitchat.android.nostr.NostrCrypto.schnorrSign(it, "00".repeat(31) + "01") }
+    private fun enroll(scanned: VerificationService.VerificationQR, mine: String?) {
+        val owned = mine?.let(::setOf)
+        qr = scanned
+        val context: Context = mock()
+        whenever(context.getString(any())).thenReturn("Synthetic verification title")
+        whenever(context.getString(any(), any())).thenReturn("Synthetic verification notice")
+        handler = VerificationHandler(context, scope, { mesh }, mock(), state(), mock(), mock(), { time }, { owned })
+        assertTrue(handler.beginQRVerification(qr))
+        respond(); scope.runCurrent()
+    }
+    private fun state(): ChatState = mock<ChatState>().also { whenever(it.getConnectedPeersValue()).thenReturn(listOf(peer)) }
+    @Test fun `verification aborts without writing when stored contacts are unreadable`() = scope.runTest {
+        val application = RuntimeEnvironment.getApplication()
+        val prefs = application.getSharedPreferences("synthetic-handler-unreadable", Context.MODE_PRIVATE)
+        prefs.edit().clear().putString("wesh_qr_contacts_v1", "{unreadable").commit()
+        val unreadable = WeshContactStore(SecureIdentityStateManager(prefs, true),
+            application.getSharedPreferences("bitchat_prefs", Context.MODE_PRIVATE))
+        WeshContactStore.installForTesting(unreadable)
+        enroll(npubQR(syntheticNpub, nickname = "Unreadable store contact"), mine = mineNpub)
+        assertTrue(unreadable.loadFailed.value)
+        assertTrue(unreadable.contacts.value.isEmpty())
+        assertEquals("{unreadable", prefs.getString("wesh_qr_contacts_v1", null))
+        assertTrue(handler.weshProgress(qr.noiseKeyHex) != "verified")
+    }
+    @Test fun `signed QR npub is bound to the proven Noise key`() = scope.runTest {
+        enroll(npubQR(syntheticNpub), mine = mineNpub)
+        assertEquals(syntheticNpub, store.contacts.value.single().npub)
+        assertTrue(store.contacts.value.single().internetReachable)
+    }
+    @Test fun `a valid npub proof marks the claim proven and a bad one drops the npub`() = scope.runTest {
+        enroll(npubQR(syntheticNpub, "Synthetic proven", syntheticSigner), mine = mineNpub)
+        assertTrue(store.contacts.value.single().npubProven)
+        store.clear()
+        enroll(npubQR(syntheticNpub, "Synthetic bad proof") { "ab".repeat(64) }, mine = mineNpub)
+        assertTrue(store.contacts.value.single().npubWarning)
+        assertNull(store.contacts.value.single().npub)
+        store.clear()
+        enroll(npubQR(syntheticNpub), mine = mineNpub)
+        assertEquals(syntheticNpub, store.contacts.value.single().npub)
+        assertFalse(store.contacts.value.single().npubProven)
+    }
+    @Test fun `with Internet mode closed my QR has no npub and enrollment binds none`() = scope.runTest {
+        com.bitchat.android.services.WeshQrIdentity.internetActive = { false }
+        val mine = com.bitchat.android.services.WeshQrIdentity.myQR(RuntimeEnvironment.getApplication(), "Synthetic contact")!!
+        assertNull(VerificationService.VerificationQR.fromUrlString(mine)!!.npub)
+        handler = VerificationHandler(mock<Context>().also {
+            whenever(it.getString(any())).thenReturn("Synthetic verification title")
+            whenever(it.getString(any(), any())).thenReturn("Synthetic verification notice")
+        }, scope, { mesh }, mock(), state(), mock(), mock(), { time })
+        qr = npubQR(syntheticNpub, "Synthetic closed", syntheticSigner)
+        assertTrue(handler.beginQRVerification(qr))
+        respond(); runCurrent()
+        assertNull(store.contacts.value.single().npub)
+    }
+    @Test fun `my own or unknown own npub enrolls the contact Bluetooth only`() = scope.runTest {
+        enroll(npubQR(syntheticNpub), mine = syntheticNpub)
+        assertNull(store.contacts.value.single().npub)
+        store.clear()
+        enroll(npubQR(syntheticNpub), mine = null)
+        assertNull(store.contacts.value.single().npub)
+        assertFalse(store.contacts.value.single().internetReachable)
+    }
+    private val syntheticNpub = com.bitchat.android.nostr.Bech32.encode("npub",
+        "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798".dataFromHexString()!!)
+    private val mineNpub = com.bitchat.android.nostr.Bech32.encode("npub", ByteArray(31) + byteArrayOf(2))
 }

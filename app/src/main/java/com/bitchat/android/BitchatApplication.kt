@@ -14,6 +14,7 @@ class BitchatApplication : Application() {
         super.onCreate()
 
         if (BuildConfig.WESH_LOCAL_ONLY) {
+            com.bitchat.android.features.voice.LiveVoicePreferences.forceDisabled = true
             com.bitchat.android.startup.WeshRuntime.start(this)
         } else {
             initializeRuntime()
@@ -23,6 +24,9 @@ class BitchatApplication : Application() {
     internal fun initializeRuntime() {
         // Start the single process-wide power policy before transport components are constructed.
         com.bitchat.android.mesh.PowerManager.getInstance(this).start()
+
+        // Installs the Internet opt-in gate (default off) and keeps Tor's preference OFF while it is off.
+        try { com.bitchat.android.net.WeshInternetMode.get(this) } catch (_: Exception) { }
 
         // Wesh's native validation product has no Internet or location route.
         if (!BuildConfig.WESH_LOCAL_ONLY) {

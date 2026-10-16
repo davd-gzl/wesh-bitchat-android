@@ -564,6 +564,57 @@ class SecurityManagerTest {
         assertTrue(fakeEncryptionService.handshakeCalls == 2)
     }
 
+    @Test
+    fun `budget-dropped packet is forgotten for dedup and its later gossip copy is delivered but not relayed`() = runBlocking<Unit> {
+        setupKnownPeer(otherPeerID, otherSigningKey)
+        var clock = 1_000_000L
+        val handler = MessageHandler(myPeerID, RuntimeEnvironment.getApplication(), PublicInboundBudget(
+            now = { clock },
+            global = PublicInboundBudget.Rate(perSecond = 1.0, burst = 1.0),
+            perLink = PublicInboundBudget.Rate(perSecond = 100.0, burst = 100.0)
+        ))
+        val handlerDelegate = mock<MessageHandlerDelegate>()
+        handler.delegate = handlerDelegate
+        whenever(handlerDelegate.getBroadcastRecipient()).thenReturn(com.bitchat.android.protocol.SpecialRecipients.BROADCAST)
+        val verifiedInfo = mockDelegate.getPeerInfo(otherPeerID)!!.copy(isVerifiedNickname = true)
+        whenever(handlerDelegate.getPeerInfo(otherPeerID)).thenReturn(verifiedInfo)
+        fun publicPacket(text: String) = BitchatPacket(
+            version = 1u, type = MessageType.MESSAGE.value, senderID = otherPeerID.hexToBytes(),
+            recipientID = com.bitchat.android.protocol.SpecialRecipients.BROADCAST,
+            timestamp = System.currentTimeMillis().toULong(), payload = text.toByteArray(),
+            signature = validSignature, ttl = 7u
+        )
+        val filler = publicPacket("filler")
+        val target = publicPacket("target")
+
+        assertTrue(securityManager.validatePacket(filler, otherPeerID))
+        assertTrue(handler.handleMessage(RoutedPacket(filler, otherPeerID, "link")))
+        assertTrue(securityManager.validatePacket(target, otherPeerID))
+        assertFalse("budget is empty", handler.handleMessage(RoutedPacket(target, otherPeerID, "link")))
+        securityManager.forgetForRedelivery(target, otherPeerID)
+        assertTrue("first copy was relayed once already", securityManager.isRelaySuppressed(target, otherPeerID))
+
+        // The gossip copy of the same packet arrives after the budget refilled.
+        clock += 1_000
+        val copy = target.copy(ttl = 6u)
+        assertTrue("not discarded as a duplicate", securityManager.validatePacket(copy, otherPeerID))
+        assertTrue(handler.handleMessage(RoutedPacket(copy, otherPeerID, "gossip")))
+        verify(handlerDelegate).onMessageReceived(argThat { content == "target" })
+        assertTrue("never relayed a second time", securityManager.isRelaySuppressed(copy, otherPeerID))
+        assertFalse("later copies are duplicates again", securityManager.validatePacket(copy, otherPeerID))
+    }
+
+    @Test
+    fun `relay suppression expires with the duplicate window`() {
+        setupKnownPeer(otherPeerID, otherSigningKey)
+        val packet = BitchatPacket(type = MessageType.MESSAGE.value, ttl = 10u, senderID = otherPeerID, payload = dummyPayload)
+        packet.signature = validSignature
+        securityManager.forgetForRedelivery(packet, otherPeerID, nowMs = 1_000L)
+        assertTrue(securityManager.isRelaySuppressed(packet, otherPeerID))
+        securityManager.cleanupOldData(nowMs = 1_000L + com.bitchat.android.util.AppConstants.Security.MESSAGE_TIMEOUT_MS + 1)
+        assertFalse(securityManager.isRelaySuppressed(packet, otherPeerID))
+    }
+
     private fun setupKnownPeer(peerID: String, signingKey: ByteArray) {
         val info = PeerInfo(
             id = peerID,

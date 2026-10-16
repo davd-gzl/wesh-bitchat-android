@@ -60,7 +60,17 @@ internal class WeshPreferences(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val commitEditor: suspend (SharedPreferences.Editor) -> Boolean = { it.commit() }
 ) {
-    constructor(context: Context) : this(context.applicationContext.getSharedPreferences("wesh_ui", Context.MODE_PRIVATE))
+    constructor(context: Context) : this(context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE))
+
+    companion object {
+        const val FILE = "wesh_ui"
+        private const val NOTIFICATION_SENDER = "notification_sender"
+
+        /** Notifications show no sender unless the person explicitly opted in on this phone. */
+        fun notificationShowsSender(context: Context): Boolean =
+            context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                .getBoolean(NOTIFICATION_SENDER, false)
+    }
 
     private val lock = Any()
     private val io = Mutex()
@@ -81,6 +91,11 @@ internal class WeshPreferences(
         get() = prefs.getBoolean("public_disclosure", false)
         set(value) {
             synchronized(lock) { if (!fenced) prefs.edit { putBoolean("public_disclosure", value) } }
+        }
+    var notificationShowsSender: Boolean
+        get() = prefs.getBoolean(NOTIFICATION_SENDER, false)
+        set(value) {
+            synchronized(lock) { if (!fenced) prefs.edit { putBoolean(NOTIFICATION_SENDER, value) } }
         }
     val meetingNote: String
         get() = prefs.getString("meeting_note", "") ?: ""
@@ -156,7 +171,9 @@ internal suspend fun resumeAfterWeshPanicWipe(
     conversationsCleared: Boolean,
     mediaCleared: Boolean,
     clearPreferences: suspend () -> Boolean,
-    resume: suspend () -> Boolean
+    resume: suspend () -> Boolean,
+    /** Internet off, Tor state deleted and Nostr keys erased. */
+    internetCleared: Boolean = true
 ): Boolean {
     val preferencesCleared = try {
         clearPreferences()
@@ -165,6 +182,6 @@ internal suspend fun resumeAfterWeshPanicWipe(
     } catch (_: Exception) {
         false
     }
-    if (!draftsCleared || !conversationsCleared || !mediaCleared || !preferencesCleared) return false
+    if (!draftsCleared || !conversationsCleared || !mediaCleared || !internetCleared || !preferencesCleared) return false
     return resume()
 }

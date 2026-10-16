@@ -39,7 +39,10 @@ class MeshCore(
     private val maxTtl: UByte,
     sharedGossipManager: GossipSyncManager?,
     gossipConfigProvider: GossipSyncManager.ConfigProvider,
-    private val hooks: Hooks = Hooks()
+    private val hooks: Hooks = Hooks(),
+    // Passed in rather than read from BuildConfig: this file also compiles into the watch module.
+    // Defaults to the stricter Wesh policy.
+    weshLocalOnly: Boolean = true
 ) {
     data class Hooks(
         /**
@@ -110,7 +113,10 @@ class MeshCore(
     }
     private val securityManager = SecurityManager(encryptionService, myPeerID)
     private val storeForwardManager = StoreForwardManager()
-    private val messageHandler = MessageHandler(myPeerID, context.applicationContext)
+    // Same inbound policy as Bluetooth.
+    private val messageHandler = MessageHandler(myPeerID, context.applicationContext).apply {
+        applyInboundPolicy(weshLocalOnly)
+    }
     private val packetProcessor = PacketProcessor(myPeerID)
     private data class VoiceFrameRequest(val recipientPeerID: String?, val payload: ByteArray)
     private val voiceFrameQueue = Channel<VoiceFrameRequest>(capacity = 128)
@@ -404,6 +410,18 @@ class MeshCore(
             override fun onMessageReceived(message: BitchatMessage) {
                 if (hooks.onMessageReceived?.invoke(message) == false) return
                 delegate?.didReceiveMessage(message)
+            }
+
+            // Acknowledge only when the transport's admission hook ran and accepted the message.
+            override fun onPrivateMessageReceived(message: BitchatMessage): Boolean {
+                val admit = hooks.onMessageReceived
+                if (admit == null) {
+                    delegate?.didReceiveMessage(message)
+                    return false
+                }
+                if (!admit(message)) return false
+                delegate?.didReceiveMessage(message)
+                return true
             }
 
             override fun onChannelLeave(channel: String, fromPeer: String) {

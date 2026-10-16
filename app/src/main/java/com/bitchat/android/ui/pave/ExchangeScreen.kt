@@ -95,8 +95,8 @@ fun ExchangeScreen(
 
     val modules = remember(myQrPayload) { myQrPayload?.let(::encodeQrModules) }
     // The contact's nickname comes from their QR code: sanitized here so no caller can forget it.
-    val contact = remoteDisplayName(contactNickname, R.string.wesh_pave_exchange_contact_fallback)
-    val me = PaveDisplayName.safe(myNickname, stringResource(R.string.wesh_pave_unnamed))
+    val contact = remoteDisplayName(contactNickname)
+    val me = remoteDisplayName(myNickname)
     val shape = RoundedCornerShape(WeshRadius.control)
 
     Column(

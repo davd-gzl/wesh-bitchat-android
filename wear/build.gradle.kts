@@ -70,6 +70,12 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
     systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
 }
 
+// The watch app keeps the inherited com.bitchat.droid application ID and is not a Wesh artifact:
+// without a release variant it can never be packaged into a release or uploaded.
+androidComponents {
+    beforeVariants(selector().withBuildType("release")) { it.enable = false }
+}
+
 composeCompiler {
     // Kotlin 2.4.10's optional Compose group-key mapping depends on unspecified
     // class-file iteration order. Keep the normal R8 mapping, but omit that
@@ -97,6 +103,7 @@ val sharedSourceIncludes = listOf(
     "com/bitchat/android/services/AppStateStore.kt",
     "com/bitchat/android/services/ContactDirectory.kt",
     "com/bitchat/android/services/WeshContactStore.kt",
+    "com/bitchat/android/services/WeshNpubPolicy.kt",
     "com/bitchat/android/services/ContactIdentityResolver.kt",
     "com/bitchat/android/services/ConversationRepository.kt",
     "com/bitchat/android/services/ConversationStorageCipher.kt",
@@ -113,6 +120,7 @@ val sharedSourceIncludes = listOf(
     "com/bitchat/android/ui/debug/DebugPreferenceManager.kt",
     "com/bitchat/android/ui/NotificationTextUtils.kt",
     "com/bitchat/android/util/AppConstants.kt",
+    "com/bitchat/android/util/SafeDisplayName.kt",
     "com/bitchat/android/util/ByteArrayExtensions.kt",
     "com/bitchat/android/util/ByteArrayWrapper.kt",
     "com/bitchat/android/util/BinaryEncodingUtils.kt",

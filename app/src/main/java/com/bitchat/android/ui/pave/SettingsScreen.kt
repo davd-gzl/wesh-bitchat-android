@@ -32,6 +32,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.bitchat.android.R
+import com.bitchat.android.ui.WeshLinks
 
 /** Settings rows, in the order of the approved mockup. */
 enum class PaveSettingsEntry { Profile, Connexion, Discretion, Meeting, Blocked, Appearance, About }
@@ -82,7 +83,7 @@ fun SettingsScreen(
         )
         Column {
             val rows = listOf(
-                PaveSettingsEntry.Profile to (R.string.wesh_pave_settings_profile to PaveDisplayName.safe(summary.nickname, stringResource(R.string.wesh_pave_unnamed))),
+                PaveSettingsEntry.Profile to (R.string.wesh_pave_settings_profile to remoteDisplayName(summary.nickname)),
                 PaveSettingsEntry.Connexion to (R.string.wesh_pave_settings_connexion to stringResource(R.string.wesh_pave_settings_connexion_value)),
                 PaveSettingsEntry.Discretion to (R.string.wesh_pave_settings_discretion to stringResource(
                     if (summary.previewsHidden) R.string.wesh_pave_settings_previews_hidden else R.string.wesh_pave_settings_previews_shown
@@ -147,13 +148,13 @@ fun AboutScreen(versionName: String, onBack: () -> Unit, onOpenLicenses: () -> U
         Text(stringResource(R.string.wesh_pave_about_version, versionName), style = WeshType.label, color = c.inkMuted)
         Text(stringResource(R.string.wesh_pave_settings_footer), style = WeshType.body, color = c.ink)
         Spacer(Modifier.height(WeshSpace.s2))
-        SettingsRow(stringResource(R.string.wesh_pave_about_source), null, { uri.openUri(WeshLinks.SOURCE) }, external = true)
+        SettingsRow(stringResource(R.string.wesh_pave_about_source), null, { uri.openUri(WeshLinks.SOURCE_URL) }, external = true)
         HorizontalDivider(thickness = WeshStroke.s1, color = c.line)
         SettingsRow(stringResource(R.string.wesh_pave_about_licenses), null, onOpenLicenses)
         HorizontalDivider(thickness = WeshStroke.s1, color = c.line)
-        SettingsRow(stringResource(R.string.wesh_pave_about_donate), null, { uri.openUri(WeshLinks.DONATIONS) }, external = true)
+        SettingsRow(stringResource(R.string.wesh_pave_about_donate), null, { uri.openUri(WeshLinks.DONATIONS_URL) }, external = true)
         HorizontalDivider(thickness = WeshStroke.s1, color = c.line)
-        SettingsRow(stringResource(R.string.wesh_pave_about_terms), null, { uri.openUri(WeshLinks.TERMS) }, external = true)
+        SettingsRow(stringResource(R.string.wesh_pave_about_terms), null, { uri.openUri(WeshLinks.TERMS_URL) }, external = true)
     }
 }
 
@@ -189,7 +190,7 @@ fun LicensesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     ) {
         PaveHeader(stringResource(R.string.wesh_pave_licenses_title), onBack = onBack)
         Text(stringResource(R.string.wesh_pave_licenses_intro), style = WeshType.body, color = c.ink)
-        SettingsRow(stringResource(R.string.wesh_pave_licenses_full), null, { uri.openUri(WeshLinks.GPL3) }, external = true)
+        SettingsRow(stringResource(R.string.wesh_pave_licenses_full), null, { uri.openUri(WeshLinks.GPL3_URL) }, external = true)
         Text(
             stringResource(R.string.wesh_pave_licenses_components),
             style = WeshType.headline,

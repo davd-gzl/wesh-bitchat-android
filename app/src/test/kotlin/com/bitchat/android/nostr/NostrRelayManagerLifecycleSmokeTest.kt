@@ -21,6 +21,21 @@ class NostrRelayManagerLifecycleSmokeTest {
     }
 
     @Test
+    fun `only the pinned relays are configured and panic leaves them off`() {
+        val manager = NostrRelayManager.shared
+        assertEquals(
+            listOf("wss://relay.damus.io", "wss://relay.primal.net", "wss://offchain.pub"),
+            manager.getRelayStatuses().map { it.url }
+        )
+        manager.retryConnection("wss://relay.damus.io")
+        assertTrue(manager.isConnectionDesired())
+        manager.clearAllOnPanic()
+        assertFalse(manager.isConnectionDesired())
+        manager.resetAllConnections()
+        assertFalse(manager.isConnectionDesired())
+    }
+
+    @Test
     fun `owner teardown is synchronous and preserves other subscription owners`() {
         val manager = NostrRelayManager.shared
         manager.disconnect()

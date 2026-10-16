@@ -118,11 +118,3 @@ fun paveBluetoothRuntimePermissions(sdkInt: Int = Build.VERSION.SDK_INT): List<S
     } else {
         listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
     }
-
-/** Public addresses shown in the app. Opened in the browser, never fetched by the app. */
-object WeshLinks {
-    const val TERMS = "https://wesh.samourai.app/conditions"
-    const val DONATIONS = "https://wesh.samourai.app/dons"
-    const val SOURCE = "https://github.com/samouraiworld/wesh-bitchat-android"
-    const val GPL3 = "https://www.gnu.org/licenses/gpl-3.0.html"
-}

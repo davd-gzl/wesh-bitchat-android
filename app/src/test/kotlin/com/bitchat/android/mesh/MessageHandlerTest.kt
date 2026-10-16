@@ -246,7 +246,7 @@ class MessageHandlerTest {
             handler.handleNoiseEncrypted(RoutedPacket(outerPacket, peerID, "direct-link"))
 
             verify(delegate).decryptFromPeer(ciphertext, peerID)
-            verify(delegate).onMessageReceived(any())
+            verify(delegate).onPrivateMessageReceived(any())
         }
     }
 
