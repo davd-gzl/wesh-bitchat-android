@@ -158,14 +158,18 @@ object PaveDisplayName {
     private fun isSymbol(codePoint: Int?): Boolean =
         codePoint != null && Character.getType(codePoint).toByte() == Character.OTHER_SYMBOL
 
+    /** A presentation selector or a skin tone (U+1F3FB–U+1F3FF), allowed between a symbol and its joiner. */
+    private fun isEmojiModifier(codePoint: Int?): Boolean =
+        codePoint == TEXT_PRESENTATION || codePoint == EMOJI_PRESENTATION || (codePoint != null && codePoint in 0x1F3FB..0x1F3FF)
+
     private fun isKeycapBase(codePoint: Int?): Boolean =
         codePoint != null && (codePoint in '0'.code..'9'.code || codePoint == '#'.code || codePoint == '*'.code)
 
     /**
      * The only invisible code points kept, so "❤️", "👩‍💻" and "1️⃣" survive: a presentation selector
      * once, right after a symbol (So) or after 0-9, # or * followed by the keycap mark; a zero-width
-     * joiner between two symbols, the first one possibly with its selector. A doubled, leading or
-     * trailing joiner or selector stays invisible.
+     * joiner between two symbols, the first one possibly with its selector or skin tone. A doubled,
+     * leading or trailing joiner or selector stays invisible.
      */
     private fun isKeptEmojiJoiner(codePoints: IntArray, index: Int): Boolean {
         val before = codePoints.getOrNull(index - 1)
@@ -174,8 +178,7 @@ object PaveDisplayName {
             TEXT_PRESENTATION, EMOJI_PRESENTATION ->
                 isSymbol(before) || (isKeycapBase(before) && after == COMBINING_KEYCAP)
             ZERO_WIDTH_JOINER -> isSymbol(after) && (
-                isSymbol(before) ||
-                    ((before == TEXT_PRESENTATION || before == EMOJI_PRESENTATION) && isSymbol(codePoints.getOrNull(index - 2)))
+                isSymbol(before) || (isEmojiModifier(before) && isSymbol(codePoints.getOrNull(index - 2)))
                 )
             else -> false
         }

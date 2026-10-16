@@ -205,4 +205,11 @@ class PaveDisplayNameTest {
         val heart = cp(0x2764, 0xFE0F)
         assertEquals("$heart$acute$acute", safe(heart + acute.repeat(4)))
     }
+
+    @Test
+    fun `a skin tone may sit between a symbol and its joiner`() {
+        val coder = cp(0x1F469, 0x1F3FD, 0x200D, 0x1F4BB)
+        assertEquals("$coder Nora", safe("$coder Nora"))
+        assertEquals("?", safe("Nora" + cp(0x1F3FD, 0x200D, 0x1F4BB))) // tone without a symbol before it
+    }
 }

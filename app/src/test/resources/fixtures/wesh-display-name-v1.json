@@ -257,6 +257,11 @@
       "input": "1️⃣ Nora",
       "expect": "display",
       "display": "1️⃣ Nora"
+    },
+    {
+      "input": "👩🏽‍💻 Nora",
+      "expect": "display",
+      "display": "👩🏽‍💻 Nora"
     }
   ],
   "afterLowercase": {
