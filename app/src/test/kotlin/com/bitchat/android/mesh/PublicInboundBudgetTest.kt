@@ -38,4 +38,26 @@ class PublicInboundBudgetTest {
         assertEquals(20, admitted)
         assertEquals(80L, budget.dropped)
     }
+
+    @Test
+    fun `a full table never hands a fresh burst to a new source`() {
+        val small = PublicInboundBudget(
+            now = { time },
+            global = PublicInboundBudget.Rate(perSecond = 0.0, burst = 1_000.0),
+            perPeer = PublicInboundBudget.Rate(perSecond = 0.0, burst = 2.0),
+            perLink = PublicInboundBudget.Rate(perSecond = 0.0, burst = 1_000.0),
+            maxTrackedSources = 4
+        )
+        // Fill the table with sources that each spent part of their budget.
+        repeat(4) { assertTrue(small.tryAdmit("noise:$it", "link")) }
+        // New identities beyond capacity share one overflow bucket of burst 2.
+        val admitted = (10 until 30).count { small.tryAdmit("noise:$it", "link") }
+        assertEquals(2, admitted)
+    }
+
+    @Test
+    fun `messages without a link identity share a bounded link bucket`() {
+        val admitted = (0 until 50).count { budget.tryAdmit("noise:$it", null) }
+        assertEquals(8, admitted)
+    }
 }

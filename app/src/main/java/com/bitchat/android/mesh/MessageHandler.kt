@@ -476,7 +476,8 @@ class MessageHandler(
             Log.w(TAG, "Dropping public message from unverified peer ${peerID.take(8)}")
             return
         }
-        if (!publicBudget.tryAdmit(peerID, routed.ingressLinkID ?: routed.relayAddress)) return
+        val budgetSource = peerInfo.noisePublicKey?.takeIf { it.size == 32 }?.let { "noise:" + it.toHexString() } ?: "peer:$peerID"
+        if (!publicBudget.tryAdmit(budgetSource, routed.ingressLinkID ?: routed.relayAddress)) return
         
         try {
             // Try file packet first (voice, image, etc.) and log outcome for FILE_TRANSFER
@@ -566,12 +567,23 @@ class MessageHandler(
                 Log.w(TAG, "⚠️ FILE_TRANSFER decode failed (private) from ${peerID.take(8)} payloadSize=${packet.payload.size}")
             }
 
-            // Fallback: plain text
+            // Fallback: directed plain text. It was addressed to us, so it is private by
+            // transport and must pass private admission; relays see it, so require a signature.
+            if (!signatureIsValid) {
+                Log.w(TAG, "Unsigned or invalid signed directed text from ${peerID.take(8)}")
+                return
+            }
+            if (packet.payload.size > PublicInboundBudget.MAX_PUBLIC_TEXT_BYTES) {
+                publicBudget.recordDrop()
+                return
+            }
             val message = BitchatMessage(
                 sender = delegate?.getPeerNickname(peerID) ?: "unknown",
                 content = String(packet.payload, Charsets.UTF_8),
                 senderPeerID = peerID,
-                timestamp = Date(packet.timestamp.toLong())
+                timestamp = Date(packet.timestamp.toLong()),
+                isPrivate = true,
+                recipientNickname = delegate?.getMyNickname()
             )
             delegate?.onMessageReceived(message)
 

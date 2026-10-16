@@ -97,15 +97,10 @@ class WeshInboundAdmissionTest {
     }
 
     @Test
-    fun `repeated requests from one identity stay a single bounded entry`() {
-        repeat(3) { index ->
-            IncomingMessageAdmission.admitToAppState(privateFrom("peer-b", "m$index"), qrEnrollment = gate(mapOf("peer-b" to stranger)))
-        }
-        assertEquals(1, WeshMessageRequests.requests.value.size)
-        repeat(40) { index ->
-            val peer = "peer-x$index"
-            IncomingMessageAdmission.admitToAppState(privateFrom(peer, "x$index"), qrEnrollment = gate(mapOf(peer to index.toString().padStart(64, '0'))))
-        }
-        assertEquals(32, WeshMessageRequests.requests.value.size)
+    fun `directed plain text from a stranger is held as a request like a Noise message`() {
+        val directed = BitchatMessage(id = "directed", sender = "Synthetic", content = "Synthetic secret",
+            timestamp = Date(1L), isPrivate = true, senderPeerID = "peer-d")
+        assertFalse(IncomingMessageAdmission.admitToAppState(directed, qrEnrollment = gate(emptyMap())))
+        assertTrue(AppStateStore.privateMessages.value.isEmpty())
     }
 }

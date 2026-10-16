@@ -342,7 +342,7 @@ fun WeshScreen(viewModel: ChatViewModel) {
                     "unblock" -> viewModel.weshUnblock(target)
                     "report", "publicBlock" -> feedback = if (viewModel.weshBlockPublicSender(target))
                         if (action == "report") "Personne signalée et masquée sur ce téléphone." else "Personne bloquée sur ce téléphone."
-                        else "Identité inconnue : blocage indisponible."
+                        else "Identité non authentifiée : ses messages sont masqués jusqu’à la fermeture de Wesh."
                     else -> if (!viewModel.weshBlock(target)) feedback = "Identité inconnue : blocage indisponible."
                 }
                 revision++; contactAction = null

@@ -103,7 +103,28 @@ class WeshInboundMediaTest {
         }
         verify(delegate, times(5)).onMessageReceived(any())
         assertEquals(15L, handler.publicBudget.dropped)
-        assertFalse(handler.publicBudget.tryAdmit(peerID, "link"))
+    }
+
+    @Test
+    fun `signed directed plain text is delivered as private so QR admission applies`() = runBlocking {
+        handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, myPeerID.hexToBytes(), "directed".toByteArray()), peerID, "link"))
+
+        val captor = argumentCaptor<BitchatMessage>()
+        verify(delegate).onMessageReceived(captor.capture())
+        assertTrue(captor.firstValue.isPrivate)
+        assertEquals(peerID, captor.firstValue.senderPeerID)
+    }
+
+    @Test
+    fun `unsigned or oversized directed plain text is dropped`() = runBlocking {
+        val unsigned = packet(MessageType.MESSAGE, myPeerID.hexToBytes(), "directed".toByteArray()).copy(signature = null)
+        handler.handleMessage(RoutedPacket(unsigned, peerID, "link"))
+        whenever(delegate.verifySignature(any(), eq(peerID))).thenReturn(false)
+        handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, myPeerID.hexToBytes(), "forged".toByteArray()), peerID, "link"))
+        whenever(delegate.verifySignature(any(), eq(peerID))).thenReturn(true)
+        handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, myPeerID.hexToBytes(), ByteArray(2_001) { 'a'.code.toByte() }), peerID, "link"))
+
+        verify(delegate, never()).onMessageReceived(any())
     }
 
     private fun String.hexToBytes(): ByteArray = chunked(2).map { it.toInt(16).toByte() }.toByteArray()
