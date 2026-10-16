@@ -38,7 +38,9 @@ class CommandProcessorTest {
     state = chatState,
     messageManager = messageManager,
     dataManager = DataManager(context = context),
-    coroutineScope = testScope
+    coroutineScope = testScope,
+    // Exercises the inherited command router; Wesh builds disable legacy channels.
+    legacyChannelsEnabled = true
   )
 
   private val meshService: MeshService = mock()

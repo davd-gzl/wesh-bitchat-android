@@ -50,10 +50,8 @@ tor-android-binary = "0.4.4.6"
 gms-location = "21.4.0"
 
 # WorkManager
-work-runtime = "2.10.1"
 
 # NanoHTTPD (hotspot APK sharing)
-nanohttpd = "2.3.1"
 
 # Security
 security-crypto = "1.1.0"
@@ -66,7 +64,6 @@ exifinterface = "1.4.2"
 
 # CameraX / ML Kit
 camerax = "1.6.1"
-mlkit-barcode = "17.3.0"
 
 # Testing
 junit = "4.13.2"
@@ -132,10 +129,8 @@ tor-android-binary = { module = "org.torproject:tor-android-binary", version.ref
 gms-location = { module = "com.google.android.gms:play-services-location", version.ref = "gms-location" }
 
 # WorkManager
-androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work-runtime" }
 
 # NanoHTTPD
-nanohttpd = { module = "org.nanohttpd:nanohttpd", version.ref = "nanohttpd" }
 
 # Security
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "security-crypto" }
@@ -150,7 +145,6 @@ androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", vers
 androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
 androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
 androidx-camera-compose = { module = "androidx.camera:camera-compose", version.ref = "camerax" }
-mlkit-barcode-scanning = { module = "com.google.mlkit:barcode-scanning", version.ref = "mlkit-barcode" }
 
 # Testing
 junit = { module = "junit:junit", version.ref = "junit" }

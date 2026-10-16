@@ -25,9 +25,10 @@ class WeshPermissionPolicyTest {
     }
 
     @Test @Config(sdk = [30])
-    fun `legacy Android keeps its actual Bluetooth scanning permission requirement`() {
+    fun `legacy Android keeps foreground location for Bluetooth scanning but never background location`() {
         val manager = PermissionManager(ApplicationProvider.getApplicationContext<Application>())
         assertTrue(manager.getRequiredPermissions().contains(Manifest.permission.ACCESS_FINE_LOCATION))
-        assertTrue(manager.needsBackgroundLocationPermission())
+        assertFalse(manager.needsBackgroundLocationPermission())
+        assertTrue(manager.getMissingBackgroundLocationPermission().isEmpty())
     }
 }

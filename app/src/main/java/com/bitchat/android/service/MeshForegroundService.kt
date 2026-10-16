@@ -30,6 +30,7 @@ class MeshForegroundService : Service() {
     companion object {
         private const val CHANNEL_ID = "bitchat_mesh_service"
         private const val NOTIFICATION_ID = 10001
+        internal const val FOREGROUND_SERVICE_TYPE = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
 
         const val ACTION_START = "com.bitchat.android.service.START"
         const val ACTION_STOP = "com.bitchat.android.service.STOP"
@@ -367,30 +368,10 @@ class MeshForegroundService : Service() {
         }
     }
 
-    private fun hasLocationPermission(): Boolean {
-        val fine = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        val coarse = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        return fine || coarse
-    }
-
     private fun startForegroundCompat(notification: Notification) {
         if (Build.VERSION.SDK_INT >= 34) {
-            val type = if (hasLocationPermission()) {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-            } else {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            }
-            try {
-                startForeground(NOTIFICATION_ID, notification, type)
-            } catch (e: SecurityException) {
-                // Fallback for cases where "While In Use" permission exists but background start is restricted
-                if (type and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION != 0) {
-                     android.util.Log.w("MeshForegroundService", "Failed to start with LOCATION type, falling back to CONNECTED_DEVICE: ${e.message}")
-                     startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-                } else {
-                    throw e
-                }
-            }
+            // BLE mesh only: the manifest declares connectedDevice and nothing else.
+            startForeground(NOTIFICATION_ID, notification, FOREGROUND_SERVICE_TYPE)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
