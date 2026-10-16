@@ -162,8 +162,11 @@ class PacketProcessor(private val myPeerID: String) {
         if (validPacket) {
             delegate?.updatePeerLastSeen(peerID)
             
-            // CENTRALIZED RELAY LOGIC: Handle relay decisions for all packets not addressed to us
-            packetRelayManager.handlePacketRelay(routed)
+            // CENTRALIZED RELAY LOGIC: Handle relay decisions for all packets not addressed to us.
+            // A redelivered copy of a packet relayed once already is never relayed again.
+            if (delegate?.isRelaySuppressed(packet, peerID) != true) {
+                packetRelayManager.handlePacketRelay(routed)
+            }
         }
     }
     
@@ -298,6 +301,7 @@ interface PacketProcessorDelegate {
     suspend fun handleAnnounce(routed: RoutedPacket): Boolean
     fun handleMessage(routed: RoutedPacket)
     fun handleVoiceFrame(routed: RoutedPacket): Boolean = false
+    fun isRelaySuppressed(packet: BitchatPacket, peerID: String): Boolean = false
     fun handleLeave(routed: RoutedPacket)
     fun handleFragment(packet: BitchatPacket): BitchatPacket?
     fun handleRequestSync(routed: RoutedPacket)

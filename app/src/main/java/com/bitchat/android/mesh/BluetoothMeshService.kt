@@ -588,6 +588,9 @@ class BluetoothMeshService(
             override fun validatePacketSecurity(packet: BitchatPacket, peerID: String): Boolean {
                 return securityManager.validatePacket(packet, peerID)
             }
+
+            override fun isRelaySuppressed(packet: BitchatPacket, peerID: String): Boolean =
+                securityManager.isRelaySuppressed(packet, peerID)
             
             override fun updatePeerLastSeen(peerID: String) {
                 peerManager.updatePeerLastSeen(peerID)
@@ -643,9 +646,12 @@ class BluetoothMeshService(
             
             override fun handleMessage(routed: RoutedPacket) {
                 serviceScope.launch {
-                    // A packet dropped by the inbound budget is not marked seen, so gossip can
-                    // fetch it again once the budget refills.
-                    if (!messageHandler.handleMessage(routed)) return@launch
+                    // A packet dropped by the inbound budget is not marked seen (gossip or dedup),
+                    // so a later copy is delivered once the budget refills; it is not relayed twice.
+                    if (!messageHandler.handleMessage(routed)) {
+                        securityManager.forgetForRedelivery(routed.packet, routed.peerID ?: "unknown")
+                        return@launch
+                    }
                     // Track broadcast messages for sync
                     try {
                         val pkt = routed.packet

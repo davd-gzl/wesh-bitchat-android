@@ -34,6 +34,9 @@ class SecurityManager(private val encryptionService: EncryptionService, private 
     private val processedKeyExchanges = Collections.synchronizedSet(mutableSetOf<String>())
     private val messageTimestamps = Collections.synchronizedMap(mutableMapOf<String, Long>())
     private val keyExchangeTimestamps = Collections.synchronizedMap(mutableMapOf<String, Long>())
+    // Authenticated packets that were already relayed but not delivered (inbound budget). A
+    // later copy may be delivered locally, but is never relayed again.
+    private val relaySuppressed = java.util.concurrent.ConcurrentHashMap<String, Long>()
     
     // Delegate for callbacks
     var delegate: SecurityManagerDelegate? = null
@@ -384,12 +387,33 @@ class SecurityManager(private val encryptionService: EncryptionService, private 
     }
     
     /**
+     * Forgets an authenticated packet that local delivery dropped (inbound budget), so a later
+     * gossip copy is not discarded as a duplicate. The copy is still never relayed again.
+     */
+    fun forgetForRedelivery(packet: BitchatPacket, peerID: String, nowMs: Long = System.currentTimeMillis()) {
+        val messageID = generateMessageID(packet, peerID)
+        relaySuppressed[messageID] = nowMs
+        processedMessages.remove(messageID)
+        messageTimestamps.remove(messageID)
+    }
+
+    /** True for a packet already relayed once before its local delivery was deferred. */
+    fun isRelaySuppressed(packet: BitchatPacket, peerID: String): Boolean =
+        relaySuppressed.containsKey(generateMessageID(packet, peerID))
+
+    /**
      * Clean up old processed messages and timestamps
      */
     internal fun cleanupOldData(nowMs: Long = System.currentTimeMillis()) {
         val cutoffTime = nowMs - MESSAGE_TIMEOUT
 
         // Clean up old message timestamps and corresponding processed messages
+        relaySuppressed.entries.removeIf { (_, timestamp) -> timestamp < cutoffTime }
+        if (relaySuppressed.size > MAX_PROCESSED_MESSAGES) {
+            relaySuppressed.entries.sortedBy { it.value }.take(relaySuppressed.size - MAX_PROCESSED_MESSAGES)
+                .forEach { relaySuppressed.remove(it.key) }
+        }
+
         val messagesToRemove = messageTimestamps.entries.filter { (_, timestamp) ->
             timestamp < cutoffTime
         }.map { it.key }
@@ -441,6 +465,7 @@ class SecurityManager(private val encryptionService: EncryptionService, private 
      * Clear all security data
      */
     fun clearAllData() {
+        relaySuppressed.clear()
         processedMessages.clear()
         processedKeyExchanges.clear()
         messageTimestamps.clear()
