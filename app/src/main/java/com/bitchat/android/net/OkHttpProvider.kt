@@ -34,7 +34,7 @@ object OkHttpProvider {
     private val clientLock = Any()
 
     internal var socksAddressProvider: () -> InetSocketAddress? = { ArtiTorManager.getInstance().currentSocksAddress() }
-    internal var socksCredentialsProvider: () -> SocksCredentials? = { ArtiTorManager.getInstance().currentSocksCredentials() }
+    internal var socksAuthProvider: () -> SocksAuth? = { ArtiTorManager.getInstance().currentSocksAuth() }
     /** The Wesh Internet opt-in: closed means no client at all, even with a SOCKS port. */
     internal var networkAllowed: () -> Boolean = { WeshNetworkPolicy.allowsNetwork() }
 
@@ -117,9 +117,11 @@ internal object TorSocksAuthenticator : Authenticator() {
 
     override fun getPasswordAuthentication(): PasswordAuthentication? {
         if (requestingProtocol != "SOCKS5") return null
-        val socks = OkHttpProvider.socksAddressProvider() ?: return null
-        if (requestingPort != socks.port || requestingSite?.isLoopbackAddress != true) return null
-        val credentials = OkHttpProvider.socksCredentialsProvider() ?: return null
-        return PasswordAuthentication(credentials.username, credentials.password.toCharArray())
+        // Only the exact address our proxy bound, and only while clients are routed to it.
+        val auth = OkHttpProvider.socksAuthProvider() ?: return null
+        val bound = auth.address
+        if (requestingPort != bound.port || requestingSite == null || requestingSite != bound.address) return null
+        if (OkHttpProvider.socksAddressProvider() != bound) return null
+        return PasswordAuthentication(auth.credentials.username, auth.credentials.password.toCharArray())
     }
 }

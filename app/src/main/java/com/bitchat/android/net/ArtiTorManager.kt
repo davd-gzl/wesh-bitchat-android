@@ -33,7 +33,13 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Based on the original TorManager implementation.
  */
-class ArtiTorManager private constructor() {
+class ArtiTorManager internal constructor(
+    /** Tests pass a proxy over a fake native library. */
+    private val newProxy: (Application, ArtiLogListener) -> ArtiProxy = { app, listener ->
+        ArtiProxy.Builder(app).setLogListener(listener).build()
+    },
+    private val stopTimeoutMs: Long = STOP_TIMEOUT_MS
+) {
     enum class TorState {
         OFF,
         STARTING,
@@ -84,9 +90,9 @@ class ArtiTorManager private constructor() {
     /** Random per start, so the port is not a fixed, well-known target on the phone. */
     @Volatile
     private var currentSocksPort: Int = SocksCredentials.randomPort()
-    /** Per start; the SOCKS port refuses any client without them. */
+    /** The bound port and its credentials, published together once our proxy holds the port. */
     @Volatile
-    private var socksCredentials: SocksCredentials? = null
+    private var socksAuth: SocksAuth? = null
     @Volatile
     private var lastLogTime = AtomicLong(0L)
     @Volatile
@@ -141,19 +147,11 @@ class ArtiTorManager private constructor() {
                 }
             }
 
-            artiProxy = ArtiProxy.Builder(application)
-                .setLogListener(logListener)
-                .build()
+            artiProxy = newProxy(application, logListener)
 
             val savedMode = TorPreferenceManager.get(application)
             if (savedMode == TorMode.ON) {
-                currentSocksPort = SocksCredentials.randomPort()
                 desiredMode = savedMode
-                socksAddr = InetSocketAddress("127.0.0.1", currentSocksPort)
-                try {
-                    OkHttpProvider.reset()
-                } catch (_: Throwable) {
-                }  // Only reset OkHttp during init
             }
             appScope.launch {
                 applyMode(application, savedMode)
@@ -169,15 +167,30 @@ class ArtiTorManager private constructor() {
 
     fun currentSocksAddress(): InetSocketAddress? = socksAddr
 
-    fun currentSocksCredentials(): SocksCredentials? = socksCredentials
+    fun currentSocksAuth(): SocksAuth? = socksAuth
+
+    /** Only after our proxy bound the port: a process squatting it never gets credentials or traffic. */
+    private fun publishSocks(address: InetSocketAddress, credentials: SocksCredentials) {
+        socksAuth = SocksAuth(address, credentials)
+        socksAddr = address
+        resetNetworkConnections()
+    }
+
+    /** Clients fail closed (no address, no credentials) until the next successful start. */
+    private fun unpublishSocks() {
+        socksAddr = null
+        socksAuth = null
+        try {
+            OkHttpProvider.reset()
+        } catch (_: Throwable) {
+        }
+    }
 
     /**
      * Wait until the currently selected HTTP route can be used.
      *
-     * When Tor mode is enabled, [socksAddr] is intentionally published before
-     * bootstrap completes so clients fail closed instead of leaking traffic
-     * directly. Callers that initiate one-shot HTTP work should wait here rather
-     * than repeatedly connecting to a SOCKS port that is not listening yet.
+     * [socksAddr] is published only once our proxy holds its port; until then
+     * OkHttpProvider builds no client at all, so nothing leaks directly.
      */
     suspend fun awaitSelectedRoute(timeoutMs: Long): Boolean {
         if (currentSocksAddress() == null || isProxyEnabled()) {
@@ -219,7 +232,7 @@ class ArtiTorManager private constructor() {
                             state = TorState.STOPPING
                         )
                         stopArti()
-                        waitForStateTransition(target = TorState.OFF, timeoutMs = STOP_TIMEOUT_MS)
+                        waitForStateTransition(target = TorState.OFF, timeoutMs = stopTimeoutMs)
                         socksAddr = null
                         _statusFlow.value = _statusFlow.value.copy(
                             mode = TorMode.OFF,
@@ -252,14 +265,16 @@ class ArtiTorManager private constructor() {
                             bootstrapPercent = 0,
                             state = TorState.STARTING
                         )
-                        socksAddr = InetSocketAddress("127.0.0.1", currentSocksPort)
-                        resetNetworkConnections()
+                        unpublishSocks()
                         startArti(application, useDelay = false)
                         appScope.launch {
                             waitUntilBootstrapped()
-                            if (_statusFlow.value.running && desiredMode == TorMode.ON) {
-                                socksAddr = InetSocketAddress("127.0.0.1", currentSocksPort)
-                                Log.i(TAG, "Tor ON: proxy set to ${socksAddr}")
+                            if (desiredMode != TorMode.ON) {
+                                stopArtiInternal()
+                                return@launch
+                            }
+                            if (_statusFlow.value.running && socksAddr != null) {
+                                Log.i(TAG, "Tor ON: proxy ready")
                                 resetNetworkConnections()
                             }
                         }
@@ -290,8 +305,17 @@ class ArtiTorManager private constructor() {
             }
 
             val credentials = SocksCredentials.random()
-            socksCredentials = credentials
             proxy.start(currentSocksPort, credentials)
+            if (desiredMode != TorMode.ON) {
+                // Internet was turned off while this start ran: stop now, never mark RUNNING.
+                stopArtiInternal()
+                lifecycleState = LifecycleState.STOPPED
+                _statusFlow.update { it.copy(running = false, bootstrapPercent = 0) }
+                return
+            }
+            // Published only once our own proxy holds the port: a process squatting it never
+            // gets the credentials or the traffic.
+            publishSocks(InetSocketAddress("127.0.0.1", currentSocksPort), credentials)
             lastLogTime.set(System.currentTimeMillis())
 
             _statusFlow.update {
@@ -306,6 +330,7 @@ class ArtiTorManager private constructor() {
 
         } catch (e: Exception) {
             Log.e(TAG, "Error starting Arti on port $currentSocksPort: ${e.message}")
+            unpublishSocks()
             _statusFlow.update { it.copy(state = TorState.ERROR) }
             if (desiredMode != TorMode.ON) {
                 // A stop cancelled this start: no retry.
@@ -318,8 +343,6 @@ class ArtiTorManager private constructor() {
                 bindRetryAttempts++
                 currentSocksPort = SocksCredentials.randomPort()
                 Log.w(TAG, "Port bind failed (attempt $bindRetryAttempts/$MAX_RETRY_ATTEMPTS), retrying with port $currentSocksPort")
-                socksAddr = InetSocketAddress("127.0.0.1", currentSocksPort)
-                resetNetworkConnections()
                 startArti(application, useDelay = false)
             } else if (isBindError) {
                 Log.e(TAG, "Max bind retry attempts reached ($MAX_RETRY_ATTEMPTS), giving up")
@@ -375,12 +398,11 @@ class ArtiTorManager private constructor() {
         } catch (e: Exception) {
             Log.w(TAG, "Error stopping Arti: ${e.message}")
         }
+        unpublishSocks()
     }
 
     private fun stopArti() {
         stopArtiInternal()
-        socksAddr = null
-        socksCredentials = null
         _statusFlow.value = _statusFlow.value.copy(
             running = false,
             bootstrapPercent = 0,
@@ -388,7 +410,7 @@ class ArtiTorManager private constructor() {
         )
     }
 
-    private suspend fun stopArtiAndWait(timeoutMs: Long = STOP_TIMEOUT_MS) {
+    private suspend fun stopArtiAndWait(timeoutMs: Long = stopTimeoutMs) {
         stopArtiInternal()
         waitForStateTransition(target = TorState.OFF, timeoutMs = timeoutMs)
         delay(200)

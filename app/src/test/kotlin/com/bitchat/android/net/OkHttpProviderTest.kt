@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 class OkHttpProviderTest {
     private val original = OkHttpProvider.socksAddressProvider
-    private val originalCredentials = OkHttpProvider.socksCredentialsProvider
+    private val originalAuth = OkHttpProvider.socksAuthProvider
     private val originalGate = OkHttpProvider.networkAllowed
 
     @Before fun openGate() {
@@ -31,7 +31,7 @@ class OkHttpProviderTest {
 
     @After fun restore() {
         OkHttpProvider.socksAddressProvider = original
-        OkHttpProvider.socksCredentialsProvider = originalCredentials
+        OkHttpProvider.socksAuthProvider = originalAuth
         OkHttpProvider.networkAllowed = originalGate
         OkHttpProvider.reset()
     }
@@ -132,8 +132,10 @@ class OkHttpProviderTest {
                     user to pass
                 }
             }
-            OkHttpProvider.socksAddressProvider = { InetSocketAddress(InetAddress.getLoopbackAddress(), server.localPort) }
-            OkHttpProvider.socksCredentialsProvider = { credentials }
+            // As ArtiTorManager publishes it after its proxy bound the port.
+            val bound = InetSocketAddress("127.0.0.1", server.localPort)
+            OkHttpProvider.socksAddressProvider = { bound }
+            OkHttpProvider.socksAuthProvider = { SocksAuth(bound, credentials) }
             OkHttpProvider.reset()
             runCatching {
                 OkHttpProvider.httpClient().newCall(Request.Builder().url("http://relay.example.invalid/").build()).execute().close()
@@ -143,19 +145,27 @@ class OkHttpProviderTest {
     }
 
     @Test
-    fun `the Tor credentials are never handed to another host, port or protocol`() {
-        val socks = InetSocketAddress(InetAddress.getLoopbackAddress(), 23456)
-        OkHttpProvider.socksAddressProvider = { socks }
-        OkHttpProvider.socksCredentialsProvider = { SocksCredentials("synthetic-user", "synthetic-pass") }
+    fun `the Tor credentials only go to the exact address the proxy bound`() {
+        val bound = InetSocketAddress("127.0.0.1", 23456)
+        val auth = SocksAuth(bound, SocksCredentials("synthetic-user", "synthetic-pass"))
+        OkHttpProvider.socksAddressProvider = { bound }
+        OkHttpProvider.socksAuthProvider = { auth }
         TorSocksAuthenticator.install()
-        val loopback = InetAddress.getLoopbackAddress()
+        val loopback = InetAddress.getByName("127.0.0.1")
         fun ask(port: Int, protocol: String, site: InetAddress = loopback) =
             java.net.Authenticator.requestPasswordAuthentication("synthetic", site, port, protocol, "prompt", null)
         assertEquals("synthetic-user", ask(23456, "SOCKS5")?.userName)
         assertEquals(null, ask(23457, "SOCKS5"))
         assertEquals(null, ask(23456, "http"))
         assertEquals(null, ask(23456, "SOCKS5", InetAddress.getByAddress(byteArrayOf(192.toByte(), 0, 2, 1))))
-        OkHttpProvider.socksCredentialsProvider = { null }
+        assertEquals(null, ask(23456, "SOCKS5", InetAddress.getByName("127.0.0.2")))
+
+        // Clients routed elsewhere (a retry on a new port not yet bound) get nothing.
+        OkHttpProvider.socksAddressProvider = { InetSocketAddress("127.0.0.1", 23457) }
+        assertEquals(null, ask(23457, "SOCKS5"))
+        assertEquals(null, ask(23456, "SOCKS5"))
+        OkHttpProvider.socksAddressProvider = { bound }
+        OkHttpProvider.socksAuthProvider = { null }
         assertEquals("no credentials while Tor is stopped", null, ask(23456, "SOCKS5"))
     }
 }
