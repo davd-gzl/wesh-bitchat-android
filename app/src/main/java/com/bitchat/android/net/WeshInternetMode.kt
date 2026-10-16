@@ -284,6 +284,8 @@ class WeshInternetMode internal constructor(
         fun get(context: Context): WeshInternetMode = instance ?: synchronized(this) {
             instance ?: run {
                 val app = context.applicationContext as android.app.Application
+                // Startup: before anything can start Arti, finish a wipe a failed panic left behind.
+                runCatching { ArtiTorControl.completePendingWipe(app) }
                 WeshInternetMode(
                     prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE),
                     tor = ArtiTorControl(app),

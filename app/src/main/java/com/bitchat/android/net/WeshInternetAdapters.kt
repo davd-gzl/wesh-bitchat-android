@@ -23,11 +23,14 @@ internal class ArtiTorControl(
     private val app: Application,
     private val status: StateFlow<ArtiTorManager.TorStatus> = ArtiTorManager.getInstance().statusFlow,
     private val applyOff: suspend () -> Unit = { ArtiTorManager.getInstance().applyMode(app, TorMode.OFF) },
-    private val stopTimeoutMs: Long = STOP_TIMEOUT_MS
+    private val stopTimeoutMs: Long = STOP_TIMEOUT_MS,
+    private val deleteArti: (File) -> Boolean = ::deleteDirectory
 ) : WeshTorControl {
     override val progress: Flow<Pair<Int, Boolean>> = status.map { it.bootstrapPercent to it.isReady() }
 
     override fun start() {
+        // A wipe left over from a failed panic runs before Arti may touch its directory again.
+        if (!completePendingWipe(app, deleteArti)) return
         TorPreferenceManager.set(app, TorMode.ON)
         ArtiTorManager.getInstance().init(app)
     }
@@ -36,7 +39,10 @@ internal class ArtiTorControl(
         TorPreferenceManager.set(app, TorMode.OFF)
     }
 
-    /** Always stops Arti and waits for it; a timeout keeps the state on disk and reports false. */
+    /**
+     * Always stops Arti, waits for it (hard timeout), and always deletes its directory. True only
+     * when both are confirmed; otherwise a marker makes the next process start delete it again.
+     */
     override suspend fun stopAndWipe(): Boolean {
         stop()
         val stopped = withTimeoutOrNull(stopTimeoutMs) {
@@ -44,10 +50,13 @@ internal class ArtiTorControl(
             status.first { it.state == ArtiTorManager.TorState.OFF && !it.running }
         } != null
         OkHttpProvider.reset()
-        if (!stopped) return false
         return withContext(Dispatchers.IO) {
-            val dir = artiDirectory(app)
-            dir.deleteRecursively() && !dir.exists()
+            val marker = pendingMarker(app)
+            runCatching { marker.exists() || marker.createNewFile() }
+            val deleted = runCatching { deleteArti(artiDirectory(app)) }.getOrDefault(false)
+            val done = stopped && deleted
+            if (done) runCatching { marker.delete() }
+            done && !marker.exists()
         }
     }
 
@@ -60,6 +69,22 @@ internal class ArtiTorControl(
 
         /** ArtiProxy keeps its `cache` and `state` directories here. */
         fun artiDirectory(context: Context): File = File(context.filesDir, "arti")
+
+        /** Outside the Arti directory and outside the preference files panic clears. */
+        fun pendingMarker(context: Context): File = File(context.filesDir, "arti-wipe-pending")
+
+        private fun deleteDirectory(dir: File): Boolean = dir.deleteRecursively() && !dir.exists()
+
+        /**
+         * Runs at process start and before every Arti start: finishes a wipe a failed panic left
+         * behind. False while the directory still cannot be deleted, so Arti must not start.
+         */
+        fun completePendingWipe(context: Context, delete: (File) -> Boolean = ::deleteDirectory): Boolean {
+            val marker = pendingMarker(context)
+            if (!marker.exists()) return true
+            val deleted = runCatching { delete(artiDirectory(context)) }.getOrDefault(false)
+            return deleted && marker.delete()
+        }
     }
 }
 

@@ -20,6 +20,7 @@ class ArtiTorControlWipeTest {
     private val running = ArtiTorManager.TorStatus(TorMode.ON, true, 100, "", ArtiTorManager.TorState.RUNNING)
 
     @Before fun seed() {
+        ArtiTorControl.pendingMarker(app).delete()
         TorPreferenceManager.set(app, TorMode.ON)
         File(arti, "state").apply { mkdirs() }.resolve("synthetic-guards.json").writeText("{}")
         File(arti, "cache").apply { mkdirs() }.resolve("synthetic-consensus").writeText("x")
@@ -35,14 +36,40 @@ class ArtiTorControlWipeTest {
         assertFalse(arti.exists())
         assertEquals(TorMode.OFF, TorPreferenceManager.get(app))
         assertEquals(TorMode.OFF, TorPreferenceManager.modeFlow.value)
+        assertFalse(ArtiTorControl.pendingMarker(app).exists())
     }
 
-    @Test fun `Arti that does not stop in time fails the wipe and is not deleted under it`() = runBlocking {
+    @Test fun `a stop timeout still deletes the state and leaves a wipe for the next start`() = runBlocking {
         val status = MutableStateFlow(running)
         val control = ArtiTorControl(app, status, applyOff = { }, stopTimeoutMs = 200)
         assertFalse(control.stopAndWipe())
+        assertFalse("Deletion is attempted even when the stop is unconfirmed", arti.exists())
+        assertTrue(ArtiTorControl.pendingMarker(app).exists())
+
+        // The still-running Arti wrote again before the process died; next start finishes the wipe.
+        File(arti, "state").apply { mkdirs() }.resolve("late-write").writeText("x")
+        assertTrue(ArtiTorControl.completePendingWipe(app))
+        assertFalse(arti.exists())
+        assertFalse(ArtiTorControl.pendingMarker(app).exists())
+        assertTrue("Nothing pending: a normal start is a no-op", ArtiTorControl.completePendingWipe(app))
+    }
+
+    @Test fun `a failed deletion fails the wipe and blocks Arti start until it succeeds`() = runBlocking {
+        val status = MutableStateFlow(ArtiTorManager.TorStatus())
+        var deletable = false
+        val delete: (File) -> Boolean = { dir -> deletable && dir.deleteRecursively() && !dir.exists() }
+        val control = ArtiTorControl(app, status, applyOff = { }, deleteArti = delete)
+        assertFalse(control.stopAndWipe())
         assertTrue(File(arti, "state/synthetic-guards.json").exists())
-        status.value = running.copy(state = ArtiTorManager.TorState.OFF)
-        assertFalse("Still running", ArtiTorControl(app, status, applyOff = { }, stopTimeoutMs = 200).stopAndWipe())
+        assertTrue(ArtiTorControl.pendingMarker(app).exists())
+
+        control.start()
+        assertEquals("Arti must not start over undeleted state", TorMode.OFF, TorPreferenceManager.get(app))
+        assertFalse(ArtiTorControl.completePendingWipe(app, delete))
+
+        deletable = true
+        assertTrue(ArtiTorControl.completePendingWipe(app, delete))
+        assertFalse(arti.exists())
+        assertFalse(ArtiTorControl.pendingMarker(app).exists())
     }
 }
