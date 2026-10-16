@@ -81,12 +81,17 @@ class MessageRouter internal constructor(
     }
 
     /**
-     * Wesh product policy: private messages only to QR contacts, over Bluetooth. Internet mode
-     * does not change it: the inherited favorite-based Nostr fallbacks stay closed in Wesh until
-     * the Internet route to QR contacts is wired.
+     * Wesh product policy: private messages only to QR contacts. A live Bluetooth session with the
+     * enrolled key wins; otherwise, while Internet mode is On, the npub bound by that contact's QR;
+     * otherwise the message waits. The inherited favorite-based Nostr fallbacks stay closed.
      */
     internal var enforceWeshPolicy = com.bitchat.android.BuildConfig.WESH_POLICY
+    internal var weshInternetLink: WeshInternetLink = WeshInternetLink.Live(context)
     private val weshInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    /** Conversation + npub pairs already told my npub in this process (re-sent after a panic). */
+    private val weshAnnounced = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    private fun weshInternet() = WeshInternetRoute(WeshContactStore.get(context), weshInternetLink) { mesh.myPeerID }
     // Outbox: conversationID -> queued messages, oldest first
     private val outbox = ConcurrentHashMap<String, MutableList<QueuedMessage>>()
 
@@ -136,7 +141,12 @@ class MessageRouter internal constructor(
                 dispatchWesh(content, conversationID, messageID)
                 return RouteResult.MESH
             }
-            enqueue(conversationID, QueuedMessage(content, recipientNickname, messageID, clock()))
+            val queued = QueuedMessage(content, recipientNickname, messageID, clock())
+            if (weshInternet().canSend(conversationID)) {
+                dispatchWeshInternet(queued, conversationID)
+                return RouteResult.NOSTR
+            }
+            enqueue(conversationID, queued)
             return RouteResult.QUEUED
         }
 
@@ -177,6 +187,45 @@ class MessageRouter internal constructor(
         }
     }
 
+    /** Tor or the relays may drop between the check and the send: the message goes back in the queue. */
+    private fun dispatchWeshInternet(entry: QueuedMessage, conversationID: String) {
+        if (!weshInFlight.add(entry.messageID)) return
+        schedulerScope.launch {
+            try {
+                if (weshInternet().sendPrivate(entry.content, conversationID, entry.messageID)) {
+                    AppStateStore.updatePrivateMessageStatus(entry.messageID, com.bitchat.android.model.DeliveryStatus.Sent)
+                } else {
+                    enqueue(conversationID, entry)
+                }
+            } finally { weshInFlight.remove(entry.messageID) }
+        }
+    }
+
+    /**
+     * Sends `[FAVORITED]:<my npub>` over the live Noise session with the enrolled key, so official
+     * BitChat peers learn where to reply over Internet. Only while Internet mode is active (my npub
+     * exists then), once per contact and npub. Never creates a key; a received notice is never trusted.
+     */
+    fun announceWeshInternetKey(peerID: String) {
+        if (!enforceWeshPolicy) return
+        val conversationID = ContactDirectory.canonicalConversationId(peerID)
+        schedulerScope.launch {
+            val contacts = WeshContactStore.get(context)
+            val sender = WeshPrivateSender(contacts)
+            val npub = WeshQrIdentity.mine(context)?.npub ?: return@launch
+            val contact = contacts.contact(conversationID) ?: return@launch
+            val live = ContactDirectory.resolve(conversationID).meshPeerID ?: return@launch
+            if (!sender.canSend(conversationID, mesh)) return@launch
+            val announced = conversationID + npub
+            if (!weshAnnounced.add(announced)) return@launch
+            val sent = runCatching {
+                mesh.sendPrivateMessageBound(FavoriteControlMessage.encode(true, npub), live, contact.key,
+                    java.util.UUID.randomUUID().toString()) { sender.canSend(conversationID, mesh) }
+            }.getOrDefault(false)
+            if (!sent) weshAnnounced.remove(announced)
+        }
+    }
+
     @Synchronized fun cancelWeshConversation(conversationID: String) {
         outbox.remove(conversationID)?.forEach { entry ->
             AppStateStore.updatePrivateMessageStatus(entry.messageID, com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré"))
@@ -191,7 +240,13 @@ class MessageRouter internal constructor(
         if (meshTarget != null && isReady(mesh, meshTarget)) {
             Log.d(TAG, "Routing READ via mesh to ${meshTarget.take(8)}… id=${receipt.originalMessageID.take(8)}…")
             mesh.sendReadReceipt(receipt.originalMessageID, meshTarget, mesh.getPeerNicknames()[meshTarget] ?: mesh.myPeerID)
-        } else if (!enforceWeshPolicy) {
+        } else if (enforceWeshPolicy) {
+            if (!weshInternetLink.isOn()) return
+            val route = weshInternet()
+            if (route.canSend(resolution.conversationID)) schedulerScope.launch {
+                route.sendAck(com.bitchat.android.model.NoisePayloadType.READ_RECEIPT, receipt.originalMessageID, resolution.conversationID)
+            }
+        } else {
             Log.d(TAG, "Routing READ via Nostr to ${toPeerID.take(8)}… id=${receipt.originalMessageID.take(8)}…")
             nostr.sendReadReceipt(receipt, nostrTarget)
         }
@@ -219,7 +274,11 @@ class MessageRouter internal constructor(
         val resolution = ContactDirectory.resolve(toPeerID)
         val meshTarget = resolution.meshPeerID ?: toPeerID.takeIf { ContactIdentityResolver.isMeshPeerId(it) }
         if (meshTarget != null && mesh.getPeerInfo(meshTarget)?.isConnected == true && mesh.hasEstablishedSession(meshTarget)) {
-            val myNpub = try { com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(context)?.npub } catch (_: Exception) { null }
+            // Wesh reads its npub only while Internet mode is active and never creates one here.
+            val myNpub = try {
+                if (enforceWeshPolicy) WeshQrIdentity.mine(context)?.npub
+                else com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(context)?.npub
+            } catch (_: Exception) { null }
             val content = FavoriteControlMessage.encode(isFavorite, myNpub)
             val nickname = mesh.getPeerNicknames()[meshTarget] ?: meshTarget
             mesh.sendPrivateMessage(content, meshTarget, nickname, null)
@@ -252,6 +311,9 @@ class MessageRouter internal constructor(
                 } else if (sender.canSend(conversationID, mesh)) {
                     dispatchWesh(entry.content, conversationID, entry.messageID)
                     iterator.remove()
+                } else if (weshInternet().canSend(conversationID)) {
+                    iterator.remove()
+                    dispatchWeshInternet(entry, conversationID)
                 }
                 continue
             }
@@ -358,7 +420,8 @@ class MessageRouter internal constructor(
                 flushOutboxFor(conversationID)
                 return@forEach
             }
-            if (canSendViaNostr(resolution.noiseKeyHex ?: conversationID)) {
+            if (canSendViaNostr(resolution.noiseKeyHex ?: conversationID) ||
+                (enforceWeshPolicy && weshInternetLink.isOn() && weshInternet().canSend(conversationID))) {
                 flushOutboxFor(conversationID)
                 return@forEach
             }
@@ -440,6 +503,7 @@ class MessageRouter internal constructor(
 
     // Called when a Noise session becomes established; flush both the mesh peerID and its noiseHex alias
     fun onSessionEstablished(peerID: String) {
+        announceWeshInternetKey(peerID)
         resetRetry(peerID)
         flushOutboxFor(peerID)
         val noiseHex = try {
