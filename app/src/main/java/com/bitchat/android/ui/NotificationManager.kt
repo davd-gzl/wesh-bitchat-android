@@ -92,7 +92,7 @@ class NotificationManager(
      * Wesh notifications never carry message text, publish conversation shortcuts or bridge to a
      * watch; the sender name appears only after an explicit opt-in on this phone.
      */
-    private val weshPrivacy = com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
+    private val weshPrivacy = com.bitchat.android.BuildConfig.WESH_POLICY
     
     // Track pending notifications per sender to enable grouping
     private val pendingNotifications = ConcurrentHashMap<String, MutableList<PendingNotification>>()
@@ -312,7 +312,7 @@ class NotificationManager(
                     markReadPendingIntent
                 ).build()
             )
-        if (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) builder.addAction(
+        if (!com.bitchat.android.BuildConfig.WESH_POLICY) builder.addAction(
                 NotificationCompat.Action.Builder(
                     R.drawable.ic_notification,
                     context.getString(R.string.notification_reply),

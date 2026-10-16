@@ -43,7 +43,10 @@ object NostrBackgroundRuntime {
     private lateinit var eventProcessor: NostrBackgroundEventProcessor
 
     fun initialize(app: Application) {
-        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) return
+        // Product policy, not the Internet toggle: Wesh never runs geohash channels or presence,
+        // and its account DMs need the QR-contact inbound filter before any relay event may reach
+        // a conversation. Relay sockets themselves follow WeshNetworkPolicy in NostrRelayManager.
+        if (com.bitchat.android.BuildConfig.WESH_POLICY) return
         synchronized(lock) {
             if (initialized) return
             application = app

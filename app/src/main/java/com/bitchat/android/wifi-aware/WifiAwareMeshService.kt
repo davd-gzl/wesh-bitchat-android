@@ -184,13 +184,13 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
                     (delegate?.getNickname() ?: myPeerID).toByteArray(Charsets.UTF_8)
                 }
             ),
-            weshLocalOnly = com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
+            weshLocalOnly = com.bitchat.android.BuildConfig.WESH_POLICY
         )
         fragmentingSender = FragmentingPacketSender(serviceScope, meshCore.fragmentManager, TAG)
     }
 
     // Wi-Fi Aware cannot prove a QR-enrolled identity here; Wesh keeps its private messages out.
-    private val weshQrEnrollment = if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) {
+    private val weshQrEnrollment = if (com.bitchat.android.BuildConfig.WESH_POLICY) {
         com.bitchat.android.services.IncomingMessageAdmission.QrEnrollment(
             fingerprintOf = { null },
             isEnrolled = { false }

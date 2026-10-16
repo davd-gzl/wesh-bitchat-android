@@ -21,7 +21,7 @@ import java.util.UUID
 class ConversationNotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         // The legacy remote-input route cannot prove Wesh enrollment. Open the app instead.
-        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY && intent.action == NotificationManager.ACTION_REPLY_TO_CONVERSATION) return
+        if (com.bitchat.android.BuildConfig.WESH_POLICY && intent.action == NotificationManager.ACTION_REPLY_TO_CONVERSATION) return
         val conversationID = intent.getStringExtra(NotificationManager.EXTRA_PEER_ID)
             ?.let(ContactDirectory::canonicalConversationId)
             ?: return

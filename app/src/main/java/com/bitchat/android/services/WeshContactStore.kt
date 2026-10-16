@@ -117,7 +117,12 @@ class WeshContactStore internal constructor(
         persist((others + self).takeLast(256))
         return true
     }
+    /** Bumped by every removal or wipe, so a verification checked before it never enrolls after it. */
+    @Volatile var removalEpoch = 0L
+        private set
+
     @Synchronized fun remove(conversationID: String): Boolean {
+        removalEpoch++
         if (_loadFailed.value) return false
         val remaining = _contacts.value.filterNot { it.conversationID == conversationID }
         if (remaining.size == _contacts.value.size) return false
@@ -126,6 +131,7 @@ class WeshContactStore internal constructor(
     }
     /** Panic wipe is the only write allowed after a failed load: it removes what could not be read. */
     @Synchronized fun clear() {
+        removalEpoch++
         persist(emptyList())
         _loadFailed.value = false
     }
