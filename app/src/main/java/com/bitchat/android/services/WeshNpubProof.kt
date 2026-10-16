@@ -4,7 +4,7 @@ import com.bitchat.android.nostr.Bech32
 import com.bitchat.android.nostr.NostrCrypto
 import com.bitchat.android.util.hexEncodedString
 
-/** Phone-only check of the optional `npubsig` (NPUB-PROOF.md); Wear never enrolls npubs. */
+/** Check of the optional `npubsig` (NPUB-PROOF.md). */
 internal object WeshNpubProof {
     /** True only for a well-formed BIP-340 proof made by the key the npub encodes. */
     fun isValid(qr: VerificationService.VerificationQR): Boolean = runCatching {
