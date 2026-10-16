@@ -124,4 +124,47 @@ class PaveDisplayNameTest {
         assertEquals("Vo" + ".".repeat(14) + "…" + ".".repeat(13) + "us", safe(name))
         assertEquals("!", safe(name, listOf("Vous")))
     }
+
+    @Test
+    fun `emoji keep their joiners and presentation selectors`() {
+        val heart = cp(0x2764, 0xFE0F)
+        val technologist = cp(0x1F469, 0x200D, 0x1F4BB)
+        val keycapOne = cp(0x31, 0xFE0F, 0x20E3)
+        assertEquals("$heart Nora", safe("$heart Nora"))
+        assertEquals("Nora $heart", safe("Nora $heart"))
+        assertEquals("$technologist Nora", safe("$technologist Nora"))
+        assertEquals(keycapOne, safe(keycapOne))
+        assertEquals(cp(0x2764, 0xFE0E), safe(cp(0x2764, 0xFE0E)))
+    }
+
+    @Test
+    fun `joiners and selectors outside an emoji stay invisible`() {
+        assertEquals("?", safe("No" + cp(0x200D) + "ra"))
+        assertEquals("?", safe("No" + cp(0xFE0F) + "ra"))
+        assertEquals("Nora", safe("Nora" + cp(0xFE0F)))
+    }
+
+    @Test
+    fun `tag characters are refused even inside an emoji`() {
+        // Black flag followed by tag letters and a cancel tag, then more text.
+        assertEquals("?", safe(cp(0x1F3F4, 0xE0067, 0xE0062, 0xE007F) + " Nora"))
+        assertEquals("?", safe("Nora" + cp(0xE0041, 0xE0042) + " Lee"))
+    }
+
+    @Test(timeout = 2_000)
+    fun `a 100 000 character name is handled fast`() {
+        val huge = "a ".repeat(50_000)
+        assertEquals(100_000, huge.length)
+        val elided = "a a a a a a a a…a a a a a a a a"
+        assertEquals(elided, safe(huge, listOf("Vous", "Sans surnom")))
+        assertEquals("!", safe("Vous $huge", listOf("Vous")))
+    }
+
+    @Test
+    fun `only the first 256 code points of the raw name count`() {
+        val filler = "a ".repeat(128)
+        assertEquals("!", safe(filler.dropLast(6) + "Vous", listOf("Vous")))
+        assertEquals("a a a a a a a a…a a a a a a a a", safe(filler + "Vous", listOf("Vous")))
+        assertEquals("a a a a a a a a…a a a a a a a a", safe(filler + "No" + cp(0x200B) + "ra"))
+    }
 }

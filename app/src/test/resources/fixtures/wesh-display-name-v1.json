@@ -167,6 +167,28 @@
     {
       "input": "Nora (No nickname)",
       "expect": "reserved"
+    },
+    {
+      "input": "❤️ Nora",
+      "expect": "display",
+      "display": "❤️ Nora"
+    },
+    {
+      "input": "👩‍💻 Nora",
+      "expect": "display",
+      "display": "👩‍💻 Nora"
+    },
+    {
+      "input": "No‍ra",
+      "expect": "unnamed"
+    },
+    {
+      "input": "No️ra",
+      "expect": "unnamed"
+    },
+    {
+      "input": "Nora󠁁󠁂 Lee",
+      "expect": "unnamed"
     }
   ]
 }

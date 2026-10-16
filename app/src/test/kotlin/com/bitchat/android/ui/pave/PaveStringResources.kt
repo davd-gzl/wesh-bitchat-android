@@ -32,8 +32,6 @@ internal object PaveStringResources {
         R.string::class.java.fields.first { it.getInt(null) == id }.name
 
     /** Every reserved label as shipped, in every locale directory. */
-    fun reservedWords(): Set<String> = localeDirectories.flatMapTo(LinkedHashSet()) { directory ->
-        val strings = strings(directory)
-        PaveReservedWords.keys.mapNotNull { strings[name(it)] }
-    }
+    fun reservedWords(): Set<String> =
+        PaveReservedWords.words(localeDirectories.map(::strings)) { getValue(name(it)) }
 }

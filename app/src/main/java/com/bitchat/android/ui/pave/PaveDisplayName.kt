@@ -6,10 +6,12 @@ import java.text.Normalizer
 /**
  * The remote nickname rule shared with iOS (design system README, « Surnom distant », v1; vectors
  * in `wesh-display-name-v1.json`). Pavé components apply it themselves, so a caller cannot forget it:
- * 1. NFKC.
+ * 1. The raw input is cut to [MAX_RAW_CODE_POINTS] code points, then NFKC. Nothing past that cap
+ *    is looked at, so an oversized name costs no more than a long one.
  * 2. Invisible characters (control, format such as bidi and zero-width, surrogate, private-use,
  *    unassigned, blank glyphs) are stripped at both ends; one between visible characters makes
- *    the whole name unnamed rather than being removed silently.
+ *    the whole name unnamed rather than being removed silently. Emoji keep their joiner and
+ *    presentation selectors ([hiddenFlags]); tag characters are refused everywhere.
  * 3. At most [MAX_COMBINING_MARKS] marks per character; one line.
  * 4. Letters mixing confusable scripts (Latin, Greek, Cyrillic, Armenian, Cherokee) make it unnamed.
  * 5. At most [MAX_GRAPHEMES] graphemes, elided in the middle.
@@ -18,10 +20,15 @@ import java.text.Normalizer
 object PaveDisplayName {
     const val MAX_GRAPHEMES = 32
     const val MAX_COMBINING_MARKS = 2
+    const val MAX_RAW_CODE_POINTS = 256
 
     /** A reserved word this long or longer also masks names that start or end with it. */
     const val MIN_AFFIX_LETTERS = 4
     private const val ELLIPSIS = "…"
+    private const val ZERO_WIDTH_JOINER = 0x200D
+    private const val TEXT_PRESENTATION = 0xFE0E
+    private const val EMOJI_PRESENTATION = 0xFE0F
+    private const val COMBINING_KEYCAP = 0x20E3
 
     private val CONFUSABLE_SCRIPTS = setOf(
         Character.UnicodeScript.LATIN, Character.UnicodeScript.GREEK, Character.UnicodeScript.CYRILLIC,
@@ -106,6 +113,33 @@ object PaveDisplayName {
             else -> false
         }
 
+    /**
+     * For each code point of [text], whether it draws nothing. The zero-width joiner and the text
+     * and emoji presentation selectors are kept inside a grapheme that holds a symbol (So) or the
+     * keycap mark, so "❤️", "👩‍💻" and "1️⃣" survive; anywhere else they count as invisible.
+     */
+    private fun hiddenFlags(text: String): BooleanArray {
+        val flags = BooleanArray(text.codePointCount(0, text.length))
+        val graphemes = BreakIterator.getCharacterInstance().apply { setText(text) }
+        var start = graphemes.first()
+        var end = graphemes.next()
+        var index = 0
+        while (end != BreakIterator.DONE) {
+            val grapheme = text.substring(start, end)
+            val emoji = grapheme.codePoints().anyMatch {
+                Character.getType(it).toByte() == Character.OTHER_SYMBOL || it == COMBINING_KEYCAP
+            }
+            grapheme.codePoints().forEach { codePoint ->
+                val emojiJoiner = codePoint == ZERO_WIDTH_JOINER || codePoint == TEXT_PRESENTATION ||
+                    codePoint == EMOJI_PRESENTATION
+                flags[index++] = isInvisible(codePoint) && !(emoji && emojiJoiner)
+            }
+            start = end
+            end = graphemes.next()
+        }
+        return flags
+    }
+
     private fun isSpace(codePoint: Int): Boolean = Character.isWhitespace(codePoint) || Character.isSpaceChar(codePoint)
 
     private fun isMark(codePoint: Int): Boolean = when (Character.getType(codePoint).toByte()) {
@@ -137,16 +171,18 @@ object PaveDisplayName {
     /** Rules 1 to 4; null when the name must show as unnamed. */
     private fun clean(raw: String?): String? {
         if (raw.isNullOrEmpty()) return null
-        val codePoints = Normalizer.normalize(raw, Normalizer.Form.NFKC).codePoints().toArray()
+        val normalized = Normalizer.normalize(clampRaw(raw), Normalizer.Form.NFKC)
+        val codePoints = normalized.codePoints().toArray()
+        val hidden = hiddenFlags(normalized)
         var start = 0
         var end = codePoints.size
-        while (start < end && (isInvisible(codePoints[start]) || isSpace(codePoints[start]))) start++
-        while (end > start && (isInvisible(codePoints[end - 1]) || isSpace(codePoints[end - 1]))) end--
-        val out = StringBuilder(raw.length)
+        while (start < end && (hidden[start] || isSpace(codePoints[start]))) start++
+        while (end > start && (hidden[end - 1] || isSpace(codePoints[end - 1]))) end--
+        val out = StringBuilder(normalized.length)
         var marks = 0
         for (index in start until end) {
             val codePoint = codePoints[index]
-            if (isInvisible(codePoint)) return null
+            if (hidden[index]) return null
             if (isMark(codePoint)) {
                 if (out.isEmpty() || out.last() == ' ' || ++marks > MAX_COMBINING_MARKS) continue
             } else {
@@ -170,6 +206,17 @@ object PaveDisplayName {
         .distinct()
         .count() > 1
 
+    /** The first [MAX_RAW_CODE_POINTS] code points of [raw], without reading the rest. */
+    private fun clampRaw(raw: String): String {
+        var end = 0
+        var count = 0
+        while (end < raw.length && count < MAX_RAW_CODE_POINTS) {
+            end += Character.charCount(raw.codePointAt(end))
+            count++
+        }
+        return raw.substring(0, end)
+    }
+
     private fun readsAsReserved(name: String, elided: String, reservedWords: Collection<String>): Boolean {
         val whole = HashSet<String>()
         val affixes = HashSet<String>()
@@ -179,12 +226,26 @@ object PaveDisplayName {
             whole += skeleton
             if (skeleton.codePointCount(0, skeleton.length) >= MIN_AFFIX_LETTERS) affixes += skeleton
         }
+        val longest = affixes.maxOfOrNull { it.length } ?: 0
         return setOf(name, elided).any { candidate ->
             val words = skeletonWords(candidate)
-            words.joinToString("") in whole || (1..words.size).any { count ->
-                words.take(count).joinToString("") in affixes || words.takeLast(count).joinToString("") in affixes
-            }
+            words.joinToString("") in whole ||
+                startsWithAffix(words, affixes, longest) || startsWithAffix(words.asReversed(), affixes, longest, reversed = true)
         }
+    }
+
+    /**
+     * Whether whole leading [words] (trailing ones when [reversed]) join into one of [affixes].
+     * One pass that stops once the joined text is longer than the [longest] affix.
+     */
+    private fun startsWithAffix(words: List<String>, affixes: Set<String>, longest: Int, reversed: Boolean = false): Boolean {
+        val joined = StringBuilder()
+        for (word in words) {
+            if (reversed) joined.insert(0, word) else joined.append(word)
+            if (joined.length > longest) return false
+            if (joined.toString() in affixes) return true
+        }
+        return false
     }
 
     /**
@@ -217,17 +278,18 @@ object PaveDisplayName {
      * ("Nora la vraie qu…ongtemps ou pas"), so a suffix cannot hide behind a trusted-looking prefix.
      */
     internal fun elideMiddle(text: String): String {
-        val iterator = BreakIterator.getCharacterInstance().apply { setText(text) }
-        val bounds = mutableListOf(0)
-        while (true) {
-            val next = iterator.next()
-            if (next == BreakIterator.DONE) break
-            bounds += next
-        }
-        val count = bounds.size - 1
-        if (count <= MAX_GRAPHEMES) return text
         val tail = (MAX_GRAPHEMES - 1) / 2
         val head = MAX_GRAPHEMES - 1 - tail
-        return text.substring(0, bounds[head]).trimEnd() + ELLIPSIS + text.substring(bounds[count - tail]).trimStart()
+        val iterator = BreakIterator.getCharacterInstance().apply { setText(text) }
+        var headEnd = 0
+        // Walk forward only until the name is known to be too long.
+        for (count in 1..MAX_GRAPHEMES + 1) {
+            val next = iterator.next()
+            if (next == BreakIterator.DONE) return text
+            if (count == head) headEnd = next
+        }
+        var tailStart = iterator.last()
+        repeat(tail) { tailStart = iterator.previous() }
+        return text.substring(0, headEnd).trimEnd() + ELLIPSIS + text.substring(tailStart).trimStart()
     }
 }

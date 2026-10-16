@@ -41,6 +41,10 @@ object PaveReservedWords {
         val contexts = listOf(context) + locales.map { locale ->
             context.createConfigurationContext(Configuration(context.resources.configuration).apply { setLocale(locale) })
         }
-        return contexts.flatMapTo(LinkedHashSet()) { localized -> keys.map(localized::getString) }
+        return words(contexts) { getString(it) }
     }
+
+    /** Every reserved label read from each of [sources]: one per language. */
+    internal fun <T> words(sources: Iterable<T>, getString: T.(Int) -> String): Set<String> =
+        sources.flatMapTo(LinkedHashSet()) { source -> keys.map { source.getString(it) } }
 }
