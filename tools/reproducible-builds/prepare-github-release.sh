@@ -30,10 +30,6 @@ required=(
   bitchat-android-release-unsigned.aab
   bitchat-android-universal-unsigned.apk
   bitchat-android-universal.apk
-  bitchat-android-wear-play-upload.aab
-  bitchat-android-wear-release-unsigned.aab
-  bitchat-android-wear-unsigned.apk
-  bitchat-android-wear.apk
   bitchat-android-x86-unsigned.apk
   bitchat-android-x86_64-unsigned.apk
   bitchat-android-x86_64.apk
@@ -57,8 +53,6 @@ for artifact_path in "$RELEASE_DIR"/*; do
     bitchat-android-armv7-unsigned.apk|\
     bitchat-android-play-upload.aab|bitchat-android-release-unsigned.aab|\
     bitchat-android-universal-unsigned.apk|bitchat-android-universal.apk|\
-    bitchat-android-wear-play-upload.aab|bitchat-android-wear-release-unsigned.aab|\
-    bitchat-android-wear-unsigned.apk|bitchat-android-wear.apk|\
     bitchat-android-x86-unsigned.apk|\
     bitchat-android-x86_64-unsigned.apk|bitchat-android-x86_64.apk)
       ;;

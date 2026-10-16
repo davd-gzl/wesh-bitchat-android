@@ -59,6 +59,20 @@ internal object WeshRuntime {
 
     fun clearInterruptedPanic(context: Context) {
         if (!draftWipeRequired.value) return
+        requestApplicationDataWipe(context)
+    }
+
+    /**
+     * After repeated identity load failures the person may reset: the same Android-verified wipe
+     * as an interrupted panic, so no partial identity or contact list survives.
+     */
+    fun resetIdentityAfterFailures(context: Context) {
+        val startup = coordinator ?: return
+        if (!StartupRecoveryPolicy.offersIdentityReset(startup.failures.value, startup.state.value, draftWipeRequired.value)) return
+        requestApplicationDataWipe(context)
+    }
+
+    private fun requestApplicationDataWipe(context: Context) {
         recovery.request {
             withContext(Dispatchers.IO) {
                 val manager = context.applicationContext.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager

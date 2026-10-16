@@ -24,12 +24,12 @@
     <string name="battery_optimization_not_required">Batterioptimering krävs inte</string>
     <string name="battery_optimization_checking">Kontrollerar batterioptimering</string>
     <string name="battery_optimization_why_disable">Varför inaktivera?</string>
-    <string name="battery_optimization_explanation">bitchat körs i bakgrunden för att upprätthålla mesh-anslutningar till enheter i närheten. Batterioptimering kan avbryta dessa och orsaka fördröjda eller missade meddelanden.\n\nAtt inaktivera säkerställer tillförlitlig P2P-meddelandetrafik.</string>
+    <string name="battery_optimization_explanation">Wesh körs i bakgrunden för att upprätthålla mesh-anslutningar till enheter i närheten. Batterioptimering kan avbryta dessa och orsaka fördröjda eller missade meddelanden.\n\nAtt inaktivera säkerställer tillförlitlig P2P-meddelandetrafik.</string>
     <string name="battery_optimization_disable_button">Inaktivera optimering</string>
-    <string name="battery_optimization_note">Obs: kan ändras senare i Android-inställningar &gt; Appar &gt; bitchat &gt; Batteri</string>
-    <string name="battery_optimization_not_supported_explanation">Din enhet kräver inte batterioptimeringsinställningar. bitchat körs normalt.</string>
-    <string name="battery_optimization_not_supported_message">Din enhet kräver inte batterioptimeringsinställningar. bitchat körs normalt.</string>
-    <string name="battery_optimization_success_message">bitchat kan köras tillförlitligt i bakgrunden</string>
+    <string name="battery_optimization_note">Obs: kan ändras senare i Android-inställningar &gt; Appar &gt; Wesh &gt; Batteri</string>
+    <string name="battery_optimization_not_supported_explanation">Din enhet kräver inte batterioptimeringsinställningar. Wesh körs normalt.</string>
+    <string name="battery_optimization_not_supported_message">Din enhet kräver inte batterioptimeringsinställningar. Wesh körs normalt.</string>
+    <string name="battery_optimization_success_message">Wesh kan köras tillförlitligt i bakgrunden</string>
     <string name="battery_optimization_benefits">• Tillförlitlig leverans\n• Upprätthåller mesh-anslutning\n• Bakgrundsrelä\n• Förhindrar avbrott</string>
     <string name="battery_optimization_check_again">Kontrollera igen</string>
     <string name="battery_optimization_skip">Hoppa över nu</string>
@@ -40,7 +40,7 @@
     <string name="notification_summary_more">och %1$d till</string>
     <string name="notification_messages_from_people">%1$d meddelanden från %2$d personer</string>
     <string name="notification_more_conversations">och %1$d fler konversationer</string>
-    <string name="notification_active_peers_title">bitchatter i närheten!</string>
+    <string name="notification_active_peers_title">Weshter i närheten!</string>
     <string name="notification_active_peers_one">1 person i närheten</string>
     <string name="notification_active_peers_many">%1$d personer i närheten</string>
     <string name="notification_new_messages">Nya meddelanden</string>
@@ -51,8 +51,8 @@
     <string name="notification_new_activity_in">Ny aktivitet i %1$s</string>
     <string name="notification_messages_in">Meddelanden i %1$s</string>
     <string name="notification_joined_conversation">%1$s gick med i konversationen</string>
-    <string name="notification_geohash_summary_title_mentions">bitchat – %1$d nämningar</string>
-    <string name="notification_geohash_summary_title">bitchat – platschattar</string>
+    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d nämningar</string>
+    <string name="notification_geohash_summary_title">Wesh – platschattar</string>
     <string name="notification_geohash_summary_text">%1$d meddelanden från %2$d platser</string>
     <string name="notification_mesh_mention_title_singular">Nämnd i Mesh‑chatt</string>
     <string name="notification_mesh_mention_title_plural">%1$d nämningar i Mesh‑chatt</string>
@@ -219,8 +219,8 @@
 
     <string name="location_services_required">Platstjänster krävs</string>
     <string name="privacy_first">Integritet först</string>
-    <string name="location_explanation">bitchat SPÅRAR INTE din plats.\n\nPlatstjänster krävs för Bluetooth‑skanning och Geohash‑chatt.</string>
-    <string name="location_needs_for">bitchat behöver platstjänster för:</string>
+    <string name="location_explanation">Wesh SPÅRAR INTE din plats.\n\nPlatstjänster krävs för Bluetooth‑skanning och Geohash‑chatt.</string>
+    <string name="location_needs_for">Wesh behöver platstjänster för:</string>
     <string name="location_needs_bullets">• Bluetooth‑skanning av enheter\n• Hitta användare i närheten i mesh‑nätet\n• Geohash‑chatt\n• Ingen spårning eller insamling</string>
     <string name="open_location_settings">Öppna platsinställningar</string>
     <string name="check_again">Kontrollera igen</string>
@@ -252,7 +252,7 @@
     <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">behörigheter</string>
     <string name="grant_permissions">Ge behörigheter</string>
-    <string name="location_tracking_warning">bitchat spårar INTE din plats</string>
+    <string name="location_tracking_warning">Wesh spårar INTE din plats</string>
     <string name="nobody_around">ingen i närheten…</string>
     <string name="you_suffix"> (du)</string>
     <string name="pan_zoom_instruction">panorera och zooma för att välja geohash</string>

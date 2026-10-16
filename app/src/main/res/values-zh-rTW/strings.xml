@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- TODO: Chinese (Traditional) translations -->
-    <!-- Machine-translated (Claude) — pending native-speaker review. Also corrected Simplified->Traditional script errors in verify_*/fingerprint_* strings. -->
+    <!-- Machine-translated — pending native-speaker review. Also corrected Simplified->Traditional script errors in verify_*/fingerprint_* strings. -->
   <plurals name="location_notes_title">
     <item quantity="other">#%1$s ± 1 • %2$d 則筆記</item>
   </plurals>
@@ -77,12 +77,12 @@
   <string name="battery_optimization_not_required">不需要電池最佳化</string>
   <string name="battery_optimization_checking">正在檢查電池最佳化</string>
   <string name="battery_optimization_why_disable">為什麼要停用電池最佳化？</string>
-  <string name="battery_optimization_explanation">bitchat 需要在背景執行，以維持與附近裝置的 mesh 網路連線。電池最佳化可能會中斷這些連線，導致訊息延遲或遺失。\n\n停用電池最佳化可確保可靠的點對點傳訊。</string>
+  <string name="battery_optimization_explanation">Wesh 需要在背景執行，以維持與附近裝置的 mesh 網路連線。電池最佳化可能會中斷這些連線，導致訊息延遲或遺失。\n\n停用電池最佳化可確保可靠的點對點傳訊。</string>
   <string name="battery_optimization_disable_button">停用電池最佳化</string>
-  <string name="battery_optimization_note">注意：你之後可以在 Android 設定 &gt; 應用程式 &gt; bitchat &gt; 電池 中變更此設定</string>
-  <string name="battery_optimization_not_supported_explanation">你的裝置不需要電池最佳化設定。bitchat 將正常運作。</string>
-  <string name="battery_optimization_not_supported_message">你的裝置不需要電池最佳化設定。bitchat 將正常運作。</string>
-  <string name="battery_optimization_success_message">bitchat 可以在背景可靠地運作</string>
+  <string name="battery_optimization_note">注意：你之後可以在 Android 設定 &gt; 應用程式 &gt; Wesh &gt; 電池 中變更此設定</string>
+  <string name="battery_optimization_not_supported_explanation">你的裝置不需要電池最佳化設定。Wesh 將正常運作。</string>
+  <string name="battery_optimization_not_supported_message">你的裝置不需要電池最佳化設定。Wesh 將正常運作。</string>
+  <string name="battery_optimization_success_message">Wesh 可以在背景可靠地運作</string>
   <string name="battery_optimization_benefits">• 確保訊息可靠送達\n• 維持 mesh 網路連線\n• 允許背景訊息中繼\n• 防止連線中斷</string>
   <string name="battery_optimization_check_again">再次檢查</string>
   <string name="battery_optimization_skip">暫時略過</string>
@@ -91,7 +91,7 @@
   <string name="notification_summary_more">還有 %1$d 則</string>
   <string name="notification_messages_from_people">來自 %2$d 位使用者的 %1$d 則訊息</string>
   <string name="notification_more_conversations">還有 %1$d 個對話</string>
-  <string name="notification_active_peers_title">👥 附近有 bitchat 使用者！</string>
+  <string name="notification_active_peers_title">👥 附近有 Wesh 使用者！</string>
   <string name="notification_active_peers_one">附近有 1 人</string>
   <string name="notification_active_peers_many">附近有 %1$d 人</string>
   <string name="notification_new_messages">新訊息</string>
@@ -102,8 +102,8 @@
   <string name="notification_new_activity_in">%1$s 中有新動態</string>
   <string name="notification_messages_in">%1$s 中的訊息</string>
   <string name="notification_joined_conversation">%1$s 加入了對話</string>
-  <string name="notification_geohash_summary_title_mentions">bitchat - %1$d 則提及</string>
-  <string name="notification_geohash_summary_title">bitchat - 位置聊天</string>
+  <string name="notification_geohash_summary_title_mentions">Wesh - %1$d 則提及</string>
+  <string name="notification_geohash_summary_title">Wesh - 位置聊天</string>
   <string name="notification_geohash_summary_text">來自 %2$d 個位置的 %1$d 則訊息</string>
   <string name="notification_mesh_mention_title_singular">在 Mesh 聊天中被提及</string>
   <string name="notification_mesh_mention_title_plural">在 Mesh 聊天中有 %1$d 則提及</string>
@@ -187,7 +187,7 @@
   <string name="cd_open_map">開啟地圖</string>
   <string name="cd_remove_bookmark">移除書籤</string>
   <string name="cd_teleport">傳送</string>
-  <string name="notification_action_quit_bitchat">結束 bitchat</string>
+  <string name="notification_action_quit_bitchat">結束 Wesh</string>
   <string name="about_background_title">在背景執行</string>
   <string name="about_background_desc">應用程式關閉時保持 mesh 網路運作中（前景服務）</string>
   <string name="cd_leave_channel">離開頻道</string>
@@ -280,8 +280,8 @@
   <string name="debug_role_client">作為客戶端（我們連線）</string>
   <string name="location_services_required">需要位置服務</string>
   <string name="privacy_first">隱私優先</string>
-  <string name="location_explanation">bitchat 不會追蹤你的位置。\n\n藍牙掃描與地理雜湊聊天功能都需要位置服務。</string>
-  <string name="location_needs_for">bitchat 需要位置服務以進行：</string>
+  <string name="location_explanation">Wesh 不會追蹤你的位置。\n\n藍牙掃描與地理雜湊聊天功能都需要位置服務。</string>
+  <string name="location_needs_for">Wesh 需要位置服務以進行：</string>
   <string name="location_needs_bullets">• 藍牙裝置掃描\n• 在 mesh 網路上探索附近的使用者\n• 地理雜湊聊天功能\n• 不會追蹤或收集位置資訊</string>
   <string name="background_location_required_title">建議開啟背景位置</string>
   <string name="background_location_required_subtitle">選用，可提升 mesh 網路可靠性</string>
@@ -295,7 +295,7 @@
   <string name="open_location_settings">開啟位置設定</string>
   <string name="check_again">再次檢查</string>
   <string name="location_services_unavailable">位置服務無法使用</string>
-  <string name="location_unavailable_explanation">此裝置上無法使用位置服務。這種情況並不常見，因為位置服務在 Android 裝置上是標準功能。\n\nbitchat 需要位置服務才能讓藍牙掃描正常運作（Android 的要求）。若沒有此功能，應用程式將無法探索附近的使用者。</string>
+  <string name="location_unavailable_explanation">此裝置上無法使用位置服務。這種情況並不常見，因為位置服務在 Android 裝置上是標準功能。\n\nWesh 需要位置服務才能讓藍牙掃描正常運作（Android 的要求）。若沒有此功能，應用程式將無法探索附近的使用者。</string>
   <string name="checking_location_services">正在檢查位置服務…</string>
   <string name="bluetooth_required">需要藍牙</string>
   <string name="bluetooth_needs_for">Wesh 需要藍牙以進行：</string>
@@ -323,7 +323,7 @@
   <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
   <string name="permissions_header">權限</string>
   <string name="grant_permissions">授予權限</string>
-  <string name="location_tracking_warning">bitchat 不會追蹤你的位置</string>
+  <string name="location_tracking_warning">Wesh 不會追蹤你的位置</string>
   <string name="nobody_around">附近沒有人…</string>
   <string name="you_suffix"> （你）</string>
   <string name="pan_zoom_instruction">平移並縮放以選擇地理雜湊</string>

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Machine-translated (Claude) — pending native-speaker review -->
+    <!-- Machine-translated — pending native-speaker review -->
     <string name="skip">Пропустити</string>
     <string name="bluetooth_recommended">Рекомендується Bluetooth</string>
     <string name="mesh_service_notification_content">Mesh працює — %1$d пірів</string>
@@ -65,12 +65,12 @@
     <string name="battery_optimization_not_required">Оптимізація батареї не потрібна</string>
     <string name="battery_optimization_checking">Перевірка оптимізації батареї</string>
     <string name="battery_optimization_why_disable">Навіщо вимикати оптимізацію батареї?</string>
-    <string name="battery_optimization_explanation">bitchat працює у фоновому режимі, щоб підтримувати з’єднання mesh-мережі з пристроями поруч. Оптимізація батареї може переривати ці з’єднання, через що повідомлення затримуються або губляться.\n\nВимкнення оптимізації батареї забезпечує надійний обмін повідомленнями напряму.</string>
+    <string name="battery_optimization_explanation">Wesh працює у фоновому режимі, щоб підтримувати з’єднання mesh-мережі з пристроями поруч. Оптимізація батареї може переривати ці з’єднання, через що повідомлення затримуються або губляться.\n\nВимкнення оптимізації батареї забезпечує надійний обмін повідомленнями напряму.</string>
     <string name="battery_optimization_disable_button">Вимкнути оптимізацію батареї</string>
-    <string name="battery_optimization_note">Примітка: ви можете змінити це налаштування пізніше в Налаштуваннях Android &gt; Додатки &gt; bitchat &gt; Батарея</string>
-    <string name="battery_optimization_not_supported_explanation">Ваш пристрій не потребує налаштувань оптимізації батареї. bitchat працюватиме у звичайному режимі.</string>
-    <string name="battery_optimization_not_supported_message">Ваш пристрій не потребує налаштувань оптимізації батареї. bitchat працюватиме у звичайному режимі.</string>
-    <string name="battery_optimization_success_message">bitchat може надійно працювати у фоновому режимі</string>
+    <string name="battery_optimization_note">Примітка: ви можете змінити це налаштування пізніше в Налаштуваннях Android &gt; Додатки &gt; Wesh &gt; Батарея</string>
+    <string name="battery_optimization_not_supported_explanation">Ваш пристрій не потребує налаштувань оптимізації батареї. Wesh працюватиме у звичайному режимі.</string>
+    <string name="battery_optimization_not_supported_message">Ваш пристрій не потребує налаштувань оптимізації батареї. Wesh працюватиме у звичайному режимі.</string>
+    <string name="battery_optimization_success_message">Wesh може надійно працювати у фоновому режимі</string>
     <string name="battery_optimization_benefits">• Забезпечує надійну доставку повідомлень\n• Підтримує зв’язок у mesh-мережі\n• Дозволяє передавати повідомлення у фоні\n• Запобігає розривам з’єднання</string>
     <string name="battery_optimization_check_again">Перевірити знову</string>
     <string name="battery_optimization_skip">Пропустити зараз</string>
@@ -79,7 +79,7 @@
     <string name="notification_summary_more">і ще %1$d</string>
     <string name="notification_messages_from_people">%1$d повідомлень від %2$d людей</string>
     <string name="notification_more_conversations">і ще %1$d розмов</string>
-    <string name="notification_active_peers_title">👥 bitchat-користувачі поруч!</string>
+    <string name="notification_active_peers_title">👥 Wesh-користувачі поруч!</string>
     <string name="notification_active_peers_one">1 людина поруч</string>
     <string name="notification_active_peers_many">%1$d людей поруч</string>
     <string name="notification_new_messages">Нові повідомлення</string>
@@ -90,8 +90,8 @@
     <string name="notification_new_activity_in">Нова активність у %1$s</string>
     <string name="notification_messages_in">Повідомлення в %1$s</string>
     <string name="notification_joined_conversation">%1$s приєднався(-лася) до розмови</string>
-    <string name="notification_geohash_summary_title_mentions">bitchat - %1$d згадок</string>
-    <string name="notification_geohash_summary_title">bitchat - геочати</string>
+    <string name="notification_geohash_summary_title_mentions">Wesh - %1$d згадок</string>
+    <string name="notification_geohash_summary_title">Wesh - геочати</string>
     <string name="notification_geohash_summary_text">%1$d повідомлень з %2$d місць</string>
     <string name="notification_mesh_mention_title_singular">Згадка в Mesh-чаті</string>
     <string name="notification_mesh_mention_title_plural">%1$d згадок у Mesh-чаті</string>
@@ -173,7 +173,7 @@
     <string name="cd_open_map">Відкрити карту</string>
     <string name="cd_remove_bookmark">Прибрати закладку</string>
     <string name="cd_teleport">Телепортуватися</string>
-    <string name="notification_action_quit_bitchat">Закрити bitchat</string>
+    <string name="notification_action_quit_bitchat">Закрити Wesh</string>
     <string name="about_background_title">працювати у фоновому режимі</string>
     <string name="about_background_desc">підтримувати mesh активним, коли додаток закрито (фонова служба)</string>
     <string name="cd_leave_channel">Вийти з каналу</string>
@@ -275,8 +275,8 @@
     <string name="debug_role_client">як клієнт (ми підключаємось)</string>
     <string name="location_services_required">Потрібні служби геолокації</string>
     <string name="privacy_first">Приватність понад усе</string>
-    <string name="location_explanation">bitchat НЕ відстежує вашу локацію.\n\nСлужби геолокації потрібні для сканування Bluetooth та для функції геочатів.</string>
-    <string name="location_needs_for">bitchat потребує служб геолокації для:</string>
+    <string name="location_explanation">Wesh НЕ відстежує вашу локацію.\n\nСлужби геолокації потрібні для сканування Bluetooth та для функції геочатів.</string>
+    <string name="location_needs_for">Wesh потребує служб геолокації для:</string>
     <string name="location_needs_bullets">• Сканування пристроїв Bluetooth\n• Виявлення користувачів поруч у mesh-мережі\n• Функції геочатів\n• Без відстеження чи збору геоданих</string>
     <string name="background_location_required_title">Рекомендовано фонову геолокацію</string>
     <string name="background_location_required_subtitle">необов’язково, покращує надійність mesh-мережі</string>
@@ -290,7 +290,7 @@
     <string name="open_location_settings">Відкрити налаштування геолокації</string>
     <string name="check_again">Перевірити знову</string>
     <string name="location_services_unavailable">Служби геолокації недоступні</string>
-    <string name="location_unavailable_explanation">Служби геолокації недоступні на цьому пристрої. Це незвично, оскільки служби геолокації є стандартними для пристроїв Android.\n\nbitchat потребує служб геолокації для коректної роботи сканування Bluetooth (вимога Android). Без цього додаток не може виявляти користувачів поруч.</string>
+    <string name="location_unavailable_explanation">Служби геолокації недоступні на цьому пристрої. Це незвично, оскільки служби геолокації є стандартними для пристроїв Android.\n\nWesh потребує служб геолокації для коректної роботи сканування Bluetooth (вимога Android). Без цього додаток не може виявляти користувачів поруч.</string>
     <string name="checking_location_services">Перевірка служб геолокації…</string>
     <string name="bluetooth_required">Потрібен Bluetooth</string>
     <string name="bluetooth_needs_for">Wesh потребує Bluetooth для:</string>
@@ -318,7 +318,7 @@
     <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">дозволи</string>
     <string name="grant_permissions">Надати дозволи</string>
-    <string name="location_tracking_warning">bitchat НЕ відстежує вашу локацію</string>
+    <string name="location_tracking_warning">Wesh НЕ відстежує вашу локацію</string>
     <string name="nobody_around">нікого немає поруч…</string>
     <string name="you_suffix"> (ви)</string>
     <string name="pan_zoom_instruction">панорамуйте та масштабуйте, щоб вибрати геохеш</string>
