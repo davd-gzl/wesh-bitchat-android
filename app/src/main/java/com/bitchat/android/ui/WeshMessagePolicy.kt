@@ -46,8 +46,9 @@ internal object WeshMessagePolicy {
     }
 
     /**
-     * The Wesh public room: public text not from a blocked peer. A system notice is shown only when
-     * it is ours; one without a known local origin could carry a remote name or a BitChat notice.
+     * The Wesh public room: public text not from a blocked peer, and no system line. No local system
+     * line sets senderPeerID to ours today, so every public system line is hidden; one without a known
+     * local origin could carry a remote name or a BitChat notice.
      */
     fun showsInPublicRoom(message: BitchatMessage, myPeerID: String, isBlocked: (String) -> Boolean): Boolean =
         !message.isPrivate && message.channel == null &&

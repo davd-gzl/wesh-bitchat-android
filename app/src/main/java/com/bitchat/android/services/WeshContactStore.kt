@@ -60,7 +60,7 @@ class WeshContactStore internal constructor(
             val proven = npub != null && row.optBoolean("npubProven", false)
             val warning = row.optBoolean("npubWarning", false)
             if (!hex.matches(Regex("[0-9a-f]{64}")) || name.toByteArray().size > 255) null
-            else Contact(hex, displayName(hex.dataFromHexString()!!, name), npub, proven, warning)
+            else Contact(hex, displayName(name), npub, proven, warning)
         }.distinctBy { it.noiseHex }.takeLast(256).also { _loadFailed.value = false }
     } catch (_: Exception) {
         _loadFailed.value = true
@@ -113,7 +113,7 @@ class WeshContactStore internal constructor(
             npub = null
             warning = true
         }
-        val self = Contact(hex, displayName(key, nickname), npub, npub != null && enrollment?.proven == true, warning)
+        val self = Contact(hex, displayName(nickname), npub, npub != null && enrollment?.proven == true, warning)
         persist((others + self).takeLast(256))
         return true
     }
@@ -151,9 +151,11 @@ class WeshContactStore internal constructor(
         blockPreferences.getStringSet("blocked_users", emptySet()).orEmpty().contains(fingerprint)
     }.getOrDefault(true)
     fun blockedFingerprints(): Set<String> = blockPreferences.getStringSet("blocked_users", emptySet()).orEmpty().toSet()
-    /** A QR nickname is remote input: stripped once here before it is kept; what is shown applies the remote rule. */
-    private fun displayName(key: ByteArray, nickname: String): String =
-        safeDisplayName(nickname, ContactIdentityResolver.fingerprintHex(key).take(8))
+    /**
+     * A QR nickname is remote input: stripped once here before it is kept; what is shown applies the
+     * remote rule. Empty when nothing visible is left, so it shows unnamed rather than as hex.
+     */
+    private fun displayName(nickname: String): String = safeDisplayName(nickname, "")
     private fun persist(contacts: List<Contact>) {
         val array = JSONArray()
         contacts.forEach { array.put(JSONObject().put("noise", it.noiseHex).put("nickname", it.nickname).putOpt("npub", it.npub)

@@ -141,6 +141,13 @@ class WeshVerificationHandlerTest {
             assertEquals(impostor, "Sans surnom (réservé)", handler.resolvePeerDisplayNameForFingerprint(peer))
         }
     }
+    @Test fun `a scanned QR without a visible nickname caches no fingerprint look-alike`() {
+        val identity: SecureIdentityStateManager = mock()
+        handler = VerificationHandler(mock(), scope, { mesh }, identity, state(), mock(), mock(), { time }, remoteName = names)
+        val unnamed = npubQR(syntheticNpub, "\u3164\u200B")
+        assertTrue(handler.beginQRVerification(unnamed))
+        verify(identity, never()).cacheFingerprintNickname(any(), any())
+    }
     @Test fun `fingerprint display name applies the remote rule to live and announced nicknames`() {
         val state: ChatState = mock()
         whenever(state.peerNicknames).thenReturn(kotlinx.coroutines.flow.MutableStateFlow(mapOf(peer to "\u202Eevil\u200Bname")))

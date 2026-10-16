@@ -107,7 +107,7 @@ class VerificationHandler(
             meshService.initiateNoiseHandshake(peerID)
         }
         fingerprintFromNoiseHex(qr.noiseKeyHex)?.let { fp ->
-            identityManager.cacheFingerprintNickname(fp, safeDisplayName(qr.nickname, fp.take(8)))
+            safeDisplayName(qr.nickname, "").takeIf { it.isNotEmpty() }?.let { identityManager.cacheFingerprintNickname(fp, it) }
             identityManager.cacheNoiseFingerprint(qr.noiseKeyHex, fp)
             identityManager.cachePeerNoiseKey(peerID, qr.noiseKeyHex)
         }
