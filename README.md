@@ -92,7 +92,7 @@ and privacy rules.
 ```sh
 python3 tools/arti-build/test-provenance.py
 tools/arti-build/verify-checksums.sh
-./gradlew :app:assembleDebug :wear:assembleDebug testDebugUnitTest
+./gradlew :app:assembleDebug testDebugUnitTest
 ./gradlew lintDebug
 ```
 

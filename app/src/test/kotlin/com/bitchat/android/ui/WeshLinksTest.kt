@@ -12,6 +12,8 @@ class WeshLinksTest {
         val sources = File("src/main/java").walkTopDown().filter { it.extension == "kt" }.toList()
         val definitions = sources.filter { it.readText().contains("wesh.samourai.app") }.map { it.name }
         assertEquals(listOf("WeshLinks.kt"), definitions)
-        assertTrue(File("src/main/java/com/bitchat/android/ui/WeshScreen.kt").readText().contains("WeshLinks.TERMS_URL"))
+        // The Pavé About screen (reached from Settings) and the welcome both link the terms.
+        assertTrue(File("src/main/java/com/bitchat/android/ui/pave/SettingsScreen.kt").readText().contains("WeshLinks.TERMS_URL"))
+        assertTrue(File("src/main/java/com/bitchat/android/ui/pave/OnboardingFlow.kt").readText().contains("WeshLinks.TERMS_URL"))
     }
 }
