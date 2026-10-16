@@ -130,15 +130,6 @@ object VerificationService {
         digest(qr.canonicalBytes())
     }
 
-    /** True only for a well-formed proof made by the key the npub encodes. */
-    fun hasValidNpubProof(qr: VerificationQR): Boolean = runCatching {
-        val npub = qr.npub ?: return false
-        val sig = qr.npubSigHex ?: return false
-        if (!sig.matches(Regex("[0-9a-f]{128}")) || !WeshNpubPolicy.isValid(npub)) return false
-        val key = com.bitchat.android.nostr.Bech32.decode(npub).second.hexEncodedString()
-        com.bitchat.android.nostr.NostrCrypto.schnorrVerify(npubProofMessage(qr), sig, key)
-    }.getOrDefault(false)
-
     /**
      * [npubSigner] signs the npub proof message with the npub's secret key. Without a signer the
      * npub is unproven (BitChat behavior). A failed signature builds no QR; callers drop the npub.

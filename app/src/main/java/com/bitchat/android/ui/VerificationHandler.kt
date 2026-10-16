@@ -89,7 +89,7 @@ class VerificationHandler(
         }
         val nonce = ByteArray(16)
         java.security.SecureRandom().nextBytes(nonce)
-        val npubProof = qr.npubSigHex?.let { VerificationService.hasValidNpubProof(qr) }
+        val npubProof = qr.npubSigHex?.let { com.bitchat.android.services.WeshNpubProof.isValid(qr) }
         val pending = PendingVerification(qr.noiseKeyHex, qr.signKeyHex, nonce, nowMs(), false, qr.nickname, qr.npub, npubProof)
         pendingQRVerifications[peerID] = pending
 
@@ -159,8 +159,7 @@ class VerificationHandler(
             pendingQRVerifications.remove(peerID)
             val fp = fingerprintFromNoiseHex(pending.noiseKeyHex) ?: return@launch
             // The QR signature covers the npub and this response proves the signer holds the Noise session.
-            val enrollment = com.bitchat.android.services.WeshNpubPolicy.enroll(pending.npub, pending.npubProof, ownedNpubs(), contacts.contacts.value, pending.noiseKeyHex)
-            contacts.record(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname, enrollment)
+            contacts.enroll(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname, pending.npub, pending.npubProof, ownedNpubs())
             completedAttempts[pending.noiseKeyHex.lowercase()] = nowMs()
             identityManager.setVerifiedFingerprint(fp, true)
             val current = _verifiedFingerprints.value.toMutableSet()

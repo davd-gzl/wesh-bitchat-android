@@ -1,8 +1,7 @@
 package com.bitchat.android.services
 
 import com.bitchat.android.nostr.Bech32
-import com.bitchat.android.nostr.NostrCrypto
-import com.bitchat.android.util.hexEncodedString
+import org.bouncycastle.crypto.ec.CustomNamedCurves
 
 /**
  * Enrollment checks for the npub carried by a signed QR. The parser stays permissive for
@@ -13,20 +12,26 @@ object WeshNpubPolicy {
      * What one successful QR enrollment stores. [warning]: flag the contact for user review
      * (refused conflicting claim, failed proof, or a proven binding kept against a weaker QR).
      * [evict]: Noise keys whose unproven claim to [npub] this proven claim removes.
+     * [kept]: the contact's previous binding is kept, so its earlier warning stays too.
      */
     data class Enrollment(
         val npub: String?,
         val proven: Boolean,
         val warning: Boolean,
-        val evict: Set<String> = emptySet()
+        val evict: Set<String> = emptySet(),
+        val kept: Boolean = false
     )
 
     /** Canonical lowercase bech32 `npub` encoding a valid secp256k1 x-only key. */
     fun isValid(npub: String?): Boolean = runCatching {
         if (npub == null || npub.length != 63) return false
         val (hrp, data) = Bech32.decode(npub)
-        hrp == "npub" && data.size == 32 && Bech32.encode(hrp, data) == npub &&
-            NostrCrypto.isValidPublicKey(data.hexEncodedString())
+        hrp == "npub" && data.size == 32 && Bech32.encode(hrp, data) == npub && isXOnlyPoint(data)
+    }.getOrDefault(false)
+
+    /** BIP-340 lift_x: x below the field prime and x^3 + 7 a square. Wear shares this file. */
+    private fun isXOnlyPoint(x: ByteArray): Boolean = runCatching {
+        CustomNamedCurves.getByName("secp256k1").curve.decodePoint(byteArrayOf(0x02) + x).isValid
     }.getOrDefault(false)
 
     /**
@@ -44,7 +49,7 @@ object WeshNpubPolicy {
     ): Enrollment {
         val self = contacts.firstOrNull { it.noiseHex.equals(noiseHex, ignoreCase = true) }
         val selfProven = self?.npubProven == true
-        fun keep(warning: Boolean) = Enrollment(self?.npub, selfProven, warning)
+        fun keep(warning: Boolean) = Enrollment(self?.npub, selfProven, warning, kept = true)
         // My own npubs are unknown: no new binding, and an existing one is left as is.
         if (ownedNpubs == null || !ownedNpubs.all(::isValid)) return keep(warning = false)
         if (candidate == null) return if (selfProven) keep(warning = true) else Enrollment(null, false, false)
