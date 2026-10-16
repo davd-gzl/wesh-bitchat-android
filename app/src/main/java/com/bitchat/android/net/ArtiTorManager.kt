@@ -258,7 +258,11 @@ class ArtiTorManager private constructor() {
                         startArti(application, useDelay = false)
                         appScope.launch {
                             waitUntilBootstrapped()
-                            if (_statusFlow.value.running && desiredMode == TorMode.ON) {
+                            if (desiredMode != TorMode.ON) {
+                                stopArtiInternal()
+                                return@launch
+                            }
+                            if (_statusFlow.value.running) {
                                 socksAddr = InetSocketAddress("127.0.0.1", currentSocksPort)
                                 Log.i(TAG, "Tor ON: proxy set to ${socksAddr}")
                                 resetNetworkConnections()
@@ -291,6 +295,13 @@ class ArtiTorManager private constructor() {
             }
 
             proxy.start()
+            if (desiredMode != TorMode.ON) {
+                // Internet was turned off while this start ran: stop now, never mark RUNNING.
+                stopArtiInternal()
+                lifecycleState = LifecycleState.STOPPED
+                _statusFlow.update { it.copy(running = false, bootstrapPercent = 0) }
+                return
+            }
             lastLogTime.set(System.currentTimeMillis())
 
             _statusFlow.update {

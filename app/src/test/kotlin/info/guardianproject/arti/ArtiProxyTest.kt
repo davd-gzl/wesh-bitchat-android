@@ -22,6 +22,8 @@ class ArtiProxyTest {
     private class FakeNative(var initResult: Int = 0) : ArtiNativeApi {
         val calls = mutableListOf<String>()
         var blockBootstrap: CountDownLatch? = null
+        /** A bootstrap the stop does not reach (the stop came before the native start). */
+        var uncancellable: CountDownLatch? = null
         val bootstrapping = CountDownLatch(1)
         override fun setLogCallback(callback: ArtiLogListener) { synchronized(calls) { calls += "log" } }
         override fun initialize(dataDir: String): Int {
@@ -29,6 +31,7 @@ class ArtiProxyTest {
             bootstrapping.countDown()
             // Like the native side: a stop() cancels the bootstrap, which then returns -4.
             blockBootstrap?.let { return if (it.await(30, TimeUnit.SECONDS)) -4 else 0 }
+            uncancellable?.await(30, TimeUnit.SECONDS)
             return initResult
         }
         override fun startSocksProxy(port: Int): Int {
@@ -78,5 +81,38 @@ class ArtiProxyTest {
         assertTrue(runCatching { proxy.start() }.exceptionOrNull() is ArtiException)
         proxy.stop()
         assertEquals(listOf("initialize", "stop"), native.calls)
+    }
+
+    @Test fun `every stop reaches the native side, even after a stop that interrupted a start`() {
+        val native = FakeNative().apply { blockBootstrap = CountDownLatch(1) }
+        val proxy = ArtiProxy(app, 23456, 23457, null, native)
+        val starter = thread { runCatching { proxy.start() } }
+        assertTrue(native.bootstrapping.await(5, TimeUnit.SECONDS))
+        proxy.stop()
+        starter.join(5_000)
+        proxy.stop()
+        assertEquals(2, native.calls.count { it == "stop" })
+    }
+
+    @Test fun `a start that completes after a stop is stopped again and never marked running`() {
+        val release = CountDownLatch(1)
+        val native = FakeNative().apply { uncancellable = release }
+        val proxy = ArtiProxy(app, 23456, 23457, null, native)
+        var failure: Throwable? = null
+        val starter = thread { failure = runCatching { proxy.start() }.exceptionOrNull() }
+        assertTrue(native.bootstrapping.await(5, TimeUnit.SECONDS))
+
+        proxy.stop()
+        release.countDown()
+        starter.join(5_000)
+        assertFalse(starter.isAlive)
+        assertTrue(failure is ArtiException)
+        assertEquals("the late start must be stopped again", "stop", native.calls.last())
+        assertEquals(2, native.calls.count { it == "stop" })
+
+        // Not left marked as running: the next start really starts.
+        native.uncancellable = null
+        proxy.start()
+        assertEquals(2, native.calls.count { it == "initialize" })
     }
 }

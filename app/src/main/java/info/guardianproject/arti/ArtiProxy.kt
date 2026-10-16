@@ -48,12 +48,16 @@ class ArtiProxy internal constructor(
         private const val TAG = "ArtiProxy"
     }
 
-    @Volatile
+    private val lock = Any()
+
+    /** Guarded by [lock]. */
     private var isRunning = false
 
-    /** Set from the first native call of a start until a stop: the native side may hold a client. */
-    @Volatile
-    private var nativeTouched = false
+    /** Guarded by [lock]. Once a start began, every stop reaches the native side (it is idempotent). */
+    private var startAttempted = false
+
+    /** Guarded by [lock]. Bumped by every stop, so a start can tell a stop happened while it ran. */
+    private var stops = 0L
 
     /**
      * Start the Arti Tor proxy.
@@ -66,13 +70,16 @@ class ArtiProxy internal constructor(
      * @throws ArtiException if initialization or startup fails
      */
     fun start() {
-        if (isRunning) {
-            Log.w(TAG, "Arti already running")
-            return
+        val stopsAtStart = synchronized(lock) {
+            if (isRunning) {
+                Log.w(TAG, "Arti already running")
+                return
+            }
+            startAttempted = true
+            stops
         }
 
         try {
-            nativeTouched = true
             logListener?.let { listener ->
                 Log.d(TAG, "Registering log callback")
                 native.setLogCallback(listener)
@@ -91,7 +98,14 @@ class ArtiProxy internal constructor(
             val startResult = native.startSocksProxy(socksPort)
             when (startResult) {
                 0 -> {
-                    isRunning = true
+                    val stoppedMeanwhile = synchronized(lock) {
+                        (stops != stopsAtStart).also { if (!it) isRunning = true }
+                    }
+                    if (stoppedMeanwhile) {
+                        // A stop landed between our native calls: whatever started must not run.
+                        native.stop()
+                        throw ArtiException("Arti stopped during start")
+                    }
                     Log.i(TAG, "Arti started successfully")
                 }
                 -1 -> throw ArtiException("Arti client not initialized")
@@ -115,7 +129,11 @@ class ArtiProxy internal constructor(
      * bootstrapping. Also runs after a failed start, which can leave a client behind.
      */
     fun stop() {
-        if (!nativeTouched) return
+        synchronized(lock) {
+            if (!startAttempted) return
+            stops++
+            isRunning = false
+        }
 
         try {
             Log.i(TAG, "Stopping Arti...")
@@ -123,9 +141,6 @@ class ArtiProxy internal constructor(
             if (stopResult != 0) {
                 Log.w(TAG, "Stop returned error code: $stopResult")
             }
-
-            isRunning = false
-            nativeTouched = false
             Log.i(TAG, "Arti stopped successfully")
 
         } catch (e: Exception) {
