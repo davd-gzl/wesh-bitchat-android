@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="wesh_bluetooth_required_to_discover">Wesh needs Bluetooth to find and connect to people nearby. Turn on Bluetooth to continue.</string>
+    <string name="wesh_bluetooth_unsupported">This device does not support Bluetooth, which Wesh needs to work.</string>
+    <string name="wesh_bluetooth_disabled">Bluetooth is off. Turn it on to use Wesh.</string>
+    <string name="wesh_permissions_partially_denied">Some permissions were denied:</string>
+    <string name="wesh_permissions_partially_denied_footer">Wesh may not work properly without all permissions.</string>
+    <string name="wesh_permissions_critical_denied">Wesh needs these permissions to work:</string>
+    <string name="wesh_permissions_critical_denied_footer">Grant them in the Android settings to use Wesh.</string>
+</resources>

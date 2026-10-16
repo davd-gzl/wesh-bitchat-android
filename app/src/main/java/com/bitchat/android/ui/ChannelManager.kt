@@ -18,7 +18,9 @@ class ChannelManager(
     private val messageManager: MessageManager,
     private val dataManager: DataManager,
     private val coroutineScope: CoroutineScope,
-    private val onSwitchToMeshLocation: () -> Unit = {}
+    private val onSwitchToMeshLocation: () -> Unit = {},
+    /** Wesh has a single public room; legacy named and password channels are not reachable. */
+    private val legacyChannelsEnabled: Boolean = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
 ) {
     
     // Channel encryption and security
@@ -30,6 +32,7 @@ class ChannelManager(
     // MARK: - Channel Lifecycle
     
     fun joinChannel(channel: String, password: String? = null, myPeerID: String): Boolean {
+        if (!legacyChannelsEnabled) return false
         val channelTag = if (channel.startsWith("#")) channel else "#$channel"
         
         // Check if already joined
@@ -122,10 +125,12 @@ class ChannelManager(
     
     // MARK: - Channel Password and Encryption
     
-    private fun verifyChannelPassword(channel: String, password: String): Boolean {
-        // TODO: REMOVE THIS - FOR TESTING ONLY
-        return true
-    }
+    /**
+     * No key commitment is available to check a password against, so a password is never
+     * accepted. The previous stub accepted any password.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun verifyChannelPassword(channel: String, password: String): Boolean = false
     
     private fun deriveChannelKey(password: String, channelName: String): SecretKeySpec {
         // PBKDF2 key derivation (same as iOS version)
@@ -237,6 +242,7 @@ class ChannelManager(
     }
 
     fun setChannelPassword(channel: String, password: String) {
+        if (!legacyChannelsEnabled) return
 
         channelPasswords[channel] = password
 

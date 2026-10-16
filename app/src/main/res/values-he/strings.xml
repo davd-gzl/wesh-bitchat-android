@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- TODO: Hebrew translations -->
-    <!-- Machine-translated (Claude) — pending native-speaker review -->
+    <!-- Machine-translated — pending native-speaker review -->
   <plurals name="location_notes_title">
     <item quantity="one">#%1$s ± 1 • %2$d הערה</item>
     <item quantity="two">#%1$s ± 1 • %2$d הערות</item>
@@ -79,12 +79,12 @@
   <string name="battery_optimization_not_required">ייעול צריכת סוללה אינו נדרש</string>
   <string name="battery_optimization_checking">בודק ייעול צריכת סוללה</string>
   <string name="battery_optimization_why_disable">מדוע לבטל ייעול צריכת סוללה?</string>
-  <string name="battery_optimization_explanation">bitchat פועל ברקע כדי לשמור על חיבורי רשת Mesh עם מכשירים קרובים. ייעול צריכת סוללה עלול לשבש חיבורים אלה, ולגרום לעיכוב או לאובדן הודעות.\n\nביטול ייעול צריכת הסוללה מבטיח העברת הודעות אמינה בין עמיתים.</string>
+  <string name="battery_optimization_explanation">Wesh פועל ברקע כדי לשמור על חיבורי רשת Mesh עם מכשירים קרובים. ייעול צריכת סוללה עלול לשבש חיבורים אלה, ולגרום לעיכוב או לאובדן הודעות.\n\nביטול ייעול צריכת הסוללה מבטיח העברת הודעות אמינה בין עמיתים.</string>
   <string name="battery_optimization_disable_button">בטל ייעול צריכת סוללה</string>
-  <string name="battery_optimization_note">הערה: תוכל לשנות הגדרה זו מאוחר יותר בהגדרות אנדרואיד &gt; אפליקציות &gt; bitchat &gt; סוללה</string>
-  <string name="battery_optimization_not_supported_explanation">המכשיר שלך אינו דורש הגדרות ייעול צריכת סוללה. bitchat יפעל כרגיל.</string>
-  <string name="battery_optimization_not_supported_message">המכשיר שלך אינו דורש הגדרות ייעול צריכת סוללה. bitchat יפעל כרגיל.</string>
-  <string name="battery_optimization_success_message">bitchat יכול לפעול באופן אמין ברקע</string>
+  <string name="battery_optimization_note">הערה: תוכל לשנות הגדרה זו מאוחר יותר בהגדרות אנדרואיד &gt; אפליקציות &gt; Wesh &gt; סוללה</string>
+  <string name="battery_optimization_not_supported_explanation">המכשיר שלך אינו דורש הגדרות ייעול צריכת סוללה. Wesh יפעל כרגיל.</string>
+  <string name="battery_optimization_not_supported_message">המכשיר שלך אינו דורש הגדרות ייעול צריכת סוללה. Wesh יפעל כרגיל.</string>
+  <string name="battery_optimization_success_message">Wesh יכול לפעול באופן אמין ברקע</string>
   <string name="battery_optimization_benefits">• מבטיח מסירת הודעות אמינה\n• שומר על קישוריות רשת Mesh\n• מאפשר העברת הודעות ברקע\n• מונע ניתוקי חיבור</string>
   <string name="battery_optimization_check_again">בדוק שוב</string>
   <string name="battery_optimization_skip">דלג לעת עתה</string>
@@ -104,8 +104,8 @@
   <string name="notification_new_activity_in">פעילות חדשה ב-%1$s</string>
   <string name="notification_messages_in">הודעות ב-%1$s</string>
   <string name="notification_joined_conversation">%1$s הצטרף/ה לשיחה</string>
-  <string name="notification_geohash_summary_title_mentions">bitchat - %1$d אזכורים</string>
-  <string name="notification_geohash_summary_title">bitchat - צ׳אטים לפי מיקום</string>
+  <string name="notification_geohash_summary_title_mentions">Wesh - %1$d אזכורים</string>
+  <string name="notification_geohash_summary_title">Wesh - צ׳אטים לפי מיקום</string>
   <string name="notification_geohash_summary_text">%1$d הודעות מ-%2$d מיקומים</string>
   <string name="notification_mesh_mention_title_singular">אוזכרת בצ׳אט Mesh</string>
   <string name="notification_mesh_mention_title_plural">%1$d אזכורים בצ׳אט Mesh</string>
@@ -192,7 +192,7 @@
   <string name="cd_open_map">פתח מפה</string>
   <string name="cd_remove_bookmark">הסר סימנייה</string>
   <string name="cd_teleport">טלפורט</string>
-  <string name="notification_action_quit_bitchat">צא מ-bitchat</string>
+  <string name="notification_action_quit_bitchat">צא מ-Wesh</string>
   <string name="about_background_title">הפעל ברקע</string>
   <string name="about_background_desc">שמור על רשת ה-Mesh פעילה כאשר האפליקציה סגורה (שירות חזית)</string>
   <string name="cd_leave_channel">עזוב ערוץ</string>
@@ -285,8 +285,8 @@
   <string name="debug_role_client">כלקוח (אנחנו מתחברים)</string>
   <string name="location_services_required">נדרשים שירותי מיקום</string>
   <string name="privacy_first">פרטיות תחילה</string>
-  <string name="location_explanation">bitchat לא עוקב אחר המיקום שלך.\n\nשירותי מיקום נדרשים לסריקת Bluetooth ולתכונת צ׳אט ה-Geohash.</string>
-  <string name="location_needs_for">bitchat זקוק לשירותי מיקום עבור:</string>
+  <string name="location_explanation">Wesh לא עוקב אחר המיקום שלך.\n\nשירותי מיקום נדרשים לסריקת Bluetooth ולתכונת צ׳אט ה-Geohash.</string>
+  <string name="location_needs_for">Wesh זקוק לשירותי מיקום עבור:</string>
   <string name="location_needs_bullets">• סריקת מכשירי Bluetooth\n• איתור משתמשים קרובים ברשת ה-Mesh\n• תכונת צ׳אט Geohash\n• ללא מעקב או איסוף מיקום</string>
   <string name="background_location_required_title">מומלץ מיקום ברקע</string>
   <string name="background_location_required_subtitle">אופציונלי, משפר את אמינות ה-Mesh</string>
@@ -300,7 +300,7 @@
   <string name="open_location_settings">פתח הגדרות מיקום</string>
   <string name="check_again">בדוק שוב</string>
   <string name="location_services_unavailable">שירותי מיקום אינם זמינים</string>
-  <string name="location_unavailable_explanation">שירותי מיקום אינם זמינים במכשיר זה. זה נדיר, מכיוון ששירותי מיקום הם סטנדרטיים במכשירי אנדרואיד.\n\nbitchat זקוק לשירותי מיקום כדי שסריקת Bluetooth תפעל כראוי (דרישת אנדרואיד). ללא זה, האפליקציה אינה יכולה לאתר משתמשים קרובים.</string>
+  <string name="location_unavailable_explanation">שירותי מיקום אינם זמינים במכשיר זה. זה נדיר, מכיוון ששירותי מיקום הם סטנדרטיים במכשירי אנדרואיד.\n\nWesh זקוק לשירותי מיקום כדי שסריקת Bluetooth תפעל כראוי (דרישת אנדרואיד). ללא זה, האפליקציה אינה יכולה לאתר משתמשים קרובים.</string>
   <string name="checking_location_services">בודק שירותי מיקום…</string>
   <string name="bluetooth_required">נדרש Bluetooth</string>
   <string name="bluetooth_needs_for">Wesh זקוק ל-Bluetooth כדי:</string>
@@ -328,7 +328,7 @@
   <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
   <string name="permissions_header">הרשאות</string>
   <string name="grant_permissions">הענק הרשאות</string>
-  <string name="location_tracking_warning">bitchat לא עוקב אחר המיקום שלך</string>
+  <string name="location_tracking_warning">Wesh לא עוקב אחר המיקום שלך</string>
   <string name="nobody_around">אין אף אחד בסביבה…</string>
   <string name="you_suffix"> (אתה)</string>
   <string name="pan_zoom_instruction">הזז ושנה תצוגה כדי לבחור geohash</string>

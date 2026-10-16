@@ -29,12 +29,12 @@
     <string name="battery_optimization_not_required">バッテリー最適化は不要です</string>
     <string name="battery_optimization_checking">バッテリー最適化を確認中</string>
     <string name="battery_optimization_why_disable">なぜバッテリー最適化を無効にするのか</string>
-    <string name="battery_optimization_explanation">bitchat はバックグラウンドで動作して、近くのデバイスとのメッシュ接続を維持します。バッテリー最適化はこれらの接続を中断し、メッセージの遅延や欠落を引き起こす可能性があります。\n\nバッテリー最適化を無効にすると、信頼できるピアツーピア通信が可能になります。</string>
+    <string name="battery_optimization_explanation">Wesh はバックグラウンドで動作して、近くのデバイスとのメッシュ接続を維持します。バッテリー最適化はこれらの接続を中断し、メッセージの遅延や欠落を引き起こす可能性があります。\n\nバッテリー最適化を無効にすると、信頼できるピアツーピア通信が可能になります。</string>
     <string name="battery_optimization_disable_button">バッテリー最適化を無効にする</string>
-    <string name="battery_optimization_note">注: 後で Android の設定 &gt; アプリ &gt; bitchat &gt; バッテリー で変更できます。</string>
-    <string name="battery_optimization_not_supported_explanation">この端末ではバッテリー最適化の設定は不要です。bitchat は通常通り動作します。</string>
-    <string name="battery_optimization_not_supported_message">この端末ではバッテリー最適化の設定は不要です。bitchat は通常通り動作します。</string>
-    <string name="battery_optimization_success_message">bitchat はバックグラウンドで信頼して動作できます</string>
+    <string name="battery_optimization_note">注: 後で Android の設定 &gt; アプリ &gt; Wesh &gt; バッテリー で変更できます。</string>
+    <string name="battery_optimization_not_supported_explanation">この端末ではバッテリー最適化の設定は不要です。Wesh は通常通り動作します。</string>
+    <string name="battery_optimization_not_supported_message">この端末ではバッテリー最適化の設定は不要です。Wesh は通常通り動作します。</string>
+    <string name="battery_optimization_success_message">Wesh はバックグラウンドで信頼して動作できます</string>
     <string name="battery_optimization_benefits">• メッセージの確実な配信\n• メッシュ接続の維持\n• バックグラウンド転送\n• 切断の防止</string>
     <string name="battery_optimization_check_again">再確認</string>
     <string name="battery_optimization_skip">今はスキップ</string>
@@ -46,7 +46,7 @@
     <string name="notification_summary_more">ほか %1$d 件</string>
     <string name="notification_messages_from_people">%2$d 人からの %1$d 件のメッセージ</string>
     <string name="notification_more_conversations">ほか %1$d 会話</string>
-    <string name="notification_active_peers_title">近くに bitchatter ！</string>
+    <string name="notification_active_peers_title">近くに Weshter ！</string>
     <string name="notification_active_peers_one">近くに 1 人</string>
     <string name="notification_active_peers_many">近くに %1$d 人</string>
     <string name="notification_new_messages">新着メッセージ</string>
@@ -57,8 +57,8 @@
     <string name="notification_new_activity_in">%1$s の新しいアクティビティ</string>
     <string name="notification_messages_in">%1$s のメッセージ</string>
     <string name="notification_joined_conversation">%1$s が会話に参加しました</string>
-    <string name="notification_geohash_summary_title_mentions">bitchat – %1$d 件のメンション</string>
-    <string name="notification_geohash_summary_title">bitchat – ロケーションチャット</string>
+    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d 件のメンション</string>
+    <string name="notification_geohash_summary_title">Wesh – ロケーションチャット</string>
     <string name="notification_geohash_summary_text">%2$d 箇所からの %1$d 件のメッセージ</string>
     <string name="notification_mesh_mention_title_singular">メッシュチャットでメンション</string>
     <string name="notification_mesh_mention_title_plural">メッシュチャットで %1$d 件のメンション</string>
@@ -244,8 +244,8 @@
     <!-- オンボーディング画面 -->
     <string name="location_services_required">位置情報サービスが必要です</string>
     <string name="privacy_first">プライバシー第一</string>
-    <string name="location_explanation">bitchat はあなたの位置情報を追跡しません。\n\n位置情報サービスは、Bluetooth スキャンと geohash チャット機能に必要です。</string>
-    <string name="location_needs_for">bitchat が位置情報サービスを必要とする理由:</string>
+    <string name="location_explanation">Wesh はあなたの位置情報を追跡しません。\n\n位置情報サービスは、Bluetooth スキャンと geohash チャット機能に必要です。</string>
+    <string name="location_needs_for">Wesh が位置情報サービスを必要とする理由:</string>
     <string name="location_needs_bullets">• Bluetooth デバイスのスキャン\n• メッシュネットワークで近くのユーザーを発見\n• geohash チャット機能\n• 位置情報の追跡や収集は行いません</string>
     <string name="open_location_settings">位置情報の設定を開く</string>
     <string name="check_again">再確認</string>
@@ -276,7 +276,7 @@
     <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">権限</string>
     <string name="grant_permissions">権限を付与</string>
-    <string name="location_tracking_warning">bitchat はあなたの位置情報を追跡しません</string>
+    <string name="location_tracking_warning">Wesh はあなたの位置情報を追跡しません</string>
     <string name="nobody_around">誰もいません…</string>
     <string name="you_suffix"> (あなた)</string>
     <string name="pan_zoom_instruction">パン/ズームして geohash を選択</string>

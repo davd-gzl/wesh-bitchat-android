@@ -29,12 +29,12 @@
     <string name="battery_optimization_not_required">Hindi kailangan ang pag‑optimize ng baterya</string>
     <string name="battery_optimization_checking">Sinusuri ang pag‑optimize ng baterya</string>
     <string name="battery_optimization_why_disable">Bakit i‑disable ang pag‑optimize?</string>
-    <string name="battery_optimization_explanation">Tumatakbo ang bitchat sa background upang mapanatili ang mesh na koneksyon sa mga kalapit na device. Maaaring maputol ito ng pag‑optimize ng baterya na nagdudulot ng pagkaantala o pagkawala ng mensahe.\n\nAng pag‑disable nito ay tinitiyak ang maaasahang peer‑to‑peer na pagmemensahe.</string>
+    <string name="battery_optimization_explanation">Tumatakbo ang Wesh sa background upang mapanatili ang mesh na koneksyon sa mga kalapit na device. Maaaring maputol ito ng pag‑optimize ng baterya na nagdudulot ng pagkaantala o pagkawala ng mensahe.\n\nAng pag‑disable nito ay tinitiyak ang maaasahang peer‑to‑peer na pagmemensahe.</string>
     <string name="battery_optimization_disable_button">I‑disable ang pag‑optimize</string>
-    <string name="battery_optimization_note">Tandaan: Maaari itong baguhin sa Android Settings &gt; Apps &gt; bitchat &gt; Battery</string>
-    <string name="battery_optimization_not_supported_explanation">Hindi kailangan ng iyong device ng mga setting ng pag‑optimize ng baterya. Normal na gagana ang bitchat.</string>
-    <string name="battery_optimization_not_supported_message">Hindi kailangan ng iyong device ng mga setting ng pag‑optimize ng baterya. Normal na gagana ang bitchat.</string>
-    <string name="battery_optimization_success_message">Maaasahang tatakbo ang bitchat sa background</string>
+    <string name="battery_optimization_note">Tandaan: Maaari itong baguhin sa Android Settings &gt; Apps &gt; Wesh &gt; Battery</string>
+    <string name="battery_optimization_not_supported_explanation">Hindi kailangan ng iyong device ng mga setting ng pag‑optimize ng baterya. Normal na gagana ang Wesh.</string>
+    <string name="battery_optimization_not_supported_message">Hindi kailangan ng iyong device ng mga setting ng pag‑optimize ng baterya. Normal na gagana ang Wesh.</string>
+    <string name="battery_optimization_success_message">Maaasahang tatakbo ang Wesh sa background</string>
     <string name="battery_optimization_benefits">• Maaasahang paghatid ng mensahe\n• Pinananatili ang mesh na koneksyon\n• Background relay ng mensahe\n• Iwas putol ng koneksyon</string>
     <string name="battery_optimization_check_again">Suriin muli</string>
     <string name="battery_optimization_skip">Laktawan muna</string>
@@ -46,7 +46,7 @@
     <string name="notification_summary_more">at %1$d pa</string>
     <string name="notification_messages_from_people">%1$d mensahe mula sa %2$d tao</string>
     <string name="notification_more_conversations">at %1$d pang usapan</string>
-    <string name="notification_active_peers_title">mga bitchatter na malapit!</string>
+    <string name="notification_active_peers_title">mga Weshter na malapit!</string>
     <string name="notification_active_peers_one">1 tao sa paligid</string>
     <string name="notification_active_peers_many">%1$d tao sa paligid</string>
     <string name="notification_new_messages">Mga bagong mensahe</string>
@@ -57,8 +57,8 @@
     <string name="notification_new_activity_in">Bagong aktibidad sa %1$s</string>
     <string name="notification_messages_in">Mga mensahe sa %1$s</string>
     <string name="notification_joined_conversation">Sumali si %1$s sa usapan</string>
-    <string name="notification_geohash_summary_title_mentions">bitchat – %1$d banggit</string>
-    <string name="notification_geohash_summary_title">bitchat – mga chat sa lokasyon</string>
+    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d banggit</string>
+    <string name="notification_geohash_summary_title">Wesh – mga chat sa lokasyon</string>
     <string name="notification_geohash_summary_text">%1$d mensahe mula sa %2$d lokasyon</string>
     <string name="notification_mesh_mention_title_singular">Nabanggit sa Mesh Chat</string>
     <string name="notification_mesh_mention_title_plural">%1$d banggit sa Mesh Chat</string>
@@ -235,8 +235,8 @@
     <!-- Onboarding screens -->
     <string name="location_services_required">Kailangang‑kailangan ang Location Services</string>
     <string name="privacy_first">Privacy muna</string>
-    <string name="location_explanation">HINDI sinusubaybayan ng bitchat ang iyong lokasyon.\n\nKailangan ang location services para sa Bluetooth scanning at Geohash chat.</string>
-    <string name="location_needs_for">Kailangan ng bitchat ang location services para sa:</string>
+    <string name="location_explanation">HINDI sinusubaybayan ng Wesh ang iyong lokasyon.\n\nKailangan ang location services para sa Bluetooth scanning at Geohash chat.</string>
+    <string name="location_needs_for">Kailangan ng Wesh ang location services para sa:</string>
     <string name="location_needs_bullets">• Bluetooth device scanning\n• Pagtuklas ng kalapit na user sa mesh\n• Geohash chat\n• Walang tracking o koleksiyon ng lokasyon</string>
     <string name="open_location_settings">Buksan ang Location Settings</string>
     <string name="check_again">Suriin muli</string>
@@ -268,7 +268,7 @@
     <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">mga permiso</string>
     <string name="grant_permissions">Payagan</string>
-    <string name="location_tracking_warning">HINDI sinusubaybayan ng bitchat ang lokasyon mo</string>
+    <string name="location_tracking_warning">HINDI sinusubaybayan ng Wesh ang lokasyon mo</string>
     <string name="nobody_around">walang tao sa paligid…</string>
     <string name="you_suffix"> (ikaw)</string>
     <string name="pan_zoom_instruction">i‑pan at i‑zoom para pumili ng geohash</string>
