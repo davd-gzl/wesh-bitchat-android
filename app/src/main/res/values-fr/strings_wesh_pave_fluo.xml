@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <!-- Pavé Fluo: the reach card beside the giant numeral. -->
-    <plurals name="wesh_pave_fluo_reach_label">
+    <plurals name="wesh_pave_fluo_reach_label" tools:ignore="ImpliedQuantity">
         <item quantity="one">téléphone à portée</item>
         <item quantity="many">téléphones à portée</item>
         <item quantity="other">téléphones à portée</item>
