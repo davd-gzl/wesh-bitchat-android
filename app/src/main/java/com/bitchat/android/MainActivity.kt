@@ -154,7 +154,7 @@ class MainActivity : OrientationAwareActivity() {
         )
         
         setContent {
-            com.bitchat.android.ui.WeshTheme {
+            com.bitchat.android.ui.pave.WeshPaveTheme {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = MaterialTheme.colorScheme.background
@@ -787,6 +787,10 @@ class MainActivity : OrientationAwareActivity() {
         routeGate.dispatchIfReady(runtimeAttached, mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
             handleNotificationIntent(intent)
             handleVerificationIntent(intent)
+            if (intent.action == com.bitchat.android.ui.pave.PaveShortcuts.ACTION_HOLD_TO_ERASE) {
+                intent.action = null
+                com.bitchat.android.ui.pave.PaveShortcuts.requestErase()
+            }
         }
     }
 

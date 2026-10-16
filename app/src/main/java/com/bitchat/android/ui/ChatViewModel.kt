@@ -1197,6 +1197,7 @@ class ChatViewModel(
         clearNotificationsForSender(conversationID)
     }
     fun weshVerificationProgress(noiseHex: String) = verificationHandler.weshProgress(noiseHex)
+    fun weshScannedMeSince(sinceMs: Long, noiseHex: String?) = verificationHandler.weshScannedMeSince(sinceMs, noiseHex)
     fun requestWeshQRReview(raw: String) { weshIncomingQR.value = raw; weshContactSheet.value = true }
 
     fun sendWeshPrivate(content: String, peerID: String, onAccepted: (Boolean) -> Unit) {

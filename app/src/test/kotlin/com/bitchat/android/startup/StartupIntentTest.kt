@@ -31,6 +31,13 @@ class StartupIntentTest {
         assertFalse(kept.getBooleanExtra("ACTION_QUIT_APP", false))
     }
 
+    @Test fun keepsOnlyTheEraseShortcutAction() {
+        val shortcut = boundedWeshStartupIntent(Intent(com.bitchat.android.ui.pave.PaveShortcuts.ACTION_HOLD_TO_ERASE).putExtra("unrelated_payload", "discard"))
+        assertEquals(com.bitchat.android.ui.pave.PaveShortcuts.ACTION_HOLD_TO_ERASE, shortcut.action)
+        assertNull(shortcut.extras)
+        assertNull(boundedWeshStartupIntent(Intent("org.example.OTHER")).action)
+    }
+
     @Test fun rejectsOversizedFieldsAndUnrelatedUri() {
         val oversized = Intent().setData(Uri.parse("bitchat://verify?x=" + "a".repeat(4096)))
             .putExtra(NotificationManager.EXTRA_OPEN_PRIVATE_CHAT, true)

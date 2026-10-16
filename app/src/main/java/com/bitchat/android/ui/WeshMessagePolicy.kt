@@ -97,6 +97,12 @@ internal class WeshPreferences(
         set(value) {
             synchronized(lock) { if (!fenced) prefs.edit { putBoolean(NOTIFICATION_SENDER, value) } }
         }
+    /** Pavé appearance name ("Nuit", "Jour", "Automatique"); Nuit when unset or after an erase. */
+    var appearance: String
+        get() = prefs.getString("appearance", "Nuit") ?: "Nuit"
+        set(value) {
+            synchronized(lock) { if (!fenced) prefs.edit { putString("appearance", value) } }
+        }
     val meetingNote: String
         get() = prefs.getString("meeting_note", "") ?: ""
 
