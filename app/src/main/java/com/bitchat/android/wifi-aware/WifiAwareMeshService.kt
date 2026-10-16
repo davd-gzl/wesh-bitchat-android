@@ -210,7 +210,7 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
             try {
                 val senderPeerID = message.senderPeerID
                 if (senderPeerID != null) {
-                    val nick = try { meshCore.getPeerNickname(senderPeerID) } catch (_: Exception) { null } ?: senderPeerID
+                    val nick = try { meshCore.getPeerNickname(senderPeerID) } catch (_: Exception) { null }
                     val preview = com.bitchat.android.ui.NotificationTextUtils.buildPrivateMessagePreview(message)
                     serviceNotificationManager.setAppBackgroundState(true)
                     serviceNotificationManager.showPrivateMessageNotification(senderPeerID, nick, preview)

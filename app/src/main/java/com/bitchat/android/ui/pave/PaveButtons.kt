@@ -24,9 +24,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import java.util.Locale
 
 private enum class PaveButtonKind { Primary, Secondary, Danger }
 
@@ -102,7 +105,17 @@ private fun PaveButton(
             Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(WeshSpace.s2))
         }
-        Text(text, style = WeshType.label, textAlign = TextAlign.Center)
+        if (kind == PaveButtonKind.Primary) {
+            // Pavé Fluo: the main action reads like a poster line; TalkBack still hears it as typed.
+            Text(
+                text.uppercase(Locale.ROOT),
+                style = WeshType.displaySmall,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { contentDescription = text },
+            )
+        } else {
+            Text(text, style = WeshType.label, textAlign = TextAlign.Center)
+        }
     }
 }
 

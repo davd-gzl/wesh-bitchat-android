@@ -2,7 +2,6 @@ package com.bitchat.android.ui.pave
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -14,9 +13,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material.icons.Icons
@@ -34,13 +33,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
@@ -49,19 +45,23 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import com.bitchat.android.R
+import java.util.Locale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.border
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
- * "Effacer tout": hold three seconds while a `danger` ring fills, with rising haptic pulses;
+ * "Tout effacer": hold three seconds while hazard stripes fill the `danger` bar, with rising haptic pulses;
  * releasing cancels. With TalkBack, a double tap opens a one-line confirmation instead, no timer.
  * Never wipes on a single tap.
  *
- * @param compact the Settings first row (72 dp ring beside the text) instead of the full screen layout.
+ * @param compact the Settings block (bar, then the scope line) instead of the full screen layout.
  */
 @Composable
 fun HoldToErase(
@@ -84,10 +84,9 @@ fun HoldToErase(
     val holdingState = stringResource(R.string.wesh_pave_erase_holding, (progress.value * 100).toInt())
     val scopeText = stringResource(R.string.wesh_pave_erase_scope) +
         if (showShortcutHint) " " + stringResource(R.string.wesh_pave_erase_shortcut_hint) else ""
-    val ringSize: Dp = if (compact) 72.dp else 112.dp
-
-    val ring = Modifier
-        .size(ringSize.coerceAtLeast(WeshTouch.min))
+    val bar = Modifier
+        .fillMaxWidth()
+        .heightIn(min = if (compact) 64.dp else 72.dp)
         .semantics {
             role = Role.Button
             contentDescription = a11yLabel
@@ -122,35 +121,17 @@ fun HoldToErase(
             }
         }
 
-    val ringContent: @Composable () -> Unit = {
-        Box(ring, contentAlignment = Alignment.Center) {
-            EraseRing(progress.value, ringSize)
-            Icon(
-                Icons.Rounded.LocalFireDepartment,
-                contentDescription = null,
-                tint = c.onDanger,
-                modifier = Modifier.size(ringSize * 0.3f),
-            )
-        }
+    val barContent: @Composable () -> Unit = {
+        EraseBar(progress.value, actionLabel, bar)
     }
+    val align = if (compact) TextAlign.Start else TextAlign.Center
 
-    Column(modifier, horizontalAlignment = if (compact) Alignment.Start else Alignment.CenterHorizontally) {
-        if (compact) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ringContent()
-                Spacer(Modifier.width(WeshSpace.s4))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(WeshSpace.s1)) {
-                    Text(holdLabel, style = WeshType.label, color = c.danger)
-                    Text(scopeText, style = WeshType.caption, color = c.inkMuted)
-                }
-            }
-        } else {
-            ringContent()
-            Spacer(Modifier.height(WeshSpace.s3))
-            Text(holdLabel, style = WeshType.label, color = c.danger, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(WeshSpace.s1))
-            Text(scopeText, style = WeshType.caption, color = c.inkMuted, textAlign = TextAlign.Center)
-        }
+    Column(modifier.fillMaxWidth(), horizontalAlignment = if (compact) Alignment.Start else Alignment.CenterHorizontally) {
+        barContent()
+        Spacer(Modifier.height(WeshSpace.s2))
+        Text(holdLabel, style = WeshType.label, color = c.ink, textAlign = align, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(WeshSpace.s1))
+        Text(scopeText, style = WeshType.caption, color = c.inkMuted, textAlign = align, modifier = Modifier.fillMaxWidth())
         if (confirming) {
             Spacer(Modifier.height(WeshSpace.s4))
             Text(
@@ -172,24 +153,50 @@ fun HoldToErase(
     }
 }
 
+/**
+ * The danger bar: `danger` fill with the label in poster capitals; while held, hazard stripes
+ * cover it from the start edge in proportion to [progress].
+ */
 @Composable
-private fun EraseRing(progress: Float, size: Dp) {
+private fun EraseBar(progress: Float, label: String, modifier: Modifier) {
     val c = WeshPave.colors
-    Canvas(Modifier.size(size)) {
-        val stroke = this.size.minDimension * 0.07f
-        val radius = (this.size.minDimension - stroke) / 2f
-        val topLeft = Offset(center.x - radius, center.y - radius)
-        drawCircle(c.line, radius, style = Stroke(stroke))
-        drawArc(
-            color = c.danger,
-            startAngle = -90f,
-            sweepAngle = 360f * progress,
-            useCenter = false,
-            topLeft = topLeft,
-            size = Size(radius * 2, radius * 2),
-            style = Stroke(stroke, cap = StrokeCap.Round),
+    val shape = RoundedCornerShape(WeshRadius.control)
+    Box(
+        modifier
+            .clip(shape)
+            .background(c.danger)
+            .border(WeshStroke.publicRule, c.danger, shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .align(Alignment.CenterStart)
+                .paveHazard(c.danger, c.bg),
         )
-        drawCircle(c.danger, radius * 0.7f)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(WeshSpace.s2),
+            modifier = Modifier
+                // The bar itself carries the button semantics; its label is not a second stop.
+                .clearAndSetSemantics {}
+                .padding(vertical = WeshSpace.s2)
+                .background(if (progress > 0f) c.bg else Color.Transparent, RoundedCornerShape(WeshRadius.tail))
+                .padding(horizontal = WeshSpace.s2, vertical = WeshSpace.s1),
+        ) {
+            Icon(
+                Icons.Rounded.LocalFireDepartment,
+                contentDescription = null,
+                tint = if (progress > 0f) c.danger else c.onDanger,
+                modifier = Modifier.size(26.dp),
+            )
+            Text(
+                label.uppercase(Locale.ROOT),
+                style = WeshType.displaySmall,
+                color = if (progress > 0f) c.ink else c.onDanger,
+            )
+        }
     }
 }
 

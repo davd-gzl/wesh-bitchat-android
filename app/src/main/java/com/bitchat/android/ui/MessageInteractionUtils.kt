@@ -8,13 +8,20 @@ import com.bitchat.android.geohash.GeohashChannelLevel
 import com.bitchat.android.geohash.LocationChannelManager
 import com.bitchat.android.model.BitchatMessage
 
+/**
+ * Ours by peer ID; a nickname match counts only for a non-blank nickname, since a remote sender
+ * with no nickname has a blank sender.
+ */
 internal fun BitchatMessage.isFromSelf(
     currentUserNickname: String,
-    myPeerId: String,
+    myPeerId: String?,
 ): Boolean =
-    senderPeerID == myPeerId ||
-        sender == currentUserNickname ||
-        sender.startsWith("$currentUserNickname#")
+    (myPeerId != null && senderPeerID == myPeerId) || sentByNickname(currentUserNickname) ||
+        (currentUserNickname.isNotBlank() && sender.startsWith("$currentUserNickname#"))
+
+/** Legacy nickname-only check, for screens without our peer ID: never true for a blank nickname. */
+internal fun BitchatMessage.sentByNickname(currentUserNickname: String?): Boolean =
+    !currentUserNickname.isNullOrBlank() && sender == currentUserNickname
 
 internal fun normalizeMessageUrl(rawUrl: String): String =
     if (
