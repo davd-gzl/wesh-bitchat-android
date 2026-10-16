@@ -29,6 +29,7 @@ class BluetoothGattClientManager(
     private val permissionManager: BluetoothPermissionManager,
     private val powerManager: PowerManager,
     private val delegate: BluetoothConnectionManagerDelegate?,
+    private val inboundLimiter: InboundLinkRateLimiter = InboundLinkRateLimiter(),
     private val currentTimeMillis: () -> Long = System::currentTimeMillis
 ) {
     
@@ -582,6 +583,7 @@ class BluetoothGattClientManager(
                 clientAttempts.remove(address)
                 connectionTracker.removePendingConnection(address)
                 val disconnectedPeerID = connectionTracker.addressPeerMap[address]
+                inboundLimiter.forget(linkID)
                 if (connectionTracker.cleanupDeviceConnectionIfCurrent(address, linkID)) {
                     delegate?.onDeviceDisconnected(device, linkID, disconnectedPeerID)
                 }
@@ -660,6 +662,8 @@ class BluetoothGattClientManager(
             }
             if (characteristic.uuid != AppConstants.Mesh.Gatt.CHARACTERISTIC_UUID) return@synchronized
             val value = characteristic.value ?: return@synchronized
+            // Rate-limited per link before any decoding or signature work.
+            if (!inboundLimiter.tryAcquire(linkID)) return@synchronized
             val packet = BitchatPacket.fromBinaryData(value) ?: return@synchronized
             val senderPeerID = packet.senderID.take(8).toByteArray().joinToString("") { "%02x".format(it) }
             delegate?.onPacketReceived(packet, senderPeerID, device, linkID)

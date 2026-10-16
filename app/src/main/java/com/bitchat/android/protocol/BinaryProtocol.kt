@@ -436,6 +436,15 @@ object BinaryProtocol {
                 return null
             }
 
+            // Per-type ceiling on the decoded payload, compressed or not, checked before any
+            // allocation (see PacketPayloadLimits). The compressed body never exceeds it either.
+            val maxPayloadSize = PacketPayloadLimits.maxPayloadBytes(type)
+            val sizeFieldBytes = if (isCompressed) (if (version >= 2u.toUByte()) 4 else 2) else 0
+            if (payloadLength.toLong() > maxPayloadSize.toLong() + sizeFieldBytes) {
+                Log.w("BinaryProtocol", "Payload length $payloadLength exceeds the cap for type $type")
+                return null
+            }
+
             var expectedSize = headerSize + SENDER_ID_SIZE + payloadLength.toInt()
             if (hasRecipient) expectedSize += RECIPIENT_ID_SIZE
             var routeCount = 0
@@ -498,11 +507,10 @@ object BinaryProtocol {
                     buffer.getShort().toUShort().toInt()
                 }
 
-                val maxExpandedSize = com.bitchat.android.util.AppConstants.Protocol.MAX_PAYLOAD_LENGTH
-                if (originalSize <= 0 || originalSize > maxExpandedSize) {
+                if (originalSize <= 0 || originalSize > maxPayloadSize) {
                     Log.w(
                         "BinaryProtocol",
-                        "Expanded payload size $originalSize is outside the allowed range 1..$maxExpandedSize"
+                        "Expanded payload size $originalSize is outside the allowed range 1..$maxPayloadSize"
                     )
                     return null
                 }
@@ -513,10 +521,9 @@ object BinaryProtocol {
                     Log.w("BinaryProtocol", "Compressed payload has no deflate bytes")
                     return null
                 }
-                // Security check: Compression bomb protection
-                val ratio = originalSize.toDouble() / compressedSize.toDouble()
-                if (ratio > 50_000.0) {
-                    Log.w("BinaryProtocol", "🚫 Suspicious compression ratio: ${ratio}:1")
+                // No DEFLATE stream expands beyond this ratio: reject before allocating the output.
+                if (originalSize.toLong() > compressedSize.toLong() * PacketPayloadLimits.MAX_DEFLATE_RATIO) {
+                    Log.w("BinaryProtocol", "Impossible compression ratio: $originalSize bytes from $compressedSize")
                     return null
                 }
                 

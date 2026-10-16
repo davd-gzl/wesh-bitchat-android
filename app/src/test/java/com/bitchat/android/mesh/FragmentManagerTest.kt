@@ -286,6 +286,51 @@ class FragmentManagerTest {
     }
 
     @Test
+    fun `fragment wrapping another fragment is refused`() {
+        val payload = FragmentPayload(
+            fragmentID = ByteArray(8) { 3 },
+            index = 0,
+            total = 1,
+            originalType = MessageType.FRAGMENT.value,
+            data = ByteArray(32) { 1 }
+        ).encode()
+
+        assertNull(fragmentManager.handleFragment(fragmentPacket(payload)))
+        assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: 0"))
+    }
+
+    @Test
+    fun `assembly is bounded by the frame its claimed type can fill`() {
+        val limit = com.bitchat.android.protocol.PacketPayloadLimits.maxFrameBytes(MessageType.ANNOUNCE.value)
+        val chunk = 400
+        val total = limit / chunk + 2
+        var last: BitchatPacket? = null
+        // Stop at the first fragment that crosses the bound: the set must be gone by then.
+        for (index in 0..limit / chunk) {
+            last = fragmentManager.handleFragment(fragmentPacket(FragmentPayload(
+                fragmentID = ByteArray(8) { 4 },
+                index = index,
+                total = total,
+                originalType = MessageType.ANNOUNCE.value,
+                data = ByteArray(chunk) { 1 }
+            ).encode()))
+        }
+
+        assertNull(last)
+        assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: 0"))
+    }
+
+    private fun fragmentPacket(payload: ByteArray) = BitchatPacket(
+        version = 1u,
+        type = MessageType.FRAGMENT.value,
+        senderID = hexStringToByteArray(senderID),
+        recipientID = hexStringToByteArray(recipientID),
+        timestamp = 1u,
+        payload = payload,
+        ttl = 7u
+    )
+
+    @Test
     fun `fragment payload refuses UInt16 truncation`() {
         assertThrows(IllegalArgumentException::class.java) {
             FragmentPayload(

@@ -435,8 +435,8 @@ class MessageHandler(
      * Handle broadcast or private message
      */
     /**
-     * Returns false only when a public message was dropped by the inbound budget, so the caller
-     * does not mark it seen for gossip and it can be fetched again later.
+     * Returns false when a public message was refused (inbound budget or size bound), so the
+     * caller does not keep it for gossip sync.
      */
     suspend fun handleMessage(routed: RoutedPacket): Boolean {
         val packet = routed.packet
@@ -524,10 +524,11 @@ class MessageHandler(
                 Log.w(TAG, "FILE_TRANSFER decode failed (broadcast) from ${peerID.take(8)}")
             }
 
-            // Fallback: plain text, bounded like outgoing Wesh public text.
+            // Fallback: plain text, bounded like outgoing Wesh public text. Refused, so it is
+            // neither shown nor kept for gossip sync.
             if (packet.payload.size > PublicInboundBudget.MAX_PUBLIC_TEXT_BYTES) {
                 publicBudget.recordDrop()
-                return true
+                return false
             }
             val message = BitchatMessage(
                 id = PacketIdUtil.computeIdHex(packet).uppercase(),

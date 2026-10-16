@@ -3,6 +3,7 @@ package com.bitchat.android.mesh
 import android.util.Log
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.protocol.MessageType
+import com.bitchat.android.protocol.PacketPayloadLimits
 import com.bitchat.android.model.FragmentPayload
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
@@ -182,6 +183,12 @@ class FragmentManager {
             // iOS: let fragmentID = packet.payload[0..<8].map { String(format: "%02x", $0) }.joined()
             val fragmentIDString = fragmentPayload.getFragmentIDString()
 
+            // A fragment never carries another fragment: no BitChat client nests them.
+            if (fragmentPayload.originalType == MessageType.FRAGMENT.value) {
+                Log.w(TAG, "Rejecting nested fragment for $fragmentIDString")
+                return null
+            }
+
             val maxFragments = com.bitchat.android.util.AppConstants.Fragmentation.MAX_FRAGMENTS_PER_ID
             if (fragmentPayload.total > maxFragments) {
                 Log.w(TAG, "Rejecting fragment with excessive total count: ${fragmentPayload.total} > $maxFragments")
@@ -230,7 +237,11 @@ class FragmentManager {
 
                 val oldEntrySize = fragmentMap[fragmentPayload.index]?.size ?: 0
                 val newSize = currentSize - oldEntrySize + fragmentPayload.data.size
-                val maxTotalBytes = com.bitchat.android.util.AppConstants.Fragmentation.MAX_FRAGMENT_TOTAL_BYTES
+                // Never buffer more than the reassembled frame could decode to for its claimed type.
+                val maxTotalBytes = minOf(
+                    com.bitchat.android.util.AppConstants.Fragmentation.MAX_FRAGMENT_TOTAL_BYTES,
+                    PacketPayloadLimits.maxFrameBytes(fragmentPayload.originalType)
+                )
                 if (newSize > maxTotalBytes) {
                     Log.w(TAG, "Rejecting fragment for $fragmentIDString: cumulative size $newSize exceeds cap $maxTotalBytes")
                     removeFragmentSetLocked(fragmentIDString)
@@ -254,14 +265,13 @@ class FragmentManager {
                 val expectedTotal = fragmentMetadata[fragmentIDString]?.second ?: fragmentPayload.total
                 if (fragmentMap.size == expectedTotal) {
                     // iOS reassembly logic: for i in 0..<total { if let fragment = fragments[i] { reassembled.append(fragment) } }
-                    val reassembledData = mutableListOf<Byte>()
+                    val reassembledData = java.io.ByteArrayOutputStream(newSize)
                     for (i in 0 until expectedTotal) {
-                        fragmentMap[i]?.let { data ->
-                            reassembledData.addAll(data.asIterable())
-                        }
+                        fragmentMap[i]?.let { data -> reassembledData.write(data) }
                     }
 
                     val originalPacket = BitchatPacket.fromBinaryData(reassembledData.toByteArray())
+                        ?.takeIf { it.type == fragmentPayload.originalType }
                     if (originalPacket != null) {
                         removeFragmentSetLocked(fragmentIDString)
 
