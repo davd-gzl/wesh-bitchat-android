@@ -34,9 +34,10 @@ android {
         // Product-safety policy (recovery gate, permissions, QR-only private messages, no
         // geohash/location/updater/Wi-Fi Aware). Never switches the Internet on or off.
         buildConfigField("boolean", "WESH_POLICY", "true")
-        // Makes the Internet opt-in available. Sockets still need the runtime toggle
-        // (WeshNetworkPolicy.allowsNetwork()), which defaults off.
-        buildConfigField("boolean", "WESH_INTERNET_AVAILABLE", "true")
+        // Whether the Internet opt-in can be turned on at all; when true, sockets still need the
+        // runtime toggle (WeshNetworkPolicy.allowsNetwork()), which defaults off.
+        // False until ArtiNative.stop() releases the Tor client: today Tor keeps running after "off".
+        buildConfigField("boolean", "WESH_INTERNET_AVAILABLE", "false")
         versionCode = 100
         versionName = "1.0.0"
         buildConfigField(
