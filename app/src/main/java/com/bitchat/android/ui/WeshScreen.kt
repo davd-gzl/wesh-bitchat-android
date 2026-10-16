@@ -29,7 +29,9 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.role
 import com.bitchat.android.model.BitchatMessage
-import com.bitchat.android.util.safeDisplayName
+import com.bitchat.android.R
+import com.bitchat.android.ui.pave.remoteDisplayName
+import androidx.compose.ui.res.stringResource
 import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.services.VerificationService
 import kotlinx.coroutines.delay
@@ -135,7 +137,7 @@ fun WeshScreen(viewModel: ChatViewModel) {
     val privatePeer = selectedPrivate
     val inConversation = publicOpen || privatePeer != null
     val conversationTitle = if (publicOpen) "Salon local" else if (privatePeer != null)
-        conversations.firstOrNull { it.conversationID == privatePeer }?.displayName ?: "Contact"
+        remoteDisplayName(conversations.firstOrNull { it.conversationID == privatePeer }?.displayName)
         else listOf("Discussions", "Réglages")[tab]
     val bluetoothReady = bluetoothReadyState || viewModel.weshBluetoothReady()
     val canSend = if (publicOpen) bluetoothReady else privatePeer != null && revision >= 0 &&
@@ -170,7 +172,7 @@ fun WeshScreen(viewModel: ChatViewModel) {
             Column(Modifier.fillMaxWidth().heightIn(max = headerMaxHeight).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) {
                 if (inConversation) TextButton(onClick = { back() }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Retour aux discussions" }) { Text("‹ Discussions") }
                 Text(conversationTitle, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
-                Text(if (publicOpen) if (bluetoothReady) "Public · Bluetooth" else "Public · Bluetooth indisponible" else if (privatePeer != null) if (canSend) "Identité vérifiée sur ce téléphone" else "Vérification ou reconnexion nécessaire" else "Wesh", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                Text(if (publicOpen) if (bluetoothReady) "Public · Bluetooth" else "Public · Bluetooth indisponible" else if (privatePeer != null) if (canSend) stringResource(R.string.wesh_pave_contact_state_verified) else "Vérification ou reconnexion nécessaire" else "Wesh", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                 if (privatePeer != null) FlowRow {
                     TextButton(onClick = { contactAction = "block" to privatePeer }, modifier = Modifier.semantics { contentDescription = "Bloquer $conversationTitle" }) { Text("Bloquer") }
                     TextButton(onClick = { contactAction = "remove" to privatePeer }, modifier = Modifier.semantics { contentDescription = "Retirer le contact $conversationTitle" }) { Text("Retirer le contact") }
@@ -189,7 +191,7 @@ fun WeshScreen(viewModel: ChatViewModel) {
             val footerMaxHeight = (maxHeight * 0.55f).coerceAtLeast(minOf(96.dp, maxHeight))
             Column(Modifier.fillMaxSize()) {
                 if (inConversation) {
-                    val messages = if (publicOpen) publicMessages.filter { !it.isPrivate && it.channel == null && (it.senderPeerID == null || !viewModel.weshIsBlocked(it.senderPeerID)) }
+                    val messages = if (publicOpen) publicMessages.filter { WeshMessagePolicy.showsInPublicRoom(it, viewModel.meshService.myPeerID, viewModel::weshIsBlocked) }
                     else privateChats[privatePeer].orEmpty()
                     LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (publicOpen) item { Text("Aucune confirmation individuelle de réception. Toute personne sur le mesh Bluetooth peut lire et conserver ces messages. Les pseudonymes ne prouvent pas une identité.", style = MaterialTheme.typography.bodySmall) }
@@ -236,21 +238,22 @@ fun WeshScreen(viewModel: ChatViewModel) {
                         items(contacts, key = { it.conversationID }) { contact ->
                             val summary = conversations.firstOrNull { it.conversationID == contact.conversationID }
                             val blocked = contact.conversationID.let(viewModel::weshIsBlocked)
-                            WeshInboxRow(contact.nickname,
-                                if (blocked) "Bloqué sur ce téléphone" else "Identité vérifiée sur ce téléphone · ${summary?.latestMessagePreview.orEmpty()}",
+                            WeshInboxRow(remoteDisplayName(contact.nickname),
+                                if (blocked) stringResource(R.string.wesh_pave_contact_state_blocked) else stringResource(R.string.wesh_pave_contact_state_verified) + " · ${summary?.latestMessagePreview.orEmpty()}",
                                 onClick = { publicOpen = false; scope.launch { viewModel.startPrivateChat(contact.conversationID) } })
                         }
                         if (requests.isNotEmpty()) {
                             item { Text("Demandes", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp).semantics { heading() }) }
                             item { Text("Messages de personnes non vérifiées. Leur contenu n’est ni affiché ni conservé. Scannez leur QR en personne pour échanger.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                             items(requests, key = { it.fingerprint ?: it.peerID }) { request ->
+                                val requestName = remoteDisplayName(request.nickname)
                                 Column {
-                                    Text(request.nickname, style = MaterialTheme.typography.titleMedium)
+                                    Text(requestName, style = MaterialTheme.typography.titleMedium)
                                     Text("non vérifié", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     FlowRow {
-                                        TextButton(onClick = { contactOpen = true }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Scanner le QR de ${request.nickname} pour vérifier" }) { Text("Scanner son QR") }
-                                        TextButton(onClick = { viewModel.weshDismissRequest(request) }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Supprimer la demande de ${request.nickname}" }) { Text("Supprimer") }
-                                        TextButton(onClick = { requestAction = request }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Bloquer ${request.nickname}" }) { Text("Bloquer") }
+                                        TextButton(onClick = { contactOpen = true }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Scanner le QR de $requestName pour vérifier" }) { Text("Scanner son QR") }
+                                        TextButton(onClick = { viewModel.weshDismissRequest(request) }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Supprimer la demande de $requestName" }) { Text("Supprimer") }
+                                        TextButton(onClick = { requestAction = request }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Bloquer $requestName" }) { Text("Bloquer") }
                                     }
                                 }
                             }
@@ -280,18 +283,19 @@ fun WeshScreen(viewModel: ChatViewModel) {
                         item { TextButton(onClick = { noteOpen = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Note personnelle de rendez-vous") } }
                         item { Text("Contacts", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() }) }
                         items(contacts, key = { it.conversationID }) { contact ->
-                            Text(contact.nickname)
-                            FlowRow { TextButton(onClick = { contactAction = "remove" to contact.conversationID }, modifier = Modifier.semantics { contentDescription = "Retirer le contact ${contact.nickname}" }) { Text("Retirer") }
-                                TextButton(onClick = { contactAction = "block" to contact.conversationID }, modifier = Modifier.semantics { contentDescription = "Bloquer ${contact.nickname}" }) { Text("Bloquer") } }
+                            val contactName = remoteDisplayName(contact.nickname)
+                            Text(contactName)
+                            FlowRow { TextButton(onClick = { contactAction = "remove" to contact.conversationID }, modifier = Modifier.semantics { contentDescription = "Retirer le contact $contactName" }) { Text("Retirer") }
+                                TextButton(onClick = { contactAction = "block" to contact.conversationID }, modifier = Modifier.semantics { contentDescription = "Bloquer $contactName" }) { Text("Bloquer") } }
                         }
                         item { Text("Personnes bloquées", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() }) }
                         items(sessionHidden.toList(), key = { "session-$it" }) { peerID ->
-                            val hiddenName = safeDisplayName(viewModel.peerNicknames.value[peerID].orEmpty(), "Identité non authentifiée")
+                            val hiddenName = remoteDisplayName(viewModel.peerNicknames.value[peerID])
                             Text("$hiddenName · masqué jusqu’à la fermeture de Wesh")
                             TextButton(onClick = { contactAction = "unhide" to peerID }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Débloquer $hiddenName" }) { Text("Débloquer") }
                         }
                         items(if (revision >= 0) viewModel.weshBlockedFingerprints().toList() else emptyList()) { fingerprint ->
-                            val blockedName = safeDisplayName(viewModel.weshContactName(fingerprint), "Identité")
+                            val blockedName = remoteDisplayName(viewModel.weshContactName(fingerprint))
                             Text("$blockedName · ${fingerprint.take(8)}")
                             TextButton(onClick = { contactAction = "unblock" to fingerprint }, modifier = Modifier.semantics { contentDescription = "Débloquer $blockedName" }) { Text("Débloquer") }
                         }
@@ -346,10 +350,10 @@ fun WeshScreen(viewModel: ChatViewModel) {
     if (contactOpen) WeshContactSheet(viewModel, onDismiss = { dismissContact() })
     contactAction?.let { (action, target) ->
         val title = when (action) { "remove" -> "Retirer ce contact ?"; "unblock", "unhide" -> "Débloquer cette personne ?"; "report" -> "Signaler cette personne ?"; else -> "Bloquer cette personne ?" }
-        val targetName = safeDisplayName(if (action == "unblock") viewModel.weshContactName(target)
+        val targetName = remoteDisplayName(if (action == "unblock") viewModel.weshContactName(target)
             else contacts.firstOrNull { it.conversationID == target }?.nickname
                 ?: conversations.firstOrNull { it.conversationID == target }?.displayName
-                ?: viewModel.peerNicknames.value[target].orEmpty(), "Contact")
+                ?: viewModel.peerNicknames.value[target])
         AlertDialog(onDismissRequest = { contactAction = null }, title = { Text("$title\n$targetName", Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) },
             text = { WeshDialogText(if (action == "remove") "Un nouveau scan sera nécessaire avant l’envoi privé. Historique et brouillon restent conservés."
                 else if (action == "unblock" || action == "unhide") "Débloquer ne vérifie pas une nouvelle identité et ne restaure pas un contact retiré."
@@ -369,7 +373,7 @@ fun WeshScreen(viewModel: ChatViewModel) {
             }) { Text(when (action) { "remove" -> "Retirer le contact"; "unblock", "unhide" -> "Débloquer"; "report" -> "Signaler et masquer"; else -> "Bloquer" }) } }, dismissButton = { TextButton(onClick = { contactAction = null }) { Text("Annuler") } })
     }
     requestAction?.let { request ->
-        AlertDialog(onDismissRequest = { requestAction = null }, title = { Text("Bloquer cette personne ?\n${request.nickname}") },
+        AlertDialog(onDismissRequest = { requestAction = null }, title = { Text("Bloquer cette personne ?\n${remoteDisplayName(request.nickname)}") },
             text = { WeshDialogText("Le blocage est local. Ses prochaines demandes seront ignorées sur ce téléphone.") },
             confirmButton = { TextButton(onClick = {
                 if (!viewModel.weshBlockRequest(request)) feedback = "Identité inconnue : blocage indisponible."
@@ -442,7 +446,7 @@ private fun WeshInboxRow(title: String, subtitle: String, onClick: () -> Unit) {
 @Composable
 private fun WeshMessage(message: BitchatMessage, myPeerID: String, public: Boolean, canRetry: Boolean, onRetry: () -> Unit, onBlock: () -> Unit, onReport: () -> Unit) {
     val outgoing = message.senderPeerID == myPeerID
-    val senderName = safeDisplayName(message.sender, "Anonyme")
+    val senderName = remoteDisplayName(message.sender)
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (outgoing) Alignment.End else Alignment.Start) {
         Surface(shape = MaterialTheme.shapes.medium, color = if (outgoing) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer) {
             Column(Modifier.padding(14.dp).widthIn(max = 320.dp).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(4.dp)) {

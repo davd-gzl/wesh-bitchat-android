@@ -47,10 +47,15 @@ class SafeDisplayNameTest {
     }
 
     @Test
-    fun `the Wesh screen shows remote nicknames only through the sanitizer`() {
+    fun `the Wesh screen shows remote nicknames only through the remote nickname rule`() {
         val screen = File("src/main/java/com/bitchat/android/ui/WeshScreen.kt").readText()
         assertFalse(screen.contains("Text(message.sender"))
         assertFalse(screen.contains("\${message.sender}"))
-        assertTrue(screen.contains("safeDisplayName(message.sender"))
+        assertFalse(screen.contains("Text(request.nickname") || screen.contains("Text(contact.nickname"))
+        // Storage sanitizing is not the display rule: the screen never uses it to show a name.
+        assertFalse(screen.contains("safeDisplayName("))
+        assertTrue(screen.contains("remoteDisplayName(message.sender"))
+        // States drawn next to a name come from resources, so PaveReservedWords can reserve them.
+        assertFalse(screen.contains("\"Identité vérifiée sur ce téléphone\"") || screen.contains("\"Bloqué sur ce téléphone\""))
     }
 }
