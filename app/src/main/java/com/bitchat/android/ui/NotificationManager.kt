@@ -23,7 +23,7 @@ import com.bitchat.android.R
 import com.bitchat.android.service.ConversationNotificationReceiver
 import com.bitchat.android.services.ContactDirectory
 import com.bitchat.android.services.ConversationListPreferences
-import com.bitchat.android.util.safeDisplayName
+import com.bitchat.android.ui.pave.RemoteNameRule
 import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
@@ -42,7 +42,9 @@ class NotificationManager(
   private val notificationManager: NotificationManagerCompat,
   private val isConversationMuted: (String) -> Boolean = { conversationID ->
       ConversationListPreferences.getInstance(context.applicationContext).isMuted(conversationID)
-  }
+  },
+  /** Every nickname a notification shows comes from someone else: one rule, the Pavé one. */
+  private val remoteName: RemoteNameRule = RemoteNameRule.of(context)
 ) {
 
     companion object {
@@ -200,7 +202,7 @@ class NotificationManager(
 
         val notification = PendingNotification(
             senderPeerID = conversationID,
-            senderNickname = safeDisplayName(senderNickname, senderPeerID.take(8)),
+            senderNickname = remoteName.show(senderNickname),
             messageContent = messageContent,
             timestamp = System.currentTimeMillis()
         )
@@ -438,10 +440,10 @@ class NotificationManager(
         ShortcutManagerCompat.pushDynamicShortcut(context, shortcut)
     }
 
-    /** Wesh shows the verified contact's nickname only after the sender opt-in. */
-    fun showVerificationSuccessNotification(nickname: String, peerID: String?) {
+    /** Wesh shows the verified contact's [nickname], as announced, only after the sender opt-in. */
+    fun showVerificationSuccessNotification(nickname: String?, peerID: String?) {
         val body = if (!weshPrivacy || WeshPreferences.notificationShowsSender(context)) {
-            context.getString(R.string.verify_success_body, nickname)
+            context.getString(R.string.verify_success_body, remoteName.show(nickname))
         } else {
             context.getString(R.string.wesh_notification_verified_body)
         }
@@ -605,7 +607,7 @@ class NotificationManager(
 
         val notification = GeohashNotification(
             geohash = geohash,
-            senderNickname = senderNickname,
+            senderNickname = remoteName.show(senderNickname),
             messageContent = messageContent,
             timestamp = System.currentTimeMillis(),
             isMention = isMention,
@@ -824,7 +826,7 @@ class NotificationManager(
         val meshMentionKey = "mesh_mentions"
         val notification = PendingNotification(
             senderPeerID = senderPeerID ?: meshMentionKey,
-            senderNickname = senderNickname,
+            senderNickname = remoteName.show(senderNickname),
             messageContent = messageContent,
             timestamp = System.currentTimeMillis()
         )

@@ -10,6 +10,7 @@ import com.bitchat.android.noise.NoiseSession
 import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.services.VerificationService
 import com.bitchat.android.services.WeshContactStore
+import com.bitchat.android.ui.pave.PaveStringResources
 import com.bitchat.android.util.dataFromHexString
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -35,6 +36,7 @@ class WeshVerificationHandlerTest {
     private lateinit var scope: TestScope
     private var time = 1_000_000L
     private var nonce: ByteArray? = null
+    private val names = PaveStringResources.remoteNameRule()
     @Before fun setup() {
         val application = RuntimeEnvironment.getApplication()
         val prefs = application.getSharedPreferences("synthetic-handler", Context.MODE_PRIVATE)
@@ -82,7 +84,7 @@ class WeshVerificationHandlerTest {
         com.bitchat.android.services.WeshQrIdentity.io = kotlinx.coroutines.test.StandardTestDispatcher(scope.testScheduler)
         time = 1_000_000L
         nonce = null
-        handler = VerificationHandler(context, scope, { mesh }, mock(), state, mock(), mock(), { time })
+        handler = VerificationHandler(context, scope, { mesh }, mock(), state, mock(), mock(), { time }, remoteName = names)
     }
     @After fun cleanup() {
         WeshContactStore.resetForTesting()
@@ -99,7 +101,7 @@ class WeshVerificationHandlerTest {
         assertEquals(qr.nickname, store.contacts.value.single().nickname)
         assertEquals("verified", handler.weshProgress(qr.noiseKeyHex))
     }
-    @Test fun `announced nickname is sanitized in the system message, notification and nickname cache`() = scope.runTest {
+    @Test fun `announced nickname follows the remote rule where shown and is only stripped in the cache`() = scope.runTest {
         val key = qr.noiseKeyHex.dataFromHexString()!!
         whenever(mesh.getPeerInfo(peer)).thenReturn(PeerInfo(id = peer, nickname = "\u202Eevil\u200Bname", noisePublicKey = key, isConnected = true, isDirectConnection = true, signingPublicKey = qr.signKeyHex.dataFromHexString(), isVerifiedNickname = true, lastSeen = 1L))
         val identity: SecureIdentityStateManager = mock()
@@ -108,25 +110,46 @@ class WeshVerificationHandlerTest {
         whenever(context.getString(any(), any())).thenReturn("Synthetic verification notice")
         val state: ChatState = mock()
         whenever(state.getConnectedPeersValue()).thenReturn(listOf(peer))
-        handler = VerificationHandler(context, scope, { mesh }, identity, state, notifications, mock(), { time })
+        handler = VerificationHandler(context, scope, { mesh }, identity, state, notifications, mock(), { time }, remoteName = names)
 
         assertTrue(handler.beginQRVerification(qr))
         respond(); runCurrent()
 
         val fingerprint = handler.fingerprintFromNoiseBytes(key)
         verify(identity).cacheFingerprintNickname(fingerprint, "evilname")
-        verify(notifications).showVerificationSuccessNotification("evilname", peer)
-        verify(context).getString(any(), eq("evilname"))
+        // The notification manager applies the rule itself (see WeshNotificationPrivacyTest).
+        verify(notifications).showVerificationSuccessNotification("\u202Eevil\u200Bname", peer)
+        verify(context).getString(any(), eq("Sans surnom"))
     }
-    @Test fun `fingerprint display name sanitizes live and announced nicknames`() {
+    @Test fun `a peer named like an app label or a fingerprint is masked in the verification system message`() = scope.runTest {
+        val key = qr.noiseKeyHex.dataFromHexString()!!
+        listOf("Vous", "NO NICKNAME", "Nora A1B2 C3D4").forEach { impostor ->
+            store.clear()
+            whenever(mesh.getPeerInfo(peer)).thenReturn(PeerInfo(id = peer, nickname = impostor, noisePublicKey = key, isConnected = true, isDirectConnection = true, signingPublicKey = qr.signKeyHex.dataFromHexString(), isVerifiedNickname = true, lastSeen = 1L))
+            val context: Context = mock()
+            whenever(context.getString(any(), any())).thenReturn("Synthetic verification notice")
+            val state: ChatState = mock()
+            whenever(state.getConnectedPeersValue()).thenReturn(listOf(peer))
+            handler = VerificationHandler(context, scope, { mesh }, mock(), state, mock(), mock(), { time }, remoteName = names)
+
+            assertTrue(handler.beginQRVerification(qr))
+            respond(); runCurrent()
+
+            assertEquals(impostor, 1, store.contacts.value.size)
+            verify(context).getString(eq(com.bitchat.android.R.string.verify_success_system_message), eq("Sans surnom (réservé)"))
+            whenever(state.peerNicknames).thenReturn(kotlinx.coroutines.flow.MutableStateFlow(mapOf(peer to impostor)))
+            assertEquals(impostor, "Sans surnom (réservé)", handler.resolvePeerDisplayNameForFingerprint(peer))
+        }
+    }
+    @Test fun `fingerprint display name applies the remote rule to live and announced nicknames`() {
         val state: ChatState = mock()
         whenever(state.peerNicknames).thenReturn(kotlinx.coroutines.flow.MutableStateFlow(mapOf(peer to "\u202Eevil\u200Bname")))
-        handler = VerificationHandler(mock(), scope, { mesh }, mock(), state, mock(), mock(), { time })
-        assertEquals("evilname", handler.resolvePeerDisplayNameForFingerprint(peer))
+        handler = VerificationHandler(mock(), scope, { mesh }, mock(), state, mock(), mock(), { time }, remoteName = names)
+        assertEquals("Sans surnom", handler.resolvePeerDisplayNameForFingerprint(peer))
 
         whenever(state.peerNicknames).thenReturn(kotlinx.coroutines.flow.MutableStateFlow(emptyMap()))
         whenever(mesh.getPeerInfo(peer)).thenReturn(PeerInfo(id = peer, nickname = "\u3164\u200B", noisePublicKey = qr.noiseKeyHex.dataFromHexString(), isConnected = true, isDirectConnection = true, signingPublicKey = qr.signKeyHex.dataFromHexString(), isVerifiedNickname = true, lastSeen = 1L))
-        assertEquals(peer.take(8), handler.resolvePeerDisplayNameForFingerprint(peer))
+        assertEquals("Sans surnom", handler.resolvePeerDisplayNameForFingerprint(peer))
     }
     @Test fun `response after deadline and late handshake cannot enroll`() = scope.runTest {
         assertTrue(handler.beginQRVerification(qr))
@@ -168,7 +191,7 @@ class WeshVerificationHandlerTest {
         val context: Context = mock()
         whenever(context.getString(any())).thenReturn("Synthetic verification title")
         whenever(context.getString(any(), any())).thenReturn("Synthetic verification notice")
-        handler = VerificationHandler(context, scope, { mesh }, mock(), state(), mock(), mock(), { time }, { owned })
+        handler = VerificationHandler(context, scope, { mesh }, mock(), state(), mock(), mock(), { time }, { owned }, remoteName = names)
         assertTrue(handler.beginQRVerification(qr))
         respond(); scope.runCurrent()
     }
@@ -210,7 +233,7 @@ class WeshVerificationHandlerTest {
         handler = VerificationHandler(mock<Context>().also {
             whenever(it.getString(any())).thenReturn("Synthetic verification title")
             whenever(it.getString(any(), any())).thenReturn("Synthetic verification notice")
-        }, scope, { mesh }, mock(), state(), mock(), mock(), { time })
+        }, scope, { mesh }, mock(), state(), mock(), mock(), { time }, remoteName = names)
         qr = npubQR(syntheticNpub, "Synthetic closed", syntheticSigner)
         assertTrue(handler.beginQRVerification(qr))
         respond(); runCurrent()
@@ -229,7 +252,7 @@ class WeshVerificationHandlerTest {
         handler = VerificationHandler(mock<Context>().also {
             whenever(it.getString(any())).thenReturn("Synthetic verification title")
             whenever(it.getString(any(), any())).thenReturn("Synthetic verification notice")
-        }, scope, { mesh }, identity, state(), mock(), mock(), { time })
+        }, scope, { mesh }, identity, state(), mock(), mock(), { time }, remoteName = names)
         qr = npubQR(syntheticNpub, nickname, syntheticSigner)
         assertTrue(handler.beginQRVerification(qr))
         respond(); runCurrent()
@@ -261,7 +284,7 @@ class WeshVerificationHandlerTest {
         handler = VerificationHandler(mock<Context>().also {
             whenever(it.getString(any())).thenReturn("Synthetic verification title")
             whenever(it.getString(any(), any())).thenReturn("Synthetic verification notice")
-        }, scope, { mesh }, mock(), state(), mock(), mock(), { time }, { reads++; release.await(); null })
+        }, scope, { mesh }, mock(), state(), mock(), mock(), { time }, { reads++; release.await(); null }, remoteName = names)
         qr = npubQR(syntheticNpub, "Synthetic duplicate", syntheticSigner)
         assertTrue(handler.beginQRVerification(qr))
         // The first response waits on the key store; the peer repeats it meanwhile.

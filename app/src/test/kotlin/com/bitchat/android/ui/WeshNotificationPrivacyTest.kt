@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import com.bitchat.android.R
+import com.bitchat.android.ui.pave.PaveStringResources
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -71,10 +72,32 @@ class WeshNotificationPrivacyTest {
     }
 
     @Test
-    fun `opted-in sender name goes through the shared display name sanitizer`() {
+    fun `opted-in sender name goes through the remote nickname rule`() {
         WeshPreferences(app).notificationShowsSender = true
         backgroundManager().showPrivateMessageNotification("aaaabbbbccccdddd", "\u202Eevil\u200Bname", secret)
-        assertEquals("evilname", postedNotifications().single().extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+        // An invisible character between letters makes the whole name unnamed, as in Pavé rows.
+        assertEquals("Sans surnom", postedNotifications().single().extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+    }
+
+    @Test
+    fun `a sender named like an app label or a fingerprint is masked in the title`() {
+        WeshPreferences(app).notificationShowsSender = true
+        impostors.forEach { name ->
+            systemNotifications().cancelAll()
+            backgroundManager().showPrivateMessageNotification("aaaabbbbccccdddd", name, secret)
+            assertEquals(name, "Sans surnom (réservé)", postedNotifications().single().extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+        }
+    }
+
+    @Test
+    fun `a verified contact named like an app label or a fingerprint is masked in the notification`() {
+        WeshPreferences(app).notificationShowsSender = true
+        impostors.forEach { name ->
+            systemNotifications().cancelAll()
+            backgroundManager().showVerificationSuccessNotification(name, "aaaabbbbccccdddd")
+            assertEquals(name, "${label(R.string.verify_success_body)} Sans surnom (réservé)",
+                postedNotifications().single().extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+        }
     }
 
     @Test
@@ -105,14 +128,19 @@ class WeshNotificationPrivacyTest {
     fun `verification notification names the contact after opt in`() {
         WeshPreferences(app).notificationShowsSender = true
         backgroundManager().showVerificationSuccessNotification(nickname, "aaaabbbbccccdddd")
-        assertEquals(label(R.string.verify_success_body), postedNotifications().single().extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+        assertEquals("${label(R.string.verify_success_body)} $nickname", postedNotifications().single().extras.getCharSequence(Notification.EXTRA_TEXT).toString())
     }
 
-    private fun backgroundManager() = NotificationManager(context, NotificationManagerCompat.from(context), isConversationMuted = { false })
+    private fun backgroundManager() = NotificationManager(context, NotificationManagerCompat.from(context), isConversationMuted = { false },
+        remoteName = PaveStringResources.remoteNameRule())
         .apply { setAppBackgroundState(true) }
 
-    private fun postedNotifications(): List<Notification> =
-        shadowOf(app.getSystemService(Context.NOTIFICATION_SERVICE) as AndroidNotificationManager).allNotifications
+    /** "You" in French, the unnamed label in capitals, a name ending like a short key fingerprint. */
+    private val impostors = listOf("Vous", "NO NICKNAME", "Nora A1B2 C3D4")
+
+    private fun systemNotifications() = app.getSystemService(Context.NOTIFICATION_SERVICE) as AndroidNotificationManager
+
+    private fun postedNotifications(): List<Notification> = shadowOf(systemNotifications()).allNotifications
 
     private fun label(id: Int) = "label-$id"
 
@@ -129,7 +157,7 @@ class WeshNotificationPrivacyTest {
         private val labels = object : Resources(base.assets, base.resources.displayMetrics, base.resources.configuration) {
             override fun getText(id: Int): CharSequence = "label-$id"
             override fun getString(id: Int): String = "label-$id"
-            override fun getString(id: Int, vararg formatArgs: Any?): String = "label-$id"
+            override fun getString(id: Int, vararg formatArgs: Any?): String = (listOf("label-$id") + formatArgs).joinToString(" ")
             override fun getQuantityString(id: Int, quantity: Int, vararg formatArgs: Any?): String = "label-$id"
         }
         override fun getResources(): Resources = labels

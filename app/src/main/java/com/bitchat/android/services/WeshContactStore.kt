@@ -151,7 +151,7 @@ class WeshContactStore internal constructor(
         blockPreferences.getStringSet("blocked_users", emptySet()).orEmpty().contains(fingerprint)
     }.getOrDefault(true)
     fun blockedFingerprints(): Set<String> = blockPreferences.getStringSet("blocked_users", emptySet()).orEmpty().toSet()
-    /** A QR nickname is remote input: sanitized once here, so every contact row shows a safe name. */
+    /** A QR nickname is remote input: stripped once here before it is kept; what is shown applies the remote rule. */
     private fun displayName(key: ByteArray, nickname: String): String =
         safeDisplayName(nickname, ContactIdentityResolver.fingerprintHex(key).take(8))
     private fun persist(contacts: List<Contact>) {
