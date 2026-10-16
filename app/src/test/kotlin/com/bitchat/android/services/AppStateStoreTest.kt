@@ -33,6 +33,29 @@ class AppStateStoreTest {
         assertTrue(AppStateStore.updatePrivateMessageStatusIn("contact_alice", "status-1", DeliveryStatus.Delivered("alice", Date(3))))
         assertEquals(DeliveryStatus.Delivered("alice", Date(3)),
             AppStateStore.privateMessages.value.values.flatten().single { it.id == "status-1" }.deliveryStatus)
+        // A replayed ack does not count as an advance, so it cannot drive a label change.
+        assertFalse(AppStateStore.updatePrivateMessageStatusIn("contact_alice", "status-1", DeliveryStatus.Delivered("alice", Date(4))))
+        assertTrue(AppStateStore.updatePrivateMessageStatusIn("contact_alice", "status-1", DeliveryStatus.Read("alice", Date(5))))
+    }
+
+    @Test
+    fun `an ack label or status only touches the acking contact's own conversation`() {
+        val mine = com.bitchat.android.model.BitchatMessage(id = "label-1", sender = "me", content = "x",
+            timestamp = java.util.Date(1), isPrivate = true, senderPeerID = "1111222233334444",
+            deliveryStatus = com.bitchat.android.model.DeliveryStatus.Sent,
+            transport = com.bitchat.android.model.MessageTransport.INTERNET)
+        AppStateStore.addPrivateMessage("contact_alice", mine)
+        org.junit.Assert.assertFalse(AppStateStore.setPrivateMessageTransportIn("contact_mallory", "label-1",
+            com.bitchat.android.model.MessageTransport.BLUETOOTH))
+        org.junit.Assert.assertFalse(AppStateStore.updatePrivateMessageStatusIn("contact_mallory", "label-1",
+            com.bitchat.android.model.DeliveryStatus.Read("mallory", java.util.Date(2))))
+        val stored = AppStateStore.privateMessages.value.values.flatten().single { it.id == "label-1" }
+        org.junit.Assert.assertEquals(com.bitchat.android.model.MessageTransport.INTERNET, stored.transport)
+        org.junit.Assert.assertEquals(com.bitchat.android.model.DeliveryStatus.Sent, stored.deliveryStatus)
+        // « Internet » is sticky: a Bluetooth ack from the right contact does not relabel it.
+        AppStateStore.setPrivateMessageTransportIn("contact_alice", "label-1", com.bitchat.android.model.MessageTransport.BLUETOOTH)
+        org.junit.Assert.assertEquals(com.bitchat.android.model.MessageTransport.INTERNET,
+            AppStateStore.privateMessages.value.values.flatten().single { it.id == "label-1" }.transport)
     }
 
     @Test

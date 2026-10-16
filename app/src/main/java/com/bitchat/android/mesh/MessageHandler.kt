@@ -143,7 +143,8 @@ class MessageHandler(
                             isPrivate = true,
                             recipientNickname = delegate?.getMyNickname(),
                             senderPeerID = peerID,
-                            mentions = null
+                            mentions = null,
+                            transport = com.bitchat.android.model.MessageTransport.BLUETOOTH
                         )
                         
                         // Acknowledge only what admission accepted (QR-enrolled sender in Wesh).

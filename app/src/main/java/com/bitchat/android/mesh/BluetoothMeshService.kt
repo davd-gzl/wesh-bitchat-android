@@ -559,20 +559,26 @@ class BluetoothMeshService(
                 // Status events can arrive while MainActivity has detached the UI delegate.
                 // Persist first so the next UI collector observes the advancement.
                 try {
-                    com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(
+                    // The label follows only the ack that advanced the status: a replay cannot rewrite it.
+                    if (com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(
                         messageID,
                         com.bitchat.android.model.DeliveryStatus.Delivered(peerID, Date())
-                    )
+                    )) com.bitchat.android.services.AppStateStore.setPrivateMessageTransportIn(
+                        com.bitchat.android.services.ContactDirectory.canonicalConversationId(peerID),
+                        messageID, com.bitchat.android.model.MessageTransport.BLUETOOTH)
                 } catch (_: Exception) { }
                 delegate?.didReceiveDeliveryAck(messageID, peerID)
             }
             
             override fun onReadReceiptReceived(messageID: String, peerID: String) {
                 try {
-                    com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(
+                    // The label follows only the ack that advanced the status: a replay cannot rewrite it.
+                    if (com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(
                         messageID,
                         com.bitchat.android.model.DeliveryStatus.Read(peerID, Date())
-                    )
+                    )) com.bitchat.android.services.AppStateStore.setPrivateMessageTransportIn(
+                        com.bitchat.android.services.ContactDirectory.canonicalConversationId(peerID),
+                        messageID, com.bitchat.android.model.MessageTransport.BLUETOOTH)
                 } catch (_: Exception) { }
                 delegate?.didReceiveReadReceipt(messageID, peerID)
             }

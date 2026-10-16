@@ -428,21 +428,27 @@ object AppStateStore {
             val canonical = ContactDirectory.canonicalConversationId(conversationID)
             if (_privateMessages.value[canonical].orEmpty().none { it.id == messageID }) return false
             // Message IDs are unique across conversations (UNIQUE column, seenMessageIds).
-            updatePrivateMessageStatus(messageID, status)
-            return true
+            return updatePrivateMessageStatus(messageID, status)
         }
     }
 
-    fun updatePrivateMessageStatus(messageID: String, status: DeliveryStatus) {
+    /**
+     * True only when the status moved to a strictly later stage in memory (a replayed or equal
+     * ack, an unknown or unloaded message, or a Failed update all return false).
+     */
+    fun updatePrivateMessageStatus(messageID: String, status: DeliveryStatus): Boolean {
         synchronized(this) {
-            if (privateConversationWritesSuspended) return
+            if (privateConversationWritesSuspended) return false
             val map = _privateMessages.value.toMutableMap()
             var changed = false
+            var advanced = false
             map.keys.toList().forEach { peer ->
                 val list = map[peer]?.toMutableList() ?: mutableListOf()
                 val idx = list.indexOfFirst { it.id == messageID }
                 if (idx >= 0) {
                     val current = list[idx].deliveryStatus
+                    if (status !is DeliveryStatus.Failed && (current is DeliveryStatus.Failed ||
+                            statusPriority(status) > statusPriority(current))) advanced = true
                     // Do not downgrade (e.g., Read -> Delivered)
                     val mayReplace = when {
                         status is DeliveryStatus.Failed ->
@@ -465,6 +471,45 @@ object AppStateStore {
             // SQLite. Always offer the update to the repository; it safely ignores unknown IDs
             // and enforces the same monotonic status rules as the in-memory path.
             conversationRepository?.updateDeliveryStatus(messageID, status)
+            return advanced
+        }
+    }
+
+    /**
+     * The label from an ack: written only if the message belongs to the acking contact's
+     * conversation (IDs are unique, so this is the only row it could touch).
+     */
+    fun setPrivateMessageTransportIn(conversationID: String, messageID: String,
+                                     transport: com.bitchat.android.model.MessageTransport): Boolean {
+        synchronized(this) {
+            val canonical = ContactDirectory.canonicalConversationId(conversationID)
+            if (_privateMessages.value[canonical].orEmpty().none { it.id == messageID }) return false
+            setPrivateMessageTransport(messageID, transport)
+            return true
+        }
+    }
+
+    /**
+     * Records the transport of my own send attempt (local send paths only). « Internet » is
+     * sticky: once a message has crossed the Internet, nothing labels it Bluetooth again.
+     */
+    fun setPrivateMessageTransport(messageID: String, transport: com.bitchat.android.model.MessageTransport) {
+        synchronized(this) {
+            if (privateConversationWritesSuspended) return
+            val map = _privateMessages.value.toMutableMap()
+            var changed = false
+            var sticky = false
+            map.keys.toList().forEach { peer ->
+                val list = map[peer] ?: return@forEach
+                val idx = list.indexOfFirst { it.id == messageID }
+                if (idx >= 0 && list[idx].transport == com.bitchat.android.model.MessageTransport.INTERNET) sticky = true
+                if (idx >= 0 && list[idx].transport != transport && !sticky) {
+                    map[peer] = list.toMutableList().also { it[idx] = it[idx].copy(transport = transport) }
+                    changed = true
+                }
+            }
+            if (changed) _privateMessages.value = map
+            if (!sticky) conversationRepository?.updateTransport(messageID, transport)
         }
     }
 

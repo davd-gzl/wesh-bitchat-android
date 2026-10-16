@@ -4,6 +4,7 @@ import android.app.Application
 import com.bitchat.android.favorites.FavoriteControlMessage
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.DeliveryStatus
+import com.bitchat.android.model.MessageTransport
 import com.bitchat.android.model.NoisePayload
 import com.bitchat.android.model.NoisePayloadType
 import com.bitchat.android.model.PrivateMessagePacket
@@ -75,7 +76,8 @@ internal class WeshInternetInbox(
                     timestamp = Date(rumorSeconds * 1000L),
                     isPrivate = true,
                     senderPeerID = conversationID,
-                    senderNostrPubkey = rawSender.lowercase()
+                    senderNostrPubkey = rawSender.lowercase(),
+                    transport = MessageTransport.INTERNET
                 )
                 if (!runCatching { deliver(conversationID, message) }.getOrDefault(false)) return Outcome.DROPPED
                 // The ack goes back over the transport the message came on (spec §3 rule 5), once.
@@ -188,7 +190,9 @@ internal object WeshInternetReceiver {
             },
             updateStatus = { conversationID, messageID, status ->
                 // Only that contact can reach here, only its own conversation, never a downgrade.
-                AppStateStore.updatePrivateMessageStatusIn(conversationID, messageID, status)
+                if (AppStateStore.updatePrivateMessageStatusIn(conversationID, messageID, status)) {
+                    AppStateStore.setPrivateMessageTransportIn(conversationID, messageID, MessageTransport.INTERNET)
+                }
             },
             alreadyAcked = seen::hasDelivered,
             markAcked = seen::markDelivered,

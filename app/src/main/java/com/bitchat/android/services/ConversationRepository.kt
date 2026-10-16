@@ -10,6 +10,7 @@ import android.util.Log
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.model.DeliveryStatus
+import com.bitchat.android.model.MessageTransport
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -182,6 +183,16 @@ class ConversationRepository internal constructor(
                 database.updateDeliveryStatus(messageID, status)
             } catch (error: Exception) {
                 Log.e(TAG, "Unable to persist delivery status: ${error.message}")
+            }
+        }
+    }
+
+    fun updateTransport(messageID: String, transport: MessageTransport) {
+        scope.launch {
+            try {
+                database.updateTransport(messageID, transport)
+            } catch (error: Exception) {
+                Log.e(TAG, "Unable to persist message transport: ${error.message}")
             }
         }
     }
@@ -900,6 +911,30 @@ internal class ConversationDatabase(
                         "payload_ciphertext",
                         encryptMessagePayload(current.copy(deliveryStatus = status))
                     )
+                },
+                "message_id = ?",
+                arrayOf(messageID)
+            )
+        }
+    }
+
+    /** Rewrites the encrypted payload only: the label is never stored in a plaintext column. */
+    fun updateTransport(messageID: String, transport: MessageTransport) {
+        writableDatabase.inTransaction {
+            val current = rawQuery(
+                "SELECT ${MESSAGE_COLUMNS.joinToString(",")} " +
+                    "FROM private_messages WHERE message_id = ?",
+                arrayOf(messageID)
+            ).use { cursor ->
+                if (cursor.moveToFirst()) cursor.toMessage() else null
+            } ?: return@inTransaction
+            if (current.transport == transport) return@inTransaction
+            // « Internet » is sticky on disk too (history may be unloaded from memory).
+            if (current.transport == MessageTransport.INTERNET) return@inTransaction
+            update(
+                "private_messages",
+                ContentValues().apply {
+                    put("payload_ciphertext", encryptMessagePayload(current.copy(transport = transport)))
                 },
                 "message_id = ?",
                 arrayOf(messageID)
@@ -1739,7 +1774,8 @@ internal class ConversationDatabase(
             encryptedContent = payload.encryptedContent,
             isEncrypted = boolean("is_encrypted"),
             deliveryStatus = toDeliveryStatus(payload.deliveryText),
-            senderNostrPubkey = payload.senderNostrPubkey
+            senderNostrPubkey = payload.senderNostrPubkey,
+            transport = payload.transport
         )
     }
 
@@ -1823,6 +1859,7 @@ internal class ConversationDatabase(
             )
             putNullable("delivery_text", message.deliveryStatus.sensitiveText())
             putNullable("sender_nostr_pubkey", message.senderNostrPubkey)
+            putNullable("transport", message.transport?.name)
         }
         return storageCipher.encrypt(
             json.toString().toByteArray(Charsets.UTF_8),
@@ -1850,7 +1887,10 @@ internal class ConversationDatabase(
                 Base64.decode(it, Base64.NO_WRAP)
             },
             deliveryText = json.optionalString("delivery_text"),
-            senderNostrPubkey = json.optionalString("sender_nostr_pubkey")
+            senderNostrPubkey = json.optionalString("sender_nostr_pubkey"),
+            transport = json.optionalString("transport")?.let { name ->
+                MessageTransport.entries.firstOrNull { it.name == name }
+            }
         )
     }
 
@@ -1908,7 +1948,8 @@ internal class ConversationDatabase(
         val channel: String?,
         val encryptedContent: ByteArray?,
         val deliveryText: String?,
-        val senderNostrPubkey: String?
+        val senderNostrPubkey: String?,
+        val transport: MessageTransport?
     )
 
     private val MESSAGE_COLUMNS = arrayOf(

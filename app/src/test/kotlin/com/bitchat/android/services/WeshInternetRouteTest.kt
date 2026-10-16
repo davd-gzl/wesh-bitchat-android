@@ -358,6 +358,79 @@ class WeshInternetRouteTest {
         }
     }
 
+    @Test fun `a Bluetooth send with no ack after 20 s goes again over Internet under the same ID`() {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        val bobPeer = ContactIdentityResolver.peerIdForNoiseKey(bobNoise)
+        whenever(mesh.getPeerNicknames()).thenReturn(mapOf(bobPeer to "Bob"))
+        whenever(mesh.getPeerInfo(bobPeer)).thenReturn(PeerInfo(id = bobPeer, nickname = "Bob", isConnected = true,
+            noisePublicKey = bobNoise, isDirectConnection = true, signingPublicKey = ByteArray(32),
+            isVerifiedNickname = true, lastSeen = 1L))
+        whenever(mesh.getAuthenticatedRemoteStaticKey(bobPeer)).thenReturn(bobNoise)
+        kotlinx.coroutines.runBlocking {
+            whenever(mesh.sendPrivateMessageBound(any(), any(), any(), any(), any())).thenReturn(true)
+        }
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        AppStateStore.clear()
+        val router = MessageRouter(context, mesh, mock())
+        router.weshInternetLink = alice.link
+        var now = 1_000_000L
+        router.clock = { now }
+        val bluetooth = com.bitchat.android.model.MessageTransport.BLUETOOTH
+        val internet = com.bitchat.android.model.MessageTransport.INTERNET
+        try {
+            for (id in listOf("ble-unacked", "ble-acked")) {
+                AppStateStore.addPrivateMessage(bobConversation, BitchatMessage(id = id, sender = "me", content = id,
+                    timestamp = java.util.Date(now), isPrivate = true, senderPeerID = alice.peerID, deliveryStatus = DeliveryStatus.Sending))
+                assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate(id, bobConversation, "Bob", id))
+            }
+            // Sent over Bluetooth but not visible in memory (history unloaded): unknown status, never resent.
+            assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("ble-unloaded", bobConversation, "Bob", "ble-unloaded"))
+            waitFor { AppStateStore.privateMessages.value.values.flatten().count { it.transport == bluetooth } == 2 }
+            Thread.sleep(200)
+            AppStateStore.updatePrivateMessageStatus("ble-acked", DeliveryStatus.Delivered("Bob", java.util.Date()))
+
+            now += MessageRouter.WESH_BLUETOOTH_ACK_TIMEOUT_MS - 1
+            router.tickOutbox(now)
+            Thread.sleep(200)
+            assertTrue(alice.link.published.isEmpty())
+
+            now += 2
+            router.tickOutbox(now)
+            waitFor { alice.link.published.size == 1 }
+            val (content, _, _) = NostrProtocol.decryptPrivateMessage(alice.link.published.single(), bob.nostr)!!
+            assertTrue(content.startsWith("bitchat1:"))
+            assertEquals(WeshInternetInbox.Outcome.STORED, kotlinx.coroutines.runBlocking { bob.inbox.onGiftWrap(alice.link.published.single()) })
+            assertEquals("ble-unacked", bob.stored.single().second.id)
+            waitFor { AppStateStore.privateMessages.value.values.flatten().single { it.id == "ble-unacked" }.transport == internet }
+            router.tickOutbox(now + 60_000)
+            Thread.sleep(200)
+            assertEquals(1, alice.link.published.size)
+
+            // Sent while Internet was off: never escalated later. Past the window: dropped.
+            fun sendOverBluetooth(id: String) {
+                AppStateStore.addPrivateMessage(bobConversation, BitchatMessage(id = id, sender = "me", content = id,
+                    timestamp = java.util.Date(now), isPrivate = true, senderPeerID = alice.peerID, deliveryStatus = DeliveryStatus.Sending))
+                assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate(id, bobConversation, "Bob", id))
+                waitFor { AppStateStore.privateMessages.value.values.flatten().single { it.id == id }.transport == bluetooth }
+            }
+            alice.link.on = false
+            sendOverBluetooth("ble-offline")
+            alice.link.on = true
+            sendOverBluetooth("ble-late")
+            now += MessageRouter.WESH_BLUETOOTH_FALLBACK_WINDOW_MS + 1
+            router.tickOutbox(now)
+            Thread.sleep(200)
+            assertEquals(1, alice.link.published.size)
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
     private fun embed(type: NoisePayloadType, data: ByteArray): String {
         val packet = com.bitchat.android.protocol.BitchatPacket(
             version = 1u, type = com.bitchat.android.protocol.MessageType.NOISE_ENCRYPTED.value,

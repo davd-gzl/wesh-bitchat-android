@@ -77,7 +77,9 @@ data class BitchatMessage(
      * surfaces color the sender by the same stable key while [senderPeerID] remains available for
      * mesh IDs and private-chat routing aliases.
      */
-    val senderNostrPubkey: String? = null
+    val senderNostrPubkey: String? = null,
+    /** Wesh « Bluetooth » / « Internet » label for private messages; null when unknown. */
+    val transport: MessageTransport? = null
 ) : Parcelable {
 
     /**
@@ -339,6 +341,8 @@ data class BitchatMessage(
         } else if (other.encryptedContent != null) return false
         if (isEncrypted != other.isEncrypted) return false
         if (deliveryStatus != other.deliveryStatus) return false
+        // State flows deduplicate by equality: a label change must count as a change.
+        if (transport != other.transport) return false
 
         return true
     }
@@ -359,6 +363,7 @@ data class BitchatMessage(
         result = 31 * result + (encryptedContent?.contentHashCode() ?: 0)
         result = 31 * result + isEncrypted.hashCode()
         result = 31 * result + (deliveryStatus?.hashCode() ?: 0)
+        result = 31 * result + (transport?.hashCode() ?: 0)
         return result
     }
 }

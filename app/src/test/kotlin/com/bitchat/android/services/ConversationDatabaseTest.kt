@@ -100,6 +100,29 @@ class ConversationDatabaseTest {
     }
 
     @Test
+    fun `transport label lives only in the encrypted payload and survives status updates`() {
+        val message = BitchatMessage(
+            id = "transport-label", sender = "alice", content = "salut", timestamp = Date(1_000L),
+            isPrivate = true, senderPeerID = "0123456789abcdef", deliveryStatus = DeliveryStatus.Sent,
+            transport = com.bitchat.android.model.MessageTransport.BLUETOOTH
+        )
+        database.upsertMessage("contact_alice", setOf("contact_alice"), "alice", message, isRead = false)
+        database.updateTransport(message.id, com.bitchat.android.model.MessageTransport.INTERNET)
+        database.updateTransport(message.id, com.bitchat.android.model.MessageTransport.BLUETOOTH) // sticky: ignored
+        database.updateDeliveryStatus(message.id, DeliveryStatus.Delivered("alice", Date(2_000L)))
+        val columns = database.readableDatabase.rawQuery("PRAGMA table_info(private_messages)", null).use { cursor ->
+            buildList { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) }
+        }
+        assertFalse(columns.any { it.contains("transport") })
+        database.close()
+
+        database = ConversationDatabase(context, databaseName, storageCipher = storageCipher)
+        val restored = database.loadSnapshot().chats.getValue("contact_alice").single()
+        assertEquals(com.bitchat.android.model.MessageTransport.INTERNET, restored.transport)
+        assertEquals(DeliveryStatus.Delivered("alice", Date(2_000L)), restored.deliveryStatus)
+    }
+
+    @Test
     fun `aliases merge into one conversation and duplicate transport delivery stays unique`() {
         val first = message("first", "alice", 100L)
         val second = message("second", "alice", 200L)

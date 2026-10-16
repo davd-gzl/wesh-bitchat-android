@@ -49,6 +49,11 @@ class MessageRouter internal constructor(
         private const val OUTBOX_MESSAGE_TTL_MS = AppConstants.Router.OUTBOX_MESSAGE_TTL_MS
         private const val OUTBOX_MAX_PER_PEER = AppConstants.Router.OUTBOX_MAX_PER_PEER
         private val HANDSHAKE_RETRY_BACKOFF_MS = AppConstants.Router.HANDSHAKE_RETRY_BACKOFF_MS
+        /** Spec §3 rule 4: a Bluetooth send with no ack after this goes out again over Internet. */
+        internal const val WESH_BLUETOOTH_ACK_TIMEOUT_MS = 20_000L
+        private const val WESH_MAX_AWAITING_ACK = 512
+        /** Past this, an unacked Bluetooth send is no longer escalated to Internet. */
+        internal const val WESH_BLUETOOTH_FALLBACK_WINDOW_MS = 5 * 60_000L
 
         @Volatile private var INSTANCE: MessageRouter? = null
         internal var disableSchedulerForTesting = false
@@ -92,6 +97,8 @@ class MessageRouter internal constructor(
     /** Bumped by every clear (panic): an Internet send that fails afterwards is never requeued. */
     private val weshEpoch = java.util.concurrent.atomic.AtomicLong()
     private val weshInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    /** Bluetooth sends still waiting for their ack, by message ID (rule 4). */
+    private val weshAwaitingAck = ConcurrentHashMap<String, Pair<QueuedMessage, String>>()
     /** Conversation + npub pairs already told my npub in this process (re-sent after a panic). */
     private val weshAnnounced = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
@@ -127,6 +134,7 @@ class MessageRouter internal constructor(
             retryState.clear()
             weshInFlight.clear()
             weshAnnounced.clear()
+            weshAwaitingAck.clear()
         }
         Log.d(TAG, "Cleared all MessageRouter outbox messages and retry state")
     }
@@ -199,7 +207,15 @@ class MessageRouter internal constructor(
         schedulerScope.launch {
             try {
                 if (epoch != weshEpoch.get()) return@launch
-                WeshPrivateSender(WeshContactStore.get(context)).dispatch(content, conversationID, messageID, mesh)
+                // Rule 4 applies only if Internet was already On at the Bluetooth send (the user's
+                // consent then); a message sent while it was off never escalates later.
+                val internetAtSend = weshInternetLink.isOn()
+                if (WeshPrivateSender(WeshContactStore.get(context)).dispatch(content, conversationID, messageID, mesh)) {
+                    AppStateStore.setPrivateMessageTransport(messageID, com.bitchat.android.model.MessageTransport.BLUETOOTH)
+                    if (internetAtSend && weshAwaitingAck.size < WESH_MAX_AWAITING_ACK) {
+                        weshAwaitingAck[messageID] = QueuedMessage(content, "", messageID, clock()) to conversationID
+                    }
+                }
             } finally { weshInFlight.remove(messageID) }
         }
     }
@@ -214,6 +230,7 @@ class MessageRouter internal constructor(
                 if (epoch != weshEpoch.get()) return@launch
                 if (sent) {
                     AppStateStore.updatePrivateMessageStatus(entry.messageID, com.bitchat.android.model.DeliveryStatus.Sent)
+                    AppStateStore.setPrivateMessageTransport(entry.messageID, com.bitchat.android.model.MessageTransport.INTERNET)
                 } else {
                     requeueWesh(entry, conversationID, epoch)
                 }
@@ -274,6 +291,7 @@ class MessageRouter internal constructor(
             AppStateStore.updatePrivateMessageStatus(entry.messageID, com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré"))
         }
         retryState.remove(conversationID)
+        weshAwaitingAck.entries.removeIf { it.value.second == conversationID }
     }
 
     fun sendReadReceipt(receipt: ReadReceipt, toPeerID: String) {
@@ -454,6 +472,7 @@ class MessageRouter internal constructor(
      */
     @Synchronized
     internal fun tickOutbox(nowMs: Long = clock()) {
+        if (enforceWeshPolicy) resendUnackedOverInternet(nowMs)
         outbox.keys.toList().forEach { conversationID ->
             expireOldEntries(conversationID, nowMs)
             val queued = outbox[conversationID] ?: return@forEach
@@ -474,6 +493,38 @@ class MessageRouter internal constructor(
             // Peer visible but no session: retry the handshake with backoff.
             if (meshTarget != null && isConnected(mesh, meshTarget)) {
                 kickHandshake(conversationID, meshTarget, immediate = false)
+            }
+        }
+    }
+
+    /**
+     * Rule 4: a Bluetooth message with no ack after 20 s is resent over Internet under the same
+     * ID (receivers deduplicate). Fails closed: only a message still visible in its conversation
+     * with status Sending or Sent is resent; an unknown status (history unloaded, panic) drops it.
+     */
+    private fun resendUnackedOverInternet(nowMs: Long) {
+        if (weshAwaitingAck.isEmpty()) return
+        val awaiting = weshAwaitingAck.entries.associate { (id, attempt) -> id to attempt.second }
+        val stillUnacked = HashSet<String>()
+        awaiting.values.toSet().forEach { conversationID ->
+            AppStateStore.privateMessages.value[ContactDirectory.canonicalConversationId(conversationID)].orEmpty().forEach { message ->
+                val status = message.deliveryStatus
+                if (awaiting[message.id] == conversationID &&
+                    (status is com.bitchat.android.model.DeliveryStatus.Sending || status is com.bitchat.android.model.DeliveryStatus.Sent)) {
+                    stillUnacked += message.id
+                }
+            }
+        }
+        val internetOn = weshInternetLink.isOn()
+        weshAwaitingAck.entries.toList().forEach { (messageID, attempt) ->
+            val (entry, conversationID) = attempt
+            val age = nowMs - entry.enqueuedAtMs
+            when {
+                messageID !in stillUnacked || age > WESH_BLUETOOTH_FALLBACK_WINDOW_MS -> weshAwaitingAck.remove(messageID)
+                age >= WESH_BLUETOOTH_ACK_TIMEOUT_MS && internetOn && weshInternet().canSend(conversationID) -> {
+                    weshAwaitingAck.remove(messageID)
+                    dispatchWeshInternet(entry, conversationID)
+                }
             }
         }
     }
