@@ -52,7 +52,6 @@ The authoritative pins are:
 - `gradle/libs.versions.toml`
 - `settings-gradle.lockfile`
 - `app/gradle.lockfile`
-- `wear/gradle.lockfile`
 - `gradle/verification-metadata.xml`
 - `tools/reproducible-builds/TOOLCHAIN.env`
 - `tools/arti-build/TOOLCHAIN.env`
