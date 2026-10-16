@@ -123,4 +123,32 @@ class WeshVerificationHandlerTest {
         respond(); runCurrent()
         assertTrue(store.contacts.value.isEmpty())
     }
+    private fun npubQR(npub: String): VerificationService.VerificationQR =
+        VerificationService.verifyScannedQR(VerificationService.buildMyQRString("Synthetic contact", npub)!!)!!
+    private fun enroll(scanned: VerificationService.VerificationQR, mine: String?) {
+        qr = scanned
+        val context: Context = mock()
+        whenever(context.getString(any())).thenReturn("Synthetic verification title")
+        whenever(context.getString(any(), any())).thenReturn("Synthetic verification notice")
+        handler = VerificationHandler(context, scope, { mesh }, mock(), state(), mock(), mock(), { time }, { mine })
+        assertTrue(handler.beginQRVerification(qr))
+        respond(); scope.runCurrent()
+    }
+    private fun state(): ChatState = mock<ChatState>().also { whenever(it.getConnectedPeersValue()).thenReturn(listOf(peer)) }
+    @Test fun `signed QR npub is bound to the proven Noise key`() = scope.runTest {
+        enroll(npubQR(syntheticNpub), mine = mineNpub)
+        assertEquals(syntheticNpub, store.contacts.value.single().npub)
+        assertTrue(store.contacts.value.single().internetReachable)
+    }
+    @Test fun `my own or unknown own npub enrolls the contact Bluetooth only`() = scope.runTest {
+        enroll(npubQR(syntheticNpub), mine = syntheticNpub)
+        assertNull(store.contacts.value.single().npub)
+        store.clear()
+        enroll(npubQR(syntheticNpub), mine = null)
+        assertNull(store.contacts.value.single().npub)
+        assertFalse(store.contacts.value.single().internetReachable)
+    }
+    private val syntheticNpub = com.bitchat.android.nostr.Bech32.encode("npub",
+        "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798".dataFromHexString()!!)
+    private val mineNpub = com.bitchat.android.nostr.Bech32.encode("npub", ByteArray(31) + byteArrayOf(2))
 }

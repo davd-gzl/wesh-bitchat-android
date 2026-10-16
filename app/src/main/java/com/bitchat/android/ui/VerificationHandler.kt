@@ -32,7 +32,10 @@ class VerificationHandler(
     private val state: ChatState,
     private val notificationManager: NotificationManager,
     private val messageManager: MessageManager,
-    private val nowMs: () -> Long = { System.currentTimeMillis() }
+    private val nowMs: () -> Long = { System.currentTimeMillis() },
+    private val ownNpub: () -> String? = {
+        runCatching { com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(context)?.npub }.getOrNull()
+    }
 ) {
     // Helper to get current mesh service (may change after panic clear)
     private val meshService: MeshService
@@ -87,7 +90,7 @@ class VerificationHandler(
         }
         val nonce = ByteArray(16)
         java.security.SecureRandom().nextBytes(nonce)
-        val pending = PendingVerification(qr.noiseKeyHex, qr.signKeyHex, nonce, nowMs(), false, qr.nickname)
+        val pending = PendingVerification(qr.noiseKeyHex, qr.signKeyHex, nonce, nowMs(), false, qr.nickname, qr.npub)
         pendingQRVerifications[peerID] = pending
 
         if (meshService.getSessionState(peerID) is NoiseSession.NoiseSessionState.Established) {
@@ -155,7 +158,9 @@ class VerificationHandler(
 
             pendingQRVerifications.remove(peerID)
             val fp = fingerprintFromNoiseHex(pending.noiseKeyHex) ?: return@launch
-            contacts.record(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname)
+            // The QR signature covers the npub and this response proves the signer holds the Noise session.
+            val npub = com.bitchat.android.services.WeshNpubPolicy.acceptedNpub(pending.npub, ownNpub(), contacts.contacts.value, pending.noiseKeyHex)
+            contacts.record(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname, npub)
             completedAttempts[pending.noiseKeyHex.lowercase()] = nowMs()
             identityManager.setVerifiedFingerprint(fp, true)
             val current = _verifiedFingerprints.value.toMutableSet()
@@ -367,7 +372,8 @@ class VerificationHandler(
         val nonceA: ByteArray,
         val startedAtMs: Long,
         val sent: Boolean,
-        val nickname: String
+        val nickname: String,
+        val npub: String? = null
     ) {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true

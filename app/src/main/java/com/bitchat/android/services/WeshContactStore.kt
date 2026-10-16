@@ -15,7 +15,10 @@ class WeshContactStore internal constructor(
     private val identity: SecureIdentityStateManager,
     private val blockPreferences: SharedPreferences
 ) {
-    data class Contact(val noiseHex: String, val nickname: String) {
+    /** [npub] comes only from a signed QR proven over Noise; null means Bluetooth-only. */
+    data class Contact(val noiseHex: String, val nickname: String, val npub: String? = null) {
+        /** False: the UI asks to rescan the QR before Internet delivery is possible. */
+        val internetReachable: Boolean get() = npub != null
         val key: ByteArray get() = noiseHex.dataFromHexString()!!
         val conversationID: String get() = ContactIdentityResolver.contactConversationIdForNoiseKey(key)
     }
@@ -29,14 +32,15 @@ class WeshContactStore internal constructor(
             val row = array.getJSONObject(index)
             val hex = row.getString("noise")
             val name = row.getString("nickname")
-            if (!hex.matches(Regex("[0-9a-f]{64}")) || name.toByteArray().size > 255) null else Contact(hex, name)
+            val npub = row.optString("npub").takeIf(WeshNpubPolicy::isValid)
+            if (!hex.matches(Regex("[0-9a-f]{64}")) || name.toByteArray().size > 255) null else Contact(hex, name, npub)
         }.distinctBy { it.noiseHex }.takeLast(256)
     }.getOrDefault(emptyList())
 
-    @Synchronized fun record(key: ByteArray, nickname: String) {
-        require(key.size == 32 && nickname.toByteArray().size <= 255)
+    @Synchronized fun record(key: ByteArray, nickname: String, npub: String? = null) {
+        require(key.size == 32 && nickname.toByteArray().size <= 255 && (npub == null || WeshNpubPolicy.isValid(npub)))
         val hex = key.hexEncodedString()
-        persist((_contacts.value.filterNot { it.noiseHex == hex } + Contact(hex, nickname)).takeLast(256))
+        persist((_contacts.value.filterNot { it.noiseHex == hex } + Contact(hex, nickname, npub)).takeLast(256))
     }
     @Synchronized fun remove(conversationID: String): Boolean {
         val remaining = _contacts.value.filterNot { it.conversationID == conversationID }
@@ -45,6 +49,7 @@ class WeshContactStore internal constructor(
         return true
     }
     @Synchronized fun clear() = persist(emptyList())
+    fun forNpub(npub: String): Contact? = _contacts.value.firstOrNull { it.npub == npub }
     fun contact(conversationID: String): Contact? = _contacts.value.firstOrNull { it.conversationID == conversationID }
     fun forFingerprint(fingerprint: String): Contact? = _contacts.value.firstOrNull {
         ContactIdentityResolver.fingerprintHex(it.key) == fingerprint
@@ -56,7 +61,7 @@ class WeshContactStore internal constructor(
     fun blockedFingerprints(): Set<String> = blockPreferences.getStringSet("blocked_users", emptySet()).orEmpty().toSet()
     private fun persist(contacts: List<Contact>) {
         val array = JSONArray()
-        contacts.forEach { array.put(JSONObject().put("noise", it.noiseHex).put("nickname", it.nickname)) }
+        contacts.forEach { array.put(JSONObject().put("noise", it.noiseHex).put("nickname", it.nickname).putOpt("npub", it.npub)) }
         identity.storeSecureValue(storageKey, array.toString())
         _contacts.value = contacts
     }

@@ -404,7 +404,7 @@ private fun WeshContactSheet(viewModel: ChatViewModel, onDismiss: () -> Unit) {
     var attemptRevision by remember { mutableIntStateOf(0) }
     var qr by remember { mutableStateOf<String?>(null) }
     val nickname by viewModel.nickname.collectAsState()
-    LaunchedEffect(nickname) { while (true) { qr = viewModel.buildMyQRString(nickname, null); delay(60_000) } }
+    LaunchedEffect(nickname) { while (true) { qr = viewModel.buildMyQRString(nickname, viewModel.getCurrentNpub()); delay(60_000) } }
     val incoming by viewModel.weshIncomingQR.collectAsState()
     var reviewedLink by remember(incoming) { mutableStateOf(incoming) }
     LaunchedEffect(pendingNoise, attemptRevision) {
