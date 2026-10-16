@@ -12,16 +12,22 @@ import java.util.concurrent.atomic.AtomicLong
  * ID otherwise) and survive disconnects, so reconnecting does not refill them. A bucket idle for
  * a few refill windows is full again and is forgotten; when the table is full, the bucket with
  * the most tokens (the least throttled) is evicted first.
+ *
+ * The shared ceiling never shuts a link out entirely: each device keeps a small guaranteed
+ * allowance ([minPerSecond], [minBurst]) usable while the shared bucket is empty, so busy links
+ * cannot starve a quiet one.
  */
 class InboundLinkRateLimiter(
     private val perSecond: Double = 100.0,
     private val burst: Double = 400.0,
     private val globalPerSecond: Double = 300.0,
     private val globalBurst: Double = 1_200.0,
+    private val minPerSecond: Double = 5.0,
+    private val minBurst: Double = 20.0,
     private val maxTrackedLinks: Int = 64,
     private val now: () -> Long = System::currentTimeMillis
 ) {
-    private class Bucket(var tokens: Double, var updatedAt: Long)
+    private class Bucket(var tokens: Double, var updatedAt: Long, var reserve: Double = 0.0)
 
     private val links = HashMap<String, Bucket>()
     private val global = Bucket(globalBurst, now())
@@ -43,15 +49,25 @@ class InboundLinkRateLimiter(
         val time = now()
         val key = deviceAddress?.let { "addr:$it" } ?: "link:$linkID"
         val bucket = links[key] ?: newBucket(key, time)
+        bucket.reserve = minOf(minBurst, bucket.reserve + (time - bucket.updatedAt).coerceAtLeast(0L) * minPerSecond / 1000.0)
         refill(bucket, perSecond, burst, time)
         refill(global, globalPerSecond, globalBurst, time)
-        if (bucket.tokens < 1.0 || global.tokens < 1.0) {
-            droppedCount.incrementAndGet()
-            return false
+        when {
+            bucket.tokens < 1.0 -> Unit
+            global.tokens >= 1.0 -> {
+                bucket.tokens -= 1.0
+                global.tokens -= 1.0
+                return true
+            }
+            // Shared ceiling reached: the link's guaranteed allowance still applies.
+            bucket.reserve >= 1.0 -> {
+                bucket.tokens -= 1.0
+                bucket.reserve -= 1.0
+                return true
+            }
         }
-        bucket.tokens -= 1.0
-        global.tokens -= 1.0
-        return true
+        droppedCount.incrementAndGet()
+        return false
     }
 
     private fun newBucket(key: String, time: Long): Bucket {
@@ -64,7 +80,7 @@ class InboundLinkRateLimiter(
             }
             leastThrottled?.let { links.remove(it.key) }
         }
-        return Bucket(burst, time).also { links[key] = it }
+        return Bucket(burst, time, minBurst).also { links[key] = it }
     }
 
     private fun refill(bucket: Bucket, rate: Double, cap: Double, time: Long): Bucket {

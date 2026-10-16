@@ -8,12 +8,17 @@ import org.junit.Test
 class InboundLinkRateLimiterTest {
     private var nowMs = 0L
 
-    private fun limiter(maxLinks: Int = 64, globalPerSecond: Double = 1_000.0, globalBurst: Double = 1_000.0) =
-        InboundLinkRateLimiter(
-            perSecond = 10.0, burst = 5.0,
-            globalPerSecond = globalPerSecond, globalBurst = globalBurst,
-            maxTrackedLinks = maxLinks, now = { nowMs }
-        )
+    private fun limiter(
+        maxLinks: Int = 64,
+        globalPerSecond: Double = 1_000.0,
+        globalBurst: Double = 1_000.0,
+        minBurst: Double = 1.0
+    ) = InboundLinkRateLimiter(
+        perSecond = 10.0, burst = 5.0,
+        globalPerSecond = globalPerSecond, globalBurst = globalBurst,
+        minPerSecond = 1.0, minBurst = minBurst,
+        maxTrackedLinks = maxLinks, now = { nowMs }
+    )
 
     @Test
     fun `a device is cut once its burst is spent and recovers at its rate`() {
@@ -56,12 +61,24 @@ class InboundLinkRateLimiterTest {
     }
 
     @Test
-    fun `all links together stay under the shared ceiling`() {
-        val limiter = limiter(globalPerSecond = 10.0, globalBurst = 8.0)
+    fun `all links together stay under the shared ceiling plus each link's guaranteed minimum`() {
+        val limiter = limiter(globalPerSecond = 10.0, globalBurst = 8.0, minBurst = 1.0)
 
-        val admitted = (1..4).sumOf { device -> (1..5).count { limiter.tryAcquire("AA:0$device", "link-$device") } }
+        val perDevice = (1..4).map { device -> (1..5).count { limiter.tryAcquire("AA:0$device", "link-$device") } }
 
-        assertEquals(8, admitted)
+        assertTrue(perDevice.sum() <= 8 + 4 * 1)
+        assertEquals(listOf(5, 4, 1, 1), perDevice)
+    }
+
+    @Test
+    fun `busy devices exhausting the shared ceiling do not starve a quiet link`() {
+        val limiter = limiter(globalPerSecond = 10.0, globalBurst = 8.0, minBurst = 3.0)
+        (1..4).forEach { device -> repeat(50) { limiter.tryAcquire("AA:0$device", "link-$device") } }
+        assertFalse("The shared ceiling is spent", limiter.tryAcquire("AA:01", "link-1"))
+
+        val quiet = (1..3).count { limiter.tryAcquire("AA:09", "link-9") }
+
+        assertEquals(3, quiet)
     }
 
     @Test
