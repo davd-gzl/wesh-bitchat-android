@@ -159,12 +159,12 @@ class VerificationHandler(
 
             // Claim the attempt first so duplicate responses bail before any key store work.
             if (!pendingQRVerifications.remove(peerID, pending)) return@launch
-            // Read my npubs off the Main thread. A panic during that read bumps the generation, and
-            // nothing suspends between the checks below and the writes, so a wiped contact can never
-            // be re-enrolled.
+            // Read my npubs off the Main thread. A panic, a cancel, a contact removal or a block during
+            // that read is caught below, and nothing suspends between those checks and the writes.
             val generation = weshGeneration
+            val removals = contacts.removalEpoch
             val owned = ownedNpubs()
-            if (generation != weshGeneration || !isFreshAttempt(pending)) return@launch
+            if (generation != weshGeneration || removals != contacts.removalEpoch || !isFreshAttempt(pending)) return@launch
             if (contacts.isBlocked(pending.noiseKeyHex.dataFromHexString() ?: return@launch)) return@launch
             val fp = fingerprintFromNoiseHex(pending.noiseKeyHex) ?: return@launch
             // The QR signature covers the npub and this response proves the signer holds the Noise session.
@@ -198,12 +198,13 @@ class VerificationHandler(
     internal fun isFreshAttemptTime(startedAt: Long): Boolean = (nowMs() - startedAt) in 0..60_000L
     private fun isFreshAttempt(pending: PendingVerification): Boolean = isFreshAttemptTime(pending.startedAtMs)
 
-    /** Bumped by panic so a verification resumed after it never writes. */
+    /** Bumped by panic and cancel so a verification resumed after either never writes. */
     @Volatile private var weshGeneration = 0L
 
     fun clearWeshVerifications() { weshGeneration++; pendingQRVerifications.clear(); completedAttempts.clear() }
 
     fun cancelWeshVerification(conversationID: String) {
+        weshGeneration++
         pendingQRVerifications.entries.removeIf { (_, pending) ->
             pending.noiseKeyHex.dataFromHexString()?.let { ContactIdentityResolver.contactConversationIdForNoiseKey(it) } == conversationID
         }

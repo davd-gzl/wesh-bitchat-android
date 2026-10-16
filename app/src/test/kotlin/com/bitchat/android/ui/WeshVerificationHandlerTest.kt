@@ -216,8 +216,11 @@ class WeshVerificationHandlerTest {
         respond(); runCurrent()
         assertNull(store.contacts.value.single().npub)
     }
-    @Test fun `a panic while owned npubs are read off the Main thread enrolls nothing`() = scope.runTest {
-        // A key-store dispatcher that holds its work until released.
+    /**
+     * Starts a verification, lets the response pass its checks, and holds the off-Main npub read;
+     * [during] runs while it is held, then the read is released. Nothing may be written after.
+     */
+    private fun TestScope.interruptedDuringNpubRead(nickname: String, during: () -> Unit) {
         val held = ArrayDeque<Runnable>()
         com.bitchat.android.services.WeshQrIdentity.io = object : kotlinx.coroutines.CoroutineDispatcher() {
             override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) { held.addLast(block) }
@@ -227,18 +230,30 @@ class WeshVerificationHandlerTest {
             whenever(it.getString(any())).thenReturn("Synthetic verification title")
             whenever(it.getString(any(), any())).thenReturn("Synthetic verification notice")
         }, scope, { mesh }, identity, state(), mock(), mock(), { time })
-        qr = npubQR(syntheticNpub, "Synthetic panic race", syntheticSigner)
+        qr = npubQR(syntheticNpub, nickname, syntheticSigner)
         assertTrue(handler.beginQRVerification(qr))
         respond(); runCurrent()
-        // The response is checked and the handler now waits on the key store read: panic now.
-        handler.clearWeshVerifications()
-        store.clear()
         assertTrue(held.isNotEmpty())
+        during()
         while (held.isNotEmpty()) held.removeFirst().run()
         runCurrent()
         assertTrue(store.contacts.value.isEmpty())
         verify(identity, never()).setVerifiedFingerprint(any(), any())
         assertEquals("unavailable", handler.weshProgress(qr.noiseKeyHex))
+    }
+    private val conversation get() = ContactIdentityResolver.contactConversationIdForNoiseKey(qr.noiseKeyHex.dataFromHexString()!!)
+    @Test fun `a panic while owned npubs are read off the Main thread enrolls nothing`() = scope.runTest {
+        interruptedDuringNpubRead("Synthetic panic race") { handler.clearWeshVerifications(); store.clear() }
+    }
+    @Test fun `cancelling the verification during the npub read enrolls nothing`() = scope.runTest {
+        interruptedDuringNpubRead("Synthetic cancel race") { handler.cancelWeshVerification(conversation) }
+    }
+    @Test fun `removing the contact during a re-verification enrolls nothing`() = scope.runTest {
+        interruptedDuringNpubRead("Synthetic remove race") {
+            // The contact was enrolled earlier; the user removes it while this re-scan is checked.
+            assertNotNull(store.enroll(qr.noiseKeyHex.dataFromHexString()!!, "Synthetic remove race", null, null, null))
+            assertTrue(store.remove(conversation))
+        }
     }
     @Test fun `a duplicate response for a claimed attempt never reaches the npub reader`() = scope.runTest {
         var reads = 0
