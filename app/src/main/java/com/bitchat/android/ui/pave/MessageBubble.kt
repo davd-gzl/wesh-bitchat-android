@@ -61,6 +61,8 @@ private fun PaveDelivery.color(): Color {
  * so they read apart in full sun without relying on alignment. No warning inside the bubble.
  *
  * @param sender received only: nickname above the first message of a series (sanitized here).
+ * @param senderFingerprint received only: [PaveFingerprint.short] of the sender, shown under the
+ * nickname so two identical nicknames read apart. Null when the key is unknown.
  * @param delivery your messages only.
  * @param onOpenDetail a tap opens the message status detail.
  */
@@ -72,6 +74,7 @@ fun MessageBubble(
     time: String?,
     modifier: Modifier = Modifier,
     sender: String? = null,
+    senderFingerprint: String? = null,
     delivery: PaveDelivery? = null,
     transport: PaveTransport? = null,
     onRetry: (() -> Unit)? = null,
@@ -111,7 +114,10 @@ fun MessageBubble(
         if (!failed) deliveryText?.let(::add)
         transportText?.let(::add)
     }
-    val description = listOfNotNull(if (own) you else safeSender, text, if (headerWithTime) time else null)
+    val fingerprintLabel = stringResource(R.string.wesh_pave_fingerprint_label)
+    val shownFingerprint = senderFingerprint?.takeIf { header != null }
+    val spokenFingerprint = shownFingerprint?.let { "$fingerprintLabel : " + PaveFingerprint.spoken(it) }
+    val description = listOfNotNull(if (own) you else safeSender, spokenFingerprint, text, if (headerWithTime) time else null)
         .plus(metaParts)
         .plus(if (failed) listOfNotNull(deliveryText) else emptyList())
         .joinToString(", ")
@@ -135,8 +141,17 @@ fun MessageBubble(
                         header,
                         style = WeshType.caption,
                         color = c.inkMuted,
-                        modifier = Modifier.padding(start = WeshSpace.s1, top = WeshSpace.s2, bottom = WeshSpace.s1),
+                        modifier = Modifier.padding(start = WeshSpace.s1, top = WeshSpace.s2, bottom = if (shownFingerprint != null) 0.dp else WeshSpace.s1),
                     )
+                    if (shownFingerprint != null) {
+                        Text(
+                            shownFingerprint,
+                            style = WeshType.fingerprint.copy(fontSize = WeshType.caption.fontSize, lineHeight = WeshType.caption.lineHeight),
+                            color = c.inkMuted,
+                            maxLines = 1,
+                            modifier = Modifier.padding(start = WeshSpace.s1, bottom = WeshSpace.s1),
+                        )
+                    }
                 }
                 val bordered = if (own) Modifier else Modifier.border(WeshStroke.s2, c.lineStrong, shape)
                 Text(
@@ -198,7 +213,7 @@ private fun MessageBubblePreview() = PavePreview {
         MessageBubble("Oui, j’arrive par la rue de la Paix.", own = true, room = PaveRoom.Private, time = "17:53", delivery = PaveDelivery.Received)
         MessageBubble("Je suis là.", own = true, room = PaveRoom.Private, time = "17:59", delivery = PaveDelivery.Sent, transport = PaveTransport.Internet)
         MessageBubble("Vous me voyez ?", own = true, room = PaveRoom.Private, time = null, delivery = PaveDelivery.Failed, onRetry = {})
-        MessageBubble("Cortège bloqué au pont, on contourne par le quai.", own = false, room = PaveRoom.Public, time = "17:40", sender = "Coquelicot")
+        MessageBubble("Cortège bloqué au pont, on contourne par le quai.", own = false, room = PaveRoom.Public, time = "17:40", sender = "Coquelicot", senderFingerprint = "0E7A 4C19 B2D8 66F1")
         MessageBubble("Point d’eau ouvert au coin de la place.", own = true, room = PaveRoom.Public, time = "18:01", delivery = PaveDelivery.Waiting)
     }
 }

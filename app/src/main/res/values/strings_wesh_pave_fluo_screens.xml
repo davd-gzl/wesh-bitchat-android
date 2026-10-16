@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Pavé Fluo: home -->
+    <string name="wesh_pave_home_settings">Settings</string>
+    <string name="wesh_pave_home_private">Private</string>
+    <string name="wesh_pave_home_contacts_unreadable">Contacts unreadable on this phone. Nothing is overwritten.</string>
+    <string name="wesh_pave_home_no_contact">No contact yet. Exchange QR codes face to face to write privately.</string>
+    <!-- Pavé Fluo: public room and private chat -->
+    <string name="wesh_pave_room_public_subtitle">Public · %d in range · open to compatible apps</string>
+    <string name="wesh_pave_room_public_empty">The room is quiet. Everyone around will read what you write.</string>
+    <string name="wesh_pave_room_private_empty">Your private chat starts here.</string>
+    <string name="wesh_pave_private_open_contact">Open the contact card</string>
+    <string name="wesh_pave_private_label">Private</string>
+    <!-- Pavé Fluo: requests -->
+    <string name="wesh_pave_requests_intro">These people want to write to you privately. A nickname proves nothing: to answer, exchange QR codes face to face.</string>
+    <string name="wesh_pave_requests_empty">No request.</string>
+    <string name="wesh_pave_requests_namesake">Same nickname as one of your contacts</string>
+    <string name="wesh_pave_requests_namesake_yours">Fingerprint of your verified contact</string>
+    <string name="wesh_pave_requests_namesake_differs">The fingerprints differ: this is not the same person.</string>
+    <string name="wesh_pave_requests_exchange">Exchange face to face</string>
+    <string name="wesh_pave_requests_dismiss">Ignore</string>
+    <string name="wesh_pave_requests_block">Block</string>
+    <string name="wesh_pave_requests_block_report">Block and report</string>
+</resources>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Pavé Fluo: Accueil -->
+    <string name="wesh_pave_home_settings">Réglages</string>
+    <string name="wesh_pave_home_private">Privé</string>
+    <string name="wesh_pave_home_contacts_unreadable">Contacts illisibles sur ce téléphone. Rien n’est écrasé.</string>
+    <string name="wesh_pave_home_no_contact">Aucun contact. Échangez vos QR en face à face pour écrire en privé.</string>
+    <!-- Pavé Fluo: salon local et discussion privée -->
+    <string name="wesh_pave_room_public_subtitle">Public · %d à portée · ouvert aux apps compatibles</string>
+    <string name="wesh_pave_room_public_empty">Le salon est calme. Tout le monde autour lira ce que vous écrivez.</string>
+    <string name="wesh_pave_room_private_empty">Votre discussion privée commence ici.</string>
+    <string name="wesh_pave_private_open_contact">Ouvrir la fiche du contact</string>
+    <string name="wesh_pave_private_label">Privé</string>
+    <!-- Pavé Fluo: Demandes -->
+    <string name="wesh_pave_requests_intro">Ces personnes veulent vous écrire en privé. Un surnom ne prouve rien : pour répondre, échangez vos QR en face à face.</string>
+    <string name="wesh_pave_requests_empty">Aucune demande.</string>
+    <string name="wesh_pave_requests_namesake">Même surnom qu’un de vos contacts</string>
+    <string name="wesh_pave_requests_namesake_yours">Empreinte de votre contact vérifié</string>
+    <string name="wesh_pave_requests_namesake_differs">Les empreintes diffèrent : ce n’est pas la même personne.</string>
+    <string name="wesh_pave_requests_exchange">Échanger en face à face</string>
+    <string name="wesh_pave_requests_dismiss">Ignorer</string>
+    <string name="wesh_pave_requests_block">Bloquer</string>
+    <string name="wesh_pave_requests_block_report">Bloquer et signaler</string>
+</resources>
