@@ -67,6 +67,22 @@ class PaveDisplayNameTest {
     }
 
     @Test
+    fun `blank but assigned code points are dropped`() {
+        assertEquals("?", safe(cp(0x3164))) // Hangul filler
+        assertEquals("?", safe(cp(0x2800))) // Braille blank
+        assertEquals("?", safe(cp(0x1160))) // Hangul jungseong filler
+        assertEquals("?", safe(cp(0x115F, 0xFFA0, 0x17B4, 0x17B5, 0x180B, 0x180E, 0xFE00, 0xFE0F)))
+        assertEquals("Nora", safe("No" + cp(0x3164) + "ra" + cp(0x2800)))
+    }
+
+    @Test
+    fun `a name needs at least one visible character`() {
+        assertEquals("?", safe(acute + acute))
+        assertEquals("-", safe("-"))
+        assertEquals("42", safe(" 42 "))
+    }
+
+    @Test
     fun `empty or invisible names fall back`() {
         assertEquals("?", safe(null))
         assertEquals("?", safe("   "))
