@@ -38,6 +38,8 @@
     <string name="wesh_pave_public_room_readable">Lisible par tous les téléphones autour</string>
     <string name="wesh_pave_no_message_yet">Pas encore de message</string>
     <string name="wesh_pave_verified">Code vérifié</string>
+    <!-- Mot seul réservé : un surnom ne peut pas imiter le badge, même sans « Code ». -->
+    <string name="wesh_pave_verified_short">Vérifié</string>
     <string name="wesh_pave_unnamed">Sans surnom</string>
     <string name="wesh_pave_unnamed_reserved">Sans surnom (réservé)</string>
     <string name="wesh_pave_section_requests">Demandes</string>
@@ -45,6 +47,8 @@
     <string name="wesh_pave_fingerprint_label">Empreinte de la clé</string>
     <string name="wesh_pave_fingerprint_unavailable">Empreinte indisponible</string>
     <string name="wesh_pave_unverified">Non vérifié</string>
+    <string name="wesh_pave_contact_state_verified">Identité vérifiée sur ce téléphone</string>
+    <string name="wesh_pave_contact_state_blocked">Bloqué sur ce téléphone</string>
     <plurals name="wesh_pave_request_preview">
         <item quantity="one">%d message · échangez vos codes pour répondre</item>
         <item quantity="many">%d messages · échangez vos codes pour répondre</item>

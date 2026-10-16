@@ -30,6 +30,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.bitchat.android.R
+import java.util.Locale
 
 private val RowShape = RoundedCornerShape(WeshRadius.control)
 
@@ -57,7 +58,12 @@ fun PublicRoomCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.Campaign, contentDescription = null, tint = c.onPublic, modifier = Modifier.size(24.dp))
             Spacer(Modifier.width(WeshSpace.s2))
-            Text(title, style = WeshType.headline, color = c.onPublic, modifier = Modifier.weight(1f))
+            Text(
+                title.uppercase(Locale.ROOT),
+                style = WeshType.displaySmall,
+                color = c.onPublic,
+                modifier = Modifier.weight(1f).semantics { contentDescription = title },
+            )
             Text(
                 stringResource(R.string.wesh_pave_status_in_range_short, phonesInRange.coerceAtLeast(0)),
                 style = WeshType.label,
@@ -145,10 +151,10 @@ fun RequestRow(
 @Composable
 fun InboxSectionTitle(text: String, modifier: Modifier = Modifier) {
     Text(
-        text,
-        style = WeshType.label,
-        color = WeshPave.colors.inkMuted,
-        modifier = modifier.padding(top = WeshSpace.s4, bottom = WeshSpace.s1).semantics { heading() },
+        text.uppercase(Locale.ROOT),
+        style = WeshType.displaySmall,
+        color = WeshPave.colors.ink,
+        modifier = modifier.padding(top = WeshSpace.s4, bottom = WeshSpace.s1).semantics { heading(); contentDescription = text },
     )
 }
 

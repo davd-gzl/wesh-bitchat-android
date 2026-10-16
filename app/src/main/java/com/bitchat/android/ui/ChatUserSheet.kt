@@ -92,7 +92,7 @@ fun ChatUserSheet(
                     }
                     
                     // Only show user actions for other users' messages or when no message is selected
-                    if (selectedMessage?.sender != viewModel.nickname.value) {
+                    if (selectedMessage?.sentByNickname(viewModel.nickname.value) != true) {
                         // Send private message action
                         item {
                             UserActionRow(
