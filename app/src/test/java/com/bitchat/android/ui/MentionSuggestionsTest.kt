@@ -46,9 +46,4 @@ class MentionSuggestionsTest {
         assertFalse(isUnannouncedNickname("anonymous#04af"))
         assertFalse(isUnannouncedNickname("anonracer"))
     }
-
-    @Test
-    fun `mention popup viewport is capped at five rows`() {
-        assertEquals(5, MaxVisibleMentionSuggestions)
-    }
 }

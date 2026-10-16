@@ -387,17 +387,6 @@
     </issue>
 
     <issue
-        id="AutoboxingStateCreation"
-        message="Prefer `mutableIntStateOf` instead of `mutableStateOf`"
-        errorLine1="    var tripleClickCount by remember { mutableStateOf(0) }"
-        errorLine2="                                       ~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/bitchat/android/ui/ChatScreen.kt"
-            line="62"
-            column="40"/>
-    </issue>
-
-    <issue
         id="UnusedResources"
         message="The resource `R.string.permission_bluetooth_rationale` appears to be unused"
         errorLine1="    &lt;string name=&quot;permission_bluetooth_rationale&quot;>Bluetooth permission is required for peer-to-peer messaging without internet.&lt;/string>"
