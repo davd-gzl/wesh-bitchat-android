@@ -11,9 +11,7 @@ The central rule is:
 No keystore or password is stored in GitHub, GitHub Actions, the repository,
 release notes, or workflow artifacts.
 
-This runbook releases the phone app only. The `wear` module keeps the
-inherited `com.bitchat.droid` application ID, has no release variant, and is
-never packaged or uploaded.
+This runbook releases the phone app, the only module in the build.
 
 For the technical trust model and third-party verification instructions, see
 [Reproducible builds](reproducible-builds.md).
@@ -117,8 +115,7 @@ a command line, in a shell profile, or in a release-notes file.
 
 ## 1. Prepare and approve the release commit
 
-1. Update `versionCode` and `versionName` in `app/build.gradle.kts`. The Wear
-   module has no release variant: it is never packaged or uploaded.
+1. Update `versionCode` and `versionName` in `app/build.gradle.kts`.
    The phone `versionName` must match the release tag without the leading `v`.
 2. Merge all intended release changes into `main`.
 3. Confirm required CI checks are green.
