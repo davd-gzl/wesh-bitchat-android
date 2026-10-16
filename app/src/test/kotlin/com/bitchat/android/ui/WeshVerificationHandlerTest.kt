@@ -129,11 +129,12 @@ class WeshVerificationHandlerTest {
     // syntheticNpub encodes the generator x, the public key of the synthetic secret 1.
     private val syntheticSigner: (ByteArray) -> String? = { com.bitchat.android.nostr.NostrCrypto.schnorrSign(it, "00".repeat(31) + "01") }
     private fun enroll(scanned: VerificationService.VerificationQR, mine: String?) {
+        val owned = mine?.let(::setOf)
         qr = scanned
         val context: Context = mock()
         whenever(context.getString(any())).thenReturn("Synthetic verification title")
         whenever(context.getString(any(), any())).thenReturn("Synthetic verification notice")
-        handler = VerificationHandler(context, scope, { mesh }, mock(), state(), mock(), mock(), { time }, { mine })
+        handler = VerificationHandler(context, scope, { mesh }, mock(), state(), mock(), mock(), { time }, { owned })
         assertTrue(handler.beginQRVerification(qr))
         respond(); scope.runCurrent()
     }
@@ -148,6 +149,7 @@ class WeshVerificationHandlerTest {
         assertTrue(store.contacts.value.single().npubProven)
         store.clear()
         enroll(npubQR(syntheticNpub, "Synthetic bad proof") { "ab".repeat(64) }, mine = mineNpub)
+        assertTrue(store.contacts.value.single().npubWarning)
         assertNull(store.contacts.value.single().npub)
         store.clear()
         enroll(npubQR(syntheticNpub), mine = mineNpub)

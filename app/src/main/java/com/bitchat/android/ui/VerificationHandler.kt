@@ -33,8 +33,8 @@ class VerificationHandler(
     private val notificationManager: NotificationManager,
     private val messageManager: MessageManager,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
-    /** Read-only and null while Internet mode is off or fenced: enrollment never creates keys. */
-    private val ownNpub: () -> String? = { com.bitchat.android.services.WeshQrIdentity.mine(context)?.npub }
+    /** Read-only; null while Internet mode is off or fenced, which fails closed. Never creates keys. */
+    private val ownedNpubs: () -> Set<String>? = { com.bitchat.android.services.WeshQrIdentity.ownedNpubs(context) }
 ) {
     // Helper to get current mesh service (may change after panic clear)
     private val meshService: MeshService
@@ -159,8 +159,8 @@ class VerificationHandler(
             pendingQRVerifications.remove(peerID)
             val fp = fingerprintFromNoiseHex(pending.noiseKeyHex) ?: return@launch
             // The QR signature covers the npub and this response proves the signer holds the Noise session.
-            val claim = com.bitchat.android.services.WeshNpubPolicy.accept(pending.npub, pending.npubProof, ownNpub(), contacts.contacts.value, pending.noiseKeyHex)
-            contacts.record(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname, claim)
+            val enrollment = com.bitchat.android.services.WeshNpubPolicy.enroll(pending.npub, pending.npubProof, ownedNpubs(), contacts.contacts.value, pending.noiseKeyHex)
+            contacts.record(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname, enrollment)
             completedAttempts[pending.noiseKeyHex.lowercase()] = nowMs()
             identityManager.setVerifiedFingerprint(fp, true)
             val current = _verifiedFingerprints.value.toMutableSet()

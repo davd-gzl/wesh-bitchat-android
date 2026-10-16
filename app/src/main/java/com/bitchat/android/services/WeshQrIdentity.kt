@@ -21,6 +21,12 @@ internal object WeshQrIdentity {
     fun mine(context: Context): NostrIdentity? =
         if (isActive()) NostrIdentityBridge.peekCurrentNostrIdentity(context) else null
 
+    /**
+     * Every npub I own, for the self-check at enrollment. Wesh has a single Nostr identity
+     * (geohash identities stay off); null when it cannot be read, so the check fails closed.
+     */
+    fun ownedNpubs(context: Context): Set<String>? = mine(context)?.npub?.let(::setOf)
+
     /** My signed QR, with a proven npub only while Internet mode is active. */
     fun myQR(context: Context, nickname: String): String? {
         val identity = mine(context)

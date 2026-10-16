@@ -18,8 +18,15 @@ class WeshContactStore internal constructor(
     /**
      * [npub] comes only from a signed QR proven over Noise; null means Bluetooth-only.
      * [npubProven]: the QR also carried a valid proof by the npub key (NPUB-PROOF rules).
+     * [npubWarning]: an npub conflict or downgrade the user should review.
      */
-    data class Contact(val noiseHex: String, val nickname: String, val npub: String? = null, val npubProven: Boolean = false) {
+    data class Contact(
+        val noiseHex: String,
+        val nickname: String,
+        val npub: String? = null,
+        val npubProven: Boolean = false,
+        val npubWarning: Boolean = false
+    ) {
         /** False: the UI asks to rescan the QR before Internet delivery is possible. */
         val internetReachable: Boolean get() = npub != null
         val key: ByteArray get() = noiseHex.dataFromHexString()!!
@@ -37,18 +44,23 @@ class WeshContactStore internal constructor(
             val name = row.getString("nickname")
             val npub = row.optString("npub").takeIf(WeshNpubPolicy::isValid)
             val proven = npub != null && row.optBoolean("npubProven", false)
-            if (!hex.matches(Regex("[0-9a-f]{64}")) || name.toByteArray().size > 255) null else Contact(hex, name, npub, proven)
+            val warning = row.optBoolean("npubWarning", false)
+            if (!hex.matches(Regex("[0-9a-f]{64}")) || name.toByteArray().size > 255) null else Contact(hex, name, npub, proven, warning)
         }.distinctBy { it.noiseHex }.takeLast(256)
     }.getOrDefault(emptyList())
 
-    /** A proven [claim] removes the same npub from contacts that hold it unproven. */
-    @Synchronized fun record(key: ByteArray, nickname: String, claim: WeshNpubPolicy.Claim? = null) {
-        require(key.size == 32 && nickname.toByteArray().size <= 255 && (claim == null || WeshNpubPolicy.isValid(claim.npub)))
+    /** Applies a [WeshNpubPolicy.enroll] decision; evicted contacts lose the npub and are flagged. */
+    @Synchronized fun record(key: ByteArray, nickname: String, enrollment: WeshNpubPolicy.Enrollment? = null) {
+        val npub = enrollment?.npub
+        require(key.size == 32 && nickname.toByteArray().size <= 255 && (npub == null || WeshNpubPolicy.isValid(npub)))
         val hex = key.hexEncodedString()
         val others = _contacts.value.filterNot { it.noiseHex == hex }.map {
-            if (claim?.proven == true && it.npub == claim.npub && !it.npubProven) it.copy(npub = null) else it
+            if (enrollment != null && it.noiseHex in enrollment.evict && it.npub == npub && !it.npubProven) {
+                it.copy(npub = null, npubWarning = true)
+            } else it
         }
-        persist((others + Contact(hex, nickname, claim?.npub, claim?.proven == true)).takeLast(256))
+        val self = Contact(hex, nickname, npub, npub != null && enrollment?.proven == true, enrollment?.warning == true)
+        persist((others + self).takeLast(256))
     }
     @Synchronized fun remove(conversationID: String): Boolean {
         val remaining = _contacts.value.filterNot { it.conversationID == conversationID }
@@ -74,7 +86,8 @@ class WeshContactStore internal constructor(
     private fun persist(contacts: List<Contact>) {
         val array = JSONArray()
         contacts.forEach { array.put(JSONObject().put("noise", it.noiseHex).put("nickname", it.nickname).putOpt("npub", it.npub)
-            .putOpt("npubProven", if (it.npubProven) true else null)) }
+            .putOpt("npubProven", if (it.npubProven) true else null)
+            .putOpt("npubWarning", if (it.npubWarning) true else null)) }
         identity.storeSecureValue(storageKey, array.toString())
         _contacts.value = contacts
     }

@@ -97,50 +97,64 @@ class WeshQRNpubTest {
         assertFalse(VerificationService.hasValidNpubProof(parsed.copy(npubSigHex = proof.uppercase())))
         // A malformed proof still parses, so enrollment can treat it as a failed proof.
         assertEquals("zz", VerificationService.VerificationQR.fromUrlString(url.replace(proof, "zz"))!!.npubSigHex)
+        // npubsig without npub is refused by the parser.
+        assertNull(VerificationService.VerificationQR.fromUrlString(url.replace("&npub=$npub", "")))
     }
 
     private fun contact(noise: String, npub: String?, proven: Boolean) = WeshContactStore.Contact(noise, "Synthetic", npub, proven)
+    private val mine = setOf(otherNpub)
+    private fun enroll(candidate: String?, proof: Boolean?, contacts: List<WeshContactStore.Contact> = emptyList(),
+                       noise: String = noiseA, owned: Set<String>? = mine) = WeshNpubPolicy.enroll(candidate, proof, owned, contacts, noise)
 
     @Test fun `enrollment accepts only a canonical on-curve npub that is not mine`() {
-        assertEquals(WeshNpubPolicy.Claim(npub, false), WeshNpubPolicy.accept(npub, null, otherNpub, emptyList(), noiseA))
-        assertEquals(WeshNpubPolicy.Claim(npub, true), WeshNpubPolicy.accept(npub, true, otherNpub, emptyList(), noiseA))
+        assertEquals(WeshNpubPolicy.Enrollment(npub, false, false), enroll(npub, null))
+        assertEquals(WeshNpubPolicy.Enrollment(npub, true, false), enroll(npub, true))
         listOf(
-            null, "", npub.uppercase(), npub.dropLast(1) + if (npub.last() == 'q') "p" else "q",
+            "", npub.uppercase(), npub.dropLast(1) + if (npub.last() == 'q') "p" else "q",
             Bech32.encode("nsec", generatorX.dataFromHexString()!!),
             Bech32.encode("npub", ByteArray(31) { 1 }), offCurveNpub,
             Bech32.encode("npub", ByteArray(32) { -1 })
-        ).forEach { assertNull("Rejected: $it", WeshNpubPolicy.accept(it, null, otherNpub, emptyList(), noiseA)) }
-        assertNull(WeshNpubPolicy.accept(npub, null, npub, emptyList(), noiseA))
-        // Internet mode off or no stored key: my npub is unknown, so nothing is bound.
-        assertNull(WeshNpubPolicy.accept(npub, true, null, emptyList(), noiseA))
-        // A proof that is present must verify.
-        assertNull(WeshNpubPolicy.accept(npub, false, otherNpub, emptyList(), noiseA))
+        ).forEach { assertNull("Rejected: $it", enroll(it, null).npub) }
+        assertEquals(WeshNpubPolicy.Enrollment(null, false, true), enroll(otherNpub, null))
+        // My owned set unknown (Internet off, no key): nothing is bound.
+        assertEquals(WeshNpubPolicy.Enrollment(null, false, false), enroll(npub, true, owned = null))
+        // A proof that is present must verify; a failed one is flagged.
+        assertEquals(WeshNpubPolicy.Enrollment(null, false, true), enroll(npub, false))
     }
 
-    @Test fun `a proven claim wins and an unproven one never blocks or evicts it`() {
-        val c = "33".repeat(32)
+    @Test fun `only a verified proof unbinds an incumbent and never a proven one`() {
         val unprovenB = listOf(contact(noiseB, npub, proven = false))
         val provenB = listOf(contact(noiseB, npub, proven = true))
-        assertEquals(WeshNpubPolicy.Claim(npub, false), WeshNpubPolicy.accept(npub, null, otherNpub, unprovenB, noiseA))
-        assertEquals(WeshNpubPolicy.Claim(npub, true), WeshNpubPolicy.accept(npub, true, otherNpub, unprovenB, noiseA))
-        assertNull(WeshNpubPolicy.accept(npub, null, otherNpub, provenB, noiseA))
-        assertNull(WeshNpubPolicy.accept(npub, true, otherNpub, provenB, noiseA))
-        // Re-enrolling the holder itself is not a collision.
-        assertEquals(WeshNpubPolicy.Claim(npub, true), WeshNpubPolicy.accept(npub, true, otherNpub, provenB, noiseB))
+        // Unproven conflicting claim: refused, incumbent kept, newcomer flagged.
+        assertEquals(WeshNpubPolicy.Enrollment(null, false, true), enroll(npub, null, unprovenB))
+        assertEquals(WeshNpubPolicy.Enrollment(null, false, true), enroll(npub, null, provenB))
+        // Verified proof evicts an unproven incumbent, but not a proven one.
+        assertEquals(WeshNpubPolicy.Enrollment(npub, true, true, setOf(noiseB)), enroll(npub, true, unprovenB))
+        assertEquals(WeshNpubPolicy.Enrollment(null, false, true), enroll(npub, true, provenB))
+        // Re-enrolling the holder itself is not a conflict; no proof keeps its proven status.
+        assertEquals(WeshNpubPolicy.Enrollment(npub, true, false), enroll(npub, true, provenB, noiseB))
+        assertEquals(WeshNpubPolicy.Enrollment(npub, true, false), enroll(npub, null, provenB, noiseB))
+        // A proven contact showing a weaker QR keeps its binding, flagged: no silent downgrade.
+        listOf(enroll(null, null, provenB, noiseB), enroll(npub, false, provenB, noiseB), enroll(Bech32.encode("npub", ByteArray(31) + byteArrayOf(3)), null, provenB, noiseB))
+            .forEach { assertEquals(WeshNpubPolicy.Enrollment(npub, true, true), it) }
+    }
 
-        // Two unproven claims coexist and are ambiguous for inbound resolution.
-        store.record(noiseA.dataFromHexString()!!, "A", WeshNpubPolicy.Claim(npub, false))
-        store.record(noiseB.dataFromHexString()!!, "B", WeshNpubPolicy.Claim(npub, false))
-        assertNull(store.forNpub(npub))
-        // A proven claim evicts both unproven holders.
-        store.record(c.dataFromHexString()!!, "C", WeshNpubPolicy.Claim(npub, true))
+    @Test fun `store applies evictions and flags`() {
+        val c = "33".repeat(32)
+        store.record(noiseB.dataFromHexString()!!, "B", enroll(npub, null, store.contacts.value, noiseB))
+        store.record(noiseA.dataFromHexString()!!, "A", enroll(npub, null, store.contacts.value, noiseA))
+        assertEquals(noiseB, store.forNpub(npub)?.noiseHex)
+        assertTrue(store.contacts.value.single { it.noiseHex == noiseA }.npubWarning)
+        store.record(c.dataFromHexString()!!, "C", enroll(npub, true, store.contacts.value, c))
         assertEquals(c, store.forNpub(npub)?.noiseHex)
-        assertEquals(listOf(c), store.contacts.value.filter { it.npub == npub }.map { it.noiseHex })
+        val b = store.contacts.value.single { it.noiseHex == noiseB }
+        assertNull(b.npub)
+        assertTrue(b.npubWarning)
         assertTrue(store.contacts.value.single { it.noiseHex == c }.npubProven)
     }
 
     @Test fun `npub is stored bound to the Noise key and survives reload`() {
-        store.record(noiseA.dataFromHexString()!!, "Synthetic A", WeshNpubPolicy.Claim(npub, true))
+        store.record(noiseA.dataFromHexString()!!, "Synthetic A", WeshNpubPolicy.Enrollment(npub, true, false))
         store.record(noiseB.dataFromHexString()!!, "Synthetic B")
         val reloaded = WeshContactStore(secure, RuntimeEnvironment.getApplication().getSharedPreferences("synthetic-npub-blocks", Context.MODE_PRIVATE))
         val a = reloaded.contacts.value.single { it.noiseHex == noiseA }
@@ -154,9 +168,7 @@ class WeshQRNpubTest {
         assertEquals(noiseA, reloaded.forNpub(npub)?.noiseHex)
         assertNull(reloaded.forNpub(otherNpub))
 
-        // A newer signed QR without an npub replaces the binding: the contact becomes Bluetooth-only.
-        reloaded.record(noiseA.dataFromHexString()!!, "Synthetic A")
-        assertNull(reloaded.forNpub(npub))
+        assertFalse(a.npubWarning)
     }
 
     @Test fun `legacy and tampered rows load as rescan required without losing the contact`() {

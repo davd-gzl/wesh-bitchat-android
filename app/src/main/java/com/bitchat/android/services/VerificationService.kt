@@ -103,6 +103,7 @@ object VerificationService {
                     !sign.matches(Regex("[0-9a-fA-F]{64}")) || !sig.matches(Regex("[0-9a-fA-F]{128}")) ||
                     nick.toByteArray(Charsets.UTF_8).size > 255 ||
                     (npub?.toByteArray(Charsets.UTF_8)?.size ?: 0) > 255 ||
+                    (npubSig != null && npub == null) ||
                     (npubSig?.toByteArray(Charsets.UTF_8)?.size ?: 0) > 255 || ts <= 0 ||
                     !nonce.matches(Regex("[A-Za-z0-9_-]{22}"))) return@parser null
                 val decoded = runCatching { Base64.decode(nonce, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING) }.getOrNull() ?: return@parser null
