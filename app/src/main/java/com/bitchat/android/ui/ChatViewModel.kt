@@ -497,11 +497,11 @@ class ChatViewModel(
                 val (canonicalChats, unreadConversationIDs) = withContext(Dispatchers.IO) {
                     val canonical = ContactDirectory.canonicalizePrivateChats(byPeer)
                     val unread = try {
-                        val myNick = state.getNicknameValue().ifBlank { mesh.myPeerID }
+                        val myNick = state.getNicknameValue()
                         canonical
                             .filterValues { messages ->
                                 messages.any { message ->
-                                    message.sender != myNick &&
+                                    !message.isFromSelf(myNick, mesh.myPeerID) &&
                                         message.sender != "system" &&
                                         !com.bitchat.android.services.AppStateStore
                                             .isPrivateMessageRead(message.id) &&

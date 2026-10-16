@@ -251,4 +251,13 @@ class PrivateChatManagerTest {
             com.bitchat.android.services.SessionHiddenPeers.unhide(peerID)
         }
     }
+
+    @Test
+    fun `an unnamed remote private message stays unread when my nickname is empty`() {
+        state.setNickname("")
+        val remote = BitchatMessage(id = "unnamed-remote-manager", sender = "", content = "synthetic",
+            timestamp = Date(1), isPrivate = true, senderPeerID = "0123456789abcdef")
+        MessageManager(state).addPrivateMessage("0123456789abcdef", remote)
+        assertTrue(state.getUnreadPrivateMessagesValue().isNotEmpty())
+    }
 }
