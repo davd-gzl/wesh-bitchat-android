@@ -37,7 +37,6 @@ import com.bitchat.android.onboarding.LocationStatus
 import com.bitchat.android.onboarding.LocationStatusManager
 import com.bitchat.android.onboarding.OnboardingCoordinator
 import com.bitchat.android.onboarding.OnboardingState
-import com.bitchat.android.onboarding.PermissionExplanationScreen
 import com.bitchat.android.onboarding.PermissionManager
 import com.bitchat.android.ui.ChatScreen
 import com.bitchat.android.ui.ChatViewModel
@@ -321,13 +320,18 @@ class MainActivity : OrientationAwareActivity() {
             }
             
             OnboardingState.PERMISSION_EXPLANATION -> {
-                PermissionExplanationScreen(
-                    modifier = modifier,
-                    permissionCategories = permissionManager.getCategorizedPermissions(),
-                    onContinue = {
+                // Pavé welcome: nickname, then the Bluetooth explanation before the system prompt.
+                // The coordinator then asks for what is still missing and runs the usual checks.
+                val prefs = chatViewModel.weshPreferences
+                com.bitchat.android.ui.pave.OnboardingFlow(
+                    onFinished = { chosen, _ ->
+                        if (com.bitchat.android.ui.pave.NicknameGenerator.isValid(chosen)) chatViewModel.setNickname(chosen)
+                        prefs.welcomed = true
                         mainViewModel.updateOnboardingState(OnboardingState.PERMISSION_REQUESTING)
                         onboardingCoordinator.requestPermissions()
-                    }
+                    },
+                    modifier = modifier,
+                    initialNickname = if (prefs.welcomed) chatViewModel.nickname.value else null,
                 )
             }
 

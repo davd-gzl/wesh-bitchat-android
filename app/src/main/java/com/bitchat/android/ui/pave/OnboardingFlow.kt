@@ -68,15 +68,18 @@ private enum class OnboardingStep { Welcome, Bluetooth }
  * then the system permission dialog. On API 31+ Wesh never asks for location.
  *
  * @param onFinished nickname chosen, and whether the Bluetooth permissions were granted.
+ * @param initialNickname the nickname already chosen on this phone, if any; otherwise a random one.
  */
 @Composable
 fun OnboardingFlow(
     onFinished: (nickname: String, bluetoothGranted: Boolean) -> Unit,
     modifier: Modifier = Modifier,
     sdkInt: Int = Build.VERSION.SDK_INT,
+    initialNickname: String? = null,
 ) {
     var step by rememberSaveable { mutableStateOf(OnboardingStep.Welcome) }
-    var nickname by rememberSaveable { mutableStateOf(NicknameGenerator.generate()) }
+    // Someone back here for a missing permission keeps the nickname they already chose.
+    var nickname by rememberSaveable { mutableStateOf(initialNickname?.takeIf(NicknameGenerator::isValid) ?: NicknameGenerator.generate()) }
     val context = LocalContext.current
     var denied by rememberSaveable { mutableStateOf(false) }
     val permissions = paveBluetoothRuntimePermissions(sdkInt)

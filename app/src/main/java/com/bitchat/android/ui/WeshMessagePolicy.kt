@@ -97,6 +97,12 @@ internal class WeshPreferences(
         set(value) {
             synchronized(lock) { if (!fenced) prefs.edit { putBoolean(NOTIFICATION_SENDER, value) } }
         }
+    /** True once the Pavé welcome was completed on this phone (cleared by an erase). */
+    var welcomed: Boolean
+        get() = prefs.getBoolean("welcomed", false)
+        set(value) {
+            synchronized(lock) { if (!fenced) prefs.edit { putBoolean("welcomed", value) } }
+        }
     /** Pavé appearance name ("Nuit", "Jour", "Automatique"); Nuit when unset or after an erase. */
     var appearance: String
         get() = prefs.getString("appearance", "Nuit") ?: "Nuit"
