@@ -280,7 +280,11 @@ class VerificationHandler(
         }
     }
 
-    fun resolvePeerDisplayNameForFingerprint(peerID: String): String {
+    /** Every source below can be remote input (announce, QR, favorite): sanitize what is shown. */
+    fun resolvePeerDisplayNameForFingerprint(peerID: String): String =
+        safeDisplayName(rawPeerDisplayNameForFingerprint(peerID), peerID.take(8))
+
+    private fun rawPeerDisplayNameForFingerprint(peerID: String): String {
         val nicknameMap = state.peerNicknames.value
         nicknameMap[peerID]?.let { return it }
         try {

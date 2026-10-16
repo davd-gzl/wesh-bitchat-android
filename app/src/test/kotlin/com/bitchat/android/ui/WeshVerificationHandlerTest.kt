@@ -113,6 +113,16 @@ class WeshVerificationHandlerTest {
         verify(notifications).showVerificationSuccessNotification("evilname", peer)
         verify(context).getString(any(), eq("evilname"))
     }
+    @Test fun `fingerprint display name sanitizes live and announced nicknames`() {
+        val state: ChatState = mock()
+        whenever(state.peerNicknames).thenReturn(kotlinx.coroutines.flow.MutableStateFlow(mapOf(peer to "\u202Eevil\u200Bname")))
+        handler = VerificationHandler(mock(), scope, { mesh }, mock(), state, mock(), mock(), { time })
+        assertEquals("evilname", handler.resolvePeerDisplayNameForFingerprint(peer))
+
+        whenever(state.peerNicknames).thenReturn(kotlinx.coroutines.flow.MutableStateFlow(emptyMap()))
+        whenever(mesh.getPeerInfo(peer)).thenReturn(PeerInfo(id = peer, nickname = "\u3164\u200B", noisePublicKey = qr.noiseKeyHex.dataFromHexString(), isConnected = true, isDirectConnection = true, signingPublicKey = qr.signKeyHex.dataFromHexString(), isVerifiedNickname = true, lastSeen = 1L))
+        assertEquals(peer.take(8), handler.resolvePeerDisplayNameForFingerprint(peer))
+    }
     @Test fun `response after deadline and late handshake cannot enroll`() = scope.runTest {
         assertTrue(handler.beginQRVerification(qr))
         time += 60_001
