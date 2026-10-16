@@ -172,7 +172,9 @@ class MessageHandler(
                             senderPeerID = peerID
                         )
 
-                        val admitted = absorbVoiceNote(message) || delegate?.onPrivateMessageReceived(message) == true
+                        // A note absorbed into its live row skips admission, so it is never acknowledged:
+                        // only admission of an enrolled sender may vouch for delivery.
+                        val admitted = !absorbVoiceNote(message) && delegate?.onPrivateMessageReceived(message) == true
                         // Send delivery ACK with generated message ID, only once admitted
                         if (admitted) sendDeliveryAck(uniqueMsgId, peerID)
                     } else {

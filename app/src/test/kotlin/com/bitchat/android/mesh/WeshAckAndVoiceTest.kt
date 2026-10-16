@@ -1,7 +1,11 @@
 package com.bitchat.android.mesh
 
 import android.os.Build
+import com.bitchat.android.features.voice.LiveVoiceManager
 import com.bitchat.android.features.voice.LiveVoicePreferences
+import com.bitchat.android.features.voice.VoiceBurstCodec
+import com.bitchat.android.features.voice.VoiceBurstPacket
+import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.NoisePayload
 import com.bitchat.android.model.NoisePayloadType
 import com.bitchat.android.model.PrivateMessagePacket
@@ -51,7 +55,10 @@ class WeshAckAndVoiceTest {
     }
 
     @After
-    fun tearDown() { LiveVoicePreferences.forceDisabled = false }
+    fun tearDown() {
+        LiveVoicePreferences.forceDisabled = false
+        LiveVoiceManager.getInstance(RuntimeEnvironment.getApplication()).reset()
+    }
 
     private fun encrypted(plaintext: ByteArray): RoutedPacket {
         val ciphertext = byteArrayOf(0x41, 0x42)
@@ -90,6 +97,40 @@ class WeshAckAndVoiceTest {
         handler.handleNoiseEncrypted(encrypted(privateText()))
         verify(delegate).encryptForPeer(any(), eq(peerID))
         verify(delegate).sendPacket(any())
+    }
+
+    private fun voiceFrame(burstID: ByteArray, sequence: Int, kind: VoiceBurstPacket.Kind) =
+        NoisePayload(NoisePayloadType.VOICE_FRAME, VoiceBurstPacket.create(burstID, sequence, kind)!!.encode()).encode()
+
+    /** Streams a one-packet live burst, then sends its finalized note, which the live row absorbs. */
+    private suspend fun streamThenSendFinalizedVoiceNote() {
+        handler.acceptIncomingMedia = true
+        LiveVoicePreferences.setEnabled(RuntimeEnvironment.getApplication(), true)
+        val burstID = ByteArray(VoiceBurstPacket.BURST_ID_SIZE) { 0x2A }
+        handler.handleNoiseEncrypted(encrypted(voiceFrame(burstID, 0, VoiceBurstPacket.Kind.Start(VoiceBurstCodec.AAC_LC_16K_MONO))))
+        handler.handleNoiseEncrypted(encrypted(voiceFrame(burstID, 1, VoiceBurstPacket.Kind.Frames(listOf(ByteArray(20) { 5 })))))
+        handler.handleNoiseEncrypted(encrypted(voiceFrame(burstID, 2, VoiceBurstPacket.Kind.End(1, 500))))
+        val note = BitchatFilePacket("voice_${VoiceBurstPacket.burstIDHex(burstID)}.m4a", 3, "audio/mp4", byteArrayOf(1, 2, 3))
+        handler.handleNoiseEncrypted(encrypted(NoisePayload(NoisePayloadType.FILE_TRANSFER, note.encode()!!).encode()))
+    }
+
+    @Test
+    fun `an absorbed voice note from a sender admission refuses is never acknowledged`() = runBlocking<Unit> {
+        whenever(delegate.onPrivateMessageReceived(any())).thenReturn(false)
+        streamThenSendFinalizedVoiceNote()
+        // Absorbed into its live row: admission was never asked, so nothing may vouch for delivery.
+        verify(delegate, never()).onPrivateMessageReceived(any())
+        verify(delegate, never()).encryptForPeer(any(), any())
+        verify(delegate, never()).sendPacket(any())
+    }
+
+    @Test
+    fun `an absorbed voice note from an admitted sender is not acknowledged either`() = runBlocking<Unit> {
+        whenever(delegate.onPrivateMessageReceived(any())).thenReturn(true)
+        streamThenSendFinalizedVoiceNote()
+        verify(delegate, never()).onPrivateMessageReceived(any())
+        verify(delegate, never()).encryptForPeer(any(), any())
+        verify(delegate, never()).sendPacket(any())
     }
 
     @Test
