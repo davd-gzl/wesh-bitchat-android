@@ -47,7 +47,7 @@ data class PaveContactItem(
 data class PaveHomeState(
     val phonesInReach: Int,
     val bluetoothOn: Boolean,
-    /** Raw nickname of the last public sender; sanitized by [HomeScreen], never pre-flattened. */
+    /** Raw nickname of the last public sender; sanitized and drawn apart from the body by [PublicRoomCard]. */
     val publicPreviewSender: String?,
     val publicPreviewText: String?,
     val publicTime: String?,
@@ -98,10 +98,13 @@ fun HomeScreen(
             }
             item(key = "reach") { PaveReachCard(state.phonesInReach, state.bluetoothOn) }
             item(key = "public") {
-                val preview = state.publicPreviewText?.let { text ->
-                    state.publicPreviewSender?.let { remoteDisplayName(it) + " : " + text } ?: text
-                }
-                PublicRoomCard(state.phonesInReach, preview, state.publicTime, onOpenPublicRoom)
+                PublicRoomCard(
+                    phonesInRange = state.phonesInReach,
+                    lastMessage = state.publicPreviewText,
+                    time = state.publicTime,
+                    onClick = onOpenPublicRoom,
+                    lastSender = state.publicPreviewSender,
+                )
             }
             item(key = "private-title") {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {

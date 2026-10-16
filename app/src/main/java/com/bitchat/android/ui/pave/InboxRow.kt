@@ -42,6 +42,7 @@ fun PublicRoomCard(
     time: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    lastSender: String? = null,
 ) {
     val c = WeshPave.colors
     val title = stringResource(R.string.wesh_pave_public_room)
@@ -69,6 +70,10 @@ fun PublicRoomCard(
                 style = WeshType.label,
                 color = c.onPublic,
             )
+        }
+        // The sender (sanitized) and the message body are separate lines, so a body can never pose as a name.
+        if (lastMessage != null && lastSender != null) {
+            Text(remoteDisplayName(lastSender), style = WeshType.label, color = c.onPublic, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text(
             lastMessage ?: stringResource(R.string.wesh_pave_no_message_yet),
