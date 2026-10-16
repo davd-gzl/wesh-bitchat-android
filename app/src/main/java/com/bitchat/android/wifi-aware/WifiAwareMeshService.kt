@@ -19,7 +19,6 @@ import com.bitchat.android.mesh.MeshCore
 import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.mesh.MeshTransport
 import com.bitchat.android.mesh.PeerInfo
-import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.RoutedPacket
 import com.bitchat.android.protocol.BitchatPacket
@@ -1412,51 +1411,8 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
         meshCore.sendVerifyResponse(peerID, noiseKeyHex, nonceA)
     }
 
-    /**
-     * Broadcasts a file (TLV payload) to all peers. Uses protocol version 2 to support
-     * large payloads and generates a deterministic transferId (sha256 of payload) for UI/state.
-     *
-     * @param file Encoded metadata and chunks descriptor of the file to send.
-     */
-    override fun sendFileBroadcast(file: BitchatFilePacket) {
-        meshCore.sendFileBroadcast(file)
-    }
-
-    /**
-     * Sends a file privately to a specific peer. If no Noise session is established,
-     * a handshake will be initiated and the send is deferred/aborted for now.
-     *
-     * @param recipientPeerID Target peer.
-     * @param file            Encoded metadata and chunks descriptor of the file to send.
-     */
-    override fun sendFilePrivate(recipientPeerID: String, file: BitchatFilePacket) {
-        meshCore.sendFilePrivate(recipientPeerID, file)
-    }
-
     override fun sendVoiceFrame(recipientPeerID: String?, payload: ByteArray) {
         meshCore.sendVoiceFrame(recipientPeerID, payload)
-    }
-
-    override fun prepareFilePrivate(
-        recipientPeerID: String,
-        file: BitchatFilePacket,
-        transferId: String,
-        allowLegacyFallback: Boolean
-    ): com.bitchat.android.mesh.PrivateMediaPreparation = meshCore.prepareFilePrivate(
-        recipientPeerID,
-        file,
-        transferId,
-        allowLegacyFallback
-    )
-
-    /**
-     * Attempts to cancel an in-flight file transfer identified by its transferId.
-     *
-     * @param transferId Deterministic id (usually sha256 of the file TLV).
-     * @return true if a transfer with this id was found and cancellation was scheduled, false otherwise.
-     */
-    override fun cancelFileTransfer(transferId: String): Boolean {
-        return meshCore.cancelFileTransfer(transferId)
     }
 
     /**
@@ -1651,9 +1607,6 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
                 )
                 false
             }
-        }
-        override fun cancelTransfer(transferId: String): Boolean {
-            return fragmentingSender.cancelTransfer(transferId)
         }
         override fun getDeviceAddressForPeer(peerID: String): String? {
             return connectionTracker.getSocketForPeer(peerID)?.let { resolveScopedAddress(it.rawSocket) }

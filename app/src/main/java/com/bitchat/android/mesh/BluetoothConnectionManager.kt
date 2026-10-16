@@ -389,10 +389,6 @@ class BluetoothConnectionManager(
         )
     }
 
-    fun cancelTransfer(transferId: String): Boolean {
-        return packetBroadcaster.cancelTransfer(transferId)
-    }
-
     /**
      * Send a packet directly to a specific peer, without broadcasting to others.
      */

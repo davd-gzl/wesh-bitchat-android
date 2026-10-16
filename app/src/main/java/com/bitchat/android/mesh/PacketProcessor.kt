@@ -139,10 +139,24 @@ class PacketProcessor(private val myPeerID: String) {
         when (messageType) {
             MessageType.ANNOUNCE -> validPacket = handleAnnounce(routed)
             MessageType.MESSAGE -> handleMessage(routed)
-            MessageType.FILE_TRANSFER -> handleMessage(routed) // treat same routing path; parsing happens in handler
+            // Wesh ships no media: a file is never relayed, never refreshes liveness, and only a
+            // copy addressed to us reaches the handler (which keeps no file, see handleMessage).
+            MessageType.FILE_TRANSFER -> {
+                validPacket = false
+                if (packetRelayManager.isPacketAddressedToMe(packet)) handleMessage(routed)
+            }
             MessageType.VOICE_FRAME -> validPacket = delegate?.handleVoiceFrame(routed) ?: false
             MessageType.LEAVE -> handleLeave(routed)
-            MessageType.FRAGMENT -> handleFragment(routed)
+            MessageType.FRAGMENT -> {
+                if (isFileTransferFragment(packet)) {
+                    // Fragments of a file are never relayed; only a file addressed to us is
+                    // reassembled, in memory, so it can reach the handler like an unfragmented one.
+                    validPacket = false
+                    if (packetRelayManager.isPacketAddressedToMe(packet)) handleFragment(routed)
+                } else {
+                    handleFragment(routed)
+                }
+            }
             MessageType.REQUEST_SYNC -> handleRequestSync(routed)
             else -> {
                 // Handle private packet types (address check required)
@@ -150,7 +164,6 @@ class PacketProcessor(private val myPeerID: String) {
                     when (messageType) {
                         MessageType.NOISE_HANDSHAKE -> validPacket = handleNoiseHandshake(routed)
                         MessageType.NOISE_ENCRYPTED -> validPacket = handleNoiseEncrypted(routed)
-                        MessageType.FILE_TRANSFER -> handleMessage(routed)
                         else -> {
                             validPacket = false
                             Log.w(TAG, "Unknown message type: ${packet.type}")
@@ -228,6 +241,12 @@ class PacketProcessor(private val myPeerID: String) {
         
         // Fragment relay is now handled by centralized PacketRelayManager
     }
+
+    /** Reads the original-type byte of the fragment header without copying the fragment data. */
+    private fun isFileTransferFragment(packet: BitchatPacket): Boolean =
+        packet.payload.size >= com.bitchat.android.model.FragmentPayload.HEADER_SIZE &&
+            packet.payload[com.bitchat.android.model.FragmentPayload.HEADER_SIZE - 1].toUByte() ==
+            MessageType.FILE_TRANSFER.value
 
     /**
      * Handle REQUEST_SYNC packets (public, TTL=1)

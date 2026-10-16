@@ -2,6 +2,7 @@ package com.bitchat.android.model
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -88,18 +89,15 @@ class IdentityAnnouncementTest {
     }
 
     @Test
-    fun `local announcement send advertises private media`() {
+    fun `local announcement advertises no capability, private media included`() {
         val encoded = IdentityAnnouncement.forLocalPeer(nickname, noiseKey, signingKey).encode()!!
 
-        assertArrayEquals(
-            byteArrayOf(0x05, 0x02, 0x00, 0x01),
-            encoded.takeLast(4).toByteArray()
-        )
-        assertTrue(
-            IdentityAnnouncement.decode(encoded)!!
-                .capabilities!!
-                .contains(PeerCapabilities.PRIVATE_MEDIA)
-        )
-        assertEquals(PeerCapabilities.PRIVATE_MEDIA, PeerCapabilities.LOCAL_SUPPORTED)
+        // Wesh ships no media: the capability TLV stays, with no bit set.
+        assertArrayEquals(byteArrayOf(0x05, 0x01, 0x00), encoded.takeLast(3).toByteArray())
+        val capabilities = IdentityAnnouncement.decode(encoded)!!.capabilities!!
+        assertEquals(PeerCapabilities.NONE, capabilities)
+        assertFalse(capabilities.contains(PeerCapabilities.PRIVATE_MEDIA))
+        assertFalse(capabilities.contains(PeerCapabilities.PRIVATE_MEDIA_RECEIPTS))
+        assertEquals(PeerCapabilities.NONE, PeerCapabilities.LOCAL_SUPPORTED)
     }
 }

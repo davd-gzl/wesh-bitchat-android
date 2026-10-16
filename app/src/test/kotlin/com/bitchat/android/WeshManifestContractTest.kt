@@ -17,6 +17,7 @@ class WeshManifestContractTest {
     fun `unused sensitive permissions are only declared for removal`() {
         listOf(
             "ACCESS_BACKGROUND_LOCATION", "READ_MEDIA_IMAGES", "READ_MEDIA_VIDEO", "READ_MEDIA_AUDIO",
+            "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE",
             "RECORD_AUDIO", "NEARBY_WIFI_DEVICES", "ACCESS_LOCAL_NETWORK",
             "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "FOREGROUND_SERVICE_LOCATION", "FOREGROUND_SERVICE_DATA_SYNC"
         ).forEach { permission ->
@@ -24,6 +25,22 @@ class WeshManifestContractTest {
             assertEquals("$permission must be declared once, for removal", 1, found.size)
             assertTrue("$permission must use tools:node=remove", found.single().contains("""tools:node="remove""""))
         }
+    }
+
+    @Test
+    fun `no media sharing surface ships`() {
+        assertFalse(manifest.contains("FileProvider"))
+        assertFalse(manifest.contains("<provider"))
+        assertFalse(manifest.contains("FILE_PROVIDER_PATHS"))
+        assertFalse(File("src/main/res/xml/file_paths.xml").exists())
+        // Storage and media permissions may appear only as tools:node="remove" guards.
+        val storage = Regex("""<uses-permission[^>]*android:name="android\.permission\.(READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|MANAGE_EXTERNAL_STORAGE|READ_MEDIA_[A-Z_]+)"[^>]*/>""")
+            .findAll(manifest).map { it.value }.toList()
+        assertTrue(storage.isNotEmpty())
+        storage.forEach { assertTrue("$it must use tools:node=remove", it.contains("""tools:node="remove"""")) }
+        // QR scanning keeps the camera, as an optional feature.
+        assertEquals(1, declarations("CAMERA").size)
+        assertTrue(manifest.contains("""<uses-feature android:name="android.hardware.camera" android:required="false" />"""))
     }
 
     @Test

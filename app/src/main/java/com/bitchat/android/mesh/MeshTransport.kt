@@ -26,8 +26,6 @@ interface MeshTransport {
         packet: BitchatPacket
     ): Boolean = false
 
-    fun cancelTransfer(transferId: String): Boolean = false
-
     fun getDeviceAddressForPeer(peerID: String): String? = null
 
     fun getDeviceAddressToPeerMapping(): Map<String, String> = emptyMap()

@@ -71,15 +71,11 @@ class ChatViewModel(
         private const val CONVERSATION_DISCONNECT_GRACE_MS = 3_000L
     }
 
-    fun sendVoiceNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) {
-        mediaSendingManager.sendVoiceNote(toPeerIDOrNull, channelOrNull, filePath)
-    }
-
     fun createVoiceRecorder(toPeerIDOrNull: String?, channelOrNull: String?): VoiceRecorder {
         val context = getApplication<Application>().applicationContext
         if (!LiveVoicePreferences.isEnabled(context)) return VoiceRecorder(context)
         val recipientPeerID = toPeerIDOrNull?.let {
-            PrivateMediaRecipientResolver.resolve(it, mesh)?.meshPeerID
+            ConversationPeerResolver.resolve(it, mesh)?.meshPeerID
         }
         val liveTarget = when {
             toPeerIDOrNull != null && recipientPeerID != null && mesh.hasEstablishedSession(recipientPeerID) ->
@@ -89,22 +85,6 @@ class ChatViewModel(
             else -> null
         }
         return VoiceRecorder(context, liveTarget)
-    }
-
-    fun sendFileNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) {
-        mediaSendingManager.sendFileNote(toPeerIDOrNull, channelOrNull, filePath)
-    }
-
-    fun sendImageNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) {
-        mediaSendingManager.sendImageNote(toPeerIDOrNull, channelOrNull, filePath)
-    }
-
-    fun approveLegacyPrivateMedia(requestId: String) {
-        mediaSendingManager.approveLegacyPrivateMedia(requestId)
-    }
-
-    fun cancelLegacyPrivateMedia(requestId: String) {
-        mediaSendingManager.cancelLegacyPrivateMedia(requestId)
     }
 
     fun getCurrentNpub(): String? {
@@ -125,10 +105,6 @@ class ChatViewModel(
     private val state = ChatState(
         scope = viewModelScope,
     )
-
-    // Transfer progress tracking
-    private val transferMessageMap = mutableMapOf<String, String>()
-    private val messageTransferMap = mutableMapOf<String, String>()
 
     // Specialized managers
     private val dataManager = DataManager(application.applicationContext)
@@ -203,14 +179,6 @@ class ChatViewModel(
     private val weshPrivateSender = com.bitchat.android.services.WeshPrivateSender(weshContactStore)
     private val weshSending = mutableSetOf<String>()
 
-    // Media file sending manager
-    private val mediaSendingManager = MediaSendingManager(
-        state,
-        messageManager,
-        channelManager,
-        viewModelScope
-    ) { mesh }
-    
     // Delegate handler for mesh callbacks
     private val meshDelegateHandler = MeshDelegateHandler(
         state = state,
@@ -400,8 +368,6 @@ class ChatViewModel(
     val privateChatSheetPeer: StateFlow<String?> = state.privateChatSheetPeer
     val showVerificationSheet: StateFlow<Boolean> = state.showVerificationSheet
     val showSecurityVerificationSheet: StateFlow<Boolean> = state.showSecurityVerificationSheet
-    val legacyPrivateMediaConsent: StateFlow<LegacyPrivateMediaConsentRequest?> =
-        mediaSendingManager.legacyPrivateMediaConsent
     val meshServiceFacade: MeshService
         get() = mesh
     val myPeerID: String
@@ -503,12 +469,6 @@ class ChatViewModel(
                 state.setChannelMessages(byChannel)
             } } catch (_: Exception) { }
         }
-        // Subscribe to BLE transfer progress and reflect in message deliveryStatus
-        viewModelScope.launch {
-            com.bitchat.android.mesh.TransferProgressManager.events.collect { evt ->
-                mediaSendingManager.handleTransferProgressEvent(evt)
-            }
-        }
     }
 
     /**
@@ -565,11 +525,6 @@ class ChatViewModel(
         }
     }
 
-    fun cancelMediaSend(messageId: String) {
-        // Delegate to MediaSendingManager which tracks transfer IDs and cleans up UI state
-        mediaSendingManager.cancelMediaSend(messageId)
-    }
-    
     private fun loadAndInitialize() {
         // Load nickname
         val nickname = dataManager.loadNickname()
@@ -1502,10 +1457,6 @@ class ChatViewModel(
         verificationHandler.didReceiveVerifyResponse(peerID, payload)
     }
 
-    override fun didResolvePrivateMediaPolicy(peerID: String) {
-        mediaSendingManager.retryPendingPrivateMedia(peerID)
-    }
-    
     override fun decryptChannelMessage(encryptedContent: ByteArray, channel: String): String? {
         return meshDelegateHandler.decryptChannelMessage(encryptedContent, channel)
     }
@@ -1545,10 +1496,6 @@ class ChatViewModel(
     }
 
     private suspend fun performPanicClearAllData() {
-        // A pending one-shot downgrade confirmation must not survive panic or
-        // become actionable against the fresh post-wipe identity.
-        mediaSendingManager.clearPendingPrivateMediaConsent()
-
         // Stop all message admission before wiping storage. The AppStateStore gate also rejects
         // any transport callback already in flight until the fresh identity is ready.
         clearAllMeshServiceData()

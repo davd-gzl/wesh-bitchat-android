@@ -68,13 +68,6 @@
     <string name="cd_handshake_failed">Échec de l’échange</string>
 
     <!-- Dialogue de fichier -->
-    <string name="file_viewer_title">📎 Fichier reçu</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 Taille : %1$s</string>
-    <string name="file_viewer_type">🏷️ Type : %1$s</string>
-    <string name="file_viewer_open_save">📂 Ouvrir / Enregistrer</string>
-    <string name="close_with_emoji">❌ Fermer</string>
-    <string name="pick_image">Choisir une image</string>
 
     <!-- Feuille À propos -->
     <string name="about_offline_mesh_title">Chat Mesh hors‑ligne</string>
@@ -124,22 +117,13 @@
     <string name="cd_reachable_via_nostr">Joignable via Nostr</string>
     <string name="cd_offline_favorite">Favori (hors‑ligne)</string>
     <string name="cd_scroll_to_bottom">Aller en bas</string>
-    <string name="cd_file">Fichier</string>
-    <string name="cd_image">Image</string>
     <string name="cd_cancel">Annuler</string>
     <string name="cd_link">Lien</string>
-    <string name="cd_pick_media">Choisir un média</string>
     <string name="cd_record_voice">Enregistrer un message vocal</string>
     <string name="cd_offline_mesh_chat">Chat Mesh hors‑ligne</string>
     <string name="cd_end_to_end_encryption">Chiffrement de bout en bout</string>
 
     <!-- Images &amp; fichiers -->
-    <string name="image_page_of">Image %1$d sur %2$d</string>
-    <string name="image_unavailable">Image indisponible</string>
-    <string name="image_saved_to_downloads">Image enregistrée dans "Téléchargements"</string>
-    <string name="image_save_failed">Échec de l’enregistrement de l’image</string>
-    <string name="pick_file">Choisir un fichier</string>
-    <string name="file_unavailable">[fichier indisponible]</string>
     <string name="unknown">inconnu</string>
 
     <!-- Feuille d’actions utilisateur -->
@@ -235,22 +219,13 @@
     <string name="select">sélectionner</string>
     <string name="type_a_message_placeholder">écrire un message…</string>
     <string name="mention">mention</string>
-    <string name="image_counter">%1$d / %2$d</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">Image</string>
-    <string name="media_type_file">Fichier</string>
 
     <!-- Statuts de message -->
 
     <!-- Aide de texte de notification -->
-    <string name="notification_sent_image">📷 a envoyé une image</string>
-    <string name="notification_sent_voice">🎤 a envoyé un message vocal</string>
-    <string name="notification_sent_file">📎 a envoyé un fichier</string>
 
     <!-- Lecteur vocal accessibilité -->
-    <string name="cd_play_voice">Lire</string>
-    <string name="cd_pause_voice">Pause</string>
 
     <!-- Descriptions des permissions -->
     <string name="perm_nearby_devices_desc">Se connecter aux personnes sur le mesh Bluetooth de Wesh.</string>
@@ -384,15 +359,6 @@
     <string name="notification_channel_direct_messages">Messages privés</string>
     <string name="notification_channel_direct_messages_description">Notifications des messages privés des autres utilisateurs</string>
     <string name="you">Vous</string>
-    <string name="private_media_legacy_title">Envoyer sans chiffrement de bout en bout ?</string>
-    <string name="private_media_legacy_body">Impossible d’envoyer %1$s à %2$s avec chiffrement, car sa version de l’application est trop ancienne. %3$s</string>
-    <string name="private_media_legacy_send_once">Envoyer ce fichier une seule fois</string>
-    <string name="cd_save_current_image">Enregistrer l’image affichée</string>
-    <string name="cd_close">Fermer</string>
-    <string name="toast_image_saved">Image enregistrée dans Téléchargements</string>
-    <string name="toast_failed_to_save_image">Impossible d’enregistrer l’image</string>
-    <string name="cd_image_index_of">Image %1$d sur %2$d</string>
-    <string name="cd_pick_file">Choisir un fichier</string>
     <string name="about_tab_info">Informations</string>
     <string name="about_tab_settings">Réglages</string>
     <string name="about_how_to_use_heading">Mode d’emploi</string>

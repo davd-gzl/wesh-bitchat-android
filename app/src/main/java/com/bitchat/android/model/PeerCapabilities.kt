@@ -38,7 +38,7 @@ data class PeerCapabilities(val rawValue: Long) : Parcelable {
         val MESH_DIAGNOSTICS = PeerCapabilities(1L shl 6)
         val BRIDGE = PeerCapabilities(1L shl 7)
 
-        /** Noise-encrypted private BitchatFilePacket using payload type 0x20. */
+        /** BitChat's Noise-encrypted private file, payload type 0x20. Wire definition only. */
         val PRIVATE_MEDIA = PeerCapabilities(1L shl 8)
 
         val PRIVATE_MEDIA_RECEIPTS = PeerCapabilities(1L shl 9)
@@ -46,8 +46,11 @@ data class PeerCapabilities(val rawValue: Long) : Parcelable {
         /** Reserved by iOS; decode it but do not advertise or act on it. */
         val NON_DESTRUCTIVE_NOISE_REPLACEMENT = PeerCapabilities(1L shl 10)
 
-        /** Capabilities implemented by this Android build. */
-        val LOCAL_SUPPORTED = PRIVATE_MEDIA
+        /**
+         * Capabilities implemented by this Android build. Wesh ships no media, so it never
+         * advertises [PRIVATE_MEDIA] or [PRIVATE_MEDIA_RECEIPTS].
+         */
+        val LOCAL_SUPPORTED = NONE
 
         /**
          * Decode the low 64 bits and ignore any future extension bytes, which

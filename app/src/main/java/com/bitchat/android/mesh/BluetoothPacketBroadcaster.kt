@@ -198,7 +198,7 @@ class BluetoothPacketBroadcaster(
             val accepted = CompletableDeferred<Boolean>()
             val result = try {
                 kotlinx.coroutines.withTimeoutOrNull(5_000) {
-                    broadcasterActor.send(BroadcastRequest(routed.copy(packet = packet, preparedPackets = null),
+                    broadcasterActor.send(BroadcastRequest(routed.copy(packet = packet),
                         gattServer, characteristic, accepted, true, authorized))
                     accepted.await()
                 } == true
@@ -208,10 +208,6 @@ class BluetoothPacketBroadcaster(
             if (index < packets.lastIndex) delay(20)
         }
         return true
-    }
-
-    fun cancelTransfer(transferId: String): Boolean {
-        return fragmentingSender.cancelTransfer(transferId)
     }
 
     /**
