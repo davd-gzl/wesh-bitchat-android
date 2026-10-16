@@ -181,6 +181,7 @@ class PrivateChatManager(
     // MARK: - Peer Management
 
     fun isPeerBlocked(peerID: String): Boolean {
+        if (com.bitchat.android.services.SessionHiddenPeers.contains(peerID)) return true
         val fingerprint = fingerprintManager.getFingerprintForPeer(peerID)
             ?: ContactIdentityResolver.fingerprintFromContactConversationId(ContactDirectory.canonicalConversationId(peerID))
             ?: ContactDirectory.resolve(peerID).noisePublicKey?.let { ContactIdentityResolver.fingerprintHex(it) }

@@ -64,6 +64,35 @@ class PacketProcessorAnnounceSideEffectTest {
         assertEquals(PEER_ID, withTimeout(1_000) { delegate.lastSeen.await() })
     }
 
+    @Test
+    fun `a redelivered copy of an already relayed packet is not relayed again`() = runBlocking {
+        val suppressed = RecordingDelegate(acceptAnnounce = true, relaySuppressed = true)
+        processor(suppressed).processPacket(publicMessage())
+        withTimeout(1_000) { suppressed.lastSeen.await() }
+        kotlinx.coroutines.delay(200)
+        assertEquals(0, suppressed.relayCount)
+
+        val normal = RecordingDelegate(acceptAnnounce = true)
+        processor(normal).processPacket(publicMessage())
+        withTimeout(1_000) { while (normal.relayCount == 0) kotlinx.coroutines.delay(10) }
+        assertEquals(1, normal.relayCount)
+    }
+
+    @Test
+    fun `a first copy dropped by local delivery is still relayed once`() = runBlocking {
+        // Local delivery runs asynchronously and may mark the packet suppressed before the relay step.
+        val delegate = RecordingDelegate(acceptAnnounce = true, suppressOnHandleMessage = true)
+        processor(delegate).processPacket(publicMessage())
+        withTimeout(1_000) { delegate.lastSeen.await() }
+        kotlinx.coroutines.delay(200)
+        assertEquals(1, delegate.relayCount)
+    }
+
+    private fun publicMessage(): RoutedPacket = RoutedPacket(BitchatPacket(
+        version = 1u, type = MessageType.MESSAGE.value, senderID = PEER_ID.hexToBytes(),
+        recipientID = SpecialRecipients.BROADCAST, timestamp = System.currentTimeMillis().toULong(),
+        payload = "synthetic".toByteArray(), ttl = 7u), PEER_ID, "direct-link")
+
     private fun processor(delegate: RecordingDelegate): PacketProcessor =
         PacketProcessor(MY_PEER_ID).also {
             it.delegate = delegate
@@ -98,8 +127,11 @@ class PacketProcessorAnnounceSideEffectTest {
 
     private class RecordingDelegate(
         private val acceptAnnounce: Boolean,
-        private val acceptHandshake: Boolean = false
+        private val acceptHandshake: Boolean = false,
+        @Volatile private var relaySuppressed: Boolean = false,
+        private val suppressOnHandleMessage: Boolean = false
     ) : PacketProcessorDelegate {
+        override fun isRelaySuppressed(packet: BitchatPacket, peerID: String) = relaySuppressed
         val handled = CompletableDeferred<Unit>()
         val handshakeHandled = CompletableDeferred<Unit>()
         val lastSeen = CompletableDeferred<String>()
@@ -121,7 +153,9 @@ class PacketProcessorAnnounceSideEffectTest {
             handled.complete(Unit)
             return acceptAnnounce
         }
-        override fun handleMessage(routed: RoutedPacket) = Unit
+        override fun handleMessage(routed: RoutedPacket) {
+            if (suppressOnHandleMessage) relaySuppressed = true
+        }
         override fun handleLeave(routed: RoutedPacket) = Unit
         override fun handleFragment(packet: BitchatPacket): BitchatPacket? = null
         override fun handleRequestSync(routed: RoutedPacket) = Unit

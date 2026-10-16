@@ -94,6 +94,35 @@ class WeshVerificationHandlerTest {
         assertEquals(qr.nickname, store.contacts.value.single().nickname)
         assertEquals("verified", handler.weshProgress(qr.noiseKeyHex))
     }
+    @Test fun `announced nickname is sanitized in the system message, notification and nickname cache`() = scope.runTest {
+        val key = qr.noiseKeyHex.dataFromHexString()!!
+        whenever(mesh.getPeerInfo(peer)).thenReturn(PeerInfo(id = peer, nickname = "\u202Eevil\u200Bname", noisePublicKey = key, isConnected = true, isDirectConnection = true, signingPublicKey = qr.signKeyHex.dataFromHexString(), isVerifiedNickname = true, lastSeen = 1L))
+        val identity: SecureIdentityStateManager = mock()
+        val notifications: NotificationManager = mock()
+        val context: Context = mock()
+        whenever(context.getString(any(), any())).thenReturn("Synthetic verification notice")
+        val state: ChatState = mock()
+        whenever(state.getConnectedPeersValue()).thenReturn(listOf(peer))
+        handler = VerificationHandler(context, scope, { mesh }, identity, state, notifications, mock(), { time })
+
+        assertTrue(handler.beginQRVerification(qr))
+        respond(); runCurrent()
+
+        val fingerprint = handler.fingerprintFromNoiseBytes(key)
+        verify(identity).cacheFingerprintNickname(fingerprint, "evilname")
+        verify(notifications).showVerificationSuccessNotification("evilname", peer)
+        verify(context).getString(any(), eq("evilname"))
+    }
+    @Test fun `fingerprint display name sanitizes live and announced nicknames`() {
+        val state: ChatState = mock()
+        whenever(state.peerNicknames).thenReturn(kotlinx.coroutines.flow.MutableStateFlow(mapOf(peer to "\u202Eevil\u200Bname")))
+        handler = VerificationHandler(mock(), scope, { mesh }, mock(), state, mock(), mock(), { time })
+        assertEquals("evilname", handler.resolvePeerDisplayNameForFingerprint(peer))
+
+        whenever(state.peerNicknames).thenReturn(kotlinx.coroutines.flow.MutableStateFlow(emptyMap()))
+        whenever(mesh.getPeerInfo(peer)).thenReturn(PeerInfo(id = peer, nickname = "\u3164\u200B", noisePublicKey = qr.noiseKeyHex.dataFromHexString(), isConnected = true, isDirectConnection = true, signingPublicKey = qr.signKeyHex.dataFromHexString(), isVerifiedNickname = true, lastSeen = 1L))
+        assertEquals(peer.take(8), handler.resolvePeerDisplayNameForFingerprint(peer))
+    }
     @Test fun `response after deadline and late handshake cannot enroll`() = scope.runTest {
         assertTrue(handler.beginQRVerification(qr))
         time += 60_001
@@ -139,6 +168,19 @@ class WeshVerificationHandlerTest {
         respond(); scope.runCurrent()
     }
     private fun state(): ChatState = mock<ChatState>().also { whenever(it.getConnectedPeersValue()).thenReturn(listOf(peer)) }
+    @Test fun `verification aborts without writing when stored contacts are unreadable`() = scope.runTest {
+        val application = RuntimeEnvironment.getApplication()
+        val prefs = application.getSharedPreferences("synthetic-handler-unreadable", Context.MODE_PRIVATE)
+        prefs.edit().clear().putString("wesh_qr_contacts_v1", "{unreadable").commit()
+        val unreadable = WeshContactStore(SecureIdentityStateManager(prefs, true),
+            application.getSharedPreferences("bitchat_prefs", Context.MODE_PRIVATE))
+        WeshContactStore.installForTesting(unreadable)
+        enroll(npubQR(syntheticNpub, nickname = "Unreadable store contact"), mine = mineNpub)
+        assertTrue(unreadable.loadFailed.value)
+        assertTrue(unreadable.contacts.value.isEmpty())
+        assertEquals("{unreadable", prefs.getString("wesh_qr_contacts_v1", null))
+        assertTrue(handler.weshProgress(qr.noiseKeyHex) != "verified")
+    }
     @Test fun `signed QR npub is bound to the proven Noise key`() = scope.runTest {
         enroll(npubQR(syntheticNpub), mine = mineNpub)
         assertEquals(syntheticNpub, store.contacts.value.single().npub)

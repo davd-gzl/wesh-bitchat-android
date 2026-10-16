@@ -44,6 +44,7 @@ class IncomingMessageAdmissionTest {
         AppStateStore.setConversationRepositoryForTest(repository)
         AppStateStore.resumePrivateConversationsAfterPanic()
         AppStateStore.clear()
+        IncomingMessageAdmission.installForTesting { emptySet() }
     }
 
     @After
@@ -59,11 +60,12 @@ class IncomingMessageAdmissionTest {
     @Test
     fun `blocked public sender cannot enter shared state or reach downstream notification`() {
         val publicMessage = BitchatMessage(id = "blocked-public", sender = "Synthetic", content = "test", timestamp = Date(1), isRelay = false, senderPeerID = "peer-a")
-        assertFalse(IncomingMessageAdmission.admitToAppState(publicMessage) { it == "peer-a" })
+        IncomingMessageAdmission.installForTesting { setOf("fingerprint-a") }
+        assertFalse(IncomingMessageAdmission.admitToAppState(publicMessage, null) { if (it == "peer-a") "fingerprint-a" else null })
         assertTrue(AppStateStore.publicMessages.value.isEmpty())
-        assertFalse(IncomingMessageAdmission.admitToAppState(publicMessage) { error("synthetic unavailable identity") })
+        assertFalse(IncomingMessageAdmission.admitToAppState(publicMessage, null) { error("synthetic unavailable identity") })
         assertTrue(AppStateStore.publicMessages.value.isEmpty())
-        assertTrue(IncomingMessageAdmission.admitToAppState(publicMessage) { false })
+        assertTrue(IncomingMessageAdmission.admitToAppState(publicMessage, null) { "fingerprint-other" })
         assertEquals(listOf("blocked-public"), AppStateStore.publicMessages.value.map { it.id })
     }
 
@@ -73,8 +75,8 @@ class IncomingMessageAdmissionTest {
 
         assertFalse(
             IncomingMessageAdmission.admitToAppState(
-                privateMessage(id = "during-panic")
-            )
+                privateMessage(id = "during-panic"), null
+            ) { null }
         )
         assertTrue(AppStateStore.privateMessages.value.isEmpty())
     }
@@ -83,16 +85,16 @@ class IncomingMessageAdmissionTest {
     fun `duplicate private transport delivery is rejected before downstream effects`() {
         val message = privateMessage(id = "same-message-over-two-transports")
 
-        assertTrue(IncomingMessageAdmission.admitToAppState(message))
-        assertFalse(IncomingMessageAdmission.admitToAppState(message))
+        assertTrue(IncomingMessageAdmission.admitToAppState(message, null) { null })
+        assertFalse(IncomingMessageAdmission.admitToAppState(message, null) { null })
     }
 
     @Test
     fun `older retained replay is rejected after summary-only restart`() {
         val older = privateMessage(id = "older-retained")
         val latest = privateMessage(id = "latest-summary").copy(timestamp = Date(2L))
-        assertTrue(IncomingMessageAdmission.admitToAppState(older))
-        assertTrue(IncomingMessageAdmission.admitToAppState(latest))
+        assertTrue(IncomingMessageAdmission.admitToAppState(older, null) { null })
+        assertTrue(IncomingMessageAdmission.admitToAppState(latest, null) { null })
 
         AppStateStore.clear()
         repository.reload { snapshot ->
@@ -104,7 +106,7 @@ class IncomingMessageAdmissionTest {
             AppStateStore.privateMessages.value.getValue("peer-a").map { it.id }
         )
 
-        assertFalse(IncomingMessageAdmission.admitToAppState(older))
+        assertFalse(IncomingMessageAdmission.admitToAppState(older, null) { null })
         assertEquals(
             listOf(latest.id),
             AppStateStore.privateMessages.value.getValue("peer-a").map { it.id }
@@ -121,7 +123,7 @@ class IncomingMessageAdmissionTest {
         )
         val latest = privateMessage(id = "latest-summary").copy(timestamp = Date(2L))
         assertTrue(AppStateStore.addPrivateMessage("peer-a", older, forceRead = true))
-        assertTrue(IncomingMessageAdmission.admitToAppState(latest))
+        assertTrue(IncomingMessageAdmission.admitToAppState(latest, null) { null })
         runBlocking { repository.awaitPendingWrites() }
 
         AppStateStore.releasePrivateConversationHistory("peer-a")
@@ -155,8 +157,8 @@ class IncomingMessageAdmissionTest {
         )
         val channel = public.copy(id = "channel", channel = "#mesh")
 
-        assertTrue(IncomingMessageAdmission.admitToAppState(public))
-        assertTrue(IncomingMessageAdmission.admitToAppState(channel))
+        assertTrue(IncomingMessageAdmission.admitToAppState(public, null) { null })
+        assertTrue(IncomingMessageAdmission.admitToAppState(channel, null) { null })
         assertTrue(AppStateStore.publicMessages.value.contains(public))
     }
 

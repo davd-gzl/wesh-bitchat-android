@@ -11,12 +11,69 @@ import kotlinx.coroutines.runBlocking
  * Public and channel messages retain their existing best-effort behavior if state reflection fails.
  */
 internal object IncomingMessageAdmission {
+    /** Wesh admits private messages only from identities enrolled by QR on this phone. */
+    class QrEnrollment(
+        val fingerprintOf: (peerID: String) -> String?,
+        val isEnrolled: (fingerprint: String) -> Boolean,
+        val onRequest: (peerID: String, nickname: String, fingerprint: String?) -> Unit = WeshMessageRequests::record
+    ) {
+        internal fun admits(message: BitchatMessage): Boolean {
+            if (isEnrolledSender(message)) return true
+            val peerID = message.senderPeerID?.takeIf(String::isNotBlank) ?: return false
+            runCatching { onRequest(peerID, message.sender, runCatching { fingerprintOf(peerID) }.getOrNull()) }
+            return false
+        }
+
+        internal fun isEnrolledSender(message: BitchatMessage): Boolean {
+            val peerID = message.senderPeerID?.takeIf(String::isNotBlank) ?: return false
+            val fingerprint = runCatching { fingerprintOf(peerID) }.getOrNull() ?: return false
+            return runCatching { isEnrolled(fingerprint) }.getOrDefault(false)
+        }
+    }
+
+    /** Fingerprints blocked on this phone; unset means admission fails closed for every sender. */
+    @Volatile private var blockedFingerprints: (() -> Set<String>)? = null
+
+    /** Installs the persisted block list; every transport calls this before delivering. */
+    fun install(context: android.content.Context) {
+        val prefs = context.applicationContext.getSharedPreferences("bitchat_prefs", android.content.Context.MODE_PRIVATE)
+        blockedFingerprints = { prefs.getStringSet("blocked_users", emptySet()).orEmpty() }
+    }
+
+    internal fun installForTesting(blocked: (() -> Set<String>)?) { blockedFingerprints = blocked }
+
+    /**
+     * The single block gate for every transport: session-hidden peer IDs and blocked long-term
+     * fingerprints. Any lookup failure, or a block list that was never installed, blocks.
+     */
+    internal fun isSenderBlocked(peerID: String, senderFingerprint: (String) -> String?): Boolean = runCatching {
+        if (SessionHiddenPeers.contains(peerID)) return@runCatching true
+        val blocked = blockedFingerprints ?: return@runCatching true
+        val fingerprint = senderFingerprint(peerID) ?: return@runCatching false
+        fingerprint in blocked()
+    }.getOrDefault(true)
+
+    /**
+     * A delivery ACK may answer only an unblocked sender that admission would accept, so a
+     * stranger never learns this phone received anything. Duplicates of such a sender still
+     * get their ACK, so its retries can stop.
+     */
+    fun mayAcknowledge(
+        message: BitchatMessage,
+        qrEnrollment: QrEnrollment?,
+        senderFingerprint: (String) -> String?
+    ): Boolean {
+        val peerID = message.senderPeerID?.takeIf(String::isNotBlank) ?: return false
+        if (isSenderBlocked(peerID, senderFingerprint)) return false
+        return qrEnrollment == null || qrEnrollment.isEnrolledSender(message)
+    }
+
     fun admitToAppState(
         message: BitchatMessage,
-        isSenderBlocked: (String) -> Boolean = { false }
-    ): Boolean = if (message.senderPeerID?.let { peerID ->
-        runCatching { isSenderBlocked(peerID) }.getOrDefault(true)
-    } == true) false else try {
+        qrEnrollment: QrEnrollment?,
+        senderFingerprint: (String) -> String?
+    ): Boolean = if (message.senderPeerID?.let { isSenderBlocked(it, senderFingerprint) } == true) false
+    else if (message.isPrivate && qrEnrollment != null && !qrEnrollment.admits(message)) false else try {
         when {
             message.isPrivate -> {
                 val peerID = message.senderPeerID?.takeIf(String::isNotBlank)
