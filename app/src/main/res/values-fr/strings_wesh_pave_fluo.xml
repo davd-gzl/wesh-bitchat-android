@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Pavé Fluo: the reach card beside the giant numeral. -->
+    <plurals name="wesh_pave_fluo_reach_label">
+        <item quantity="one">téléphone à portée</item>
+        <item quantity="many">téléphones à portée</item>
+        <item quantity="other">téléphones à portée</item>
+    </plurals>
+    <string name="wesh_pave_fluo_bluetooth_on">Bluetooth actif</string>
+    <string name="wesh_pave_fluo_bluetooth_off">Bluetooth coupé</string>
+</resources>
