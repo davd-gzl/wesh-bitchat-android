@@ -81,7 +81,7 @@ class MessageRouter private constructor(
     }
 
     // Outbox: conversationID -> queued messages, oldest first
-    internal var enforceWeshPolicy = com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
+    internal var enforceWeshPolicy = com.bitchat.android.BuildConfig.WESH_POLICY
     private val weshInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val outbox = ConcurrentHashMap<String, MutableList<QueuedMessage>>()
 
@@ -381,7 +381,7 @@ class MessageRouter private constructor(
     }
 
     private fun canSendViaNostr(peerID: String): Boolean {
-        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) return false
+        if (com.bitchat.android.BuildConfig.WESH_POLICY) return false
         return try {
             val resolution = ContactDirectory.resolve(peerID)
             if (resolution.isMutualFavorite && resolution.nostrPubkey != null) return true

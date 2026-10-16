@@ -11,7 +11,7 @@ import android.location.Geocoder
  * (backed by a network service) and the former OpenStreetMap reverse-geocoding client are excluded.
  */
 object GeocoderFactory {
-    fun get(context: Context, weshLocalOnly: Boolean = com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY): GeocoderProvider {
+    fun get(context: Context, weshLocalOnly: Boolean = com.bitchat.android.BuildConfig.WESH_POLICY): GeocoderProvider {
         return if (!weshLocalOnly && Geocoder.isPresent()) AndroidGeocoderProvider(context) else NoGeocoderProvider
     }
 }

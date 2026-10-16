@@ -13,7 +13,7 @@ class BitchatApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        if (BuildConfig.WESH_LOCAL_ONLY) {
+        if (BuildConfig.WESH_POLICY) {
             com.bitchat.android.features.voice.LiveVoicePreferences.forceDisabled = true
             com.bitchat.android.startup.WeshRuntime.start(this)
         } else {
@@ -29,7 +29,7 @@ class BitchatApplication : Application() {
         try { com.bitchat.android.net.WeshInternetMode.get(this) } catch (_: Exception) { }
 
         // Wesh's native validation product has no Internet or location route.
-        if (!BuildConfig.WESH_LOCAL_ONLY) {
+        if (!BuildConfig.WESH_POLICY) {
             try { ArtiTorManager.getInstance().init(this) } catch (_: Exception) { }
             RelayDirectory.initialize(this)
             try { com.bitchat.android.nostr.LocationNotesInitializer.initialize(this) } catch (_: Exception) { }
@@ -46,7 +46,7 @@ class BitchatApplication : Application() {
         } catch (_: Exception) { }
 
         // Warm up Nostr identity to ensure npub is available for favorite notifications
-        if (!BuildConfig.WESH_LOCAL_ONLY) try {
+        if (!BuildConfig.WESH_POLICY) try {
             com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(this)
         } catch (_: Exception) { }
 
@@ -61,7 +61,7 @@ class BitchatApplication : Application() {
 
         // Initialize Wi‑Fi Aware controller with persisted default
         try {
-            val enabled = !BuildConfig.WESH_LOCAL_ONLY && com.bitchat.android.ui.debug.DebugPreferenceManager.getWifiAwareEnabled(false)
+            val enabled = !BuildConfig.WESH_POLICY && com.bitchat.android.ui.debug.DebugPreferenceManager.getWifiAwareEnabled(false)
             com.bitchat.android.wifiaware.WifiAwareController.initialize(this, enabled)
         } catch (_: Exception) { }
 
@@ -73,13 +73,13 @@ class BitchatApplication : Application() {
 
         // Own relay connectivity, selected-channel subscriptions, and presence scheduling at the
         // process level so closing the Activity does not disconnect Nostr.
-        if (!BuildConfig.WESH_LOCAL_ONLY) try { com.bitchat.android.nostr.NostrBackgroundRuntime.initialize(this) } catch (_: Exception) { }
+        if (!BuildConfig.WESH_POLICY) try { com.bitchat.android.nostr.NostrBackgroundRuntime.initialize(this) } catch (_: Exception) { }
 
         // Initialize mesh service preferences
         try { com.bitchat.android.service.MeshServicePreferences.init(this) } catch (_: Exception) { }
 
         // Proactively start the foreground service to keep mesh alive
-        if (!BuildConfig.WESH_LOCAL_ONLY) try { com.bitchat.android.service.MeshForegroundService.start(this) } catch (_: Exception) { }
+        if (!BuildConfig.WESH_POLICY) try { com.bitchat.android.service.MeshForegroundService.start(this) } catch (_: Exception) { }
 
         // TorManager already initialized above
     }

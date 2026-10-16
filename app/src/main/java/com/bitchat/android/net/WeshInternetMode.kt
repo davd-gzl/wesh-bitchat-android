@@ -309,7 +309,7 @@ class WeshInternetMode internal constructor(
                     network = defaultNetworkFlow(app),
                     wipeNostrKeys = { wipeNostrKeys(app) },
                     // Task #1 replaces this with the product Internet flag; until then nothing changes.
-                    internetAvailable = { !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY },
+                    internetAvailable = { !com.bitchat.android.BuildConfig.WESH_POLICY },
                     scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
                     ensureNostrIdentity = { com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(app) },
                     startFenced = !wiped

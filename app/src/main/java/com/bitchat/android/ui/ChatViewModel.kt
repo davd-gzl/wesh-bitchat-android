@@ -445,7 +445,7 @@ class ChatViewModel(
     internal fun retryWeshDrafts() = weshDraftStore.retry()
 
     private suspend fun loadWeshDrafts() {
-        if (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) return
+        if (!com.bitchat.android.BuildConfig.WESH_POLICY) return
         com.bitchat.android.startup.WeshRuntime.get(getApplication()).awaitReady()
         val key = mesh.getStaticNoisePublicKey()?.takeIf { it.size == 32 } ?: return
         weshDraftStore.load(key.hexEncodedString())
@@ -645,7 +645,7 @@ class ChatViewModel(
         }
         
         // Initialize new geohash architecture
-        if (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) geohashViewModel.initialize()
+        if (!com.bitchat.android.BuildConfig.WESH_POLICY) geohashViewModel.initialize()
 
         // Initialize favorites persistence service
         com.bitchat.android.favorites.FavoritesPersistenceService.initialize(getApplication())
@@ -664,7 +664,7 @@ class ChatViewModel(
 
 
         // Ensure NostrTransport knows our mesh peer ID for embedded packets
-        if (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) try {
+        if (!com.bitchat.android.BuildConfig.WESH_POLICY) try {
             val nostrTransport = com.bitchat.android.nostr.NostrTransport.getInstance(getApplication())
             nostrTransport.senderPeerID = mesh.myPeerID
         } catch (_: Exception) { }
@@ -722,7 +722,7 @@ class ChatViewModel(
     
     suspend fun startPrivateChat(peerID: String) {
         // Wesh never opens a private conversation with an identity that was not enrolled by QR.
-        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY &&
+        if (com.bitchat.android.BuildConfig.WESH_POLICY &&
             weshContactStore.contact(ContactDirectory.canonicalConversationId(peerID)) == null) return
         // For geohash conversation keys, ensure DM subscription is active
         if (peerID.startsWith("nostr_")) {
@@ -1598,7 +1598,7 @@ class ChatViewModel(
     fun panicClearAllData() {
         if (weshPanicInProgress.value) return
         weshPanicInProgress.value = true
-        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) {
+        if (com.bitchat.android.BuildConfig.WESH_POLICY) {
             weshPanicPreviousKey = mesh.getStaticNoisePublicKey()?.copyOf()
             com.bitchat.android.startup.WeshRuntime.requirePanicRecovery()
         }
@@ -1630,7 +1630,7 @@ class ChatViewModel(
         // Stop all message admission before wiping storage. The AppStateStore gate also rejects
         // any transport callback already in flight until the fresh identity is ready.
         clearAllMeshServiceData()
-        val draftsCleared = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY || weshDraftStore.panicClear()
+        val draftsCleared = !com.bitchat.android.BuildConfig.WESH_POLICY || weshDraftStore.panicClear()
         val conversationsCleared =
             com.bitchat.android.services.AppStateStore
                 .panicClearPrivateConversations()
@@ -1723,16 +1723,16 @@ class ChatViewModel(
         mesh.delegate = this
 
         // A failed identity reset must not remove the durable panic marker.
-        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) {
+        if (com.bitchat.android.BuildConfig.WESH_POLICY) {
             val previous = weshPanicPreviousKey ?: return false
             val fresh = mesh.getStaticNoisePublicKey()?.takeIf { it.size == 32 } ?: return false
             if (previous.contentEquals(fresh)) return false
         }
         // Confirm the dedicated draft wipe before restarting any transport.
         loadWeshDrafts()
-        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY &&
+        if (com.bitchat.android.BuildConfig.WESH_POLICY &&
             weshDraftStore.persistence.value != WeshDraftStore.Persistence.Confirmed) return false
-        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) com.bitchat.android.startup.WeshRuntime.normalPanicCompleted()
+        if (com.bitchat.android.BuildConfig.WESH_POLICY) com.bitchat.android.startup.WeshRuntime.normalPanicCompleted()
         com.bitchat.android.services.AppStateStore.resumePrivateConversationsAfterPanic()
         // Restart mesh operations with new identity
         mesh.startServices()

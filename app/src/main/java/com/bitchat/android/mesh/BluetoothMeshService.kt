@@ -118,7 +118,7 @@ class BluetoothMeshService(
             ?: getPeerFingerprint(peerID)
 
     // Wesh: incoming files are never stored, and private messages need a QR-enrolled identity.
-    private val weshQrEnrollment = if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) {
+    private val weshQrEnrollment = if (com.bitchat.android.BuildConfig.WESH_POLICY) {
         com.bitchat.android.services.IncomingMessageAdmission.QrEnrollment(
             fingerprintOf = { peerID ->
                 getAuthenticatedRemoteStaticKey(peerID)?.let(com.bitchat.android.services.ContactIdentityResolver::fingerprintHex)
@@ -159,8 +159,8 @@ class BluetoothMeshService(
         setupDelegates()
         messageHandler.packetProcessor = packetProcessor
         com.bitchat.android.services.IncomingMessageAdmission.install(context)
-        messageHandler.applyInboundPolicy(com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY)
-        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) com.bitchat.android.features.voice.LiveVoicePreferences.forceDisabled = true
+        messageHandler.applyInboundPolicy(com.bitchat.android.BuildConfig.WESH_POLICY)
+        if (com.bitchat.android.BuildConfig.WESH_POLICY) com.bitchat.android.features.voice.LiveVoicePreferences.forceDisabled = true
         //startPeriodicDebugLogging()
 
         // Flush queued private messages as soon as a BLE Noise session authenticates,
