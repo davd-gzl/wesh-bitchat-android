@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
@@ -35,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
@@ -84,7 +86,7 @@ fun HoldToErase(
         if (showShortcutHint) " " + stringResource(R.string.wesh_pave_erase_shortcut_hint) else ""
     val bar = Modifier
         .fillMaxWidth()
-        .height(if (compact) 64.dp else 72.dp)
+        .heightIn(min = if (compact) 64.dp else 72.dp)
         .semantics {
             role = Role.Button
             contentDescription = a11yLabel
@@ -177,6 +179,9 @@ private fun EraseBar(progress: Float, label: String, modifier: Modifier) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(WeshSpace.s2),
             modifier = Modifier
+                // The bar itself carries the button semantics; its label is not a second stop.
+                .clearAndSetSemantics {}
+                .padding(vertical = WeshSpace.s2)
                 .background(if (progress > 0f) c.bg else Color.Transparent, RoundedCornerShape(WeshRadius.tail))
                 .padding(horizontal = WeshSpace.s2, vertical = WeshSpace.s1),
         ) {

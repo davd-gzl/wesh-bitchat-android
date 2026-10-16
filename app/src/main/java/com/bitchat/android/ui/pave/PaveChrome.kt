@@ -36,7 +36,13 @@ fun PaveIconButton(icon: ImageVector, label: String, onClick: () -> Unit, modifi
     }
 }
 
-/** Screen title row: optional back, a poster `display` heading in capitals (read as typed), optional close or trailing content. */
+/**
+ * Screen title row: optional back, a poster `display` heading in capitals (read as typed), optional
+ * close or trailing content.
+ *
+ * [title] must be an app string, never a nickname or any remote text: capitals and the Latin-only
+ * poster face would hide look-alike letters and other scripts. Show remote names in the system face.
+ */
 @Composable
 fun PaveHeader(
     title: String,
