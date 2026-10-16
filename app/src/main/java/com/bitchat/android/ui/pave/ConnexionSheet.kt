@@ -28,6 +28,9 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
@@ -118,6 +121,12 @@ fun ConnexionSheetContent(
 
         // Internet mode
         val switchLabel = stringResource(R.string.wesh_pave_internet_mode)
+        var askDisclosure by rememberSaveable { mutableStateOf(false) }
+        var refused by rememberSaveable { mutableStateOf(false) }
+        val onOutcome = { outcome: InternetToggleOutcome ->
+            askDisclosure = outcome == InternetToggleOutcome.NeedsDisclosure
+            refused = outcome == InternetToggleOutcome.Refused
+        }
         Column(
             verticalArrangement = Arrangement.spacedBy(WeshSpace.s3),
             modifier = Modifier
@@ -135,7 +144,7 @@ fun ConnexionSheetContent(
                         value = enabled,
                         enabled = internet.available,
                         role = Role.Switch,
-                        onValueChange = { internet.setEnabled(it) },
+                        onValueChange = { onOutcome(toggleInternet(internet, it)) },
                     ),
             ) {
                 Icon(Icons.Rounded.Public, contentDescription = null, tint = c.internet, modifier = Modifier.size(22.dp))
@@ -166,7 +175,23 @@ fun ConnexionSheetContent(
             if (enabled && status is PaveInternetStatus.Error) {
                 SecondaryButton(stringResource(R.string.wesh_pave_retry), { internet.retry() })
             }
-            Text(stringResource(R.string.wesh_pave_internet_disclosure), style = WeshType.caption, color = c.inkMuted)
+            if (refused) {
+                Text(
+                    stringResource(R.string.wesh_pave_internet_refused),
+                    style = WeshType.label,
+                    color = c.danger,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
+            if (askDisclosure) {
+                // First activation: the full disclosure, then an explicit choice.
+                Text(stringResource(R.string.wesh_pave_internet_confirm_title), style = WeshType.label, color = c.ink)
+                Text(stringResource(R.string.wesh_pave_internet_disclosure_full), style = WeshType.body, color = c.ink)
+                PrimaryButton(stringResource(R.string.wesh_pave_internet_confirm_action), { onOutcome(confirmInternetDisclosure(internet)) })
+                SecondaryButton(stringResource(R.string.wesh_pave_cancel), { askDisclosure = false }, Modifier.fillMaxWidth())
+            } else {
+                Text(stringResource(R.string.wesh_pave_internet_disclosure), style = WeshType.caption, color = c.inkMuted)
+            }
         }
 
         // Bluetooth visibility notice

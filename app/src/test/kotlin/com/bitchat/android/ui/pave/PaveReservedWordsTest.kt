@@ -57,6 +57,7 @@ class PaveReservedWordsTest {
             "Code vérifié", "Non vérifié", "En attente", "Envoyé", "Reçu", "Échec", "via Internet", "Bluetooth",
             "Salon public", "Public room", "Échanger", "Exchange", "Demandes", "Requests",
             "Empreinte de la clé", "Key fingerprint", "Empreinte indisponible", "Fingerprint unavailable",
+            "Votre empreinte", "Empreinte du contact", "Your fingerprint", "Contact’s fingerprint",
             "Échange réussi", "Exchange done", "Votre code", "Son code", "Fait", "Ouvrir la discussion", "Profil",
         ).forEach { word -> assertTrue("$word is not reserved", word in words) }
         assertEquals(PaveReservedWords.keys.size, PaveReservedWords.keys.toSet().size)

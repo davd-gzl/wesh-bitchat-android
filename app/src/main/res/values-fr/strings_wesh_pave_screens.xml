@@ -33,7 +33,7 @@
     <string name="wesh_pave_bt_ask">Android va vous demander l’accès aux appareils à proximité.</string>
     <string name="wesh_pave_bt_no_location">Wesh ne demande pas votre position.</string>
     <string name="wesh_pave_bt_ask_legacy">Sur cette version d’Android, Bluetooth exige l’accès à la position.</string>
-    <string name="wesh_pave_bt_legacy_no_gps">Wesh ne demande pas de coordonnées GPS.</string>
+    <string name="wesh_pave_bt_legacy_no_gps">Wesh n’utilise pas votre position.</string>
     <string name="wesh_pave_continue">Continuer</string>
     <string name="wesh_pave_bt_denied">Sans Bluetooth, Wesh ne trouve personne autour.</string>
     <string name="wesh_pave_bt_continue_without">Continuer sans Bluetooth</string>
@@ -52,7 +52,7 @@
     <string name="wesh_pave_internet_error_network">Pas de réseau pour l’instant.</string>
     <string name="wesh_pave_internet_error_relays">Les relais ne répondent pas.</string>
     <string name="wesh_pave_internet_unavailable">Indisponible dans cette version.</string>
-    <string name="wesh_pave_internet_disclosure">Uniquement vers vos contacts vérifiés, quand ils ne sont pas à portée. Toujours via Tor. Les relais ne lisent pas vos messages. Ils voient quand et à quelle clé ils sont adressés.</string>
+    <string name="wesh_pave_internet_disclosure">Passe par Tor et par des relais publics. Désactivé par défaut.</string>
     <string name="wesh_pave_bt_visibility">Un téléphone qui utilise Wesh reste repérable par Bluetooth à proximité. Coupez Bluetooth pour ne plus l’être.</string>
     <string name="wesh_pave_settings_title">Réglages</string>
     <string name="wesh_pave_settings_profile">Profil</string>
@@ -83,4 +83,11 @@
     <string name="wesh_pave_licenses_components">Composants utilisés</string>
     <string name="wesh_pave_exchange_success">Échange réussi</string>
     <string name="wesh_pave_exchange_open_chat">Ouvrir la discussion</string>
+    <string name="wesh_pave_internet_disclosure_full">Le mode Internet passe par Tor et par des relais Nostr publics que Wesh n\'exploite pas. Les relais ne voient ni votre adresse IP ni le contenu, mais voient la clé Internet du destinataire, l\'heure et la taille des messages, et peuvent relier vos envois à votre clé. Ils peuvent conserver les messages chiffrés. Quiconque a votre QR connaît votre clé Internet. Désactivé par défaut ; l\'effacement d\'urgence le désactive.</string>
+    <string name="wesh_pave_internet_confirm_title">Activer le mode Internet ?</string>
+    <string name="wesh_pave_internet_confirm_action">Activer</string>
+    <string name="wesh_pave_internet_refused">Le mode Internet n’a pas pu être activé.</string>
+    <string name="wesh_pave_camera_rationale">La caméra sert uniquement à lire le code de votre contact. Aucune image n’est enregistrée.</string>
+    <string name="wesh_pave_fingerprint_mine">Votre empreinte</string>
+    <string name="wesh_pave_fingerprint_contact">Empreinte du contact</string>
 </resources>

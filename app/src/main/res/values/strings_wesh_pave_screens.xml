@@ -33,7 +33,7 @@
     <string name="wesh_pave_bt_ask">Android will ask you for access to nearby devices.</string>
     <string name="wesh_pave_bt_no_location">Wesh does not ask for your location.</string>
     <string name="wesh_pave_bt_ask_legacy">On this Android version, Bluetooth requires location access.</string>
-    <string name="wesh_pave_bt_legacy_no_gps">Wesh does not ask for GPS coordinates.</string>
+    <string name="wesh_pave_bt_legacy_no_gps">Wesh does not use your location.</string>
     <string name="wesh_pave_continue">Continue</string>
     <string name="wesh_pave_bt_denied">Without Bluetooth, Wesh cannot find anyone around.</string>
     <string name="wesh_pave_bt_continue_without">Continue without Bluetooth</string>
@@ -51,7 +51,7 @@
     <string name="wesh_pave_internet_error_network">No network for now.</string>
     <string name="wesh_pave_internet_error_relays">The relays do not answer.</string>
     <string name="wesh_pave_internet_unavailable">Not available in this version.</string>
-    <string name="wesh_pave_internet_disclosure">Only to your verified contacts, when they are not in range. Always via Tor. Relays cannot read your messages. They see when and to which key they are sent.</string>
+    <string name="wesh_pave_internet_disclosure">Goes through Tor and public relays. Off by default.</string>
     <string name="wesh_pave_bt_visibility">A phone using Wesh stays detectable over Bluetooth nearby. Turn off Bluetooth to stop that.</string>
     <string name="wesh_pave_settings_title">Settings</string>
     <string name="wesh_pave_settings_profile">Profile</string>
@@ -82,4 +82,11 @@
     <string name="wesh_pave_licenses_components">Components used</string>
     <string name="wesh_pave_exchange_success">Exchange done</string>
     <string name="wesh_pave_exchange_open_chat">Open the chat</string>
+    <string name="wesh_pave_internet_disclosure_full">Internet mode goes through Tor and public Nostr relays that Wesh does not run. Relays see neither your IP address nor the content, but they see the recipient’s Internet key, the time and size of messages, and can link what you send to your key. They may keep the encrypted messages. Anyone with your QR code knows your Internet key. Off by default; emergency erase turns it off.</string>
+    <string name="wesh_pave_internet_confirm_title">Turn on Internet mode?</string>
+    <string name="wesh_pave_internet_confirm_action">Turn on</string>
+    <string name="wesh_pave_internet_refused">Internet mode could not be turned on.</string>
+    <string name="wesh_pave_camera_rationale">The camera is only used to read your contact’s code. No image is saved.</string>
+    <string name="wesh_pave_fingerprint_mine">Your fingerprint</string>
+    <string name="wesh_pave_fingerprint_contact">Contact’s fingerprint</string>
 </resources>

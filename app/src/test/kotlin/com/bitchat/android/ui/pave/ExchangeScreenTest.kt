@@ -4,11 +4,12 @@ import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ExchangeScreenTest {
-    private val myKey = ByteArray(32) { it.toByte() }
-    private val contactKey = ByteArray(32) { (31 - it).toByte() }
+    private val mine = "7F3A 91C2 0B5E 44D8"
+    private val theirs = "A1B2 C3D4 E5F6 0718"
 
     @Test
     fun `success card waits a moment before opening the chat`() {
@@ -17,13 +18,50 @@ class ExchangeScreenTest {
 
     @Test
     fun `your own fingerprint is always shown, the contact's only once both checks are done`() {
-        val pending = exchangeFingerprints(myKey, contactKey, ExchangeProgress(theyScannedMe = true))
-        assertEquals(PaveFingerprint.short(myKey), pending.mine)
+        val pending = exchangeFingerprints(mine, theirs, ExchangeProgress(theyScannedMe = true))
+        assertEquals(mine, pending.mine)
         assertNull(pending.contact)
-        val done = exchangeFingerprints(myKey, contactKey, ExchangeProgress(theyScannedMe = true, iScannedThem = true))
-        assertEquals(PaveFingerprint.short(myKey), done.mine)
-        assertEquals(PaveFingerprint.short(contactKey), done.contact)
+        val done = exchangeFingerprints(mine, theirs, ExchangeProgress(theyScannedMe = true, iScannedThem = true))
+        assertEquals(mine, done.mine)
+        assertEquals(theirs, done.contact)
         assertNull(exchangeFingerprints(null, null, ExchangeProgress(true, true)).mine)
+    }
+
+    @Test
+    fun `completion runs once even if the button and the timer both fire`() {
+        var calls = 0
+        var done = false
+        done = completeOnce(done) { calls++ }
+        done = completeOnce(done) { calls++ }
+        assertTrue(done)
+        assertEquals(1, calls)
+    }
+
+    @Test
+    fun `the camera is asked for only after the rationale, and settings only after a permanent refusal`() {
+        assertEquals(CameraCard.Rationale, cameraCard(granted = false, asked = false, shouldShowRationale = false))
+        assertEquals(CameraCard.Rationale, cameraCard(granted = false, asked = true, shouldShowRationale = true))
+        assertEquals(CameraCard.Settings, cameraCard(granted = false, asked = true, shouldShowRationale = false))
+        assertEquals(CameraCard.Scanner, cameraCard(granted = true, asked = false, shouldShowRationale = false))
+    }
+
+    @Test
+    fun `the two fingerprints say whose key they show, without a name`() {
+        val fr = PaveStringResources.strings("values-fr")
+        val en = PaveStringResources.strings("values")
+        assertEquals("Votre empreinte", fr.getValue("wesh_pave_fingerprint_mine"))
+        assertEquals("Empreinte du contact", fr.getValue("wesh_pave_fingerprint_contact"))
+        assertEquals("Your fingerprint", en.getValue("wesh_pave_fingerprint_mine"))
+        assertEquals("Contact’s fingerprint", en.getValue("wesh_pave_fingerprint_contact"))
+    }
+
+    @Test
+    fun `the camera rationale says what the camera is for`() {
+        assertEquals(
+            "La caméra sert uniquement à lire le code de votre contact. Aucune image n’est enregistrée.",
+            PaveStringResources.strings("values-fr").getValue("wesh_pave_camera_rationale"),
+        )
+        assertTrue("wesh_pave_camera_rationale" in PaveStringResources.strings("values"))
     }
 
     @Test

@@ -35,6 +35,8 @@ object PaveReservedWords {
         R.string.wesh_pave_section_requests,
         R.string.wesh_pave_fingerprint_label,
         R.string.wesh_pave_fingerprint_unavailable,
+        R.string.wesh_pave_fingerprint_mine,
+        R.string.wesh_pave_fingerprint_contact,
         R.string.wesh_pave_exchange_title,
         R.string.wesh_pave_exchange_intro,
         R.string.wesh_pave_exchange_my_code,
