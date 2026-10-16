@@ -2,7 +2,7 @@
 <!--
   Static launcher shortcut "Tout effacer". It only opens the hold-to-erase screen:
   nothing is erased until the person holds the button for three seconds.
-  Wired from the launcher activity with the android.app.shortcuts meta-data.
+  Not wired yet: the android.app.shortcuts meta-data and the intent handling land in UI phase 2.
 -->
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
