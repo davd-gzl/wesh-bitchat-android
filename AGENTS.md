@@ -104,8 +104,7 @@ python3 tools/release_gate/mesh_lab.py scenario all \
   --serial-a <device-a> --serial-b <device-b> --out /tmp/mesh-evidence
 ```
 
-For phone-to-watch interop, replace `--serial-b` with `--serial-watch` and add
-`--watch-apk`. Keep devices unlocked and awake. Follow the Mesh Lab appendix in
+Keep devices unlocked and awake. Follow the Mesh Lab appendix in
 `docs/release-gate-runbook.md`; raw evidence and logcat must remain local.
 
 ## Commits, Pull Requests & Privacy
