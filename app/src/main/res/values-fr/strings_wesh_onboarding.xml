@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="wesh_bluetooth_required_to_discover">Wesh a besoin de Bluetooth pour trouver les personnes à proximité et s’y connecter. Activez Bluetooth pour continuer.</string>
+    <string name="wesh_bluetooth_unsupported">Cet appareil ne prend pas en charge Bluetooth, nécessaire au fonctionnement de Wesh.</string>
+    <string name="wesh_bluetooth_disabled">Bluetooth est désactivé. Activez-le pour utiliser Wesh.</string>
+    <string name="wesh_permissions_partially_denied">Certaines autorisations ont été refusées :</string>
+    <string name="wesh_permissions_partially_denied_footer">Wesh risque de mal fonctionner sans toutes les autorisations.</string>
+    <string name="wesh_permissions_critical_denied">Wesh a besoin de ces autorisations pour fonctionner :</string>
+    <string name="wesh_permissions_critical_denied_footer">Accordez-les dans les réglages Android pour utiliser Wesh.</string>
+</resources>

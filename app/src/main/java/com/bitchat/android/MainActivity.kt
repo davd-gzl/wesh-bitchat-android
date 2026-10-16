@@ -162,10 +162,13 @@ class MainActivity : OrientationAwareActivity() {
                         val startup by com.bitchat.android.startup.WeshRuntime.get(applicationContext).state.collectAsState()
                         val draftWipeRequired by com.bitchat.android.startup.WeshRuntime.draftWipeRequired.collectAsState()
                         val panicRecovery by com.bitchat.android.startup.WeshRuntime.recoveryState.collectAsState()
+                        val startupFailures by com.bitchat.android.startup.WeshRuntime.get(applicationContext).failures.collectAsState()
                         com.bitchat.android.startup.StartupScreen(
                             draftWipeRequired = draftWipeRequired,
                             recovery = panicRecovery,
                             onEraseAll = { com.bitchat.android.startup.WeshRuntime.clearInterruptedPanic(applicationContext) },
+                            offerIdentityReset = com.bitchat.android.startup.StartupRecoveryPolicy.offersIdentityReset(startupFailures, startup, draftWipeRequired),
+                            onResetIdentity = { com.bitchat.android.startup.WeshRuntime.resetIdentityAfterFailures(applicationContext) },
                             failed = startup is com.bitchat.android.startup.StartupCoordinator.State.Failed,
                             onRetry = {
                                 com.bitchat.android.startup.WeshRuntime.get(applicationContext).start(retry = true)

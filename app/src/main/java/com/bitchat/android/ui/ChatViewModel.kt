@@ -1117,6 +1117,10 @@ class ChatViewModel(
         }
     }
 
+    private val _weshBluetoothReadyState = MutableStateFlow(false)
+    /** Emits only on change, so the Wesh screen recomposes when Bluetooth flips, not every second. */
+    val weshBluetoothReadyState: StateFlow<Boolean> = _weshBluetoothReadyState.asStateFlow()
+
     fun weshBluetoothReady(): Boolean {
         val application = getApplication<Application>()
         if (android.os.Build.VERSION.SDK_INT >= 31 && androidx.core.content.ContextCompat.checkSelfPermission(
@@ -1303,6 +1307,7 @@ class ChatViewModel(
             while (true) {
                 delay(1000) // Check session states every second
                 updateReactiveStates()
+                _weshBluetoothReadyState.value = weshBluetoothReady()
             }
         }
     }

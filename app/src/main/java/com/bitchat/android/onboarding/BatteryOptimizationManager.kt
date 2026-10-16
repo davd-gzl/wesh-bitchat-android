@@ -85,10 +85,9 @@ class BatteryOptimizationManager(
             try {
                 Log.d(TAG, "Requesting to disable battery optimization")
                 
-                val intent = Intent().apply {
-                    action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-                    data = Uri.parse("package:${context.packageName}")
-                }
+                // The direct per-app prompt needs REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, which Wesh
+                // does not declare; the system list lets the person choose without that permission.
+                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
                 
                 // Check if the intent can be resolved
                 if (intent.resolveActivity(context.packageManager) != null) {

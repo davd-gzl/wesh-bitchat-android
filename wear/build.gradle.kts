@@ -70,6 +70,12 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
     systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
 }
 
+// The watch app keeps the inherited com.bitchat.droid application ID and is not a Wesh artifact:
+// without a release variant it can never be packaged into a release or uploaded.
+androidComponents {
+    beforeVariants(selector().withBuildType("release")) { it.enable = false }
+}
+
 composeCompiler {
     // Kotlin 2.4.10's optional Compose group-key mapping depends on unspecified
     // class-file iteration order. Keep the normal R8 mapping, but omit that
