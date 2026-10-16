@@ -1411,10 +1411,6 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
         meshCore.sendVerifyResponse(peerID, noiseKeyHex, nonceA)
     }
 
-    override fun sendVoiceFrame(recipientPeerID: String?, payload: ByteArray) {
-        meshCore.sendVoiceFrame(recipientPeerID, payload)
-    }
-
     /**
      * Broadcasts an ANNOUNCE packet to the entire mesh.
      */

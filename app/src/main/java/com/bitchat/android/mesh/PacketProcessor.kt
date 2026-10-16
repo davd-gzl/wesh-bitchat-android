@@ -145,10 +145,15 @@ class PacketProcessor(private val myPeerID: String) {
                 validPacket = false
                 if (packetRelayManager.isPacketAddressedToMe(packet)) handleMessage(routed)
             }
-            MessageType.VOICE_FRAME -> validPacket = delegate?.handleVoiceFrame(routed) ?: false
+            // Wesh has no voice: a BitChat live voice frame is never handled, never relayed and
+            // never refreshes liveness, whoever sent it and whoever it is addressed to.
+            MessageType.VOICE_FRAME -> validPacket = false
             MessageType.LEAVE -> handleLeave(routed)
             MessageType.FRAGMENT -> {
-                if (isFileTransferFragment(packet)) {
+                if (isVoiceFrameFragment(packet)) {
+                    // Same for a voice frame split into fragments: neither reassembled nor relayed.
+                    validPacket = false
+                } else if (isFileTransferFragment(packet)) {
                     // Fragments of a file are never relayed; only a file addressed to us is
                     // reassembled, in memory, so it can reach the handler like an unfragmented one.
                     validPacket = false
@@ -244,9 +249,15 @@ class PacketProcessor(private val myPeerID: String) {
 
     /** Reads the original-type byte of the fragment header without copying the fragment data. */
     private fun isFileTransferFragment(packet: BitchatPacket): Boolean =
-        packet.payload.size >= com.bitchat.android.model.FragmentPayload.HEADER_SIZE &&
-            packet.payload[com.bitchat.android.model.FragmentPayload.HEADER_SIZE - 1].toUByte() ==
-            MessageType.FILE_TRANSFER.value
+        fragmentOriginalType(packet) == MessageType.FILE_TRANSFER.value
+
+    private fun isVoiceFrameFragment(packet: BitchatPacket): Boolean =
+        fragmentOriginalType(packet) == MessageType.VOICE_FRAME.value
+
+    private fun fragmentOriginalType(packet: BitchatPacket): UByte? =
+        if (packet.payload.size >= com.bitchat.android.model.FragmentPayload.HEADER_SIZE) {
+            packet.payload[com.bitchat.android.model.FragmentPayload.HEADER_SIZE - 1].toUByte()
+        } else null
 
     /**
      * Handle REQUEST_SYNC packets (public, TTL=1)
@@ -323,7 +334,6 @@ interface PacketProcessorDelegate {
     fun handleNoiseEncrypted(routed: RoutedPacket): Boolean
     suspend fun handleAnnounce(routed: RoutedPacket): Boolean
     fun handleMessage(routed: RoutedPacket)
-    fun handleVoiceFrame(routed: RoutedPacket): Boolean = false
     fun isRelaySuppressed(packet: BitchatPacket, peerID: String): Boolean = false
     fun handleLeave(routed: RoutedPacket)
     fun handleFragment(packet: BitchatPacket): BitchatPacket?

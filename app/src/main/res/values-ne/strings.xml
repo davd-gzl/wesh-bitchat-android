@@ -119,7 +119,6 @@
     <string name="cd_scroll_to_bottom">तल स्क्रोल गर्नुहोस्</string>
     <string name="cd_cancel">रद्द</string>
     <string name="cd_link">लिङ्क</string>
-    <string name="cd_record_voice">भ्वाइस नोट रेकर्ड</string>
     <string name="cd_offline_mesh_chat">अफलाइन मेष च्याट</string>
     <string name="cd_end_to_end_encryption">एन्ड‑टु‑एन्ड इन्क्रिप्सन</string>
 
@@ -239,7 +238,6 @@
     <!-- अनुमति प्रकार -->
     <string name="perm_type_nearby_devices">नजिकका यन्त्रहरू</string>
     <string name="perm_type_precise_location">ठ्याक्कै स्थान</string>
-    <string name="perm_type_microphone">माइक</string>
     <string name="perm_type_notifications">सूचना</string>
     <string name="perm_type_battery_optimization">ब्याट्री अनुकूलन</string>
     <string name="perm_type_other">अन्य</string>

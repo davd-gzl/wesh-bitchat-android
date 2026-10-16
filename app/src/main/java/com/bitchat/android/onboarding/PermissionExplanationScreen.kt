@@ -5,7 +5,6 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Power
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.Settings
@@ -216,7 +215,6 @@ private fun getPermissionIcon(permissionType: PermissionType): ImageVector {
     return when (permissionType) {
         PermissionType.NEARBY_DEVICES -> Icons.Filled.Bluetooth
         PermissionType.PRECISE_LOCATION -> Icons.Filled.LocationOn
-        PermissionType.MICROPHONE -> Icons.Filled.Mic
         PermissionType.NOTIFICATIONS -> Icons.Filled.Notifications
         PermissionType.WIFI_AWARE -> Icons.Filled.Wifi
         PermissionType.BATTERY_OPTIMIZATION -> Icons.Filled.Power
@@ -228,7 +226,6 @@ private fun getPermissionIcon(permissionType: PermissionType): ImageVector {
 private fun permissionCategoryName(type: PermissionType): String = when (type) {
     PermissionType.NEARBY_DEVICES -> stringResource(R.string.perm_type_nearby_devices)
     PermissionType.PRECISE_LOCATION -> stringResource(R.string.perm_type_precise_location)
-    PermissionType.MICROPHONE -> stringResource(R.string.perm_type_microphone)
     PermissionType.NOTIFICATIONS -> stringResource(R.string.perm_type_notifications)
     PermissionType.BATTERY_OPTIMIZATION -> stringResource(R.string.perm_type_battery_optimization)
     PermissionType.WIFI_AWARE -> "Wi-Fi Aware"

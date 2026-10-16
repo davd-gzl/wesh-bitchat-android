@@ -154,7 +154,6 @@
   <string name="cd_scroll_to_bottom">גלול לתחתית</string>
   <string name="cd_cancel">בטל</string>
   <string name="cd_link">קישור</string>
-  <string name="cd_record_voice">הקלט הודעה קולית</string>
   <string name="cd_offline_mesh_chat">צ׳אט Mesh לא מקוון</string>
   <string name="cd_end_to_end_encryption">הצפנה מקצה לקצה</string>
   <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
@@ -260,7 +259,6 @@
   <string name="perm_battery_system">Allow Wesh to run without battery restrictions.</string>
   <string name="perm_type_nearby_devices">מכשירים קרובים</string>
   <string name="perm_type_precise_location">מיקום מדויק</string>
-  <string name="perm_type_microphone">מיקרופון</string>
   <string name="perm_type_notifications">התראות</string>
   <string name="perm_type_battery_optimization">ייעול צריכת סוללה</string>
   <string name="perm_type_other">אחר</string>

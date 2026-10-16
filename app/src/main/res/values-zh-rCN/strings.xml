@@ -152,7 +152,6 @@
   <string name="cd_scroll_to_bottom">滚动到底部</string>
   <string name="cd_cancel">取消</string>
   <string name="cd_link">链接</string>
-  <string name="cd_record_voice">录制语音消息</string>
   <string name="cd_offline_mesh_chat">离线 Mesh 聊天</string>
   <string name="cd_end_to_end_encryption">端到端加密</string>
   <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
@@ -258,7 +257,6 @@
   <string name="perm_battery_system">Allow Wesh to run without battery restrictions.</string>
   <string name="perm_type_nearby_devices">附近的设备</string>
   <string name="perm_type_precise_location">精确位置</string>
-  <string name="perm_type_microphone">麦克风</string>
   <string name="perm_type_notifications">通知</string>
   <string name="perm_type_battery_optimization">电池优化</string>
   <string name="perm_type_other">其他</string>
