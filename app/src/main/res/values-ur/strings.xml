@@ -29,12 +29,12 @@
     <string name="battery_optimization_not_required">بیٹری کی اصلاح ضروری نہیں</string>
     <string name="battery_optimization_checking">بیٹری کی اصلاح چیک کر رہے ہیں</string>
     <string name="battery_optimization_why_disable">بیٹری کی اصلاح کیوں بند کریں؟</string>
-    <string name="battery_optimization_explanation">bitchat قریبی آلات کے ساتھ میش کنیکشن برقرار رکھنے کے لیے پس منظر میں چلتا ہے۔ بیٹری کی اصلاح ان کنیکشنز کو خراب کر سکتی ہے، جس سے پیغامات دیر سے پہنچیں یا کھو جائیں۔\n\nبیٹری کی اصلاح بند کرنا قابل اعتماد پیئر‑ٹو‑پیئر کمیونیکیشن کو یقینی بناتا ہے۔</string>
+    <string name="battery_optimization_explanation">Wesh قریبی آلات کے ساتھ میش کنیکشن برقرار رکھنے کے لیے پس منظر میں چلتا ہے۔ بیٹری کی اصلاح ان کنیکشنز کو خراب کر سکتی ہے، جس سے پیغامات دیر سے پہنچیں یا کھو جائیں۔\n\nبیٹری کی اصلاح بند کرنا قابل اعتماد پیئر‑ٹو‑پیئر کمیونیکیشن کو یقینی بناتا ہے۔</string>
     <string name="battery_optimization_disable_button">بیٹری کی اصلاح بند کریں</string>
-    <string name="battery_optimization_note">نوٹ: آپ بعد میں Android سیٹنگز &gt; ایپس &gt; bitchat &gt; بیٹری میں اسے تبدیل کر سکتے ہیں۔</string>
-    <string name="battery_optimization_not_supported_explanation">آپ کے آلے کو بیٹری کی اصلاح کی سیٹنگز کی ضرورت نہیں۔ bitchat عام طور پر چلے گا۔</string>
-    <string name="battery_optimization_not_supported_message">آپ کے آلے کو بیٹری کی اصلاح کی سیٹنگز کی ضرورت نہیں۔ bitchat عام طور پر چلے گا۔</string>
-    <string name="battery_optimization_success_message">bitchat پس منظر میں قابل اعتماد طور پر چل سکتا ہے</string>
+    <string name="battery_optimization_note">نوٹ: آپ بعد میں Android سیٹنگز &gt; ایپس &gt; Wesh &gt; بیٹری میں اسے تبدیل کر سکتے ہیں۔</string>
+    <string name="battery_optimization_not_supported_explanation">آپ کے آلے کو بیٹری کی اصلاح کی سیٹنگز کی ضرورت نہیں۔ Wesh عام طور پر چلے گا۔</string>
+    <string name="battery_optimization_not_supported_message">آپ کے آلے کو بیٹری کی اصلاح کی سیٹنگز کی ضرورت نہیں۔ Wesh عام طور پر چلے گا۔</string>
+    <string name="battery_optimization_success_message">Wesh پس منظر میں قابل اعتماد طور پر چل سکتا ہے</string>
     <string name="battery_optimization_benefits">• پیغامات کی قابل اعتماد ڈیلیوری\n• میش کنیکشن برقرار رکھنا\n• پس منظری پیغام فارورڈنگ\n• منطقی کنیکشن سے بچاؤ</string>
     <string name="battery_optimization_check_again">دوبارہ چیک کریں</string>
     <string name="battery_optimization_skip">ابھی چھوڑیں</string>
@@ -46,7 +46,7 @@
     <string name="notification_summary_more">اور %1$d مزید</string>
     <string name="notification_messages_from_people">%2$d لوگوں سے %1$d پیغامات</string>
     <string name="notification_more_conversations">اور %1$d مزید گفتگو</string>
-    <string name="notification_active_peers_title">قریب میں bitchatter!</string>
+    <string name="notification_active_peers_title">قریب میں Weshter!</string>
     <string name="notification_active_peers_one">قریب میں 1 شخص</string>
     <string name="notification_active_peers_many">قریب میں %1$d لوگ</string>
     <string name="notification_new_messages">نئے پیغامات</string>
@@ -57,8 +57,8 @@
     <string name="notification_new_activity_in">%1$s میں نئی سرگرمی</string>
     <string name="notification_messages_in">%1$s میں پیغامات</string>
     <string name="notification_joined_conversation">%1$s گفتگو میں شامل ہوا</string>
-    <string name="notification_geohash_summary_title_mentions">bitchat – %1$d ذکر</string>
-    <string name="notification_geohash_summary_title">bitchat – مقام چیٹس</string>
+    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d ذکر</string>
+    <string name="notification_geohash_summary_title">Wesh – مقام چیٹس</string>
     <string name="notification_geohash_summary_text">%2$d مقامات سے %1$d پیغامات</string>
     <string name="notification_mesh_mention_title_singular">میش چیٹ میں ذکر</string>
     <string name="notification_mesh_mention_title_plural">میش چیٹ میں %1$d ذکر</string>
@@ -244,8 +244,8 @@
     <!-- آن بورڈنگ اسکرینز -->
     <string name="location_services_required">مقام کی خدمات ضروری</string>
     <string name="privacy_first">پرائیویسی پہلے</string>
-    <string name="location_explanation">bitchat آپ کا مقام ٹریک نہیں کرتا۔\n\nBluetooth اسکیننگ اور geohash چیٹ فیچر کے لیے مقام کی خدمات ضروری ہیں۔</string>
-    <string name="location_needs_for">bitchat کو مقام کی خدمات کی ضرورت:</string>
+    <string name="location_explanation">Wesh آپ کا مقام ٹریک نہیں کرتا۔\n\nBluetooth اسکیننگ اور geohash چیٹ فیچر کے لیے مقام کی خدمات ضروری ہیں۔</string>
+    <string name="location_needs_for">Wesh کو مقام کی خدمات کی ضرورت:</string>
     <string name="location_needs_bullets">• Bluetooth آلات اسکیننگ\n• میش نیٹ ورک میں قریبی صارفین کی دریافت\n• geohash چیٹ فیچر\n• کوئی ٹریکنگ یا مقام کا اجماع نہیں</string>
     <string name="open_location_settings">مقام سیٹنگز کھولیں</string>
     <string name="check_again">دوبارہ چیک کریں</string>
@@ -276,7 +276,7 @@
     <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">اجازات</string>
     <string name="grant_permissions">اجازات دیں</string>
-    <string name="location_tracking_warning">bitchat آپ کا مقام ٹریک نہیں کرتا</string>
+    <string name="location_tracking_warning">Wesh آپ کا مقام ٹریک نہیں کرتا</string>
     <string name="nobody_around">یہاں کوئی نہیں…</string>
     <string name="you_suffix"> (آپ)</string>
     <string name="pan_zoom_instruction">geohash منتخب کرنے کے لیے پین/زوم کریں</string>

@@ -29,12 +29,12 @@
     <string name="battery_optimization_not_required">لا حاجة لتحسين البطارية</string>
     <string name="battery_optimization_checking">جارٍ التحقق من تحسين البطارية</string>
     <string name="battery_optimization_why_disable">لماذا تعطيل تحسين البطارية؟</string>
-    <string name="battery_optimization_explanation">تعمل bitchat في الخلفية للحفاظ على اتصالات الشبكة المتشابكة مع الأجهزة القريبة. قد يقطع تحسين البطارية هذه الاتصالات مما يؤدي إلى تأخير الرسائل أو فقدانها.\n\nيساعد تعطيل تحسين البطارية في ضمان اتصال موثوق بين النظراء.</string>
+    <string name="battery_optimization_explanation">تعمل Wesh في الخلفية للحفاظ على اتصالات الشبكة المتشابكة مع الأجهزة القريبة. قد يقطع تحسين البطارية هذه الاتصالات مما يؤدي إلى تأخير الرسائل أو فقدانها.\n\nيساعد تعطيل تحسين البطارية في ضمان اتصال موثوق بين النظراء.</string>
     <string name="battery_optimization_disable_button">تعطيل تحسين البطارية</string>
-    <string name="battery_optimization_note">ملاحظة: يمكنك تغيير ذلك لاحقًا من إعدادات أندرويد &gt; التطبيقات &gt; bitchat &gt; البطارية.</string>
-    <string name="battery_optimization_not_supported_explanation">جهازك لا يحتاج إلى إعدادات تحسين البطارية. ستعمل bitchat بشكل طبيعي.</string>
-    <string name="battery_optimization_not_supported_message">جهازك لا يحتاج إلى إعدادات تحسين البطارية. ستعمل bitchat بشكل طبيعي.</string>
-    <string name="battery_optimization_success_message">يمكن لـ bitchat العمل بشكل موثوق في الخلفية</string>
+    <string name="battery_optimization_note">ملاحظة: يمكنك تغيير ذلك لاحقًا من إعدادات أندرويد &gt; التطبيقات &gt; Wesh &gt; البطارية.</string>
+    <string name="battery_optimization_not_supported_explanation">جهازك لا يحتاج إلى إعدادات تحسين البطارية. ستعمل Wesh بشكل طبيعي.</string>
+    <string name="battery_optimization_not_supported_message">جهازك لا يحتاج إلى إعدادات تحسين البطارية. ستعمل Wesh بشكل طبيعي.</string>
+    <string name="battery_optimization_success_message">يمكن لـ Wesh العمل بشكل موثوق في الخلفية</string>
     <string name="battery_optimization_benefits">• تسليم موثوق للرسائل\n• الحفاظ على اتصال الشبكة المتشابكة\n• تمرير الرسائل في الخلفية\n• منع انقطاع الاتصال</string>
     <string name="battery_optimization_check_again">التحقق مرة أخرى</string>
     <string name="battery_optimization_skip">تخطي الآن</string>
@@ -57,8 +57,8 @@
     <string name="notification_new_activity_in">نشاط جديد في %1$s</string>
     <string name="notification_messages_in">رسائل في %1$s</string>
     <string name="notification_joined_conversation">%1$s انضم إلى المحادثة</string>
-    <string name="notification_geohash_summary_title_mentions">bitchat – %1$d إشارات</string>
-    <string name="notification_geohash_summary_title">bitchat – محادثات المواقع</string>
+    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d إشارات</string>
+    <string name="notification_geohash_summary_title">Wesh – محادثات المواقع</string>
     <string name="notification_geohash_summary_text">%1$d رسائل من %2$d مواقع</string>
     <string name="notification_mesh_mention_title_singular">تم ذكرك في محادثة الشبكة</string>
     <string name="notification_mesh_mention_title_plural">%1$d من الإشارات في محادثة الشبكة</string>
@@ -244,13 +244,13 @@
     <!-- شاشات البدء -->
     <string name="location_services_required">خدمات الموقع مطلوبة</string>
     <string name="privacy_first">الخصوصية أولاً</string>
-    <string name="location_explanation">bitchat لا يتتبع موقعك.\n\nخدمات الموقع مطلوبة لمسح البلوتوث وميزة دردشة geohash.</string>
-    <string name="location_needs_for">bitchat يحتاج خدمات الموقع من أجل:</string>
+    <string name="location_explanation">Wesh لا يتتبع موقعك.\n\nخدمات الموقع مطلوبة لمسح البلوتوث وميزة دردشة geohash.</string>
+    <string name="location_needs_for">Wesh يحتاج خدمات الموقع من أجل:</string>
     <string name="location_needs_bullets">• مسح أجهزة البلوتوث\n• اكتشاف المستخدمين القريبين في شبكة mesh\n• ميزة دردشة geohash\n• بدون تتبع أو جمع للموقع</string>
     <string name="open_location_settings">فتح إعدادات الموقع</string>
     <string name="check_again">التحقق مرة أخرى</string>
     <string name="location_services_unavailable">خدمات الموقع غير متاحة</string>
-    <string name="location_unavailable_explanation">خدمات الموقع غير متاحة على هذا الجهاز. هذا غير معتاد لأن خدمات الموقع قياسية في أجهزة أندرويد.\n\nتتطلب bitchat خدمات الموقع لعمل مسح البلوتوث بشكل صحيح (متطلب أندرويد). بدون ذلك لا يمكن للتطبيق اكتشاف المستخدمين القريبين.</string>
+    <string name="location_unavailable_explanation">خدمات الموقع غير متاحة على هذا الجهاز. هذا غير معتاد لأن خدمات الموقع قياسية في أجهزة أندرويد.\n\nتتطلب Wesh خدمات الموقع لعمل مسح البلوتوث بشكل صحيح (متطلب أندرويد). بدون ذلك لا يمكن للتطبيق اكتشاف المستخدمين القريبين.</string>
     <string name="checking_location_services">جارٍ التحقق من خدمات الموقع…</string>
     <string name="bluetooth_required">البلوتوث مطلوب</string>
     <string name="bluetooth_needs_for">Wesh يحتاج البلوتوث من أجل:</string>
@@ -276,7 +276,7 @@
     <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">الأذونات</string>
     <string name="grant_permissions">منح الأذونات</string>
-    <string name="location_tracking_warning">bitchat لا يتتبع موقعك</string>
+    <string name="location_tracking_warning">Wesh لا يتتبع موقعك</string>
     <string name="nobody_around">لا أحد هنا…</string>
     <string name="you_suffix"> (أنت)</string>
     <string name="pan_zoom_instruction">حرّك وقرّب لاختيار geohash</string>

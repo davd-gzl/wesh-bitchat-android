@@ -21,6 +21,9 @@ internal class StartupCoordinator<T>(
 
     private val mutableState = MutableStateFlow<State<T>>(State.Initializing)
     val state = mutableState.asStateFlow()
+    private val mutableFailures = MutableStateFlow(0)
+    /** Consecutive failed preparations in this process; reset once preparation succeeds. */
+    val failures = mutableFailures.asStateFlow()
     private var job: Job? = null
 
     @Synchronized
@@ -31,11 +34,13 @@ internal class StartupCoordinator<T>(
         job = scope.launch {
             try {
                 mutableState.value = State.Ready(prepare())
+                mutableFailures.value = 0
             } catch (cancelled: CancellationException) {
                 mutableState.value = State.Failed
                 throw cancelled
             } catch (_: Exception) {
                 // Do not put key aliases, paths or decrypted values into UI/error logs.
+                mutableFailures.value++
                 mutableState.value = State.Failed
             }
         }

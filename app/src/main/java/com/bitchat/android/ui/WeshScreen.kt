@@ -119,9 +119,12 @@ fun WeshScreen(viewModel: ChatViewModel) {
     var feedback by remember { mutableStateOf<String?>(null) }
     var muted by remember(preferencesEpoch) { mutableStateOf(prefs.publicMuted) }
     var editedNickname by rememberSaveable(nickname) { mutableStateOf(nickname) }
+    // Bumped by local actions (block, unblock) whose effect is not observable as a flow.
     var revision by remember { mutableIntStateOf(0) }
-    // Session invalidation must disable sending even when a persisted contact does not change.
-    LaunchedEffect(viewModel) { while (true) { delay(1000); revision++ } }
+    // Session invalidation must disable sending even when a persisted contact does not change:
+    // observe the session and Bluetooth state flows instead of recomposing on a timer.
+    val sessionStates by viewModel.peerSessionStates.collectAsState()
+    val bluetoothReadyState by viewModel.weshBluetoothReadyState.collectAsState()
     LaunchedEffect(selectedPrivate) { if (selectedPrivate != null) publicOpen = false }
     LaunchedEffect(requestedContactSheet) { if (requestedContactSheet) contactOpen = true }
     val privatePeer = selectedPrivate
@@ -129,8 +132,9 @@ fun WeshScreen(viewModel: ChatViewModel) {
     val conversationTitle = if (publicOpen) "Salon local" else if (privatePeer != null)
         conversations.firstOrNull { it.conversationID == privatePeer }?.displayName ?: "Contact"
         else listOf("Discussions", "Réglages")[tab]
-    val bluetoothReady = revision >= 0 && viewModel.weshBluetoothReady()
-    val canSend = if (publicOpen) bluetoothReady else privatePeer != null && revision >= 0 && viewModel.weshCanSendPrivate(privatePeer)
+    val bluetoothReady = bluetoothReadyState || viewModel.weshBluetoothReady()
+    val canSend = if (publicOpen) bluetoothReady else privatePeer != null && revision >= 0 &&
+        sessionStates.let { viewModel.weshCanSendPrivate(privatePeer) }
     fun back() { publicOpen = false; viewModel.endPrivateChat(); feedback = null }
     fun dismissContact() { contactOpen = false; viewModel.weshContactSheet.value = false; viewModel.weshIncomingQR.value = null }
     BackHandler(inConversation || contactOpen) { if (contactOpen) dismissContact() else back() }
