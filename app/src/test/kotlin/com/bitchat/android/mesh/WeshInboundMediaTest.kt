@@ -106,7 +106,41 @@ class WeshInboundMediaTest {
     }
 
     @Test
+    fun `Wesh drops unencrypted directed text entirely`() = runBlocking {
+        handler.acceptDirectedPlaintext = false
+        handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, myPeerID.hexToBytes(), "directed".toByteArray()), peerID, "link"))
+        verify(delegate, never()).onMessageReceived(any())
+        assertEquals(1L, handler.publicBudget.dropped)
+    }
+
+    @Test
+    fun `budget follows the Noise authenticated key, never the announced claim`() = runBlocking {
+        val otherPeer = "1111aaaa2222bbbb"
+        val otherInfo = delegate.getPeerInfo(peerID)!!.copy(id = otherPeer)
+        whenever(delegate.getPeerInfo(otherPeer)).thenReturn(otherInfo)
+        whenever(delegate.getPeerNickname(otherPeer)).thenReturn("Synthetic")
+        // Same announced key on two peer IDs, no session: separate per-peer budgets (5 each).
+        repeat(10) { handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, "a$it".toByteArray()), peerID, "link")) }
+        repeat(10) { handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, "b$it".toByteArray()).copy(senderID = otherPeer.hexToBytes()), otherPeer, "link")) }
+        verify(delegate, times(10)).onMessageReceived(any())
+    }
+
+    @Test
+    fun `peers proven to hold one key share one budget`() = runBlocking {
+        val otherPeer = "1111aaaa2222bbbb"
+        val key = ByteArray(32) { 7 }
+        val otherInfo = delegate.getPeerInfo(peerID)!!.copy(id = otherPeer)
+        whenever(delegate.getPeerInfo(otherPeer)).thenReturn(otherInfo)
+        whenever(delegate.getAuthenticatedRemoteStaticKey(peerID)).thenReturn(key)
+        whenever(delegate.getAuthenticatedRemoteStaticKey(otherPeer)).thenReturn(key)
+        repeat(10) { handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, "a$it".toByteArray()), peerID, "link")) }
+        repeat(10) { handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, "b$it".toByteArray()).copy(senderID = otherPeer.hexToBytes()), otherPeer, "link")) }
+        verify(delegate, times(5)).onMessageReceived(any())
+    }
+
+    @Test
     fun `signed directed plain text is delivered as private so QR admission applies`() = runBlocking {
+        handler.acceptDirectedPlaintext = true
         handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, myPeerID.hexToBytes(), "directed".toByteArray()), peerID, "link"))
 
         val captor = argumentCaptor<BitchatMessage>()
@@ -117,6 +151,7 @@ class WeshInboundMediaTest {
 
     @Test
     fun `unsigned or oversized directed plain text is dropped`() = runBlocking {
+        handler.acceptDirectedPlaintext = true
         val unsigned = packet(MessageType.MESSAGE, myPeerID.hexToBytes(), "directed".toByteArray()).copy(signature = null)
         handler.handleMessage(RoutedPacket(unsigned, peerID, "link"))
         whenever(delegate.verifySignature(any(), eq(peerID))).thenReturn(false)

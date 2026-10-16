@@ -2,6 +2,7 @@ package com.bitchat.android.services
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -25,37 +26,35 @@ class WeshMessageRequestsTest {
     }
 
     @Test
-    fun `new sources are rate limited per window`() {
-        repeat(25) { WeshMessageRequests.record("peer-$it", "Synthetic", fp(it), time) }
-        assertEquals(WeshMessageRequests.MAX_NEW_SOURCES_PER_WINDOW, WeshMessageRequests.requests.value.size)
-
-        time += WeshMessageRequests.NEW_SOURCE_WINDOW_MS
-        WeshMessageRequests.record("peer-late", "Synthetic", fp(99), time)
-        assertEquals(WeshMessageRequests.MAX_NEW_SOURCES_PER_WINDOW + 1, WeshMessageRequests.requests.value.size)
+    fun `a flood of new sources stays bounded without refusing new authenticated requests`() {
+        repeat(100) { WeshMessageRequests.record("peer-$it", "Synthetic", fp(it), time) }
+        val requests = WeshMessageRequests.requests.value
+        assertEquals(WeshMessageRequests.MAX_REQUESTS, requests.size)
+        assertEquals(fp(99), requests.first().fingerprint)
     }
 
     @Test
-    fun `displayed nickname is bounded and stripped of control characters`() {
-        WeshMessageRequests.record("peer-a", "‮abc" + "x".repeat(200) + "\n", fp(1), time)
-        val name = WeshMessageRequests.requests.value.single().nickname
-        assertTrue(name.length <= WeshMessageRequests.MAX_NICKNAME_CHARS + 1)
-        assertTrue(name.none { it == '\n' })
-    }
-
-    @Test
-    fun `unauthenticated entries are evicted before authenticated ones`() {
-        var index = 0
-        fun fill(count: Int, authenticated: Boolean) = repeat(count) {
-            index++
-            WeshMessageRequests.record("peer-$index", "Synthetic", if (authenticated) fp(index) else null, time)
-            time += WeshMessageRequests.NEW_SOURCE_WINDOW_MS / WeshMessageRequests.MAX_NEW_SOURCES_PER_WINDOW
-        }
-        fill(WeshMessageRequests.MAX_REQUESTS - 2, authenticated = true)
-        fill(2, authenticated = false)
-        fill(10, authenticated = false)
+    fun `the oldest unauthenticated request is dropped before any authenticated one`() {
+        repeat(WeshMessageRequests.MAX_REQUESTS - 1) { WeshMessageRequests.record("peer-$it", "Synthetic", fp(it), time) }
+        repeat(10) { WeshMessageRequests.record("anon-$it", "Synthetic", null, time) }
 
         val requests = WeshMessageRequests.requests.value
         assertEquals(WeshMessageRequests.MAX_REQUESTS, requests.size)
-        assertEquals(WeshMessageRequests.MAX_REQUESTS - 2, requests.count { it.fingerprint != null })
+        assertEquals(WeshMessageRequests.MAX_REQUESTS - 1, requests.count { it.fingerprint != null })
+        assertEquals(listOf("anon-9"), requests.filter { it.fingerprint == null }.map { it.peerID })
+    }
+
+    @Test
+    fun `display names drop controls and bidi overrides, normalize and bound combining marks`() {
+        val spoof = WeshMessageRequests.displayName("‮evil​\u0007name", "peer-a")
+        assertEquals("evilname", spoof)
+        assertEquals("ABC", WeshMessageRequests.displayName("ＡＢＣ", "peer-a"))
+        val zalgo = WeshMessageRequests.displayName("a" + "́".repeat(50) + "b", "peer-a")
+        assertEquals("\u00E1\u0301\u0301b", zalgo)
+        assertEquals("peer-abc", WeshMessageRequests.displayName("‏\u0000", "peer-abcdef"))
+        val long = WeshMessageRequests.displayName("x".repeat(200), "peer-a")
+        assertEquals(WeshMessageRequests.MAX_NICKNAME_CHARS + 1, long.length)
+        assertFalse(long.contains('\n'))
+        assertTrue(long.endsWith("…"))
     }
 }

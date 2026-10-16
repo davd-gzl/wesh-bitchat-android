@@ -102,6 +102,7 @@ fun WeshScreen(viewModel: ChatViewModel) {
     }
     val requestedContactSheet by viewModel.weshContactSheet.collectAsState()
     val requests by viewModel.weshRequests.collectAsState()
+    val sessionHidden by viewModel.weshSessionHiddenPeers.collectAsState()
     val contactStoreFailed by viewModel.weshContactStoreFailed.collectAsState()
     var requestAction by remember { mutableStateOf<com.bitchat.android.services.WeshMessageRequests.Request?>(null) }
     val conversations by viewModel.conversations.collectAsState()
@@ -272,6 +273,10 @@ fun WeshScreen(viewModel: ChatViewModel) {
                                 TextButton(onClick = { contactAction = "block" to contact.conversationID }, modifier = Modifier.semantics { contentDescription = "Bloquer ${contact.nickname}" }) { Text("Bloquer") } }
                         }
                         item { Text("Personnes bloquées", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() }) }
+                        items(sessionHidden.toList(), key = { "session-$it" }) { peerID ->
+                            Text("${viewModel.peerNicknames.value[peerID] ?: "Identité non authentifiée"} · masqué jusqu’à la fermeture de Wesh")
+                            TextButton(onClick = { viewModel.weshUnhidePeer(peerID) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Débloquer") }
+                        }
                         items(if (revision >= 0) viewModel.weshBlockedFingerprints().toList() else emptyList()) { fingerprint ->
                             Text("${viewModel.weshContactName(fingerprint)} · ${fingerprint.take(8)}")
                             TextButton(onClick = { contactAction = "unblock" to fingerprint }, modifier = Modifier.semantics { contentDescription = "Débloquer ${viewModel.weshContactName(fingerprint)}" }) { Text("Débloquer") }

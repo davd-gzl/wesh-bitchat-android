@@ -37,8 +37,8 @@ class PublicInboundBudget(
         val buckets = listOf(
             refill(globalBucket, global, time),
             refill(bucket(peers, sourceKey, perPeer, peerOverflow, time), perPeer, time),
-            // A message without a link identity still pays into a shared link bucket.
-            refill(bucket(links, linkID ?: UNKNOWN_LINK, perLink, linkOverflow, time), perLink, time)
+            // A message without a link identity pays into a link bucket of its own source.
+            refill(bucket(links, linkID ?: "nolink:$sourceKey", perLink, linkOverflow, time), perLink, time)
         )
         if (buckets.any { it.tokens < 1.0 }) {
             droppedCount.incrementAndGet()
@@ -79,6 +79,5 @@ class PublicInboundBudget(
     companion object {
         /** Same limit as outgoing Wesh public text (V1). */
         const val MAX_PUBLIC_TEXT_BYTES = 2_000
-        private const val UNKNOWN_LINK = "unknown-link"
     }
 }

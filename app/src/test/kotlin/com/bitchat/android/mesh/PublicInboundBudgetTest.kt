@@ -56,8 +56,9 @@ class PublicInboundBudgetTest {
     }
 
     @Test
-    fun `messages without a link identity share a bounded link bucket`() {
-        val admitted = (0 until 50).count { budget.tryAdmit("noise:$it", null) }
-        assertEquals(8, admitted)
+    fun `messages without a link identity pay into a link bucket of their own source`() {
+        val admittedA = (0 until 10).count { budget.tryAdmit("noise:a", null) }
+        assertEquals(3, admittedA)
+        assertTrue("one source without a link cannot starve another", budget.tryAdmit("noise:b", null))
     }
 }

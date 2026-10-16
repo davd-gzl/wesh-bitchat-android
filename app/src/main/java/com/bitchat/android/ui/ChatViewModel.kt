@@ -1139,7 +1139,7 @@ class ChatViewModel(
 
     fun weshCanSendPrivate(peerID: String): Boolean = weshPrivateSender.canSend(ContactDirectory.canonicalConversationId(peerID), mesh)
 
-    fun weshIsBlocked(peerID: String): Boolean = peerID in weshSessionHiddenPeers.value || privateChatManager.isPeerBlocked(peerID)
+    fun weshIsBlocked(peerID: String): Boolean = privateChatManager.isPeerBlocked(peerID)
     fun weshBlockedFingerprints(): Set<String> = weshContactStore.blockedFingerprints()
     fun weshContactName(fingerprint: String): String = weshContactStore.forFingerprint(fingerprint)?.nickname
         ?: identityManager.getCachedFingerprintNickname(fingerprint) ?: "Identité ${fingerprint.take(8)}"
@@ -1153,7 +1153,13 @@ class ChatViewModel(
         clearNotificationsForSender(resolution.conversationID)
         return true
     }
-    fun weshUnblock(fingerprint: String) { dataManager.removeBlockedUser(fingerprint) }
+    fun weshUnblock(fingerprint: String) {
+        dataManager.removeBlockedUser(fingerprint)
+        // Unblocking an identity also lifts any session-only hide of its current peer IDs.
+        com.bitchat.android.services.SessionHiddenPeers.peers.value
+            .filter { privateChatManager.getAllPeerFingerprints()[it] == fingerprint }
+            .forEach(com.bitchat.android.services.SessionHiddenPeers::unhide)
+    }
     fun retryWeshContacts() { weshContactStore.retryLoad() }
     fun weshDismissRequest(request: com.bitchat.android.services.WeshMessageRequests.Request) {
         com.bitchat.android.services.WeshMessageRequests.remove(request.peerID)
@@ -1167,7 +1173,8 @@ class ChatViewModel(
         com.bitchat.android.services.WeshMessageRequests.remove(request.peerID)
         return true
     }
-    private val weshSessionHiddenPeers = MutableStateFlow<Set<String>>(emptySet())
+    val weshSessionHiddenPeers = com.bitchat.android.services.SessionHiddenPeers.peers
+    fun weshUnhidePeer(peerID: String) = com.bitchat.android.services.SessionHiddenPeers.unhide(peerID)
     /**
      * Blocks a public sender locally. Returns true when the block is durable (authenticated
      * identity), false when the sender is only hidden by peer ID until Wesh restarts.
@@ -1175,7 +1182,7 @@ class ChatViewModel(
     fun weshBlockPublicSender(peerID: String): Boolean =
         when (val target = WeshPublicBlockPolicy.target(peerID, meshService.getAuthenticatedRemoteStaticKey(peerID))) {
             is WeshPublicBlockPolicy.Target.Identity -> { dataManager.addBlockedUser(target.fingerprint); true }
-            is WeshPublicBlockPolicy.Target.Session -> { weshSessionHiddenPeers.update { it + target.peerID }; false }
+            is WeshPublicBlockPolicy.Target.Session -> { com.bitchat.android.services.SessionHiddenPeers.hide(target.peerID); false }
         }
     fun removeWeshContact(conversationID: String) {
         verificationHandler.cancelWeshVerification(conversationID)
@@ -1643,7 +1650,7 @@ class ChatViewModel(
         verificationHandler.clearWeshVerifications()
         weshContactStore.clear()
         com.bitchat.android.services.WeshMessageRequests.clear()
-        weshSessionHiddenPeers.value = emptySet()
+        com.bitchat.android.services.SessionHiddenPeers.clear()
         clearAllCryptographicData()
         
         // Clear all notifications

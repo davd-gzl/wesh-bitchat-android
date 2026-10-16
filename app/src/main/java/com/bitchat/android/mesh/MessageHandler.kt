@@ -45,6 +45,9 @@ class MessageHandler(
      */
     var acceptIncomingMedia: Boolean = true
 
+    /** When false, unencrypted directed text is dropped: private messages travel only over Noise. */
+    var acceptDirectedPlaintext: Boolean = true
+
     private fun storeIncomingFile(file: com.bitchat.android.model.BitchatFilePacket): String =
         if (acceptIncomingMedia) com.bitchat.android.features.file.FileUtils.saveIncomingFile(appContext, file) else ""
 
@@ -476,7 +479,9 @@ class MessageHandler(
             Log.w(TAG, "Dropping public message from unverified peer ${peerID.take(8)}")
             return
         }
-        val budgetSource = peerInfo.noisePublicKey?.takeIf { it.size == 32 }?.let { "noise:" + it.toHexString() } ?: "peer:$peerID"
+        // Only a Noise-authenticated key may name a long-lived budget; an announce can claim any key.
+        val budgetSource = delegate?.getAuthenticatedRemoteStaticKey(peerID)?.takeIf { it.size == 32 }
+            ?.let { "noise:" + it.toHexString() } ?: "peer:$peerID"
         if (!publicBudget.tryAdmit(budgetSource, routed.ingressLinkID ?: routed.relayAddress)) return
         
         try {
@@ -569,6 +574,10 @@ class MessageHandler(
 
             // Fallback: directed plain text. It was addressed to us, so it is private by
             // transport and must pass private admission; relays see it, so require a signature.
+            if (!acceptDirectedPlaintext) {
+                publicBudget.recordDrop()
+                return
+            }
             if (!signatureIsValid) {
                 Log.w(TAG, "Unsigned or invalid signed directed text from ${peerID.take(8)}")
                 return
@@ -748,6 +757,8 @@ interface MessageHandlerDelegate {
     ): com.bitchat.android.noise.NoiseDecryptionResult?
     fun verifyEd25519Signature(signature: ByteArray, data: ByteArray, publicKey: ByteArray): Boolean
     fun getAuthenticatedSigningKey(noisePublicKey: ByteArray): ByteArray? = null
+    /** Static key proven by an established Noise session with this peer, if any. */
+    fun getAuthenticatedRemoteStaticKey(peerID: String): ByteArray? = null
     
     // Noise protocol operations
     fun hasNoiseSession(peerID: String): Boolean

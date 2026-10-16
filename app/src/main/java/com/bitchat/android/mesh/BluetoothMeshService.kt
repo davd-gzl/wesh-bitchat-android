@@ -155,6 +155,7 @@ class BluetoothMeshService(
         setupDelegates()
         messageHandler.packetProcessor = packetProcessor
         messageHandler.acceptIncomingMedia = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
+        messageHandler.acceptDirectedPlaintext = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
         //startPeriodicDebugLogging()
 
         // Flush queued private messages as soon as a BLE Noise session authenticates,
@@ -441,6 +442,9 @@ class BluetoothMeshService(
                 return encryptionService.hasEstablishedSession(peerID)
             }
 
+            override fun getAuthenticatedRemoteStaticKey(peerID: String): ByteArray? =
+                this@BluetoothMeshService.getAuthenticatedRemoteStaticKey(peerID)
+
             override fun removeNoiseSession(peerID: String) {
                 try {
                     encryptionService.removePeer(peerID)
@@ -509,7 +513,8 @@ class BluetoothMeshService(
                             val fingerprint = getAuthenticatedRemoteStaticKey(peerID)?.let {
                                 com.bitchat.android.services.ContactIdentityResolver.fingerprintHex(it)
                             } ?: getPeerFingerprint(peerID)
-                            fingerprint != null && context.getSharedPreferences("bitchat_prefs", Context.MODE_PRIVATE)
+                            com.bitchat.android.services.SessionHiddenPeers.contains(peerID) ||
+                                fingerprint != null && context.getSharedPreferences("bitchat_prefs", Context.MODE_PRIVATE)
                                 .getStringSet("blocked_users", emptySet())!!.contains(fingerprint)
                         }, qrEnrollment = weshQrEnrollment)
                 ) return
