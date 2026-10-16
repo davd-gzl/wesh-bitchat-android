@@ -87,6 +87,10 @@ class MessageRouter internal constructor(
      */
     internal var enforceWeshPolicy = com.bitchat.android.BuildConfig.WESH_POLICY
     internal var weshInternetLink: WeshInternetLink = WeshInternetLink.Live(context)
+    /** My npub while Internet mode is active; read-only, never creates a key. */
+    internal var weshMyNpub: () -> String? = { WeshQrIdentity.mine(context)?.npub }
+    /** Bumped by every clear (panic): an Internet send that fails afterwards is never requeued. */
+    @Volatile private var weshEpoch = 0L
     private val weshInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     /** Conversation + npub pairs already told my npub in this process (re-sent after a panic). */
     private val weshAnnounced = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -111,7 +115,8 @@ class MessageRouter internal constructor(
         startOutboxScheduler()
     }
 
-    fun clearAll() {
+    @Synchronized fun clearAll() {
+        weshEpoch++
         outbox.clear()
         retryState.clear()
         Log.d(TAG, "Cleared all MessageRouter outbox messages and retry state")
@@ -190,14 +195,26 @@ class MessageRouter internal constructor(
     /** Tor or the relays may drop between the check and the send: the message goes back in the queue. */
     private fun dispatchWeshInternet(entry: QueuedMessage, conversationID: String) {
         if (!weshInFlight.add(entry.messageID)) return
+        val epoch = weshEpoch
         schedulerScope.launch {
             try {
                 if (weshInternet().sendPrivate(entry.content, conversationID, entry.messageID)) {
                     AppStateStore.updatePrivateMessageStatus(entry.messageID, com.bitchat.android.model.DeliveryStatus.Sent)
                 } else {
-                    enqueue(conversationID, entry)
+                    requeueWesh(entry, conversationID, epoch)
                 }
             } finally { weshInFlight.remove(entry.messageID) }
+        }
+    }
+
+    /** Under the router monitor: never after a panic clear, never for a removed or blocked contact. */
+    @Synchronized private fun requeueWesh(entry: QueuedMessage, conversationID: String, epoch: Long) {
+        if (epoch != weshEpoch) return
+        if (WeshPrivateSender(WeshContactStore.get(context)).enrolled(conversationID)) {
+            enqueue(conversationID, entry)
+        } else {
+            AppStateStore.updatePrivateMessageStatus(entry.messageID,
+                com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
         }
     }
 
@@ -212,7 +229,7 @@ class MessageRouter internal constructor(
         schedulerScope.launch {
             val contacts = WeshContactStore.get(context)
             val sender = WeshPrivateSender(contacts)
-            val npub = WeshQrIdentity.mine(context)?.npub ?: return@launch
+            val npub = runCatching { weshMyNpub() }.getOrNull() ?: return@launch
             val contact = contacts.contact(conversationID) ?: return@launch
             val live = ContactDirectory.resolve(conversationID).meshPeerID ?: return@launch
             if (!sender.canSend(conversationID, mesh)) return@launch
@@ -274,10 +291,10 @@ class MessageRouter internal constructor(
         val resolution = ContactDirectory.resolve(toPeerID)
         val meshTarget = resolution.meshPeerID ?: toPeerID.takeIf { ContactIdentityResolver.isMeshPeerId(it) }
         if (meshTarget != null && mesh.getPeerInfo(meshTarget)?.isConnected == true && mesh.hasEstablishedSession(meshTarget)) {
-            // Wesh reads its npub only while Internet mode is active and never creates one here.
-            val myNpub = try {
-                if (enforceWeshPolicy) WeshQrIdentity.mine(context)?.npub
-                else com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(context)?.npub
+            // Wesh: my npub goes only to an enrolled contact, bound to its key, through
+            // announceWeshInternetKey. A favorite star never reveals it, and never creates a key.
+            val myNpub = if (enforceWeshPolicy) null else try {
+                com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(context)?.npub
             } catch (_: Exception) { null }
             val content = FavoriteControlMessage.encode(isFavorite, myNpub)
             val nickname = mesh.getPeerNicknames()[meshTarget] ?: meshTarget

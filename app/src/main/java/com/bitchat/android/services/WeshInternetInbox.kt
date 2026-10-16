@@ -36,6 +36,9 @@ internal class WeshInternetInbox(
     private val deliver: suspend (conversationID: String, message: BitchatMessage) -> Boolean,
     /** Applies an ack only to a message of that contact's conversation. */
     private val updateStatus: (conversationID: String, messageID: String, status: DeliveryStatus) -> Unit,
+    /** Durable record of DELIVERED acks already sent, so the 48 h lookback never re-acks after a restart. */
+    private val alreadyAcked: (messageID: String) -> Boolean,
+    private val markAcked: (messageID: String) -> Unit,
     private val nowSeconds: () -> Long = { System.currentTimeMillis() / 1000 }
 ) {
     enum class Outcome { STORED, ACK_APPLIED, DROPPED }
@@ -71,8 +74,11 @@ internal class WeshInternetInbox(
                     senderNostrPubkey = rawSender.lowercase()
                 )
                 if (!runCatching { deliver(conversationID, message) }.getOrDefault(false)) return Outcome.DROPPED
-                // The ack goes back over the transport the message came on (spec §3 rule 5).
-                route.sendAck(NoisePayloadType.DELIVERED, pm.messageID, conversationID)
+                // The ack goes back over the transport the message came on (spec §3 rule 5), once.
+                if (!runCatching { alreadyAcked(pm.messageID) }.getOrDefault(false) &&
+                    route.sendAck(NoisePayloadType.DELIVERED, pm.messageID, conversationID)) {
+                    runCatching { markAcked(pm.messageID) }
+                }
                 Outcome.STORED
             }
             NoisePayloadType.DELIVERED, NoisePayloadType.READ_RECEIPT -> {
@@ -120,6 +126,34 @@ internal class WeshInternetInbox(
 }
 
 /**
+ * Lifecycle of the gift-wrap subscription for my npub: subscribed only while Internet mode is
+ * On and my key exists; on Off (toggle or panic) unsubscribed and the inbox forgotten.
+ */
+internal class WeshInternetSubscription(
+    private val myIdentity: () -> NostrIdentity?,
+    private val subscribe: (filter: NostrFilter, handler: (NostrEvent) -> Unit) -> Unit,
+    private val unsubscribe: () -> Unit,
+    private val onEvent: (NostrEvent) -> Unit,
+    private val onOff: () -> Unit,
+    private val nowMs: () -> Long = System::currentTimeMillis
+) {
+    fun apply(state: WeshInternetState) {
+        when (state) {
+            WeshInternetState.On -> {
+                val me = runCatching { myIdentity() }.getOrNull() ?: return
+                val sinceMs = (nowMs() / 1000 - WeshInternetInbox.LOOKBACK_SECONDS) * 1000
+                subscribe(NostrFilter.giftWrapsFor(me.publicKeyHex, sinceMs), onEvent)
+            }
+            WeshInternetState.Off -> {
+                runCatching(unsubscribe)
+                runCatching(onOff)
+            }
+            else -> Unit
+        }
+    }
+}
+
+/**
  * Keeps one gift-wrap subscription for my npub on the pinned relays while Internet mode is On.
  * It never opens a socket itself: NostrRelayManager does, behind Tor and the opt-in gate.
  */
@@ -131,6 +165,7 @@ internal object WeshInternetReceiver {
     fun start(app: Application): Unit = synchronized(this) {
         if (inbox != null) return
         val contacts = WeshContactStore.get(app)
+        val seen = SeenMessageStore.getInstance(app)
         val created = WeshInternetInbox(
             contacts = contacts,
             myIdentity = { WeshQrIdentity.mine(app) },
@@ -145,30 +180,20 @@ internal object WeshInternetReceiver {
                 // Only that contact can reach here, and statuses never downgrade.
                 val known = AppStateStore.privateMessages.value[conversationID].orEmpty().any { it.id == messageID }
                 if (known) AppStateStore.updatePrivateMessageStatus(messageID, status)
-            }
+            },
+            alreadyAcked = seen::hasDelivered,
+            markAcked = seen::markDelivered
         )
         inbox = created
-        scope.launch {
-            WeshInternetMode.get(app).state.collect { state ->
-                val relays = NostrRelayManager.getInstance(app)
-                when (state) {
-                    WeshInternetState.On -> {
-                        val me = WeshQrIdentity.mine(app) ?: return@collect
-                        val sinceMs = (System.currentTimeMillis() / 1000 - WeshInternetInbox.LOOKBACK_SECONDS) * 1000
-                        relays.subscribe(
-                            filter = NostrFilter.giftWrapsFor(me.publicKeyHex, sinceMs),
-                            id = SUBSCRIPTION_ID,
-                            handler = { event -> scope.launch { created.onGiftWrap(event) } }
-                        )
-                    }
-                    WeshInternetState.Off -> {
-                        runCatching { relays.unsubscribe(SUBSCRIPTION_ID) }
-                        created.clear()
-                    }
-                    else -> Unit
-                }
-            }
-        }
+        val relays = NostrRelayManager.getInstance(app)
+        val subscription = WeshInternetSubscription(
+            myIdentity = { WeshQrIdentity.mine(app) },
+            subscribe = { filter, handler -> relays.subscribe(filter = filter, id = SUBSCRIPTION_ID, handler = handler) },
+            unsubscribe = { relays.unsubscribe(SUBSCRIPTION_ID) },
+            onEvent = { event -> scope.launch { created.onGiftWrap(event) } },
+            onOff = created::clear
+        )
+        scope.launch { WeshInternetMode.get(app).state.collect(subscription::apply) }
         Unit
     }
 }

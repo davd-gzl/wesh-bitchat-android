@@ -53,11 +53,14 @@ class WeshInternetRouteTest {
         val route = WeshInternetRoute(contacts, link) { peerID }
         val stored = mutableListOf<Pair<String, BitchatMessage>>()
         val statuses = mutableListOf<Triple<String, String, DeliveryStatus>>()
+        val acked = mutableSetOf<String>()
         var now: Long? = null
-        val inbox = WeshInternetInbox(contacts, { nostr }, route,
+        fun newInbox() = WeshInternetInbox(contacts, { nostr }, route,
             deliver = { conversationID, message -> stored += conversationID to message; true },
             updateStatus = { conversationID, id, status -> statuses += Triple(conversationID, id, status) },
+            alreadyAcked = { it in acked }, markAcked = { acked += it },
             nowSeconds = { now ?: (System.currentTimeMillis() / 1000) })
+        var inbox = newInbox()
 
         fun enroll(noiseKey: ByteArray, npub: String?, warning: Boolean = false) {
             contacts.record(noiseKey, "Synthetic", WeshNpubPolicy.Enrollment(npub, npub != null, warning))
@@ -208,6 +211,134 @@ class WeshInternetRouteTest {
             AppStateStore.clear()
         }
     }
+
+    @Test fun `a message replayed by the lookback after a restart is not acked again`() = runTest {
+        alice.route.sendPrivate("salut", bobConversation, "ack-once")
+        val wrap = alice.link.published.single()
+        assertEquals(WeshInternetInbox.Outcome.STORED, bob.inbox.onGiftWrap(wrap))
+        assertEquals(1, bob.link.published.size)
+        bob.inbox = bob.newInbox() // process restart: in-memory event IDs are gone, the ack record is durable
+        assertEquals(WeshInternetInbox.Outcome.STORED, bob.inbox.onGiftWrap(wrap))
+        assertEquals(1, bob.link.published.size)
+    }
+
+    @Test fun `files, verification, voice and peer state never arrive over Internet`() = runTest {
+        for (type in listOf(NoisePayloadType.FILE_TRANSFER, NoisePayloadType.VERIFY_CHALLENGE,
+                NoisePayloadType.VERIFY_RESPONSE, NoisePayloadType.VOICE_FRAME, NoisePayloadType.PEER_STATE)) {
+            val wrap = NostrProtocol.createPrivateMessage(embed(type, ByteArray(48) { 7 }), bob.nostr.publicKeyHex, alice.nostr).single()
+            assertEquals(type.name, WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(wrap))
+        }
+        assertTrue(bob.stored.isEmpty())
+        assertTrue(bob.link.published.isEmpty())
+    }
+
+    @Test fun `a seal forged in Alice's name is dropped`() = runTest {
+        val attacker = NostrIdentity.generate()
+        val embedded = com.bitchat.android.nostr.NostrEmbeddedBitChat.encodePMForNostr("forged", "forged-1", bobNoise.hex(), alice.peerID)!!
+        val rumor = NostrEvent(pubkey = alice.nostr.publicKeyHex, createdAt = (System.currentTimeMillis() / 1000).toInt(),
+            kind = com.bitchat.android.nostr.NostrKind.DIRECT_MESSAGE, tags = listOf(listOf("p", bob.nostr.publicKeyHex)), content = embedded)
+            .let { it.copy(id = it.computeEventIdHex()) }
+        val gson = com.google.gson.Gson()
+        val sealContent = com.bitchat.android.nostr.NostrCrypto.encryptNIP44(gson.toJson(rumor), bob.nostr.publicKeyHex, attacker.privateKeyHex)
+        // Claims Alice as the seal author but is signed with the attacker's key.
+        val seal = NostrEvent(pubkey = alice.nostr.publicKeyHex, createdAt = rumor.createdAt,
+            kind = com.bitchat.android.nostr.NostrKind.SEAL, tags = emptyList(), content = sealContent)
+            .sign(attacker.privateKeyHex).copy(pubkey = alice.nostr.publicKeyHex)
+        val (wrapKey, wrapPub) = com.bitchat.android.nostr.NostrCrypto.generateKeyPair()
+        val wrap = NostrEvent(pubkey = wrapPub, createdAt = rumor.createdAt, kind = com.bitchat.android.nostr.NostrKind.GIFT_WRAP,
+            tags = listOf(listOf("p", bob.nostr.publicKeyHex)),
+            content = com.bitchat.android.nostr.NostrCrypto.encryptNIP44(gson.toJson(seal), bob.nostr.publicKeyHex, wrapKey))
+            .sign(wrapKey)
+        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(wrap))
+        assertTrue(bob.stored.isEmpty())
+        assertTrue(bob.link.published.isEmpty())
+    }
+
+    @Test fun `the subscription exists only while On with my key, and Off unsubscribes and forgets`() {
+        val events = mutableListOf<String>()
+        var identity: NostrIdentity? = bob.nostr
+        val subscription = WeshInternetSubscription(
+            myIdentity = { identity },
+            subscribe = { filter, _ ->
+                events += if (com.google.gson.Gson().toJson(filter).contains(bob.nostr.publicKeyHex)) "subscribe:me" else "subscribe:other"
+            },
+            unsubscribe = { events += "unsubscribe" },
+            onEvent = {},
+            onOff = { events += "forget" },
+            nowMs = { 1_000_000_000L }
+        )
+        subscription.apply(com.bitchat.android.net.WeshInternetState.Connecting(40))
+        subscription.apply(com.bitchat.android.net.WeshInternetState.Error(com.bitchat.android.net.WeshInternetError.TOR_BLOCKED))
+        assertTrue(events.isEmpty())
+        subscription.apply(com.bitchat.android.net.WeshInternetState.On)
+        assertEquals(listOf("subscribe:me"), events)
+        subscription.apply(com.bitchat.android.net.WeshInternetState.Off)
+        assertEquals(listOf("subscribe:me", "unsubscribe", "forget"), events)
+        // After a panic wipe there is no key: On again subscribes nothing.
+        identity = null
+        subscription.apply(com.bitchat.android.net.WeshInternetState.On)
+        assertEquals(3, events.size)
+    }
+
+    @Test fun `my npub goes only to an enrolled contact over its bound session, and never with a favorite star`() {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        val bobPeer = ContactIdentityResolver.peerIdForNoiseKey(bobNoise)
+        val strangerKey = ByteArray(32) { 9 }
+        val strangerPeer = ContactIdentityResolver.peerIdForNoiseKey(strangerKey)
+        whenever(mesh.getPeerNicknames()).thenReturn(mapOf(bobPeer to "Bob", strangerPeer to "Stranger"))
+        for ((peer, key) in listOf(bobPeer to bobNoise, strangerPeer to strangerKey)) {
+            whenever(mesh.getPeerInfo(peer)).thenReturn(PeerInfo(id = peer, nickname = "x", isConnected = true,
+                noisePublicKey = key, isDirectConnection = true, signingPublicKey = ByteArray(32),
+                isVerifiedNickname = true, lastSeen = 1L))
+            whenever(mesh.getAuthenticatedRemoteStaticKey(peer)).thenReturn(key)
+            whenever(mesh.hasEstablishedSession(peer)).thenReturn(true)
+        }
+        val sent = CopyOnWriteArrayList<Pair<String, ByteArray>>()
+        kotlinx.coroutines.runBlocking {
+            whenever(mesh.sendPrivateMessageBound(any(), any(), any(), any(), any())).thenAnswer { call ->
+                sent += call.getArgument<String>(0) to call.getArgument<ByteArray>(2); true
+            }
+        }
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        val router = MessageRouter(context, mesh, mock())
+        var myNpub: String? = null
+        router.weshMyNpub = { myNpub }
+        try {
+            router.announceWeshInternetKey(bobPeer) // Internet off: no npub, nothing sent
+            Thread.sleep(200)
+            assertTrue(sent.isEmpty())
+            myNpub = alice.nostr.npub
+            router.announceWeshInternetKey(strangerPeer)
+            router.announceWeshInternetKey(bobPeer)
+            waitFor { sent.size == 1 }
+            assertEquals("[FAVORITED]:${alice.nostr.npub}", sent.single().first)
+            assertTrue(sent.single().second.contentEquals(bobNoise))
+            router.announceWeshInternetKey(bobPeer) // once per contact and npub
+            Thread.sleep(200)
+            assertEquals(1, sent.size)
+
+            router.sendFavoriteNotification(strangerPeer, true)
+            verify(mesh).sendPrivateMessage(org.mockito.kotlin.eq("[FAVORITED]:"), org.mockito.kotlin.eq(strangerPeer), any(), org.mockito.kotlin.isNull())
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+        }
+    }
+
+    private fun embed(type: NoisePayloadType, data: ByteArray): String {
+        val packet = com.bitchat.android.protocol.BitchatPacket(
+            version = 1u, type = com.bitchat.android.protocol.MessageType.NOISE_ENCRYPTED.value,
+            senderID = com.bitchat.android.mesh.MeshPacketUtils.hexStringToByteArray(alice.peerID),
+            recipientID = com.bitchat.android.mesh.MeshPacketUtils.hexStringToByteArray(ContactIdentityResolver.peerIdForNoiseKey(bobNoise)),
+            timestamp = System.currentTimeMillis().toULong(), payload = byteArrayOf(type.value.toByte()) + data,
+            signature = null, ttl = 7u)
+        return "bitchat1:" + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(packet.toBinaryData()!!)
+    }
+
+    private fun ByteArray.hex() = joinToString("") { "%02x".format(it) }
 
     @After fun cleanup() {
         WeshContactStore.resetForTesting()
