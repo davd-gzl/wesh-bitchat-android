@@ -64,6 +64,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.core.app.ActivityCompat
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.bitchat.android.R
 import com.bitchat.android.ui.WeshLinks
 
@@ -74,6 +75,12 @@ private enum class OnboardingStep { Welcome, Bluetooth, Notifications }
 
 /** How the person answered the Bluetooth prompt. A simple refusal keeps "Continuer"; only a permanent one sends to Settings. */
 internal enum class BluetoothRefusal { None, Once, Permanent }
+
+/** The one way forward on the Bluetooth step: ask again (with the explanation) or open Settings. */
+internal enum class BluetoothStepAction { Ask, OpenSettings }
+
+internal fun bluetoothStepAction(refusal: BluetoothRefusal): BluetoothStepAction =
+    if (refusal == BluetoothRefusal.Permanent) BluetoothStepAction.OpenSettings else BluetoothStepAction.Ask
 
 internal fun bluetoothRefusal(granted: Boolean, shouldShowRationale: Boolean): BluetoothRefusal = when {
     granted -> BluetoothRefusal.None
@@ -92,7 +99,8 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
  * dialog, then, on Android 13+, the notifications explainer before its own dialog. On API 31+
  * Wesh never asks for location.
  *
- * @param onFinished nickname chosen, and whether the Bluetooth permissions were granted.
+ * @param onFinished nickname chosen, and whether the Bluetooth permissions were granted (always
+ * true in V1: there is no way past the Bluetooth step without them).
  * @param initialNickname the nickname already chosen on this phone, if any; otherwise a random one.
  * @param askNotifications show the notifications step (Android 13+, not asked yet).
  * @param onNotificationsAsked the notifications prompt was shown or declined: it is never asked again.
@@ -163,6 +171,17 @@ fun OnboardingFlow(
         { launcher.launch(Manifest.permission.POST_NOTIFICATIONS) }
     }
 
+    // Back from Settings with Bluetooth now allowed: continue without another tap.
+    LifecycleResumeEffect(step, refusal) {
+        if (step == OnboardingStep.Bluetooth && refusal != BluetoothRefusal.None &&
+            permissions.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+        ) {
+            refusal = BluetoothRefusal.None
+            afterBluetooth(true)
+        }
+        onPauseOrDispose {}
+    }
+
     Box(modifier.fillMaxSize().background(WeshPave.colors.bg).systemBarsPadding().imePadding()) {
         when (step) {
             OnboardingStep.Welcome -> WelcomeStep(
@@ -181,7 +200,6 @@ fun OnboardingFlow(
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
                 },
-                onContinueWithout = { afterBluetooth(false) },
             )
             OnboardingStep.Notifications -> NotificationsStep(onAllow = requestNotifications, onLater = ::afterNotifications)
         }
@@ -306,7 +324,6 @@ private fun BluetoothStep(
     refusal: BluetoothRefusal,
     onContinue: () -> Unit,
     onOpenSettings: () -> Unit,
-    onContinueWithout: () -> Unit,
 ) {
     val c = WeshPave.colors
     Column(
@@ -324,18 +341,16 @@ private fun BluetoothStep(
             Text(stringResource(R.string.wesh_pave_bt_no_location), style = WeshType.body, color = c.ink)
         }
         Spacer(Modifier.weight(1f))
-        when (refusal) {
-            BluetoothRefusal.None -> PrimaryButton(stringResource(R.string.wesh_pave_continue), onContinue)
-            BluetoothRefusal.Once -> {
-                Text(stringResource(R.string.wesh_pave_bt_denied), style = WeshType.body, color = c.warning)
-                PrimaryButton(stringResource(R.string.wesh_pave_continue), onContinue)
-                SecondaryButton(stringResource(R.string.wesh_pave_bt_continue_without), onContinueWithout, Modifier.fillMaxWidth())
-            }
-            BluetoothRefusal.Permanent -> {
-                Text(stringResource(R.string.wesh_pave_bt_denied), style = WeshType.body, color = c.warning)
-                PrimaryButton(stringResource(R.string.wesh_pave_open_settings), onOpenSettings)
-                SecondaryButton(stringResource(R.string.wesh_pave_bt_continue_without), onContinueWithout, Modifier.fillMaxWidth())
-            }
+        if (refusal != BluetoothRefusal.None) {
+            Text(
+                stringResource(if (refusal == BluetoothRefusal.Permanent) R.string.wesh_pave_fluo_bt_required else R.string.wesh_pave_bt_denied),
+                style = WeshType.body,
+                color = c.warning,
+            )
+        }
+        when (bluetoothStepAction(refusal)) {
+            BluetoothStepAction.Ask -> PrimaryButton(stringResource(R.string.wesh_pave_continue), onContinue)
+            BluetoothStepAction.OpenSettings -> PrimaryButton(stringResource(R.string.wesh_pave_open_settings), onOpenSettings)
         }
     }
 }
@@ -347,11 +362,11 @@ private fun OnboardingWelcomePreview() = PavePreview(padded = false) { Onboardin
 @PaveScreenPreviews
 @Composable
 private fun OnboardingBluetoothPreview() = PavePreview(padded = false) {
-    BluetoothStep(legacyLocation = false, refusal = BluetoothRefusal.None, onContinue = {}, onOpenSettings = {}, onContinueWithout = {})
+    BluetoothStep(legacyLocation = false, refusal = BluetoothRefusal.None, onContinue = {}, onOpenSettings = {})
 }
 
 @PavePreviews
 @Composable
 private fun OnboardingBluetoothDeniedPreview() = PavePreview(padded = false) {
-    BluetoothStep(legacyLocation = true, refusal = BluetoothRefusal.Permanent, onContinue = {}, onOpenSettings = {}, onContinueWithout = {})
+    BluetoothStep(legacyLocation = true, refusal = BluetoothRefusal.Permanent, onContinue = {}, onOpenSettings = {})
 }

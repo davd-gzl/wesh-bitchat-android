@@ -233,14 +233,6 @@ class OnboardingCoordinator(
     /**
      * Complete the onboarding process and initialize the app
      */
-    /**
-     * "Continuer sans Bluetooth" in the Pavé welcome: Bluetooth stays missing without being asked
-     * again or treated as fatal. Optional permissions were already offered by the welcome.
-     */
-    fun continueWithoutBluetooth() {
-        completeOnboarding()
-    }
-
     private fun completeOnboarding() {
         Log.d(TAG, "Completing onboarding process")
         

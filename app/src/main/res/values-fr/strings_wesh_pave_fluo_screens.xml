@@ -75,4 +75,6 @@
     <string name="wesh_pave_fluo_notif_optional">Vous pouvez refuser : Wesh fonctionne quand même, ouvert à l’écran.</string>
     <string name="wesh_pave_fluo_notif_allow">Autoriser les notifications</string>
     <string name="wesh_pave_fluo_notif_later">Plus tard</string>
+    <string name="wesh_pave_fluo_bt_required">Wesh a besoin du Bluetooth pour fonctionner.</string>
+    <string name="wesh_pave_fluo_init_failed">Wesh n’a pas pu démarrer. Réessayez.</string>
 </resources>

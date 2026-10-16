@@ -329,15 +329,15 @@ class MainActivity : OrientationAwareActivity() {
                     .filter { it == android.Manifest.permission.POST_NOTIFICATIONS }
                 val requiredGranted = permissionManager.areRequiredPermissionsGranted()
                 com.bitchat.android.ui.pave.OnboardingFlow(
-                    onFinished = { chosen, bluetoothGranted ->
+                    onFinished = { chosen, _ ->
                         // Only a nickname the person actually set replaces the stored one.
                         if (chosen != initialNickname && com.bitchat.android.ui.pave.NicknameGenerator.isValid(chosen)) {
                             chatViewModel.setNickname(chosen)
                         }
                         prefs.welcomed = true
                         mainViewModel.updateOnboardingState(OnboardingState.PERMISSION_REQUESTING)
-                        if (bluetoothGranted) onboardingCoordinator.requestPermissions()
-                        else onboardingCoordinator.continueWithoutBluetooth()
+                        // The welcome only finishes with Bluetooth granted; the coordinator asks for anything else missing.
+                        onboardingCoordinator.requestPermissions()
                     },
                     modifier = modifier,
                     initialNickname = initialNickname,
@@ -756,7 +756,8 @@ class MainActivity : OrientationAwareActivity() {
                 if (!permissionManager.areAllPermissionsGranted()) {
                     val missing = permissionManager.getMissingPermissions()
                     Log.w("MainActivity", "Permissions revoked during initialization: $missing")
-                    handleOnboardingFailed("Some permissions were revoked. Please grant all permissions to continue.")
+                    // Back to the Pavé Bluetooth step, which explains and asks again: never a dead-end error.
+                    mainViewModel.updateOnboardingState(OnboardingState.PERMISSION_EXPLANATION)
                     return@launch
                 }
 
@@ -775,7 +776,7 @@ class MainActivity : OrientationAwareActivity() {
                 dispatchPendingRoute()
             } catch (e: Exception) {
                 Log.e("MainActivity", "Failed to initialize app", e)
-                handleOnboardingFailed("Failed to initialize the app: ${e.message}")
+                handleOnboardingFailed(getString(R.string.wesh_pave_fluo_init_failed))
             }
         }
     }

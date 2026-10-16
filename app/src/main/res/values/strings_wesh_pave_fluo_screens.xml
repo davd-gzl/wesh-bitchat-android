@@ -75,4 +75,6 @@
     <string name="wesh_pave_fluo_notif_optional">You can say no: Wesh still works while it is open.</string>
     <string name="wesh_pave_fluo_notif_allow">Allow notifications</string>
     <string name="wesh_pave_fluo_notif_later">Later</string>
+    <string name="wesh_pave_fluo_bt_required">Wesh needs Bluetooth to work.</string>
+    <string name="wesh_pave_fluo_init_failed">Wesh could not start. Try again.</string>
 </resources>
