@@ -135,7 +135,7 @@ class MessageHandler(
                         // Create BitchatMessage - preserve source packet timestamp
                         val message = BitchatMessage(
                             id = privateMessage.messageID,
-                            sender = delegate?.getPeerNickname(peerID) ?: "Unknown",
+                            sender = delegate?.getPeerNickname(peerID).orEmpty(),
                             content = privateMessage.content,
                             timestamp = java.util.Date(packet.timestamp.toLong()),
                             isRelay = false,
@@ -162,7 +162,7 @@ class MessageHandler(
                         val savedPath = storeIncomingFile(file)
                         val message = BitchatMessage(
                             id = uniqueMsgId,
-                            sender = delegate?.getPeerNickname(peerID) ?: "Unknown",
+                            sender = delegate?.getPeerNickname(peerID).orEmpty(),
                             content = savedPath,
                             type = com.bitchat.android.features.file.FileUtils.messageTypeForMime(file.mimeType),
                             timestamp = java.util.Date(packet.timestamp.toLong()),
@@ -172,7 +172,9 @@ class MessageHandler(
                             senderPeerID = peerID
                         )
 
-                        val admitted = absorbVoiceNote(message) || delegate?.onPrivateMessageReceived(message) == true
+                        // A note absorbed into its live row skips admission, so it is never acknowledged:
+                        // only admission of an enrolled sender may vouch for delivery.
+                        val admitted = !absorbVoiceNote(message) && delegate?.onPrivateMessageReceived(message) == true
                         // Send delivery ACK with generated message ID, only once admitted
                         if (admitted) sendDeliveryAck(uniqueMsgId, peerID)
                     } else {

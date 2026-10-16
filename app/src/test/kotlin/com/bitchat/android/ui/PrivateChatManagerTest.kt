@@ -231,4 +231,33 @@ class PrivateChatManagerTest {
             state.getPrivateChatsValue()[conversationID]?.single()?.content
         )
     }
+
+    @Test
+    fun `opening a blocked peer in Wesh adds nothing to the public timeline`() {
+        val peerID = "0123456789abcdef"
+        com.bitchat.android.services.SessionHiddenPeers.hide(peerID)
+        try {
+            val wesh = PrivateChatManager(
+                state = state,
+                messageManager = MessageManager(state),
+                dataManager = DataManager(RuntimeEnvironment.getApplication()),
+                noiseSessionDelegate = mock(),
+                weshPolicy = true
+            )
+            assertEquals(false, wesh.startPrivateChat(peerID = peerID, meshService = mock()))
+            assertTrue(state.getMessagesValue().isEmpty())
+            assertTrue(AppStateStore.publicMessages.value.isEmpty())
+        } finally {
+            com.bitchat.android.services.SessionHiddenPeers.unhide(peerID)
+        }
+    }
+
+    @Test
+    fun `an unnamed remote private message stays unread when my nickname is empty`() {
+        state.setNickname("")
+        val remote = BitchatMessage(id = "unnamed-remote-manager", sender = "", content = "synthetic",
+            timestamp = Date(1), isPrivate = true, senderPeerID = "0123456789abcdef")
+        MessageManager(state).addPrivateMessage("0123456789abcdef", remote)
+        assertTrue(state.getUnreadPrivateMessagesValue().isNotEmpty())
+    }
 }
