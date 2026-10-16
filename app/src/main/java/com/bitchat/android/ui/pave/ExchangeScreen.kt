@@ -55,13 +55,12 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
-import kotlinx.coroutines.delay
 
 /**
  * Échanger: your code on top, the camera below, both live so two people verify each other in one go.
  * Two checks: "they scanned you" and "you scanned them". With both, the camera stops and a success
  * card shows the contact's name with a short key fingerprint, so the nickname is never the only
- * identity cue; [onCompleted] follows after [EXCHANGE_SUCCESS_HOLD_MS] or on "Ouvrir la discussion".
+ * identity cue; [onCompleted] follows only on "Ouvrir la discussion", never on a timer.
  * Your own fingerprint sits under your code. The checks never show a name.
  *
  * @param myQrPayload the `bitchat://verify` payload built by the app; null while it is not ready.
@@ -89,16 +88,10 @@ fun ExchangeScreen(
     val c = WeshPave.colors
     val haptics = rememberWeshHaptics()
     val currentOnCompleted by rememberUpdatedState(onCompleted)
-    // The button and the timer can both fire: the chat opens once.
+    // Only an explicit tap opens the chat, and only once.
     var completed by rememberSaveable { mutableStateOf(false) }
     val complete = { completed = completeOnce(completed) { currentOnCompleted() } }
     LaunchedEffect(progress.iScannedThem) { if (progress.iScannedThem) haptics.success() }
-    LaunchedEffect(progress.complete) {
-        if (progress.complete) {
-            delay(EXCHANGE_SUCCESS_HOLD_MS)
-            complete()
-        }
-    }
 
     val modules = remember(myQrPayload) { myQrPayload?.let(::encodeQrModules) }
     // The contact's nickname comes from their QR code: sanitized here so no caller can forget it.
@@ -247,9 +240,6 @@ internal fun cameraCard(granted: Boolean, asked: Boolean, shouldShowRationale: B
     asked && !shouldShowRationale -> CameraCard.Settings
     else -> CameraCard.Rationale
 }
-
-/** Time the success card stays up before the private chat opens by itself. */
-internal const val EXCHANGE_SUCCESS_HOLD_MS = 3000L
 
 @Composable
 private fun ExchangeSuccess(contact: String, fingerprint: String?, onOpen: () -> Unit) {
