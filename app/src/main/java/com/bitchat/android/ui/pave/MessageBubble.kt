@@ -60,7 +60,7 @@ private fun PaveDelivery.color(): Color {
  * A message. Yours are filled (`private`, or `public` in the public room), others' are bordered,
  * so they read apart in full sun without relying on alignment. No warning inside the bubble.
  *
- * @param sender received only: nickname above the first message of a series.
+ * @param sender received only: nickname above the first message of a series (sanitized here).
  * @param delivery your messages only.
  * @param onOpenDetail a tap opens the message status detail.
  */
@@ -78,6 +78,9 @@ fun MessageBubble(
     onOpenDetail: (() -> Unit)? = null,
 ) {
     val c = WeshPave.colors
+    // Remote nicknames are sanitized here so no caller can forget it.
+    val unnamed = stringResource(R.string.wesh_pave_unnamed)
+    val safeSender = sender?.let { PaveDisplayName.safe(it, unnamed) }
     val failed = own && delivery == PaveDelivery.Failed
     val (fill, ink) = when {
         !own -> c.surface to c.ink
@@ -98,18 +101,18 @@ fun MessageBubble(
         null -> null
     }
     // Received in the public room: "Coquelicot · 17:40" above the bubble.
-    val headerWithTime = !own && room == PaveRoom.Public && sender != null
+    val headerWithTime = !own && room == PaveRoom.Public && safeSender != null
     val header = when {
-        own || sender == null -> null
-        headerWithTime && time != null -> "$sender · $time"
-        else -> sender
+        own || safeSender == null -> null
+        headerWithTime && time != null -> "$safeSender · $time"
+        else -> safeSender
     }
     val metaParts = buildList {
         if (!headerWithTime) time?.let(::add)
         if (!failed) deliveryText?.let(::add)
         transportText?.let(::add)
     }
-    val description = listOfNotNull(if (own) you else sender, text, if (headerWithTime) time else null)
+    val description = listOfNotNull(if (own) you else safeSender, text, if (headerWithTime) time else null)
         .plus(metaParts)
         .plus(if (failed) listOfNotNull(deliveryText) else emptyList())
         .joinToString(", ")

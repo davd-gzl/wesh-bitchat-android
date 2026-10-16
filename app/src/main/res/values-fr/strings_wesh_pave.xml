@@ -38,6 +38,7 @@
     <string name="wesh_pave_public_room_readable">Lisible par tous les téléphones autour</string>
     <string name="wesh_pave_no_message_yet">Pas encore de message</string>
     <string name="wesh_pave_verified">Code vérifié</string>
+    <string name="wesh_pave_unnamed">Sans surnom</string>
     <string name="wesh_pave_unverified">Non vérifié</string>
     <plurals name="wesh_pave_request_preview">
         <item quantity="one">%d message · échangez vos codes pour répondre</item>

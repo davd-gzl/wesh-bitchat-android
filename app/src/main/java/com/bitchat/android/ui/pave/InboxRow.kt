@@ -96,7 +96,7 @@ fun ContactRow(
 ) {
     val c = WeshPave.colors
     InboxRowFrame(
-        title = nickname,
+        title = PaveDisplayName.safe(nickname, stringResource(R.string.wesh_pave_unnamed)),
         badge = if (verified) stringResource(R.string.wesh_pave_verified) else stringResource(R.string.wesh_pave_unverified),
         badgeIcon = if (verified) Icons.Rounded.Verified else Icons.AutoMirrored.Rounded.HelpOutline,
         badgeColor = if (verified) c.success else c.warning,
@@ -107,7 +107,7 @@ fun ContactRow(
     )
 }
 
-/** An unverified message request: preview hidden; a tap opens it read-only with Exchange, Block, Delete. */
+/** An unverified message request (nickname sanitized here, like every remote name): preview hidden; a tap opens it read-only with Exchange, Block, Delete. */
 @Composable
 fun RequestRow(
     nickname: String,
@@ -118,7 +118,7 @@ fun RequestRow(
 ) {
     val c = WeshPave.colors
     InboxRowFrame(
-        title = nickname,
+        title = PaveDisplayName.safe(nickname, stringResource(R.string.wesh_pave_unnamed)),
         badge = stringResource(R.string.wesh_pave_unverified),
         badgeIcon = Icons.AutoMirrored.Rounded.HelpOutline,
         badgeColor = c.warning,

@@ -37,6 +37,7 @@
     <string name="wesh_pave_public_room_readable">Readable by every phone around</string>
     <string name="wesh_pave_no_message_yet">No message yet</string>
     <string name="wesh_pave_verified">Code verified</string>
+    <string name="wesh_pave_unnamed">No nickname</string>
     <string name="wesh_pave_unverified">Not verified</string>
     <plurals name="wesh_pave_request_preview">
         <item quantity="one">%d message · exchange codes to reply</item>
