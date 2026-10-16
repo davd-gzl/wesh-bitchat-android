@@ -28,8 +28,9 @@ class WeshInternetModeTest {
         var starts = 0
         var wiped = false
         var wipeResult = true
+        var startAllowed = true
         override val progress = status
-        override fun start() { running = true; starts++ }
+        override fun start(): Boolean { starts++; if (!startAllowed) { running = false; return false }; running = true; return true }
         override fun stop() { running = false }
         override suspend fun stopAndWipe(): Boolean { running = false; wiped = true; return wipeResult }
     }
@@ -60,8 +61,8 @@ class WeshInternetModeTest {
         keysWiped = false; keysCreated = 0; available = true
     }
 
-    private fun mode() = WeshInternetMode(prefs, tor, relays, network, { keysWiped = true; true }, { available }, scope.backgroundScope,
-        ensureNostrIdentity = { keysCreated++ })
+    private fun mode(startFenced: Boolean = false) = WeshInternetMode(prefs, tor, relays, network, { keysWiped = true; true }, { available }, scope.backgroundScope,
+        ensureNostrIdentity = { keysCreated++ }, startFenced = startFenced)
 
     private fun connected(mode: WeshInternetMode) {
         prefs.edit().putBoolean(WeshInternetMode.KEY_DISCLOSURE, true).commit()
@@ -197,6 +198,39 @@ class WeshInternetModeTest {
         assertTrue(mode.panicReset())
         prefs.edit().putBoolean(WeshInternetMode.KEY_DISCLOSURE, true).commit()
         assertTrue(mode.setEnabled(true))
+    }
+
+    @Test fun `an incomplete Arti wipe refuses the opt-in, persists nothing and keeps the fence`() = scope.runTest {
+        prefs.edit().putBoolean(WeshInternetMode.KEY_DISCLOSURE, true).commit()
+        val mode = mode(); runCurrent()
+        tor.startAllowed = false
+        assertFalse(mode.setEnabled(true))
+        assertFalse(prefs.getBoolean(WeshInternetMode.KEY_ENABLED, true))
+        assertEquals(0, keysCreated)
+        assertFalse(mode.allowsNetwork())
+        tor.startAllowed = true
+        assertFalse("Fence stays up until a panic reset completes", mode.setEnabled(true))
+        assertTrue(mode.panicReset())
+        prefs.edit().putBoolean(WeshInternetMode.KEY_DISCLOSURE, true).commit()
+        assertTrue(mode.setEnabled(true))
+    }
+
+    @Test fun `startup with a persisted opt-in but an unfinished wipe stays off and fenced`() = scope.runTest {
+        prefs.edit().putBoolean(WeshInternetMode.KEY_ENABLED, true).putBoolean(WeshInternetMode.KEY_DISCLOSURE, true).commit()
+        tor.startAllowed = false
+        val failed = mode(); runCurrent()
+        assertEquals(WeshInternetState.Off, failed.state.value)
+        assertFalse(prefs.getBoolean(WeshInternetMode.KEY_ENABLED, true))
+        assertFalse(failed.allowsNetwork())
+
+        prefs.edit().putBoolean(WeshInternetMode.KEY_ENABLED, true).commit()
+        tor.startAllowed = true
+        val starts = tor.starts
+        val fencedAtStartup = mode(startFenced = true); runCurrent()
+        assertEquals(starts, tor.starts)
+        assertFalse(tor.running)
+        assertFalse(prefs.getBoolean(WeshInternetMode.KEY_ENABLED, true))
+        assertFalse(fencedAtStartup.setEnabled(true))
     }
 
     @Test fun `transition table`() {

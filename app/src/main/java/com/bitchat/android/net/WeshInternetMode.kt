@@ -97,7 +97,8 @@ internal object WeshInternetMachine {
 internal interface WeshTorControl {
     /** Bootstrap percent and readiness. */
     val progress: Flow<Pair<Int, Boolean>>
-    fun start()
+    /** False when Tor must not start (an earlier Arti wipe is still incomplete). */
+    fun start(): Boolean
     fun stop()
     /** Stops Tor, waits for it, then deletes its state; true only when nothing remains. */
     suspend fun stopAndWipe(): Boolean
@@ -128,6 +129,8 @@ class WeshInternetMode internal constructor(
     private val scope: CoroutineScope,
     /** Creates my Nostr key on opt-in; the QR path only ever reads it. */
     private val ensureNostrIdentity: () -> Unit = {},
+    /** Startup found an Arti wipe it could not finish: Internet stays off and fenced. */
+    startFenced: Boolean = false,
     private val stallMs: Long = STALL_MS
 ) : WeshNetworkGate {
     private val lock = Any()
@@ -157,9 +160,10 @@ class WeshInternetMode internal constructor(
             }
         }
         synchronized(lock) {
-            if (_enabled.value) {
-                tor.start()
-                apply(WeshInternetMachine.Event.Enable)
+            if (startFenced) {
+                refuseStart()
+            } else if (_enabled.value) {
+                if (tor.start()) apply(WeshInternetMachine.Event.Enable) else refuseStart()
             } else {
                 // TorPreferenceManager is derived from the toggle: never ON while Internet is off.
                 tor.stop()
@@ -178,16 +182,27 @@ class WeshInternetMode internal constructor(
         }
         if (fenced || !internetAvailable() || !disclosureAccepted) return false
         if (_enabled.value) return true
+        // Start Tor first: enabled=true is never persisted while an Arti wipe is incomplete.
+        if (!tor.start()) {
+            refuseStart()
+            return false
+        }
         persistEnabled(true)
         runCatching(ensureNostrIdentity)
-        tor.start()
         apply(WeshInternetMachine.Event.Enable)
         true
     }
 
+    /** Caller holds [lock]. Tor refused to start: Internet off, persisted off, fence up. */
+    private fun refuseStart() {
+        fenced = true
+        persistEnabled(false)
+        turnOff()
+    }
+
     fun retry() = synchronized(lock) {
         if (!allowsNetwork() || _state.value !is WeshInternetState.Error) return
-        tor.start()
+        if (!tor.start()) return refuseStart()
         relaysRequested = false
         apply(WeshInternetMachine.Event.Retry)
     }
@@ -285,7 +300,8 @@ class WeshInternetMode internal constructor(
             instance ?: run {
                 val app = context.applicationContext as android.app.Application
                 // Startup: before anything can start Arti, finish a wipe a failed panic left behind.
-                runCatching { ArtiTorControl.completePendingWipe(app) }
+                val wiped = runCatching { ArtiTorControl.completePendingWipe(app) }.getOrDefault(false)
+                if (!wiped) TorPreferenceManager.set(app, TorMode.OFF, commit = true)
                 WeshInternetMode(
                     prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE),
                     tor = ArtiTorControl(app),
@@ -295,7 +311,8 @@ class WeshInternetMode internal constructor(
                     // Task #1 replaces this with the product Internet flag; until then nothing changes.
                     internetAvailable = { !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY },
                     scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-                    ensureNostrIdentity = { com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(app) }
+                    ensureNostrIdentity = { com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(app) },
+                    startFenced = !wiped
                 ).also {
                     instance = it
                     WeshNetworkPolicy.gate = it

@@ -21,6 +21,7 @@ class ArtiTorControlWipeTest {
 
     @Before fun seed() {
         ArtiTorControl.pendingMarker(app).delete()
+        app.getSharedPreferences("wesh_arti_wipe", android.content.Context.MODE_PRIVATE).edit().clear().commit()
         TorPreferenceManager.set(app, TorMode.ON)
         File(arti, "state").apply { mkdirs() }.resolve("synthetic-guards.json").writeText("{}")
         File(arti, "cache").apply { mkdirs() }.resolve("synthetic-consensus").writeText("x")
@@ -63,7 +64,8 @@ class ArtiTorControlWipeTest {
         assertTrue(File(arti, "state/synthetic-guards.json").exists())
         assertTrue(ArtiTorControl.pendingMarker(app).exists())
 
-        control.start()
+        TorPreferenceManager.set(app, TorMode.ON)
+        assertFalse(control.start())
         assertEquals("Arti must not start over undeleted state", TorMode.OFF, TorPreferenceManager.get(app))
         assertFalse(ArtiTorControl.completePendingWipe(app, delete))
 
@@ -71,5 +73,36 @@ class ArtiTorControlWipeTest {
         assertTrue(ArtiTorControl.completePendingWipe(app, delete))
         assertFalse(arti.exists())
         assertFalse(ArtiTorControl.pendingMarker(app).exists())
+    }
+
+    @Test fun `without a marker a committed preference keeps the wipe pending`() = runBlocking {
+        val status = MutableStateFlow(ArtiTorManager.TorStatus())
+        var deletable = false
+        val delete: (File) -> Boolean = { dir -> deletable && dir.deleteRecursively() && !dir.exists() }
+        val control = ArtiTorControl(app, status, applyOff = { }, deleteArti = delete, createMarker = { false })
+        assertFalse(control.stopAndWipe())
+        assertFalse(ArtiTorControl.pendingMarker(app).exists())
+        assertTrue(ArtiTorControl.isWipePending(app))
+        assertFalse(control.start())
+        deletable = true
+        assertTrue(ArtiTorControl.completePendingWipe(app, delete))
+        assertFalse(ArtiTorControl.isWipePending(app))
+    }
+
+    @Test fun `the manager refuses to start Arti while the wipe cannot complete`() = runBlocking {
+        File(arti, "state/synthetic-guards.json").writeText("{}")
+        ArtiTorControl.pendingMarker(app).createNewFile()
+        val locked = File(arti, "state")
+        assertTrue(locked.setWritable(false))
+        try {
+            TorPreferenceManager.set(app, TorMode.ON)
+            ArtiTorManager.getInstance().applyMode(app, TorMode.ON)
+            assertEquals(TorMode.OFF, TorPreferenceManager.get(app))
+            assertEquals(TorMode.OFF, ArtiTorManager.getInstance().statusFlow.value.mode)
+            assertTrue(File(arti, "state/synthetic-guards.json").exists())
+        } finally {
+            locked.setWritable(true)
+        }
+        assertTrue(ArtiTorControl.completePendingWipe(app))
     }
 }

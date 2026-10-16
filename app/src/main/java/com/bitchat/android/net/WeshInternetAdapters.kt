@@ -24,19 +24,25 @@ internal class ArtiTorControl(
     private val status: StateFlow<ArtiTorManager.TorStatus> = ArtiTorManager.getInstance().statusFlow,
     private val applyOff: suspend () -> Unit = { ArtiTorManager.getInstance().applyMode(app, TorMode.OFF) },
     private val stopTimeoutMs: Long = STOP_TIMEOUT_MS,
-    private val deleteArti: (File) -> Boolean = ::deleteDirectory
+    private val deleteArti: (File) -> Boolean = ::deleteDirectory,
+    private val createMarker: (File) -> Boolean = { it.exists() || it.createNewFile() }
 ) : WeshTorControl {
     override val progress: Flow<Pair<Int, Boolean>> = status.map { it.bootstrapPercent to it.isReady() }
 
-    override fun start() {
+    override fun start(): Boolean {
         // A wipe left over from a failed panic runs before Arti may touch its directory again.
-        if (!completePendingWipe(app, deleteArti)) return
+        // On failure the committed OFF also makes an initialized manager stop any surviving Arti.
+        if (!completePendingWipe(app, deleteArti)) {
+            stop()
+            return false
+        }
         TorPreferenceManager.set(app, TorMode.ON)
         ArtiTorManager.getInstance().init(app)
+        return true
     }
 
     override fun stop() {
-        TorPreferenceManager.set(app, TorMode.OFF)
+        TorPreferenceManager.set(app, TorMode.OFF, commit = true)
     }
 
     /**
@@ -51,12 +57,15 @@ internal class ArtiTorControl(
         } != null
         OkHttpProvider.reset()
         return withContext(Dispatchers.IO) {
-            val marker = pendingMarker(app)
-            runCatching { marker.exists() || marker.createNewFile() }
+            val marked = runCatching { createMarker(pendingMarker(app)) }.getOrDefault(false)
             val deleted = runCatching { deleteArti(artiDirectory(app)) }.getOrDefault(false)
             val done = stopped && deleted
-            if (done) runCatching { marker.delete() }
-            done && !marker.exists()
+            when {
+                done -> clearPendingSignals(app)
+                // No marker: a committed preference is the second durable signal.
+                !marked -> runCatching { pendingPreferences(app).edit().putBoolean(KEY_PENDING, true).commit() }
+            }
+            done && !isWipePending(app)
         }
     }
 
@@ -80,10 +89,24 @@ internal class ArtiTorControl(
          * behind. False while the directory still cannot be deleted, so Arti must not start.
          */
         fun completePendingWipe(context: Context, delete: (File) -> Boolean = ::deleteDirectory): Boolean {
-            val marker = pendingMarker(context)
-            if (!marker.exists()) return true
+            if (!isWipePending(context)) return true
             val deleted = runCatching { delete(artiDirectory(context)) }.getOrDefault(false)
-            return deleted && marker.delete()
+            if (deleted) clearPendingSignals(context)
+            return deleted && !isWipePending(context)
+        }
+
+        private const val KEY_PENDING = "arti_wipe_pending"
+        private fun pendingPreferences(context: Context) =
+            context.getSharedPreferences("wesh_arti_wipe", Context.MODE_PRIVATE)
+
+        /** Marker file or committed preference; an unreadable signal counts as pending. */
+        fun isWipePending(context: Context): Boolean = runCatching {
+            pendingMarker(context).exists() || pendingPreferences(context).getBoolean(KEY_PENDING, false)
+        }.getOrDefault(true)
+
+        private fun clearPendingSignals(context: Context) {
+            runCatching { pendingMarker(context).delete() }
+            runCatching { pendingPreferences(context).edit().remove(KEY_PENDING).commit() }
         }
     }
 }
