@@ -465,7 +465,6 @@
     <string name="about_howto_bookmark">Ajoutez un canal aux favoris pour le conserver dans votre liste</string>
     <string name="about_howto_mention">Saisissez @ pour mentionner quelqu’un</string>
     <string name="about_howto_commands">Saisissez / pour voir les commandes disponibles</string>
-    <string name="about_howto_panic">Touchez trois fois le logo pour demander l’effacement de toutes les données</string>
     <string name="about_section_about">À propos</string>
     <string name="about_section_theme">Thème</string>
     <string name="about_section_settings">Réglages</string>

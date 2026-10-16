@@ -53,7 +53,7 @@ fun PermissionExplanationScreen(
         ) {
             Spacer(modifier = Modifier.height(24.dp))
             
-            // Header Section - matching AboutSheet style
+            // Header section
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -84,7 +84,7 @@ fun PermissionExplanationScreen(
                 )
             }
 
-            // Privacy assurance section - matching AboutSheet card style
+            // Privacy assurance section
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 color = colorScheme.surfaceVariant.copy(alpha = 0.25f),
