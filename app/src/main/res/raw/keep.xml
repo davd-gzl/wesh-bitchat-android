@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bundled font licences must ship with the fonts (OFL condition 2): keep them through resource shrinking. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/archivo_ofl,@raw/geist_mono_ofl" />

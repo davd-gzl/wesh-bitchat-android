@@ -161,7 +161,7 @@ class MessageManager(private val state: ChatState) {
         if (
             !forceRead &&
             selectedConversationID != conversationID &&
-            message.sender != state.getNicknameValue()
+            !message.sentByNickname(state.getNicknameValue())
         ) {
             val currentUnread = state.getUnreadPrivateMessagesValue().toMutableSet()
             currentUnread.add(conversationID)

@@ -95,7 +95,7 @@ private fun BatteryOptimizationEnabledContent(
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header Section - matching AboutSheet style
+            // Header section
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -276,7 +276,7 @@ private fun BatteryOptimizationCheckingContent(
         verticalArrangement = Arrangement.spacedBy(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Header Section - matching AboutSheet style
+        // Header section
         Column(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -339,7 +339,7 @@ private fun BatteryOptimizationNotSupportedContent(
         verticalArrangement = Arrangement.spacedBy(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Header Section - matching AboutSheet style
+        // Header section
         Column(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally

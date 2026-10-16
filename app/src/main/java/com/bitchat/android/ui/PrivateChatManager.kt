@@ -36,7 +36,8 @@ class PrivateChatManager(
     private val noiseSessionDelegate: NoiseSessionDelegate,
     private val trackUnreadMessages: Boolean = true,
     private val hasReadReceiptBeenSent: (messageID: String) -> Boolean = { false },
-    private val markMessageReadLocally: (messageID: String) -> Unit = {}
+    private val markMessageReadLocally: (messageID: String) -> Unit = {},
+    private val weshPolicy: Boolean = com.bitchat.android.BuildConfig.WESH_POLICY
 ) {
 
     companion object {
@@ -60,6 +61,8 @@ class PrivateChatManager(
         val meshPeerID = route.meshPeerID ?: peerID.takeIf { ContactIdentityResolver.isMeshPeerId(it) }
 
         if (isPeerBlocked(peerID)) {
+            // Wesh: no notice in the public timeline, which would carry the raw remote name.
+            if (weshPolicy) return false
             val peerNickname = route.displayName ?: getPeerNickname(peerID, meshService)
             val systemMessage = BitchatMessage(
                 sender = "system",

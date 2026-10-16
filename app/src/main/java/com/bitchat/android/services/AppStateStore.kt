@@ -68,6 +68,9 @@ object AppStateStore {
         _nickname.value = nickname
     }
 
+    /** A sender name is ours only for a non-blank nickname: an unnamed remote sender is blank too. */
+    private fun isMine(sender: String): Boolean = _nickname.value.isNotBlank() && sender == _nickname.value
+
     fun setSelectedPrivateChatPeer(peerID: String?) {
         _selectedPrivateChatPeer.value = peerID
     }
@@ -324,7 +327,7 @@ object AppStateStore {
 
         val isRead = forceRead ||
             msg.sender == "system" ||
-            msg.sender == _nickname.value ||
+            isMine(msg.sender) ||
             _selectedPrivateChatPeer.value
                 ?.let(ContactDirectory::canonicalConversationId)
                 ?.equals(conversationID, ignoreCase = true) == true
@@ -338,7 +341,7 @@ object AppStateStore {
         val aliases = privateConversationAliases(peerID, conversationID)
         val displayName = ContactDirectory.resolve(conversationID).displayName
             ?: msg.sender.takeUnless {
-                it.isBlank() || it == "system" || it == _nickname.value
+                it.isBlank() || it == "system" || isMine(it)
             }
         displayName
             ?.takeUnless {
@@ -367,7 +370,7 @@ object AppStateStore {
         val existingMessages = _privateMessages.value[conversationID].orEmpty()
         val isRead = forceRead ||
             msg.sender == "system" ||
-            msg.sender == _nickname.value ||
+            isMine(msg.sender) ||
             _selectedPrivateChatPeer.value
                 ?.let(ContactDirectory::canonicalConversationId)
                 ?.equals(conversationID, ignoreCase = true) == true
@@ -377,7 +380,7 @@ object AppStateStore {
                 .lastOrNull { candidate ->
                     candidate.sender.isNotBlank() &&
                         candidate.sender != "system" &&
-                        candidate.sender != _nickname.value
+                        !isMine(candidate.sender)
                 }
                 ?.sender
         return PendingPrivateMessagePersistence(
@@ -416,6 +419,21 @@ object AppStateStore {
         is DeliveryStatus.Delivered -> 4
         is DeliveryStatus.Read -> 5
         is DeliveryStatus.Failed -> 0
+    }
+
+    /**
+     * Status from a transport that authenticated the sender as this conversation's contact: the
+     * message must belong to [conversationID], so an ack can never touch another conversation.
+     * Returns false (nothing written) when it does not, including when its history is unloaded.
+     */
+    fun updatePrivateMessageStatusIn(conversationID: String, messageID: String, status: DeliveryStatus): Boolean {
+        synchronized(this) {
+            val canonical = ContactDirectory.canonicalConversationId(conversationID)
+            if (_privateMessages.value[canonical].orEmpty().none { it.id == messageID }) return false
+            // Message IDs are unique across conversations (UNIQUE column, seenMessageIds).
+            updatePrivateMessageStatus(messageID, status)
+            return true
+        }
     }
 
     fun updatePrivateMessageStatus(messageID: String, status: DeliveryStatus) {
@@ -762,7 +780,7 @@ object AppStateStore {
             unreadMessageCount = messages.count { message ->
                 message.id !in readIDs &&
                     message.sender != "system" &&
-                    message.sender != _nickname.value
+                    !isMine(message.sender)
             }
         )
     }

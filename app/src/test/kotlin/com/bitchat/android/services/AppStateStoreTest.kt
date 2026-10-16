@@ -25,6 +25,17 @@ class AppStateStoreTest {
     }
 
     @Test
+    fun `an ack status only touches the acking contact's own conversation`() {
+        AppStateStore.addPrivateMessage("contact_alice", BitchatMessage(id = "status-1", sender = "me", content = "x",
+            timestamp = Date(1), isPrivate = true, senderPeerID = "1111222233334444", deliveryStatus = DeliveryStatus.Sent))
+        assertFalse(AppStateStore.updatePrivateMessageStatusIn("contact_mallory", "status-1", DeliveryStatus.Read("mallory", Date(2))))
+        assertEquals(DeliveryStatus.Sent, AppStateStore.privateMessages.value.values.flatten().single { it.id == "status-1" }.deliveryStatus)
+        assertTrue(AppStateStore.updatePrivateMessageStatusIn("contact_alice", "status-1", DeliveryStatus.Delivered("alice", Date(3))))
+        assertEquals(DeliveryStatus.Delivered("alice", Date(3)),
+            AppStateStore.privateMessages.value.values.flatten().single { it.id == "status-1" }.deliveryStatus)
+    }
+
+    @Test
     fun `public timeline collapses request sync replay even when android message ids differ`() {
         val timestamp = Date(1_700_000_000_000L)
         val originalDelivery = BitchatMessage(
@@ -387,5 +398,20 @@ class AppStateStoreTest {
             listOf(afterPanic),
             AppStateStore.privateMessages.value.getValue("peer-a")
         )
+    }
+
+    @Test
+    fun `an unnamed remote private message is never counted as mine when my nickname is empty`() {
+        val previous = AppStateStore.nickname.value
+        AppStateStore.setNickname("")
+        try {
+            val remote = BitchatMessage(id = "unnamed-remote", sender = "", content = "synthetic",
+                timestamp = Date(1), isPrivate = true, senderPeerID = "peer-a")
+            AppStateStore.addPrivateMessage("peer-a", remote)
+            assertFalse(AppStateStore.isPrivateMessageRead(remote.id))
+            assertEquals(1, AppStateStore.unreadPrivateMessageCounts.value.values.sum())
+        } finally {
+            AppStateStore.setNickname(previous)
+        }
     }
 }

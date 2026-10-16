@@ -46,7 +46,7 @@ cryptographic algorithms to silence this gate.
 ## Android checks
 
 ```sh
-./gradlew :app:assembleDebug :wear:assembleDebug testDebugUnitTest
+./gradlew :app:assembleDebug testDebugUnitTest
 ./gradlew lintDebug
 ```
 

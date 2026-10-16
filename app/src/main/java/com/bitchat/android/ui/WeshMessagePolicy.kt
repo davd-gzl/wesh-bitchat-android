@@ -45,6 +45,16 @@ internal object WeshMessagePolicy {
         return true
     }
 
+    /**
+     * The Wesh public room: public text not from a blocked peer, and no system line. No local system
+     * line sets senderPeerID to ours today, so every public system line is hidden; one without a known
+     * local origin could carry a remote name or a BitChat notice.
+     */
+    fun showsInPublicRoom(message: BitchatMessage, myPeerID: String, isBlocked: (String) -> Boolean): Boolean =
+        !message.isPrivate && message.channel == null &&
+            (message.sender != "system" || message.senderPeerID == myPeerID) &&
+            (message.senderPeerID == null || !isBlocked(message.senderPeerID))
+
     fun deliveryLabel(status: DeliveryStatus?): String = when (status) {
         null, DeliveryStatus.Sending -> "En attente d’envoi"
         DeliveryStatus.Sent -> "Transmis · réception non confirmée"
@@ -96,6 +106,18 @@ internal class WeshPreferences(
         get() = prefs.getBoolean(NOTIFICATION_SENDER, false)
         set(value) {
             synchronized(lock) { if (!fenced) prefs.edit { putBoolean(NOTIFICATION_SENDER, value) } }
+        }
+    /** True once the Pavé welcome was completed on this phone (cleared by an erase). */
+    var welcomed: Boolean
+        get() = prefs.getBoolean("welcomed", false)
+        set(value) {
+            synchronized(lock) { if (!fenced) prefs.edit { putBoolean("welcomed", value) } }
+        }
+    /** Pavé appearance name ("Nuit", "Jour", "Automatique"); Nuit when unset or after an erase. */
+    var appearance: String
+        get() = prefs.getString("appearance", "Nuit") ?: "Nuit"
+        set(value) {
+            synchronized(lock) { if (!fenced) prefs.edit { putString("appearance", value) } }
         }
     val meetingNote: String
         get() = prefs.getString("meeting_note", "") ?: ""

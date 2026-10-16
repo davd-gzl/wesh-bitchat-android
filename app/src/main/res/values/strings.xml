@@ -166,7 +166,6 @@
   <string name="about_howto_bookmark">Bookmark a channel to keep it in your list</string>
   <string name="about_howto_mention">Type @ to mention someone</string>
   <string name="about_howto_commands">Type / to see the available commands</string>
-  <string name="about_howto_panic">Triple-tap the logo to wipe all data</string>
 
   <!-- About sheet: section labels -->
   <string name="about_section_about">About</string>
