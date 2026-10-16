@@ -120,4 +120,15 @@ class WeshInboundAdmissionTest {
         IncomingMessageAdmission.installForTesting { emptySet() }
         assertTrue(IncomingMessageAdmission.admitToAppState(public, null) { null })
     }
+
+    @Test
+    fun `only an unblocked enrolled sender may be acknowledged`() {
+        val fromContact = privateFrom("peer-a", "ack-contact")
+        val fromStranger = privateFrom("peer-b", "ack-stranger")
+        val enrollment = gate(mapOf("peer-a" to enrolled, "peer-b" to stranger))
+        assertTrue(IncomingMessageAdmission.mayAcknowledge(fromContact, enrollment) { null })
+        assertFalse(IncomingMessageAdmission.mayAcknowledge(fromStranger, enrollment) { null })
+        assertFalse("blocked", IncomingMessageAdmission.mayAcknowledge(fromContact, enrollment) { blockedFingerprint })
+        assertTrue("checking never records a request", WeshMessageRequests.requests.value.isEmpty())
+    }
 }

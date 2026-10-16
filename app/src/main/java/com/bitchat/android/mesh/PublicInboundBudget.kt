@@ -7,15 +7,17 @@ import java.util.concurrent.atomic.AtomicLong
  * cannot bury the local channel. Over-budget messages are dropped silently and only counted.
  *
  * Only a Noise-authenticated key gets a bucket of its own. Every unauthenticated message (no
- * proven key, no link identity, or a full source table) pays into one shared, tighter bucket,
- * so rotating peer IDs only drains that bucket and never earns a fresh burst.
+ * proven key, no link identity, or a full source table) pays into one shared bucket sized for a
+ * crowd, plus a small per-peer-ID cap, so rotating peer IDs only drains the shared bucket and
+ * one peer ID cannot take all of it.
  */
 class PublicInboundBudget(
     private val now: () -> Long = System::currentTimeMillis,
     private val global: Rate = Rate(perSecond = 20.0, burst = 60.0),
     private val perAuthenticatedSource: Rate = Rate(perSecond = 1.0, burst = 8.0),
     private val perLink: Rate = Rate(perSecond = 5.0, burst = 30.0),
-    private val unauthenticated: Rate = Rate(perSecond = 2.0, burst = 10.0),
+    private val unauthenticated: Rate = Rate(perSecond = 20.0, burst = 60.0),
+    private val perUnauthenticatedPeer: Rate = Rate(perSecond = 1.0, burst = 5.0),
     private val maxTrackedSources: Int = 512
 ) {
     data class Rate(val perSecond: Double, val burst: Double)
@@ -25,6 +27,7 @@ class PublicInboundBudget(
     private val globalBucket = Bucket(global.burst, now())
     private val sharedUnauthenticated = Bucket(unauthenticated.burst, now())
     private val sources = LinkedHashMap<String, Bucket>(16, 0.75f, true)
+    private val unauthenticatedPeers = LinkedHashMap<String, Bucket>(16, 0.75f, true)
     private val links = LinkedHashMap<String, Bucket>(16, 0.75f, true)
     private val droppedCount = AtomicLong()
 
@@ -32,15 +35,19 @@ class PublicInboundBudget(
 
     /**
      * @param authenticatedSource key proven by a Noise session (for example `noise:<hex>`), or
-     * null when the sender is not authenticated.
+     * null when the sender is not authenticated. [peerID] caps one unauthenticated peer ID.
      */
     @Synchronized
-    fun tryAdmit(authenticatedSource: String?, linkID: String?): Boolean {
+    fun tryAdmit(authenticatedSource: String?, linkID: String?, peerID: String? = null): Boolean {
         val time = now()
         val charged = LinkedHashMap<Bucket, Rate>()
         charged[globalBucket] = global
         val source = authenticatedSource?.let { tracked(sources, it, perAuthenticatedSource, time) }
-        if (source != null) charged[source] = perAuthenticatedSource else charged[sharedUnauthenticated] = unauthenticated
+        if (source != null) charged[source] = perAuthenticatedSource else {
+            charged[sharedUnauthenticated] = unauthenticated
+            peerID?.let { tracked(unauthenticatedPeers, it, perUnauthenticatedPeer, time) }
+                ?.let { charged[it] = perUnauthenticatedPeer }
+        }
         val link = linkID?.let { tracked(links, it, perLink, time) }
         if (link != null) charged[link] = perLink else charged[sharedUnauthenticated] = unauthenticated
         charged.forEach { (bucket, rate) -> refill(bucket, rate, time) }

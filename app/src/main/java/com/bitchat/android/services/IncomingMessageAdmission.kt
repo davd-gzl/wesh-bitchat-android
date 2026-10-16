@@ -18,11 +18,16 @@ internal object IncomingMessageAdmission {
         val onRequest: (peerID: String, nickname: String, fingerprint: String?) -> Unit = WeshMessageRequests::record
     ) {
         internal fun admits(message: BitchatMessage): Boolean {
+            if (isEnrolledSender(message)) return true
             val peerID = message.senderPeerID?.takeIf(String::isNotBlank) ?: return false
-            val fingerprint = runCatching { fingerprintOf(peerID) }.getOrNull()
-            if (fingerprint != null && runCatching { isEnrolled(fingerprint) }.getOrDefault(false)) return true
-            runCatching { onRequest(peerID, message.sender, fingerprint) }
+            runCatching { onRequest(peerID, message.sender, runCatching { fingerprintOf(peerID) }.getOrNull()) }
             return false
+        }
+
+        internal fun isEnrolledSender(message: BitchatMessage): Boolean {
+            val peerID = message.senderPeerID?.takeIf(String::isNotBlank) ?: return false
+            val fingerprint = runCatching { fingerprintOf(peerID) }.getOrNull() ?: return false
+            return runCatching { isEnrolled(fingerprint) }.getOrDefault(false)
         }
     }
 
@@ -47,6 +52,21 @@ internal object IncomingMessageAdmission {
         val fingerprint = senderFingerprint(peerID) ?: return@runCatching false
         fingerprint in blocked()
     }.getOrDefault(true)
+
+    /**
+     * A delivery ACK may answer only an unblocked sender that admission would accept, so a
+     * stranger never learns this phone received anything. Duplicates of such a sender still
+     * get their ACK, so its retries can stop.
+     */
+    fun mayAcknowledge(
+        message: BitchatMessage,
+        qrEnrollment: QrEnrollment?,
+        senderFingerprint: (String) -> String?
+    ): Boolean {
+        val peerID = message.senderPeerID?.takeIf(String::isNotBlank) ?: return false
+        if (isSenderBlocked(peerID, senderFingerprint)) return false
+        return qrEnrollment == null || qrEnrollment.isEnrolledSender(message)
+    }
 
     fun admitToAppState(
         message: BitchatMessage,

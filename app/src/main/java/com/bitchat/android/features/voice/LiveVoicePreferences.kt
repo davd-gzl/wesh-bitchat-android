@@ -7,7 +7,10 @@ object LiveVoicePreferences {
     private const val PREFERENCES = "bitchat_settings"
     private const val ENABLED = "ptt.liveVoiceEnabled"
 
-    fun isEnabled(context: Context): Boolean =
+    /** Set by the Wesh build: live voice is not part of Wesh, whatever the stored setting says. */
+    @Volatile var forceDisabled: Boolean = false
+
+    fun isEnabled(context: Context): Boolean = !forceDisabled &&
         context.applicationContext
             .getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .getBoolean(ENABLED, true)

@@ -12,8 +12,23 @@ class PublicInboundBudgetTest {
         global = PublicInboundBudget.Rate(perSecond = 10.0, burst = 20.0),
         perAuthenticatedSource = PublicInboundBudget.Rate(perSecond = 1.0, burst = 3.0),
         perLink = PublicInboundBudget.Rate(perSecond = 4.0, burst = 8.0),
-        unauthenticated = PublicInboundBudget.Rate(perSecond = 1.0, burst = 4.0)
+        unauthenticated = PublicInboundBudget.Rate(perSecond = 1.0, burst = 4.0),
+        perUnauthenticatedPeer = PublicInboundBudget.Rate(perSecond = 1.0, burst = 2.0)
     )
+
+    @Test
+    fun `one unauthenticated peer ID is capped below the shared bucket`() {
+        val admitted = (0 until 10).count { budget.tryAdmit(null, "link-$it", "peer-a") }
+        assertEquals(2, admitted)
+        assertTrue("another peer still uses the shared bucket", budget.tryAdmit(null, "link-x", "peer-b"))
+    }
+
+    @Test
+    fun `default shared bucket is sized for a crowd`() {
+        val crowd = PublicInboundBudget(now = { time })
+        val admitted = (0 until 100).count { crowd.tryAdmit(null, "link-$it", "peer-$it") }
+        assertEquals(60, admitted)
+    }
 
     @Test
     fun `an authenticated source has its own budget and recovers over time`() {
@@ -28,7 +43,7 @@ class PublicInboundBudgetTest {
 
     @Test
     fun `rotating unauthenticated identities only drain one shared bucket`() {
-        val admitted = (0 until 50).count { budget.tryAdmit(null, "link-$it") }
+        val admitted = (0 until 50).count { budget.tryAdmit(null, "link-$it", "peer-$it") }
         assertEquals(4, admitted)
         assertTrue("authenticated senders are unaffected", budget.tryAdmit("noise:a", "link-1"))
     }

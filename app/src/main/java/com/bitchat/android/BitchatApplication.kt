@@ -14,6 +14,7 @@ class BitchatApplication : Application() {
         super.onCreate()
 
         if (BuildConfig.WESH_LOCAL_ONLY) {
+            com.bitchat.android.features.voice.LiveVoicePreferences.forceDisabled = true
             com.bitchat.android.startup.WeshRuntime.start(this)
         } else {
             initializeRuntime()
