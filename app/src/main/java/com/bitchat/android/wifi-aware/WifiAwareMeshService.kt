@@ -183,7 +183,8 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
                 leavePayloadProvider = {
                     (delegate?.getNickname() ?: myPeerID).toByteArray(Charsets.UTF_8)
                 }
-            )
+            ),
+            weshLocalOnly = com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY
         )
         fragmentingSender = FragmentingPacketSender(serviceScope, meshCore.fragmentManager, TAG)
     }

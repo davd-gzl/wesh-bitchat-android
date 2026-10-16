@@ -39,7 +39,10 @@ class MeshCore(
     private val maxTtl: UByte,
     sharedGossipManager: GossipSyncManager?,
     gossipConfigProvider: GossipSyncManager.ConfigProvider,
-    private val hooks: Hooks = Hooks()
+    private val hooks: Hooks = Hooks(),
+    // Passed in rather than read from BuildConfig: this file also compiles into the watch module.
+    // Defaults to the stricter Wesh policy.
+    weshLocalOnly: Boolean = true
 ) {
     data class Hooks(
         /**
@@ -112,7 +115,7 @@ class MeshCore(
     private val storeForwardManager = StoreForwardManager()
     // Same inbound policy as Bluetooth.
     private val messageHandler = MessageHandler(myPeerID, context.applicationContext).apply {
-        applyInboundPolicy(com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY)
+        applyInboundPolicy(weshLocalOnly)
     }
     private val packetProcessor = PacketProcessor(myPeerID)
     private data class VoiceFrameRequest(val recipientPeerID: String?, val payload: ByteArray)
