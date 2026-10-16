@@ -46,10 +46,32 @@ class WeshInternetHookupTest {
         NostrRelayManager.shared.clearAllSubscriptions()
     }
 
-    @Test fun `product policy stays on and Internet is available as an opt-in`() {
+    @Test fun `product policy stays on and Internet stays unavailable until Arti can stop Tor`() {
         assertTrue(BuildConfig.WESH_POLICY)
-        assertTrue(BuildConfig.WESH_INTERNET_AVAILABLE)
-        assertTrue(WeshInternetMode.productInternetAvailable())
+        assertFalse(BuildConfig.WESH_INTERNET_AVAILABLE)
+        assertFalse(WeshInternetMode.productInternetAvailable())
+    }
+
+    @Test fun `this build refuses to enable Internet even with the disclosure accepted`() {
+        val mode = WeshInternetMode.get(app)
+        mode.disclosureAccepted = true
+        assertFalse(mode.setEnabled(true))
+        assertFalse(mode.enabled.value)
+        assertFalse(mode.allowsNetwork())
+        assertFalse(WeshNetworkPolicy.allowsNetwork())
+        assertEquals(TorMode.OFF, TorPreferenceManager.get(app))
+    }
+
+    @Test fun `an opt-in persisted by an earlier build stays off in this build`() {
+        app.getSharedPreferences(WeshInternetMode.PREFS, android.content.Context.MODE_PRIVATE).edit()
+            .putBoolean(WeshInternetMode.KEY_ENABLED, true)
+            .putBoolean(WeshInternetMode.KEY_DISCLOSURE, true)
+            .commit()
+        val mode = WeshInternetMode.get(app)
+        assertFalse(mode.enabled.value)
+        assertFalse(mode.allowsNetwork())
+        assertFalse(WeshNetworkPolicy.allowsNetwork())
+        assertEquals(TorMode.OFF, TorPreferenceManager.get(app))
     }
 
     @Test fun `with the toggle off nothing network-related starts`() = runBlocking {
