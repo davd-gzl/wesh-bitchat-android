@@ -291,8 +291,9 @@ fun WeshScreen(viewModel: ChatViewModel) {
                             TextButton(onClick = { contactAction = "unhide" to peerID }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Débloquer $hiddenName" }) { Text("Débloquer") }
                         }
                         items(if (revision >= 0) viewModel.weshBlockedFingerprints().toList() else emptyList()) { fingerprint ->
-                            Text("${safeDisplayName(viewModel.weshContactName(fingerprint), "Identité")} · ${fingerprint.take(8)}")
-                            TextButton(onClick = { contactAction = "unblock" to fingerprint }, modifier = Modifier.semantics { contentDescription = "Débloquer ${viewModel.weshContactName(fingerprint)}" }) { Text("Débloquer") }
+                            val blockedName = safeDisplayName(viewModel.weshContactName(fingerprint), "Identité")
+                            Text("$blockedName · ${fingerprint.take(8)}")
+                            TextButton(onClick = { contactAction = "unblock" to fingerprint }, modifier = Modifier.semantics { contentDescription = "Débloquer $blockedName" }) { Text("Débloquer") }
                         }
                         item { Text("Brouillons", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() }); Text("Les brouillons sont enregistrés chiffrés sur ce téléphone et restent disponibles après fermeture de Wesh. Quitter l’application ne les efface pas ; ils ne sont jamais envoyés automatiquement.") }
                         item { Text("Confidentialité", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() }); Text("Le salon local est public. Les messages privés utilisent le chiffrement du protocole existant. Les contacts et les messages peuvent rester stockés : fermer le salon ne les efface pas. Bloquer masque une identité sur ce téléphone, sans empêcher un relais de conserver ses messages.") }

@@ -71,6 +71,13 @@ class WeshNotificationPrivacyTest {
     }
 
     @Test
+    fun `opted-in sender name goes through the shared display name sanitizer`() {
+        WeshPreferences(app).notificationShowsSender = true
+        backgroundManager().showPrivateMessageNotification("aaaabbbbccccdddd", "\u202Eevil\u200Bname", secret)
+        assertEquals("evilname", postedNotifications().single().extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+    }
+
+    @Test
     fun `public mention notification hides sender and content`() {
         backgroundManager().showMeshMentionNotification(nickname, secret, "aaaabbbbccccdddd")
 

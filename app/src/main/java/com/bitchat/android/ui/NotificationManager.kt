@@ -23,6 +23,7 @@ import com.bitchat.android.R
 import com.bitchat.android.service.ConversationNotificationReceiver
 import com.bitchat.android.services.ContactDirectory
 import com.bitchat.android.services.ConversationListPreferences
+import com.bitchat.android.util.safeDisplayName
 import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
@@ -199,7 +200,7 @@ class NotificationManager(
 
         val notification = PendingNotification(
             senderPeerID = conversationID,
-            senderNickname = senderNickname,
+            senderNickname = safeDisplayName(senderNickname, senderPeerID.take(8)),
             messageContent = messageContent,
             timestamp = System.currentTimeMillis()
         )
