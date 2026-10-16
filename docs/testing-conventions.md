@@ -62,10 +62,10 @@ fixtures.
 
 ## Coverage
 
-Run the app compatibility suite and the separate Wear suite:
+Run the app compatibility suite:
 
 ```sh
-./gradlew clientRewriteContractTest :wear:testDebugUnitTest
+./gradlew clientRewriteContractTest
 ```
 
 `clientRewriteContractTest` currently depends on the app JVM test task only.
