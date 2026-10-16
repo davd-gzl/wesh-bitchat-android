@@ -54,7 +54,7 @@ class BluetoothGattServerPermissionCallbacksTest {
     private val delegate = mock<BluetoothConnectionManagerDelegate>()
     private val tracker = BluetoothConnectionTracker(scope, power)
     private val manager = BluetoothGattServerManager(context, scope, tracker, permissions, power,
-        delegate, "0011223344556677")
+        delegate)
     private val device = mock<BluetoothDevice> {
         on { address }.thenReturn("AA:BB:CC:DD:EE:01")
     }

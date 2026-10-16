@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="wesh_notification_new_message">New message</string>
+    <string name="wesh_notification_open_to_read">Open Wesh to read it</string>
+    <string name="wesh_notification_message_count">%1$d new messages</string>
+</resources>

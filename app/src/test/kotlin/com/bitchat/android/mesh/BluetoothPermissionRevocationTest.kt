@@ -92,7 +92,7 @@ class BluetoothPermissionRevocationTest {
     fun `server rejects startup if adapter permission is revoked after preflight`() {
         whenever(adapter.bluetoothLeAdvertiser).thenReturn(mock<BluetoothLeAdvertiser>())
         whenever(adapter.isEnabled).thenThrow(SecurityException("synthetic revocation"))
-        val server = BluetoothGattServerManager(context, scope, tracker, permissions, mock(), null, "0011223344556677")
+        val server = BluetoothGattServerManager(context, scope, tracker, permissions, mock(), null)
 
         assertFalse(server.start())
         server.stop()
@@ -112,7 +112,7 @@ class BluetoothPermissionRevocationTest {
         tracker.addDeviceConnection("AA:BB:CC:DD:EE:02", BluetoothConnectionTracker.DeviceConnection(second))
         doThrow(SecurityException("synthetic revocation")).whenever(gatt).cancelConnection(first)
         doThrow(SecurityException("synthetic revocation")).whenever(gatt).close()
-        val server = BluetoothGattServerManager(context, scope, tracker, permissions, mock(), null, "0011223344556677")
+        val server = BluetoothGattServerManager(context, scope, tracker, permissions, mock(), null)
         assertTrue(server.start())
         scope.runCurrent()
         assertNotNull(server.getGattServer())
@@ -138,7 +138,7 @@ class BluetoothPermissionRevocationTest {
         val device = mock<BluetoothDevice>()
         whenever(device.address).thenThrow(SecurityException("synthetic revocation"))
         doThrow(SecurityException("synthetic revocation")).whenever(gatt).cancelConnection(device)
-        val server = BluetoothGattServerManager(context, scope, tracker, permissions, mock(), null, "0011223344556677")
+        val server = BluetoothGattServerManager(context, scope, tracker, permissions, mock(), null)
         assertTrue(server.start())
         scope.runCurrent()
 
