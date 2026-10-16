@@ -286,11 +286,11 @@ object PaveDisplayName {
     }
 
     /**
-     * Two groups of 4 hex characters, joined or one space apart ("A1B2 C3D4", "a1b2c3d4"): a name
-     * like that would pass for the short key fingerprint. Matched before [AFTER_LOWERCASE], which
-     * would turn 1 and 0 into letters.
+     * Two groups of 4 hex characters, each with at least one digit, joined or one space apart
+     * ("A1B2 C3D4", "a1b2c3d4"; not "Café 2024" or "dead beef"): a name like that would pass for the
+     * short key fingerprint. Matched before [AFTER_LOWERCASE], which would turn 1 and 0 into letters.
      */
-    private val FINGERPRINT_LIKE = Regex("[0-9a-f]{4} ?[0-9a-f]{4}")
+    private val FINGERPRINT_LIKE = Regex("(?=[0-9a-f]{0,3}[0-9])[0-9a-f]{4} ?(?=[0-9a-f]{0,3}[0-9])[0-9a-f]{4}")
 
     /**
      * Whether whole leading [words] (trailing ones when [reversed]) join into one of [affixes].

@@ -71,7 +71,7 @@ class PaveDisplayNameTest {
         val result = safe(grapheme.repeat(40))
         assertEquals(grapheme.repeat(16) + "…" + grapheme.repeat(15), result)
         assertEquals("Nora la vraie qu…ongtemps ou pas", safe("Nora la vraie qui ecrit trop longtemps ou pas"))
-        val exact = "x".repeat(PaveDisplayName.MAX_GRAPHEMES)
+        val exact = "a".repeat(PaveDisplayName.MAX_GRAPHEMES)
         assertEquals(exact, safe(exact))
     }
 
@@ -220,6 +220,8 @@ class PaveDisplayNameTest {
         assertEquals("!", safe("A1B2-C3D4 Nora"))
         assertEquals("!", safe("Nora 1010 1010")) // checked before 1 and 0 are folded to l and o
         assertEquals("Nora 2024", safe("Nora 2024"))
+        assertEquals("Café 2024", safe("Café 2024")) // each group needs a digit
+        assertEquals("dead beef", safe("dead beef"))
         assertEquals("A1B2 Nora C3D4", safe("A1B2 Nora C3D4"))
     }
 }

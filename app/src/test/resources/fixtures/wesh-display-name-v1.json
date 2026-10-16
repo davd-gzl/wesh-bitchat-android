@@ -275,6 +275,16 @@
       "input": "Nora 2024",
       "expect": "display",
       "display": "Nora 2024"
+    },
+    {
+      "input": "Café 2024",
+      "expect": "display",
+      "display": "Café 2024"
+    },
+    {
+      "input": "dead beef",
+      "expect": "display",
+      "display": "dead beef"
     }
   ],
   "afterLowercase": {
