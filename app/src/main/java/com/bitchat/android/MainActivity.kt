@@ -323,6 +323,7 @@ class MainActivity : OrientationAwareActivity() {
                 // Pavé welcome: nickname, then the Bluetooth explanation before the system prompt.
                 // The coordinator then asks for what is still missing and runs the usual checks.
                 val prefs = chatViewModel.weshPreferences
+                val currentNickname by chatViewModel.nickname.collectAsState()
                 com.bitchat.android.ui.pave.OnboardingFlow(
                     onFinished = { chosen, _ ->
                         if (com.bitchat.android.ui.pave.NicknameGenerator.isValid(chosen)) chatViewModel.setNickname(chosen)
@@ -331,7 +332,7 @@ class MainActivity : OrientationAwareActivity() {
                         onboardingCoordinator.requestPermissions()
                     },
                     modifier = modifier,
-                    initialNickname = if (prefs.welcomed) chatViewModel.nickname.value else null,
+                    initialNickname = if (prefs.welcomed) currentNickname else null,
                 )
             }
 
