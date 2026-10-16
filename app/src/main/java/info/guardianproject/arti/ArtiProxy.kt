@@ -5,11 +5,24 @@ import android.util.Log
 import org.torproject.arti.ArtiNative
 import java.io.File
 
+/** The native calls ArtiProxy makes; tests replace it. */
+internal interface ArtiNativeApi {
+    fun setLogCallback(callback: ArtiLogListener)
+    fun initialize(dataDir: String): Int
+    fun startSocksProxy(port: Int): Int
+    fun stop(): Int
+}
+
+/** Loads the native library only on first use. */
+internal object DefaultArtiNative : ArtiNativeApi {
+    override fun setLogCallback(callback: ArtiLogListener) = ArtiNative.setLogCallback(callback)
+    override fun initialize(dataDir: String) = ArtiNative.initialize(dataDir)
+    override fun startSocksProxy(port: Int) = ArtiNative.startSocksProxy(port)
+    override fun stop() = ArtiNative.stop()
+}
+
 /**
  * Arti Tor proxy implementation compatible with Guardian Project API.
- *
- * This class provides a wrapper around the custom-built Arti native library,
- * maintaining API compatibility with Guardian Project's arti-mobile-ex library.
  *
  * Usage:
  * ```
@@ -24,11 +37,12 @@ import java.io.File
  * proxy.stop()
  * ```
  */
-class ArtiProxy private constructor(
+class ArtiProxy internal constructor(
     private val application: Application,
     private val socksPort: Int,
     private val dnsPort: Int,
-    private val logListener: ArtiLogListener?
+    private val logListener: ArtiLogListener?,
+    private val native: ArtiNativeApi = DefaultArtiNative
 ) {
     companion object {
         private const val TAG = "ArtiProxy"
@@ -37,12 +51,16 @@ class ArtiProxy private constructor(
     @Volatile
     private var isRunning = false
 
+    /** Set from the first native call of a start until a stop: the native side may hold a client. */
+    @Volatile
+    private var nativeTouched = false
+
     /**
      * Start the Arti Tor proxy.
      *
      * This method:
      * 1. Registers log callback
-     * 2. Initializes Arti runtime with data directory
+     * 2. Bootstraps a fresh Tor client (blocks; [stop] from another thread cancels it)
      * 3. Starts SOCKS proxy on configured port
      *
      * @throws ArtiException if initialization or startup fails
@@ -54,21 +72,23 @@ class ArtiProxy private constructor(
         }
 
         try {
+            nativeTouched = true
             logListener?.let { listener ->
                 Log.d(TAG, "Registering log callback")
-                ArtiNative.setLogCallback(listener)
+                native.setLogCallback(listener)
             }
 
             val dataDir = getDataDirectory()
-            Log.i(TAG, "Initializing Arti with data directory: $dataDir")
+            Log.i(TAG, "Initializing Arti")
 
-            val initResult = ArtiNative.initialize(dataDir.absolutePath)
-            if (initResult != 0) {
-                throw ArtiException("Failed to initialize Arti: error code $initResult")
+            when (val initResult = native.initialize(dataDir.absolutePath)) {
+                0 -> Unit
+                -4 -> throw ArtiException("Arti stopped during bootstrap")
+                else -> throw ArtiException("Failed to initialize Arti: error code $initResult")
             }
 
             Log.i(TAG, "Starting SOCKS proxy on port $socksPort (DNS port: $dnsPort)")
-            val startResult = ArtiNative.startSocksProxy(socksPort)
+            val startResult = native.startSocksProxy(socksPort)
             when (startResult) {
                 0 -> {
                     isRunning = true
@@ -91,24 +111,21 @@ class ArtiProxy private constructor(
     }
 
     /**
-     * Stop the Arti Tor proxy.
-     *
-     * This method gracefully shuts down the Tor client and SOCKS proxy.
+     * Stop the Arti Tor proxy: drops the Tor client and its runtime, and cancels a start still
+     * bootstrapping. Also runs after a failed start, which can leave a client behind.
      */
     fun stop() {
-        if (!isRunning) {
-            Log.w(TAG, "Arti not running")
-            return
-        }
+        if (!nativeTouched) return
 
         try {
             Log.i(TAG, "Stopping Arti...")
-            val stopResult = ArtiNative.stop()
+            val stopResult = native.stop()
             if (stopResult != 0) {
                 Log.w(TAG, "Stop returned error code: $stopResult")
             }
 
             isRunning = false
+            nativeTouched = false
             Log.i(TAG, "Arti stopped successfully")
 
         } catch (e: Exception) {

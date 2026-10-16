@@ -33,9 +33,9 @@ object ArtiNative {
     external fun setLogCallback(callback: ArtiLogListener)
 
     /**
-     * Initialize Arti runtime
+     * Builds a fresh runtime and bootstraps a fresh Tor client; any earlier client is released.
      * @param dataDir Directory for Arti state/cache
-     * @return 0 on success, error code otherwise
+     * @return 0 on success, -4 when [stop] cancelled the bootstrap, another error code otherwise
      */
     external fun initialize(dataDir: String): Int
 
@@ -47,7 +47,8 @@ object ArtiNative {
     external fun startSocksProxy(port: Int): Int
 
     /**
-     * Stop Arti and cleanup
+     * Cancels a bootstrap in progress, drops the Tor client and shuts its runtime down. When it
+     * returns no Tor traffic remains and the data directory can be deleted.
      * @return 0 on success, error code otherwise
      */
     external fun stop(): Int

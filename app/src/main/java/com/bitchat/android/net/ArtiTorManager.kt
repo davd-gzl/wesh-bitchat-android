@@ -192,6 +192,11 @@ class ArtiTorManager private constructor() {
     }
 
     suspend fun applyMode(application: Application, mode: TorMode) {
+        if (mode == TorMode.OFF) {
+            // A start holds applyMutex for its whole bootstrap: cancel it now, not after.
+            desiredMode = TorMode.OFF
+            stopArtiInternal()
+        }
         applyMutex.withLock {
             try {
                 desiredMode = mode
@@ -301,6 +306,11 @@ class ArtiTorManager private constructor() {
         } catch (e: Exception) {
             Log.e(TAG, "Error starting Arti on port $currentSocksPort: ${e.message}")
             _statusFlow.update { it.copy(state = TorState.ERROR) }
+            if (desiredMode != TorMode.ON) {
+                // A stop cancelled this start: no retry.
+                lifecycleState = LifecycleState.STOPPED
+                return
+            }
 
             val isBindError = isBindError(e)
             if (isBindError && bindRetryAttempts < MAX_RETRY_ATTEMPTS) {

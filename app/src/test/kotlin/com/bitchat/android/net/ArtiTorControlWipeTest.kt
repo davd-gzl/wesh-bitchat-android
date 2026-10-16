@@ -2,6 +2,7 @@ package com.bitchat.android.net
 
 import android.app.Application
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
@@ -38,6 +39,30 @@ class ArtiTorControlWipeTest {
         assertEquals(TorMode.OFF, TorPreferenceManager.get(app))
         assertEquals(TorMode.OFF, TorPreferenceManager.modeFlow.value)
         assertFalse(ArtiTorControl.pendingMarker(app).exists())
+    }
+
+    @Test fun `the state directory is deleted only after Arti confirms it stopped`() = runBlocking {
+        val status = MutableStateFlow(running)
+        val events = mutableListOf<String>()
+        val control = ArtiTorControl(
+            app, status,
+            applyOff = {
+                events += "stop requested"
+                // The native stop returns later, once the client and its runtime are gone.
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+                    kotlinx.coroutines.delay(100)
+                    events += "stopped"
+                    status.value = ArtiTorManager.TorStatus()
+                }
+            },
+            deleteArti = { dir ->
+                events += "delete while ${status.value.state}"
+                dir.deleteRecursively() && !dir.exists()
+            }
+        )
+        assertTrue(control.stopAndWipe())
+        assertEquals(listOf("stop requested", "stopped", "delete while OFF"), events)
+        assertFalse(arti.exists())
     }
 
     @Test fun `a stop timeout still deletes the state and leaves a wipe for the next start`() = runBlocking {
