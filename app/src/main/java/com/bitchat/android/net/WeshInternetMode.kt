@@ -1,5 +1,6 @@
 package com.bitchat.android.net
 
+import com.bitchat.android.util.booleanOr
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
@@ -139,13 +140,13 @@ class WeshInternetMode internal constructor(
     private var stallJob: Job? = null
     private var relaysRequested = false
 
-    private val _enabled = MutableStateFlow(prefs.getBoolean(KEY_ENABLED, false) && internetAvailable())
+    private val _enabled = MutableStateFlow(prefs.booleanOr(KEY_ENABLED, false) && internetAvailable())
     val enabled: StateFlow<Boolean> = _enabled.asStateFlow()
     private val _state = MutableStateFlow<WeshInternetState>(WeshInternetState.Off)
     val state: StateFlow<WeshInternetState> = _state.asStateFlow()
 
     var disclosureAccepted: Boolean
-        get() = prefs.getBoolean(KEY_DISCLOSURE, false)
+        get() = prefs.booleanOr(KEY_DISCLOSURE, false)
         set(value) = synchronized(lock) { if (!fenced) prefs.edit { putBoolean(KEY_DISCLOSURE, value) } }
 
     init {
@@ -226,7 +227,7 @@ class WeshInternetMode internal constructor(
         val keysWiped = runCatching { wipeNostrKeys() }.getOrDefault(false)
         val persisted = runCatching {
             prefs.edit(commit = true) { putBoolean(KEY_ENABLED, false); remove(KEY_DISCLOSURE) }
-            !prefs.getBoolean(KEY_ENABLED, false) && !prefs.contains(KEY_DISCLOSURE)
+            !prefs.booleanOr(KEY_ENABLED, false) && !prefs.contains(KEY_DISCLOSURE)
         }.getOrDefault(false)
         val cleared = relaysCleared && torWiped && keysWiped && persisted
         if (cleared) synchronized(lock) { fenced = false }

@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- API 31 and up. Device transfer ignores allowBackup="false", so exclusions are explicit. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="bitchat_prefs.xml"/>
         <exclude domain="sharedpref" path="bitchat_crypto.xml"/>
+        <exclude domain="sharedpref" path="wesh_ui.xml"/>
+        <exclude domain="file" path="arti/"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="bitchat_prefs.xml"/>
         <exclude domain="sharedpref" path="bitchat_crypto.xml"/>
+        <exclude domain="sharedpref" path="wesh_ui.xml"/>
+        <exclude domain="file" path="arti/"/>
     </device-transfer>
 </data-extraction-rules>

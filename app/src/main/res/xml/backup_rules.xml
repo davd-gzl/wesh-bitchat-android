@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- API 30 and below. Wesh settings and Tor state (guards) never leave the phone. -->
 <full-backup-content>
     <exclude domain="sharedpref" path="bitchat_prefs.xml"/>
     <exclude domain="sharedpref" path="bitchat_crypto.xml"/>
+    <exclude domain="sharedpref" path="wesh_ui.xml"/>
+    <exclude domain="file" path="arti/"/>
 </full-backup-content>

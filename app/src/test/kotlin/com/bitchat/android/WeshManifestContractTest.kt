@@ -43,4 +43,19 @@ class WeshManifestContractTest {
         assertFalse(manifest.contains("SystemForegroundService"))
         assertFalse(manifest.contains("BitChat"))
     }
+
+    @Test
+    fun `Wesh settings and Tor state never leave the phone by backup or device transfer`() {
+        val transfer = File("src/main/res/xml/data_extraction_rules.xml").readText()
+        listOf("cloud-backup", "device-transfer").forEach { section ->
+            val rules = Regex("<$section>(.*?)</$section>", RegexOption.DOT_MATCHES_ALL).find(transfer)?.groupValues?.get(1).orEmpty()
+            assertTrue("$section keeps wesh_ui.xml", rules.contains("""<exclude domain="sharedpref" path="wesh_ui.xml"/>"""))
+            assertTrue("$section keeps files/arti", rules.contains("""<exclude domain="file" path="arti/"/>"""))
+        }
+        val legacy = File("src/main/res/xml/backup_rules.xml").readText()
+        assertTrue(legacy.contains("""<exclude domain="sharedpref" path="wesh_ui.xml"/>"""))
+        assertTrue(legacy.contains("""<exclude domain="file" path="arti/"/>"""))
+        assertTrue(manifest.contains("""android:dataExtractionRules="@xml/data_extraction_rules""""))
+        assertTrue(manifest.contains("""android:fullBackupContent="@xml/backup_rules""""))
+    }
 }
