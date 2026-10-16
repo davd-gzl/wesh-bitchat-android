@@ -30,6 +30,23 @@ class SafeDisplayNameTest {
     }
 
     @Test
+    fun `blank but assigned fillers never form a name`() {
+        assertEquals("fallback", safeDisplayName("\u3164\u3164", "fallback"))
+        assertEquals("fallback", safeDisplayName("\u2800", "fallback"))
+        assertEquals("fallback", safeDisplayName("\u115F\u1160", "fallback"))
+        assertEquals("fallback", safeDisplayName("\u17B4\uFFA0\u180E\uFE0F", "fallback"))
+        assertEquals("ab", safeDisplayName("a\u3164\u2800\u1160b", "fallback"))
+    }
+
+    @Test
+    fun `a name needs at least one visible character`() {
+        assertEquals("fallback", safeDisplayName("\u0301 \u0301", "fallback"))
+        assertEquals("-", safeDisplayName("-", "fallback"))
+        assertEquals("★", safeDisplayName("★", "fallback"))
+        assertEquals("7", safeDisplayName("7", "fallback"))
+    }
+
+    @Test
     fun `the Wesh screen shows remote nicknames only through the sanitizer`() {
         val screen = File("src/main/java/com/bitchat/android/ui/WeshScreen.kt").readText()
         assertFalse(screen.contains("Text(message.sender"))
