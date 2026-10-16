@@ -99,6 +99,41 @@ fun QrModules(modules: BitMatrix, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Keeps a late camera callback from binding or reporting after the scanner left the composition.
+ * `ProcessCameraProvider.getInstance` can complete after disposal; every bind and every decoded
+ * result goes through this guard, and [dispose] releases whatever was bound.
+ */
+internal class ScannerBindingGuard {
+    private var disposed = false
+    private var release: (() -> Unit)? = null
+
+    val isDisposed: Boolean @Synchronized get() = disposed
+
+    /** Runs [bind] only while active; [bind] returns how to release what it bound. */
+    @Synchronized
+    fun bindIfActive(bind: () -> (() -> Unit)): Boolean {
+        if (disposed) return false
+        release?.invoke()
+        release = bind()
+        return true
+    }
+
+    /** Runs [deliver] only while active. */
+    @Synchronized
+    fun deliverIfActive(deliver: () -> Unit) {
+        if (!disposed) deliver()
+    }
+
+    @Synchronized
+    fun dispose() {
+        if (disposed) return
+        disposed = true
+        release?.invoke()
+        release = null
+    }
+}
+
 /** Back camera preview that reports each new decoded text once. Needs the CAMERA permission. */
 @Composable
 fun PaveQrScanner(
@@ -113,14 +148,15 @@ fun PaveQrScanner(
     val onCodeState = rememberUpdatedState(onCode)
 
     DisposableEffect(lifecycleOwner, decoder) {
+        val guard = ScannerBindingGuard()
         val executor = Executors.newSingleThreadExecutor()
         val main = Handler(Looper.getMainLooper())
         var last: String? = null
         val future = ProcessCameraProvider.getInstance(context)
-        var provider: ProcessCameraProvider? = null
         var buffer = ByteArray(0)
         val analyzer = ImageAnalysis.Analyzer { image: ImageProxy ->
             try {
+                if (guard.isDisposed) return@Analyzer
                 // Plane 0 of YUV_420_888 is luminance; QR finder patterns tolerate any rotation.
                 val plane = image.planes.firstOrNull() ?: return@Analyzer
                 val data = plane.buffer
@@ -129,9 +165,11 @@ fun PaveQrScanner(
                 data.get(buffer)
                 val text = decoder.decode(buffer, image.width, image.height, plane.rowStride)
                 if (!text.isNullOrBlank()) main.post {
-                    if (text != last) {
-                        last = text
-                        onCodeState.value(text)
+                    guard.deliverIfActive {
+                        if (text != last) {
+                            last = text
+                            onCodeState.value(text)
+                        }
                     }
                 }
             } finally {
@@ -139,22 +177,29 @@ fun PaveQrScanner(
             }
         }
         future.addListener({
-            val p = runCatching { future.get() }.getOrNull() ?: return@addListener
-            provider = p
-            val preview = Preview.Builder().build().also { it.setSurfaceProvider { r -> surfaceRequests.value = r } }
-            val analysis = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-                .also { it.setAnalyzer(executor, analyzer) }
-            runCatching {
-                p.unbindAll()
-                p.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
-            }.onFailure { Log.w("PaveQrScanner", "Camera unavailable") }
+            val provider = runCatching { future.get() }.getOrNull() ?: return@addListener
+            guard.bindIfActive {
+                val preview = Preview.Builder().build().also { it.setSurfaceProvider { r -> surfaceRequests.value = r } }
+                val analysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+                    .also { it.setAnalyzer(executor, analyzer) }
+                runCatching {
+                    provider.unbindAll()
+                    provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+                }.onFailure { Log.w("PaveQrScanner", "Camera unavailable") }
+                val release: () -> Unit = {
+                    analysis.clearAnalyzer()
+                    preview.setSurfaceProvider(null)
+                    runCatching { provider.unbindAll() }
+                }
+                release
+            }
         }, ContextCompat.getMainExecutor(context))
 
         onDispose {
+            guard.dispose()
             surfaceRequests.value = null
-            runCatching { provider?.unbindAll() }
             executor.shutdown()
         }
     }
