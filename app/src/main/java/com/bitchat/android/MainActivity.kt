@@ -38,7 +38,6 @@ import com.bitchat.android.onboarding.LocationStatusManager
 import com.bitchat.android.onboarding.OnboardingCoordinator
 import com.bitchat.android.onboarding.OnboardingState
 import com.bitchat.android.onboarding.PermissionManager
-import com.bitchat.android.ui.ChatScreen
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.OrientationAwareActivity
 import com.bitchat.android.ui.theme.BitchatTheme
