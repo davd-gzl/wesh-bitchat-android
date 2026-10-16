@@ -188,7 +188,8 @@ class NotificationManager(
     /**
      * Show a notification for a private message with proper grouping and state awareness
      */
-    fun showPrivateMessageNotification(senderPeerID: String, senderNickname: String, messageContent: String) {
+    /** [senderNickname] is the nickname as received, null when unknown: shown through the remote rule. */
+    fun showPrivateMessageNotification(senderPeerID: String, senderNickname: String?, messageContent: String) {
         val conversationID = ContactDirectory.canonicalConversationId(senderPeerID)
         if (isConversationMuted(conversationID)) {
             Log.d(TAG, "Skipping muted conversation notification")
@@ -811,7 +812,7 @@ class NotificationManager(
      * Show a notification for a mesh mention (@username format)
      */
     fun showMeshMentionNotification(
-        senderNickname: String,
+        senderNickname: String?,
         messageContent: String,
         senderPeerID: String? = null
     ) {

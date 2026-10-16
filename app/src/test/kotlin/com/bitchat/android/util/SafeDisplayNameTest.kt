@@ -55,5 +55,7 @@ class SafeDisplayNameTest {
         // Storage sanitizing is not the display rule: the screen never uses it to show a name.
         assertFalse(screen.contains("safeDisplayName("))
         assertTrue(screen.contains("remoteDisplayName(message.sender"))
+        // States drawn next to a name come from resources, so PaveReservedWords can reserve them.
+        assertFalse(screen.contains("\"Identité vérifiée sur ce téléphone\"") || screen.contains("\"Bloqué sur ce téléphone\""))
     }
 }

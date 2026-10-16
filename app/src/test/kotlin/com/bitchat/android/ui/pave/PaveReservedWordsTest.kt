@@ -15,6 +15,7 @@ class PaveReservedWordsTest {
         "wesh_pave_unnamed", // "Sans surnom", "Sans surnom (réservé)" and their fallbacks
         "wesh_pave_verified", "wesh_pave_unverified", // badges, with the bare "Vérifié"
         "wesh_pave_no_message_yet", // inbox row state under a name
+        "wesh_pave_contact_state", // "Identité vérifiée sur ce téléphone", "Bloqué sur ce téléphone"
         "wesh_pave_delivery", "wesh_pave_failed_retry", "wesh_pave_retry", // delivery states
         "wesh_pave_via", // transport
         "wesh_pave_public_room", // public room
@@ -57,6 +58,7 @@ class PaveReservedWordsTest {
             "Empreinte de la clé", "Key fingerprint", "Empreinte indisponible", "Fingerprint unavailable",
             "Vérifié", "Verified", "Code verified", "Not verified", "Réessayer", "Retry", "Échec · Réessayer", "Failed · Retry",
             "Pas encore de message", "No message yet",
+            "Identité vérifiée sur ce téléphone", "Identity verified on this phone", "Bloqué sur ce téléphone", "Blocked on this phone",
         ).forEach { word -> assertTrue("$word is not reserved", word in words) }
         assertEquals(PaveReservedWords.keys.size, PaveReservedWords.keys.toSet().size)
     }

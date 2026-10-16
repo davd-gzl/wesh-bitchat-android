@@ -80,6 +80,13 @@ class WeshNotificationPrivacyTest {
     }
 
     @Test
+    fun `a sender without a nickname is shown unnamed, not as a masked peer ID`() {
+        WeshPreferences(app).notificationShowsSender = true
+        backgroundManager().showPrivateMessageNotification("aaaabbbbcccc1234", null, secret)
+        assertEquals("Sans surnom", postedNotifications().single().extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+    }
+
+    @Test
     fun `a sender named like an app label or a fingerprint is masked in the title`() {
         WeshPreferences(app).notificationShowsSender = true
         impostors.forEach { name ->

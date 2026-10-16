@@ -23,6 +23,8 @@ object PaveReservedWords {
         R.string.wesh_pave_verified_short,
         R.string.wesh_pave_unverified,
         R.string.wesh_pave_no_message_yet,
+        R.string.wesh_pave_contact_state_verified,
+        R.string.wesh_pave_contact_state_blocked,
         R.string.wesh_pave_delivery_waiting,
         R.string.wesh_pave_delivery_sent,
         R.string.wesh_pave_delivery_received,

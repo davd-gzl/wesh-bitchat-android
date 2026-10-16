@@ -29,7 +29,9 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.role
 import com.bitchat.android.model.BitchatMessage
+import com.bitchat.android.R
 import com.bitchat.android.ui.pave.remoteDisplayName
+import androidx.compose.ui.res.stringResource
 import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.services.VerificationService
 import kotlinx.coroutines.delay
@@ -170,7 +172,7 @@ fun WeshScreen(viewModel: ChatViewModel) {
             Column(Modifier.fillMaxWidth().heightIn(max = headerMaxHeight).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) {
                 if (inConversation) TextButton(onClick = { back() }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Retour aux discussions" }) { Text("‹ Discussions") }
                 Text(conversationTitle, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
-                Text(if (publicOpen) if (bluetoothReady) "Public · Bluetooth" else "Public · Bluetooth indisponible" else if (privatePeer != null) if (canSend) "Identité vérifiée sur ce téléphone" else "Vérification ou reconnexion nécessaire" else "Wesh", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                Text(if (publicOpen) if (bluetoothReady) "Public · Bluetooth" else "Public · Bluetooth indisponible" else if (privatePeer != null) if (canSend) stringResource(R.string.wesh_pave_contact_state_verified) else "Vérification ou reconnexion nécessaire" else "Wesh", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                 if (privatePeer != null) FlowRow {
                     TextButton(onClick = { contactAction = "block" to privatePeer }, modifier = Modifier.semantics { contentDescription = "Bloquer $conversationTitle" }) { Text("Bloquer") }
                     TextButton(onClick = { contactAction = "remove" to privatePeer }, modifier = Modifier.semantics { contentDescription = "Retirer le contact $conversationTitle" }) { Text("Retirer le contact") }
@@ -189,7 +191,7 @@ fun WeshScreen(viewModel: ChatViewModel) {
             val footerMaxHeight = (maxHeight * 0.55f).coerceAtLeast(minOf(96.dp, maxHeight))
             Column(Modifier.fillMaxSize()) {
                 if (inConversation) {
-                    val messages = if (publicOpen) publicMessages.filter { !it.isPrivate && it.channel == null && (it.senderPeerID == null || !viewModel.weshIsBlocked(it.senderPeerID)) }
+                    val messages = if (publicOpen) publicMessages.filter { WeshMessagePolicy.showsInPublicRoom(it, viewModel.meshService.myPeerID, viewModel::weshIsBlocked) }
                     else privateChats[privatePeer].orEmpty()
                     LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (publicOpen) item { Text("Aucune confirmation individuelle de réception. Toute personne sur le mesh Bluetooth peut lire et conserver ces messages. Les pseudonymes ne prouvent pas une identité.", style = MaterialTheme.typography.bodySmall) }
@@ -237,7 +239,7 @@ fun WeshScreen(viewModel: ChatViewModel) {
                             val summary = conversations.firstOrNull { it.conversationID == contact.conversationID }
                             val blocked = contact.conversationID.let(viewModel::weshIsBlocked)
                             WeshInboxRow(remoteDisplayName(contact.nickname),
-                                if (blocked) "Bloqué sur ce téléphone" else "Identité vérifiée sur ce téléphone · ${summary?.latestMessagePreview.orEmpty()}",
+                                if (blocked) stringResource(R.string.wesh_pave_contact_state_blocked) else stringResource(R.string.wesh_pave_contact_state_verified) + " · ${summary?.latestMessagePreview.orEmpty()}",
                                 onClick = { publicOpen = false; scope.launch { viewModel.startPrivateChat(contact.conversationID) } })
                         }
                         if (requests.isNotEmpty()) {

@@ -231,4 +231,24 @@ class PrivateChatManagerTest {
             state.getPrivateChatsValue()[conversationID]?.single()?.content
         )
     }
+
+    @Test
+    fun `opening a blocked peer in Wesh adds nothing to the public timeline`() {
+        val peerID = "0123456789abcdef"
+        com.bitchat.android.services.SessionHiddenPeers.hide(peerID)
+        try {
+            val wesh = PrivateChatManager(
+                state = state,
+                messageManager = MessageManager(state),
+                dataManager = DataManager(RuntimeEnvironment.getApplication()),
+                noiseSessionDelegate = mock(),
+                weshPolicy = true
+            )
+            assertEquals(false, wesh.startPrivateChat(peerID = peerID, meshService = mock()))
+            assertTrue(state.getMessagesValue().isEmpty())
+            assertTrue(AppStateStore.publicMessages.value.isEmpty())
+        } finally {
+            com.bitchat.android.services.SessionHiddenPeers.unhide(peerID)
+        }
+    }
 }

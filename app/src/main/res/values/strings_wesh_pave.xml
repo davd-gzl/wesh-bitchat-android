@@ -46,6 +46,8 @@
     <string name="wesh_pave_fingerprint_label">Key fingerprint</string>
     <string name="wesh_pave_fingerprint_unavailable">Fingerprint unavailable</string>
     <string name="wesh_pave_unverified">Not verified</string>
+    <string name="wesh_pave_contact_state_verified">Identity verified on this phone</string>
+    <string name="wesh_pave_contact_state_blocked">Blocked on this phone</string>
     <plurals name="wesh_pave_request_preview">
         <item quantity="one">%d message · exchange codes to reply</item>
         <item quantity="other">%d messages · exchange codes to reply</item>
