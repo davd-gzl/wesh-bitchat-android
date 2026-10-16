@@ -12,8 +12,9 @@ class ExchangeScreenTest {
     private val theirs = "A1B2 C3D4 E5F6 0718"
 
     @Test
-    fun `success card waits a moment before opening the chat`() {
-        assertEquals(3000L, EXCHANGE_SUCCESS_HOLD_MS)
+    fun `the chat opens only on an explicit tap, never on a timer`() {
+        val source = File("src/main/java/com/bitchat/android/ui/pave/ExchangeScreen.kt").readText()
+        assertFalse("ExchangeScreen must not open the chat by itself", "delay(" in source)
     }
 
     @Test
@@ -28,7 +29,7 @@ class ExchangeScreenTest {
     }
 
     @Test
-    fun `completion runs once even if the button and the timer both fire`() {
+    fun `completion runs once even if the button is tapped twice`() {
         var calls = 0
         var done = false
         done = completeOnce(done) { calls++ }
