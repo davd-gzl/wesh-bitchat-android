@@ -244,6 +244,8 @@ class WeshInternetRouteTest {
     @Test fun `a message ID that is not UUID-like is refused before any store or ack`() = runTest {
         alice.route.sendPrivate("x", bobConversation, "evil:id")
         alice.route.sendPrivate("y", bobConversation, "a".repeat(129))
+        alice.route.sendPrivate("z", bobConversation, "id-\u0430\u0431")      // Cyrillic letters
+        alice.route.sendPrivate("w", bobConversation, "id-\uFF11\uFF12")      // full-width digits
         for (wrap in alice.link.published) assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(wrap))
         assertTrue(bob.stored.isEmpty())
         assertTrue(bob.link.published.isEmpty())
@@ -367,6 +369,30 @@ class WeshInternetRouteTest {
     }
 
     private fun ByteArray.hex() = joinToString("") { "%02x".format(it) }
+
+    @Test fun `a panic during a send keeps nothing queued`() {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        val router = MessageRouter(context, mesh, mock())
+        router.weshInternetLink = alice.link
+        alice.link.on = false
+        // The clock is read after the epoch capture: a panic lands there, mid-send.
+        router.clock = { router.clearAll(); 1_000L }
+        try {
+            assertEquals(MessageRouter.RouteResult.DROPPED, router.sendPrivate("x", bobConversation, "Bob", "panic-1"))
+            router.clock = { 2_000L }
+            alice.link.on = true
+            router.tickOutbox(2_000L)
+            Thread.sleep(200)
+            assertTrue(alice.link.published.isEmpty())
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+        }
+    }
 
     @After fun cleanup() {
         WeshContactStore.resetForTesting()

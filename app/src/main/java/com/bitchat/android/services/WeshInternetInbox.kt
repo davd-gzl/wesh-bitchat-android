@@ -100,9 +100,9 @@ internal class WeshInternetInbox(
         }
     }
 
-    /** Remote input: BitChat message IDs are UUID-like, so anything else is refused. */
+    /** Remote input: BitChat message IDs are UUID-like ASCII, so anything else is refused. */
     private fun isPlausibleMessageID(id: String): Boolean =
-        id.length in 1..128 && id.all { it.isLetterOrDigit() || it == '-' || it == '_' }
+        id.length in 1..128 && id.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '_' }
 
     /** Panic: forget which events were seen, with the keys they were sealed to. */
     @Synchronized fun clear() = seen.clear()

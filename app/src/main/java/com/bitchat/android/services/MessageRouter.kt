@@ -149,19 +149,20 @@ class MessageRouter internal constructor(
         val nostrTarget = resolution.noiseKeyHex ?: toPeerID
 
         if (enforceWeshPolicy) {
+            // Captured first: a panic during this call fences both dispatches and the queue.
+            val epoch = weshEpoch.get()
             val sender = WeshPrivateSender(WeshContactStore.get(context))
             if (!sender.enrolled(conversationID) || content.isBlank() || content.toByteArray().size > 2000) return RouteResult.DROPPED
             if (sender.canSend(conversationID, mesh)) {
-                dispatchWesh(content, conversationID, messageID)
+                dispatchWesh(content, conversationID, messageID, epoch)
                 return RouteResult.MESH
             }
             val queued = QueuedMessage(content, recipientNickname, messageID, clock())
             if (weshInternet().canSend(conversationID)) {
-                dispatchWeshInternet(queued, conversationID)
+                dispatchWeshInternet(queued, conversationID, epoch)
                 return RouteResult.NOSTR
             }
-            enqueue(conversationID, queued)
-            return RouteResult.QUEUED
+            return if (enqueueWesh(conversationID, queued, epoch)) RouteResult.QUEUED else RouteResult.DROPPED
         }
 
         if (com.bitchat.android.nostr.GeohashAliasRegistry.contains(toPeerID)) {
@@ -224,9 +225,7 @@ class MessageRouter internal constructor(
     @Synchronized private fun requeueWesh(entry: QueuedMessage, conversationID: String, epoch: Long) {
         if (epoch != weshEpoch.get()) return
         if (WeshPrivateSender(WeshContactStore.get(context)).enrolled(conversationID)) {
-            enqueue(conversationID, entry)
-            // clearAll bumps the epoch before clearing: a clear that raced this enqueue removes it here.
-            if (epoch != weshEpoch.get()) outbox[conversationID]?.removeAll { it.messageID == entry.messageID }
+            enqueueWesh(conversationID, entry, epoch)
         } else {
             AppStateStore.updatePrivateMessageStatus(entry.messageID,
                 com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
@@ -256,6 +255,18 @@ class MessageRouter internal constructor(
             }.getOrDefault(false)
             if (!sent) weshAnnounced.remove(announced)
         }
+    }
+
+    /** Queues only if no panic happened since [epoch]; false means nothing is kept. */
+    @Synchronized private fun enqueueWesh(conversationID: String, entry: QueuedMessage, epoch: Long): Boolean {
+        if (epoch != weshEpoch.get()) return false
+        enqueue(conversationID, entry)
+        // clearAll bumps the epoch before clearing: a clear that raced this enqueue removes it here.
+        if (epoch != weshEpoch.get()) {
+            outbox[conversationID]?.removeAll { it.messageID == entry.messageID }
+            return false
+        }
+        return true
     }
 
     @Synchronized fun cancelWeshConversation(conversationID: String) {
