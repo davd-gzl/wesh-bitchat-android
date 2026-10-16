@@ -144,6 +144,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
     val sessionStates by viewModel.peerSessionStates.collectAsState()
     val bluetoothReadyState by viewModel.weshBluetoothReadyState.collectAsState()
     val eraseRequested by PaveShortcuts.eraseRequested.collectAsState()
+    val peerNicknames by viewModel.peerNicknames.collectAsState()
 
     var route by rememberSaveable { mutableStateOf(PaveRoute.Home) }
     var connexionOpen by rememberSaveable { mutableStateOf(false) }
@@ -248,6 +249,9 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
     val msgPrivateFailed = stringResource(R.string.wesh_pave_fluo_private_failed)
     val msgDraftTooLong = stringResource(R.string.wesh_pave_fluo_draft_too_long)
     val mediaUnsupported = stringResource(R.string.wesh_pave_fluo_media_unsupported)
+    val msgReported = stringResource(R.string.wesh_pave_fluo_reported)
+    val msgHiddenSession = stringResource(R.string.wesh_pave_fluo_hidden_session)
+    val msgBlockUnknown = stringResource(R.string.wesh_pave_fluo_block_unknown)
 
     fun send() {
         if (viewModel.selectedPrivateChatPeer.value != privatePeer) { feedback = msgDestinationChanged; return }
@@ -403,7 +407,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                     viewModel.weshBlockedFingerprints().map { fp ->
                         PaveBlockedItem(fp, viewModel.weshContactName(fp), paveShortFingerprintFromHex(fp), sessionOnly = false)
                     } + sessionHidden.map { peerID ->
-                        PaveBlockedItem(peerID, viewModel.peerNicknames.value[peerID].orEmpty(), peerFingerprint(peerID), sessionOnly = true)
+                        PaveBlockedItem(peerID, peerNicknames[peerID].orEmpty(), peerFingerprint(peerID), sessionOnly = true)
                     },
                 onUnblock = { item ->
                     if (item.sessionOnly) viewModel.weshUnhidePeer(item.id) else viewModel.weshUnblock(item.id)
@@ -455,8 +459,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
             body = stringResource(R.string.wesh_pave_fluo_report_body),
             confirm = stringResource(R.string.wesh_pave_fluo_report_action),
             onConfirm = {
-                feedback = if (viewModel.weshBlockPublicSender(peerID)) context.getString(R.string.wesh_pave_fluo_reported)
-                    else context.getString(R.string.wesh_pave_fluo_hidden_session)
+                feedback = if (viewModel.weshBlockPublicSender(peerID)) msgReported else msgHiddenSession
                 revision++
                 messageAction = null
             },
@@ -489,7 +492,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                 if (remove) {
                     viewModel.removeWeshContact(target)
                     if (privatePeer == target) go(PaveRoute.Home)
-                } else if (!viewModel.weshBlock(target)) feedback = context.getString(R.string.wesh_pave_fluo_block_unknown)
+                } else if (!viewModel.weshBlock(target)) feedback = msgBlockUnknown
                 revision++
                 confirmAction = null
             },
@@ -503,7 +506,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
             body = stringResource(R.string.wesh_pave_fluo_block_request_body),
             confirm = stringResource(R.string.wesh_pave_requests_block),
             onConfirm = {
-                if (!viewModel.weshBlockRequest(request)) feedback = context.getString(R.string.wesh_pave_fluo_block_unknown)
+                if (!viewModel.weshBlockRequest(request)) feedback = msgBlockUnknown
                 revision++
                 requestToBlock = null
             },
