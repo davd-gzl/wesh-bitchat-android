@@ -39,6 +39,8 @@ internal class WeshInternetInbox(
     /** Durable record of DELIVERED acks already sent, so the 48 h lookback never re-acks after a restart. */
     private val alreadyAcked: (messageID: String) -> Boolean,
     private val markAcked: (messageID: String) -> Unit,
+    /** The Bluetooth admission gate (session-hidden peers, block list, unloaded list fails closed). */
+    private val senderBlocked: (WeshContactStore.Contact) -> Boolean,
     private val nowSeconds: () -> Long = { System.currentTimeMillis() / 1000 }
 ) {
     enum class Outcome { STORED, ACK_APPLIED, DROPPED }
@@ -54,6 +56,7 @@ internal class WeshInternetInbox(
         val contact = runCatching { contacts.forNpub(senderNpub) }.getOrNull()
             ?.takeIf { it.deliveryNpub == senderNpub && !contacts.isBlocked(it.key) }
             ?: return Outcome.DROPPED
+        if (runCatching { senderBlocked(contact) }.getOrDefault(true)) return Outcome.DROPPED
         // Recorded only once the sealed sender is a QR contact, so strangers cannot evict entries.
         // Message IDs are deduplicated durably by the store; this only saves repeated work and acks.
         if (!firstSight(event.id)) return Outcome.DROPPED
@@ -62,6 +65,7 @@ internal class WeshInternetInbox(
         return when (payload.type) {
             NoisePayloadType.PRIVATE_MESSAGE -> {
                 val pm = PrivateMessagePacket.decode(payload.data) ?: return Outcome.DROPPED
+                if (!isPlausibleMessageID(pm.messageID)) return Outcome.DROPPED
                 if (pm.content.isBlank() || pm.content.toByteArray().size > 2000) return Outcome.DROPPED
                 if (FavoriteControlMessage.parse(pm.content) != null) return Outcome.DROPPED
                 val message = BitchatMessage(
@@ -75,6 +79,8 @@ internal class WeshInternetInbox(
                 )
                 if (!runCatching { deliver(conversationID, message) }.getOrDefault(false)) return Outcome.DROPPED
                 // The ack goes back over the transport the message came on (spec §3 rule 5), once.
+                // Keyed by the raw (validated) ID, like the Bluetooth path, so deleting the
+                // conversation also purges this record.
                 if (!runCatching { alreadyAcked(pm.messageID) }.getOrDefault(false) &&
                     route.sendAck(NoisePayloadType.DELIVERED, pm.messageID, conversationID)) {
                     runCatching { markAcked(pm.messageID) }
@@ -82,7 +88,7 @@ internal class WeshInternetInbox(
                 Outcome.STORED
             }
             NoisePayloadType.DELIVERED, NoisePayloadType.READ_RECEIPT -> {
-                val messageID = String(payload.data, Charsets.UTF_8).takeIf { it.isNotBlank() && it.length <= 128 }
+                val messageID = String(payload.data, Charsets.UTF_8).takeIf(::isPlausibleMessageID)
                     ?: return Outcome.DROPPED
                 val status = if (payload.type == NoisePayloadType.DELIVERED) DeliveryStatus.Delivered(contact.nickname, Date())
                     else DeliveryStatus.Read(contact.nickname, Date())
@@ -93,6 +99,10 @@ internal class WeshInternetInbox(
             else -> Outcome.DROPPED
         }
     }
+
+    /** Remote input: BitChat message IDs are UUID-like, so anything else is refused. */
+    private fun isPlausibleMessageID(id: String): Boolean =
+        id.length in 1..128 && id.all { it.isLetterOrDigit() || it == '-' || it == '_' }
 
     /** Panic: forget which events were seen, with the keys they were sealed to. */
     @Synchronized fun clear() = seen.clear()
@@ -177,12 +187,16 @@ internal object WeshInternetReceiver {
                     AppStateStore.privateMessages.value[conversationID].orEmpty().any { it.id == message.id }
             },
             updateStatus = { conversationID, messageID, status ->
-                // Only that contact can reach here, and statuses never downgrade.
-                val known = AppStateStore.privateMessages.value[conversationID].orEmpty().any { it.id == messageID }
-                if (known) AppStateStore.updatePrivateMessageStatus(messageID, status)
+                // Only that contact can reach here, only its own conversation, never a downgrade.
+                AppStateStore.updatePrivateMessageStatusIn(conversationID, messageID, status)
             },
             alreadyAcked = seen::hasDelivered,
-            markAcked = seen::markDelivered
+            markAcked = seen::markDelivered,
+            senderBlocked = { contact ->
+                val fingerprint = ContactIdentityResolver.fingerprintHex(contact.key)
+                IncomingMessageAdmission.isSenderBlocked(contact.conversationID) { fingerprint } ||
+                    IncomingMessageAdmission.isSenderBlocked(ContactIdentityResolver.peerIdForNoiseKey(contact.key)) { fingerprint }
+            }
         )
         inbox = created
         val relays = NostrRelayManager.getInstance(app)

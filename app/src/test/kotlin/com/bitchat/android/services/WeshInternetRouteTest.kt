@@ -54,11 +54,13 @@ class WeshInternetRouteTest {
         val stored = mutableListOf<Pair<String, BitchatMessage>>()
         val statuses = mutableListOf<Triple<String, String, DeliveryStatus>>()
         val acked = mutableSetOf<String>()
+        val hidden = mutableSetOf<String>()
         var now: Long? = null
         fun newInbox() = WeshInternetInbox(contacts, { nostr }, route,
             deliver = { conversationID, message -> stored += conversationID to message; true },
             updateStatus = { conversationID, id, status -> statuses += Triple(conversationID, id, status) },
             alreadyAcked = { it in acked }, markAcked = { acked += it },
+            senderBlocked = { it.noiseHex in hidden },
             nowSeconds = { now ?: (System.currentTimeMillis() / 1000) })
         var inbox = newInbox()
 
@@ -151,6 +153,23 @@ class WeshInternetRouteTest {
         assertTrue(bob.link.published.isEmpty())
     }
 
+    @Test fun `the Bluetooth admission gate applies to Internet senders too, acks included`() = runTest {
+        alice.route.sendPrivate("one", bobConversation, "hidden-1")
+        alice.route.sendPrivate("two", bobConversation, "hidden-2")
+        val (first, second) = alice.link.published.toList()
+        assertEquals(WeshInternetInbox.Outcome.STORED, bob.inbox.onGiftWrap(first))
+        val ack = bob.link.published.single()
+        // Bob hides Alice: her next message is dropped with no store and no ack.
+        bob.hidden += aliceNoise.joinToString("") { "%02x".format(it) }
+        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(second))
+        assertEquals(1, bob.stored.size)
+        assertEquals(1, bob.link.published.size)
+        // Alice hides Bob: his ack no longer updates anything.
+        alice.hidden += bobNoise.joinToString("") { "%02x".format(it) }
+        assertEquals(WeshInternetInbox.Outcome.DROPPED, alice.inbox.onGiftWrap(ack))
+        assertTrue(alice.statuses.isEmpty())
+    }
+
     @Test fun `a FAVORITED notice over Internet is never trusted`() = runTest {
         alice.route.sendPrivate("[FAVORITED]:${NostrIdentity.generate().npub}", bobConversation, "fav-1")
         assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(alice.link.published.single()))
@@ -220,6 +239,15 @@ class WeshInternetRouteTest {
         bob.inbox = bob.newInbox() // process restart: in-memory event IDs are gone, the ack record is durable
         assertEquals(WeshInternetInbox.Outcome.STORED, bob.inbox.onGiftWrap(wrap))
         assertEquals(1, bob.link.published.size)
+    }
+
+    @Test fun `a message ID that is not UUID-like is refused before any store or ack`() = runTest {
+        alice.route.sendPrivate("x", bobConversation, "evil:id")
+        alice.route.sendPrivate("y", bobConversation, "a".repeat(129))
+        for (wrap in alice.link.published) assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(wrap))
+        assertTrue(bob.stored.isEmpty())
+        assertTrue(bob.link.published.isEmpty())
+        assertTrue(bob.acked.isEmpty())
     }
 
     @Test fun `files, verification, voice and peer state never arrive over Internet`() = runTest {
