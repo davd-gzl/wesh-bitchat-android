@@ -296,6 +296,15 @@ class WeshInternetMode internal constructor(
 
         @Volatile private var instance: WeshInternetMode? = null
 
+        /** Drops the process instance and closes the gate, so each test starts from a fresh install. */
+        internal fun resetForTesting() = synchronized(this) {
+            instance = null
+            WeshNetworkPolicy.gate = WeshNetworkGate { false }
+        }
+
+        /** Product availability only; sockets still need the persisted opt-in, which defaults off. */
+        internal fun productInternetAvailable(): Boolean = com.bitchat.android.BuildConfig.WESH_INTERNET_AVAILABLE
+
         fun get(context: Context): WeshInternetMode = instance ?: synchronized(this) {
             instance ?: run {
                 val app = context.applicationContext as android.app.Application
@@ -308,8 +317,7 @@ class WeshInternetMode internal constructor(
                     relays = NostrRelayControl(app),
                     network = defaultNetworkFlow(app),
                     wipeNostrKeys = { wipeNostrKeys(app) },
-                    // Task #1 replaces this with the product Internet flag; until then nothing changes.
-                    internetAvailable = { !com.bitchat.android.BuildConfig.WESH_POLICY },
+                    internetAvailable = ::productInternetAvailable,
                     scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
                     ensureNostrIdentity = { com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(app) },
                     startFenced = !wiped

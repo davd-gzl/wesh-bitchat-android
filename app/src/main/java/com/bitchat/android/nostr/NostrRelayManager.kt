@@ -394,7 +394,6 @@ class NostrRelayManager private constructor() {
      * Connect to all configured relays
      */
     fun connect() {
-        if (com.bitchat.android.BuildConfig.WESH_POLICY) return
         if (!com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) return
         desiredConnected.set(true)
         Log.i(TAG, "Connecting to ${relaysList.size} Nostr relays")
@@ -840,7 +839,6 @@ class NostrRelayManager private constructor() {
         urlString: String,
         liveLocationToken: Long? = null
     ) {
-        if (com.bitchat.android.BuildConfig.WESH_POLICY) return
         if (urlString !in WESH_PINNED_RELAYS || !com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) return
         if (!desiredConnected.get()) return
         val connectionToken = liveLocationToken

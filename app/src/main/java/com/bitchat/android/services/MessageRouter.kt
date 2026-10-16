@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Routes messages between local mesh transports and Nostr, matching iOS behavior.
  */
-class MessageRouter private constructor(
+class MessageRouter internal constructor(
     private val context: Context,
     private var mesh: MeshService,
     private val nostr: NostrTransport
@@ -80,9 +80,14 @@ class MessageRouter private constructor(
         }
     }
 
-    // Outbox: conversationID -> queued messages, oldest first
+    /**
+     * Wesh product policy: private messages only to QR contacts, over Bluetooth. Internet mode
+     * does not change it: the inherited favorite-based Nostr fallbacks stay closed in Wesh until
+     * the Internet route to QR contacts is wired.
+     */
     internal var enforceWeshPolicy = com.bitchat.android.BuildConfig.WESH_POLICY
     private val weshInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    // Outbox: conversationID -> queued messages, oldest first
     private val outbox = ConcurrentHashMap<String, MutableList<QueuedMessage>>()
 
     // Per-conversation handshake retry state for queued messages
@@ -186,7 +191,7 @@ class MessageRouter private constructor(
         if (meshTarget != null && isReady(mesh, meshTarget)) {
             Log.d(TAG, "Routing READ via mesh to ${meshTarget.take(8)}… id=${receipt.originalMessageID.take(8)}…")
             mesh.sendReadReceipt(receipt.originalMessageID, meshTarget, mesh.getPeerNicknames()[meshTarget] ?: mesh.myPeerID)
-        } else {
+        } else if (!enforceWeshPolicy) {
             Log.d(TAG, "Routing READ via Nostr to ${toPeerID.take(8)}… id=${receipt.originalMessageID.take(8)}…")
             nostr.sendReadReceipt(receipt, nostrTarget)
         }
@@ -195,6 +200,7 @@ class MessageRouter private constructor(
     fun sendDeliveryAck(messageID: String, toPeerID: String) {
         // Mesh delivery ACKs are sent by the receiver automatically.
         // Only route via Nostr when mesh path isn't available or when this is a geohash alias
+        if (enforceWeshPolicy) return
         if (com.bitchat.android.nostr.GeohashAliasRegistry.contains(toPeerID)) {
             val recipientHex = com.bitchat.android.nostr.GeohashAliasRegistry.get(toPeerID)
             if (recipientHex != null) {
@@ -217,7 +223,7 @@ class MessageRouter private constructor(
             val content = FavoriteControlMessage.encode(isFavorite, myNpub)
             val nickname = mesh.getPeerNicknames()[meshTarget] ?: meshTarget
             mesh.sendPrivateMessage(content, meshTarget, nickname, null)
-        } else {
+        } else if (!enforceWeshPolicy) {
             nostr.sendFavoriteNotification(resolution.noiseKeyHex ?: toPeerID, isFavorite)
         }
     }
@@ -381,7 +387,8 @@ class MessageRouter private constructor(
     }
 
     private fun canSendViaNostr(peerID: String): Boolean {
-        if (com.bitchat.android.BuildConfig.WESH_POLICY) return false
+        // Every Nostr route needs the runtime Internet opt-in; Wesh never routes via favorites.
+        if (enforceWeshPolicy || !com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) return false
         return try {
             val resolution = ContactDirectory.resolve(peerID)
             if (resolution.isMutualFavorite && resolution.nostrPubkey != null) return true

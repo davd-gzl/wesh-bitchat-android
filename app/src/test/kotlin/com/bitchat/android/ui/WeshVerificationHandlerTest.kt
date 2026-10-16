@@ -78,11 +78,16 @@ class WeshVerificationHandlerTest {
         whenever(context.getString(any())).thenReturn("Synthetic verification title")
         whenever(context.getString(any(), any())).thenReturn("Synthetic verification notice")
         scope = TestScope()
+        // Enrollment reads owned npubs off the caller thread; keep that hop on the test clock.
+        com.bitchat.android.services.WeshQrIdentity.io = kotlinx.coroutines.test.StandardTestDispatcher(scope.testScheduler)
         time = 1_000_000L
         nonce = null
         handler = VerificationHandler(context, scope, { mesh }, mock(), state, mock(), mock(), { time })
     }
-    @After fun cleanup() { WeshContactStore.resetForTesting() }
+    @After fun cleanup() {
+        WeshContactStore.resetForTesting()
+        com.bitchat.android.services.WeshQrIdentity.io = kotlinx.coroutines.Dispatchers.IO
+    }
     private fun respond() = handler.didReceiveVerifyResponse(peer, VerificationService.buildVerifyResponse(qr.noiseKeyHex, nonce!!)!!)
     @Test fun `pending response completes local proof only within exact sixty second window`() = scope.runTest {
         assertTrue(handler.beginQRVerification(qr))

@@ -663,8 +663,9 @@ class ChatViewModel(
         verificationHandler.loadVerifiedFingerprints()
 
 
-        // Ensure NostrTransport knows our mesh peer ID for embedded packets
-        if (!com.bitchat.android.BuildConfig.WESH_POLICY) try {
+        // Ensure NostrTransport knows our mesh peer ID for embedded packets. Opens nothing: every
+        // relay socket and event still waits for the runtime Internet opt-in.
+        try {
             val nostrTransport = com.bitchat.android.nostr.NostrTransport.getInstance(getApplication())
             nostrTransport.senderPeerID = mesh.myPeerID
         } catch (_: Exception) { }

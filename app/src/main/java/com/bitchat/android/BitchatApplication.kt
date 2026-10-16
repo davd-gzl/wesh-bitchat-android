@@ -28,9 +28,12 @@ class BitchatApplication : Application() {
         // Installs the Internet opt-in gate (default off) and keeps Tor's preference OFF while it is off.
         try { com.bitchat.android.net.WeshInternetMode.get(this) } catch (_: Exception) { }
 
-        // Wesh's native validation product has no Internet or location route.
-        if (!BuildConfig.WESH_POLICY) {
+        // Tor follows the runtime opt-in only (WeshInternetMode starts it when the user turns it on).
+        if (com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) {
             try { ArtiTorManager.getInstance().init(this) } catch (_: Exception) { }
+        }
+        // Product policy: Wesh has no relay directory and no location notes, Internet or not.
+        if (!BuildConfig.WESH_POLICY) {
             RelayDirectory.initialize(this)
             try { com.bitchat.android.nostr.LocationNotesInitializer.initialize(this) } catch (_: Exception) { }
         }
@@ -45,7 +48,8 @@ class BitchatApplication : Application() {
             com.bitchat.android.services.AppStateStore.initializeConversationPersistence(this)
         } catch (_: Exception) { }
 
-        // Warm up Nostr identity to ensure npub is available for favorite notifications
+        // Upstream warms the Nostr key for favorite notifications. Not in Wesh: only the Internet
+        // opt-in creates that key, and nothing reads the key store on the Main thread at startup.
         if (!BuildConfig.WESH_POLICY) try {
             com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(this)
         } catch (_: Exception) { }
@@ -73,7 +77,8 @@ class BitchatApplication : Application() {
 
         // Own relay connectivity, selected-channel subscriptions, and presence scheduling at the
         // process level so closing the Activity does not disconnect Nostr.
-        if (!BuildConfig.WESH_POLICY) try { com.bitchat.android.nostr.NostrBackgroundRuntime.initialize(this) } catch (_: Exception) { }
+        // Self-gated: Wesh runs no geohash channel or presence, and its relay sockets follow the toggle.
+        try { com.bitchat.android.nostr.NostrBackgroundRuntime.initialize(this) } catch (_: Exception) { }
 
         // Initialize mesh service preferences
         try { com.bitchat.android.service.MeshServicePreferences.init(this) } catch (_: Exception) { }

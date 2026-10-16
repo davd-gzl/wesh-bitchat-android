@@ -93,6 +93,7 @@ class WeshInternetModeTest {
 
     @Test fun `startup installs a closed process gate and keeps Tor preference off`() {
         val app = RuntimeEnvironment.getApplication()
+        WeshInternetMode.resetForTesting()
         TorPreferenceManager.set(app, TorMode.ON)
         WeshNetworkPolicy.gate = WeshNetworkGate { true }
         WeshInternetMode.get(app)

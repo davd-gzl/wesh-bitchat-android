@@ -35,7 +35,7 @@ class VerificationHandler(
     private val messageManager: MessageManager,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
     /** Read-only; null while Internet mode is off or fenced, which fails closed. Never creates keys. */
-    private val ownedNpubs: () -> Set<String>? = { com.bitchat.android.services.WeshQrIdentity.ownedNpubs(context) }
+    private val ownedNpubs: suspend () -> Set<String>? = { com.bitchat.android.services.WeshQrIdentity.ownedNpubs(context) }
 ) {
     // Helper to get current mesh service (may change after panic clear)
     private val meshService: MeshService
