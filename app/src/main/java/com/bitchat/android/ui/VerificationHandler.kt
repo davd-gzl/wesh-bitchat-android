@@ -31,7 +31,8 @@ class VerificationHandler(
     private val identityManager: SecureIdentityStateManager,
     private val state: ChatState,
     private val notificationManager: NotificationManager,
-    private val messageManager: MessageManager
+    private val messageManager: MessageManager,
+    private val nowMs: () -> Long = { System.currentTimeMillis() }
 ) {
     // Helper to get current mesh service (may change after panic clear)
     private val meshService: MeshService
@@ -40,6 +41,8 @@ class VerificationHandler(
     private val _verifiedFingerprints = MutableStateFlow<Set<String>>(emptySet())
     val verifiedFingerprints: StateFlow<Set<String>> = _verifiedFingerprints.asStateFlow()
 
+    private val contacts = com.bitchat.android.services.WeshContactStore.get(context)
+    private val completedAttempts = ConcurrentHashMap<String, Long>()
     private val pendingQRVerifications = ConcurrentHashMap<String, PendingVerification>()
     private val lastVerifyNonceByPeer = ConcurrentHashMap<String, ByteArray>()
     private val lastInboundVerifyChallengeAt = ConcurrentHashMap<String, Long>()
@@ -69,19 +72,29 @@ class VerificationHandler(
     }
 
     fun beginQRVerification(qr: VerificationService.VerificationQR): Boolean {
+        if (contacts.isBlocked(qr.noiseKeyHex.dataFromHexString() ?: return false)) return false
+        completedAttempts.remove(qr.noiseKeyHex.lowercase())
         val targetNoise = qr.noiseKeyHex.lowercase()
         val peerID = state.getConnectedPeersValue().firstOrNull { pid ->
             val noiseKeyHex = meshService.getPeerInfo(pid)?.noisePublicKey?.hexEncodedString()?.lowercase()
             noiseKeyHex == targetNoise
         } ?: return false
 
-        if (pendingQRVerifications.containsKey(peerID)) return true
+        pendingQRVerifications[peerID]?.let { existing ->
+            if (isFreshAttempt(existing) &&
+                existing.noiseKeyHex.equals(qr.noiseKeyHex, true) && existing.signKeyHex.equals(qr.signKeyHex, true)) return true
+            pendingQRVerifications.remove(peerID)
+        }
         val nonce = ByteArray(16)
         java.security.SecureRandom().nextBytes(nonce)
-        val pending = PendingVerification(qr.noiseKeyHex, qr.signKeyHex, nonce, System.currentTimeMillis(), false)
+        val pending = PendingVerification(qr.noiseKeyHex, qr.signKeyHex, nonce, nowMs(), false, qr.nickname)
         pendingQRVerifications[peerID] = pending
 
         if (meshService.getSessionState(peerID) is NoiseSession.NoiseSessionState.Established) {
+            if (!sessionMatches(peerID, qr.noiseKeyHex)) {
+                pendingQRVerifications.remove(peerID)
+                return false
+            }
             meshService.sendVerifyChallenge(peerID, qr.noiseKeyHex, nonce)
             pendingQRVerifications[peerID] = pending.copy(sent = true)
         } else {
@@ -97,7 +110,12 @@ class VerificationHandler(
 
     fun sendPendingVerificationIfNeeded(peerID: String) {
         val pending = pendingQRVerifications[peerID] ?: return
+        if (!isFreshAttempt(pending)) { pendingQRVerifications.remove(peerID); return }
         if (pending.sent) return
+        if (!sessionMatches(peerID, pending.noiseKeyHex)) {
+            pendingQRVerifications.remove(peerID)
+            return
+        }
         meshService.sendVerifyChallenge(peerID, pending.noiseKeyHex, pending.nonceA)
         pendingQRVerifications[peerID] = pending.copy(sent = true)
     }
@@ -112,21 +130,6 @@ class VerificationHandler(
             if (lastNonce != null && lastNonce.contentEquals(parsed.second)) return@launch
             lastVerifyNonceByPeer[peerID] = parsed.second
 
-            val fp = meshService.getPeerFingerprint(peerID)
-            if (fp != null) {
-                lastInboundVerifyChallengeAt[fp] = System.currentTimeMillis()
-                if (_verifiedFingerprints.value.contains(fp)) {
-                    val lastToast = lastMutualToastAt[fp] ?: 0L
-                    if (System.currentTimeMillis() - lastToast > 60_000L) {
-                        lastMutualToastAt[fp] = System.currentTimeMillis()
-                        val name = resolvePeerDisplayName(peerID)
-                        val body = context.getString(R.string.verify_mutual_match_body, name)
-                        addVerificationSystemMessage(peerID, context.getString(R.string.verify_mutual_system_message, name))
-                        sendVerificationNotification(context.getString(R.string.verify_mutual_match_title), body, peerID)
-                    }
-                }
-            }
-
             meshService.sendVerifyResponse(peerID, parsed.first, parsed.second)
         }
     }
@@ -135,6 +138,10 @@ class VerificationHandler(
         scope.launch {
             val resp = VerificationService.parseVerifyResponse(payload) ?: return@launch
             val pending = pendingQRVerifications[peerID] ?: return@launch
+            if (!isFreshAttempt(pending) || contacts.isBlocked(pending.noiseKeyHex.dataFromHexString() ?: return@launch) || !sessionMatches(peerID, pending.noiseKeyHex)) {
+                pendingQRVerifications.remove(peerID)
+                return@launch
+            }
             if (!resp.noiseKeyHex.equals(pending.noiseKeyHex, ignoreCase = true)) return@launch
             if (!resp.nonceA.contentEquals(pending.nonceA)) return@launch
 
@@ -147,7 +154,9 @@ class VerificationHandler(
             if (!ok) return@launch
 
             pendingQRVerifications.remove(peerID)
-            val fp = meshService.getPeerFingerprint(peerID) ?: return@launch
+            val fp = fingerprintFromNoiseHex(pending.noiseKeyHex) ?: return@launch
+            contacts.record(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname)
+            completedAttempts[pending.noiseKeyHex.lowercase()] = nowMs()
             identityManager.setVerifiedFingerprint(fp, true)
             val current = _verifiedFingerprints.value.toMutableSet()
             current.add(fp)
@@ -167,18 +176,29 @@ class VerificationHandler(
             addVerificationSystemMessage(peerID, context.getString(R.string.verify_success_system_message, name))
             sendVerificationNotification(context.getString(R.string.verify_success_title), context.getString(R.string.verify_success_body, name), peerID)
 
-            val lastChallenge = lastInboundVerifyChallengeAt[fp] ?: 0L
-            if (System.currentTimeMillis() - lastChallenge < 600_000L) {
-                val lastToast = lastMutualToastAt[fp] ?: 0L
-                if (System.currentTimeMillis() - lastToast > 60_000L) {
-                    lastMutualToastAt[fp] = System.currentTimeMillis()
-                    val body = context.getString(R.string.verify_mutual_match_body, name)
-                    addVerificationSystemMessage(peerID, context.getString(R.string.verify_mutual_system_message, name))
-                    sendVerificationNotification(context.getString(R.string.verify_mutual_match_title), body, peerID)
-                }
-            }
+
         }
     }
+
+    internal fun isFreshAttemptTime(startedAt: Long): Boolean = (nowMs() - startedAt) in 0..60_000L
+    private fun isFreshAttempt(pending: PendingVerification): Boolean = isFreshAttemptTime(pending.startedAtMs)
+
+    fun clearWeshVerifications() { pendingQRVerifications.clear(); completedAttempts.clear() }
+
+    fun cancelWeshVerification(conversationID: String) {
+        pendingQRVerifications.entries.removeIf { (_, pending) ->
+            pending.noiseKeyHex.dataFromHexString()?.let { ContactIdentityResolver.contactConversationIdForNoiseKey(it) } == conversationID
+        }
+        contacts.contact(conversationID)?.let { completedAttempts.remove(it.noiseHex) }
+    }
+    fun weshProgress(noiseHex: String): String {
+        val pending = pendingQRVerifications.values.firstOrNull { it.noiseKeyHex.equals(noiseHex, true) }
+        if (pending != null) return if (isFreshAttempt(pending)) "pending" else "expired"
+        return if (completedAttempts.containsKey(noiseHex.lowercase()) && contacts.contacts.value.any { it.noiseHex.equals(noiseHex, true) }) "verified" else "unavailable"
+    }
+
+    private fun sessionMatches(peerID: String, noiseHex: String): Boolean =
+        WeshMessagePolicy.sessionMatches(meshService.getAuthenticatedRemoteStaticKey(peerID), noiseHex)
 
     fun getPeerFingerprintForDisplay(peerID: String): String? {
         val fromMap = state.getPeerFingerprintsValue()[peerID]
@@ -346,7 +366,8 @@ class VerificationHandler(
         val signKeyHex: String,
         val nonceA: ByteArray,
         val startedAtMs: Long,
-        val sent: Boolean
+        val sent: Boolean,
+        val nickname: String
     ) {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true

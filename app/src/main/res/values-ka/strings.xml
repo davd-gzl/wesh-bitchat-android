@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">bitchat</string>
+    <string name="app_name">Wesh</string>
 
     <!-- ნებართვების ახსნა -->
     <string name="permission_bluetooth_rationale">Bluetooth-ის ნებართვა საჭიროა, რომ ინტერნეტის გარეშე პირდაპირ ისაუბროთ სხვებთან.</string>
@@ -156,7 +156,7 @@
     <string name="cd_save_current_image">მიმდინარე სურათის შენახვა</string>
     <string name="cd_close">დახურვა</string>
     <string name="cd_image_index_of">სურათი %1$d %2$d-დან</string>
-    <string name="cd_privacy_protected">კონფიდენციალობა დაცულია</string>
+    <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">ხმოვანი ჩანაწერის ჩაწერა</string>
     <string name="cd_offline_mesh_chat">ოფლაინ mesh-ჩათი</string>
     <string name="cd_online_geohash_channels">ონლაინ geohash არხები</string>
@@ -229,7 +229,6 @@
     <string name="debug_max_gcs_filter_size_fmt">მაქს. GCS ფილტრის ზომა: %1$d ბაიტი (128–1024)</string>
     <string name="debug_target_fpr_fmt">სამიზნე FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">დაკავშირებული მოწყობილობები</string>
-    <string name="debug_our_device_id_fmt">ჩვენი მოწყობილობის ID: %1$s</string>
     <string name="debug_none">არცერთი</string>
     <string name="debug_disconnect">გათიშვა</string>
     <string name="debug_recent_scan_results">ბოლო სკანირებული მოწყობილობები</string>
@@ -254,15 +253,15 @@
     <string name="location_unavailable_explanation">ამ მოწყობილობაზე მდებარეობის სერვისები მიუწვდომელია. ეს უჩვეულოა, რადგან Android მოწყობილობებზე ისინი სტანდარტულია.\n\nBluetooth სკანირებისთვის (Android-ის მოთხოვნა) საჭიროა მდებარეობის სერვისები. ამის გარეშე აპს არ შეუძლია ახლომდებარე მომხმარებლების აღმოჩენა.</string>
     <string name="checking_location_services">მდებარეობის სერვისების შემოწმება…</string>
     <string name="bluetooth_required">Bluetooth საჭიროა</string>
-    <string name="bluetooth_needs_for">bitchat-ს სჭირდება Bluetooth შემდეგისთვის:</string>
+    <string name="bluetooth_needs_for">Wesh-ს სჭირდება Bluetooth შემდეგისთვის:</string>
     <string name="bluetooth_needs_bullets">• ახლომდებარე მომხმარებლების აღმოჩენა\n• mesh ქსელის კავშირების შექმნა\n• შეტყობინებების გაგზავნა/მიღება\n• მუშაობა ინტერნეტის ან სერვერების გარეშე</string>
     <string name="enable_bluetooth">Bluetooth-ის ჩართვა</string>
     <string name="bluetooth_not_supported">Bluetooth არ მხარდაჭერილია</string>
-    <string name="bluetooth_unsupported_explanation">ამ მოწყობილობას არ უჭერს მხარს Bluetooth Low Energy (BLE), რომელიც საჭიროა bitchat-ისთვის.\n\nBLE საჭიროა mesh ქსელების შესაქმნელად და ახლომდებარე მოწყობილობებთან ინტერნეტის გარეშე კომუნიკაციისთვის.</string>
+    <string name="bluetooth_unsupported_explanation">ამ მოწყობილობას არ უჭერს მხარს Bluetooth Low Energy (BLE), რომელიც საჭიროა Wesh-ისთვის.\n\nBLE საჭიროა mesh ქსელების შესაქმნელად და ახლომდებარე მოწყობილობებთან ინტერნეტის გარეშე კომუნიკაციისთვის.</string>
     <string name="checking_bluetooth_status">Bluetooth სტატუსის შემოწმება…</string>
     <string name="battery_optimization_detected_title">ბატარეის ოპტიმიზაცია აღმოჩნდა</string>
     <string name="battery_optimization_enabled_title">ბატარეის ოპტიმიზაცია ჩართულია</string>
-    <string name="battery_optimization_explanation_short">mesh კავშირების შესანარჩუნებლად bitchat უნდა იმუშავოს ფონში. ბატარეის ოპტიმიზაციამ შეიძლება დაარღვიოს ეს კავშირები.</string>
+    <string name="battery_optimization_explanation_short">mesh კავშირების შესანარჩუნებლად Wesh უნდა იმუშავოს ფონში. ბატარეის ოპტიმიზაციამ შეიძლება დაარღვიოს ეს კავშირები.</string>
     <string name="benefits_of_disabling">გამორთვის სარგებელი</string>
     <string name="battery_benefits_short">• სანდო მიწოდება\n• mesh კავშირის შენარჩუნება\n• გათიშვების თავიდან აცილება</string>
     <string name="disable_battery_optimization">ბატარეის ოპტიმიზაციის გამორთვა</string>
@@ -273,8 +272,8 @@
     <string name="should_take_seconds">ეს რამდენიმე წამს უნდა გაგრძელდეს</string>
     <string name="setup_not_complete">მოწყობა დაუსრულებელია</string>
     <string name="try_again">კვლავ ცდა</string>
-    <string name="privacy_protected">თქვენი კონფიდენციალობა დაცულია</string>
-    <string name="privacy_bullets">• ტრეკინგი ან მონაცემთა შეგროვება არა\n• Bluetooth mesh-ჩათები სრულად ოფლაინ\n• geohash ჩათი იყენებს ინტერნეტს</string>
+    <string name="privacy_protected">Public salon and private contacts</string>
+    <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">ნებართვები</string>
     <string name="grant_permissions">ნებართვების მინიჭება</string>
     <string name="location_tracking_warning">bitchat არ აკონტროლებს თქვენს მდებარეობას</string>
@@ -299,14 +298,14 @@
     <string name="cd_pause_voice">პაუზა</string>
 
     <!-- ნებართვების აღწერები -->
-    <string name="perm_nearby_devices_desc">საჭიროა bitchat მომხმარებლების Bluetooth-ით აღმოსაჩენად</string>
-    <string name="perm_nearby_devices_system">დაუშვით bitchat-ს დაუკავშირდეს ახლომდებარე მოწყობილობებს</string>
-    <string name="perm_location_desc">Android მოითხოვს ახლომდებარე bitchat მომხმარებლების Bluetooth-ით აღმოსაჩენად</string>
-    <string name="perm_location_system">ეს საჭიროა ახლომდებარე მოწყობილობების დასასკანად</string>
+    <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
+    <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
+    <string name="perm_location_desc">Android 11 and earlier requires this permission for Bluetooth scanning. Wesh does not use GPS coordinates.</string>
+    <string name="perm_location_system">Android permission needed for Bluetooth scanning on older phones.</string>
     <string name="perm_notifications_desc">საინფორმაციო შეტყობინებების მიღება პირადი მესიჯებისას</string>
-    <string name="perm_notifications_system">დაუშვით bitchat-ს გამოგიგზავნოთ შეტყობინებები</string>
-    <string name="perm_battery_desc">გამორთეთ ბატარეის ოპტიმიზაცია, რომ bitchat სანდოდ იმუშაოს ფონში და შეინარჩუნოს mesh-კავშირები</string>
-    <string name="perm_battery_system">დაუშვით bitchat-ს იმუშაოს ბატარეის შეზღუდვების გარეშე</string>
+    <string name="perm_notifications_system">Allow Wesh to send notifications.</string>
+    <string name="perm_battery_desc">Battery restrictions can interrupt mesh connections in the background.</string>
+    <string name="perm_battery_system">Allow Wesh to run without battery restrictions.</string>
 
     <!-- ნებართვების ტიპები -->
     <string name="perm_type_nearby_devices">ახლომდებარე მოწყობილობები</string>

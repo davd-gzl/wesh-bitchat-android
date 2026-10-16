@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -316,11 +318,12 @@ private fun MyQrTabContent(
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-private fun ScanTabContent(
+internal fun ScanTabContent(
     accent: Color,
     onScan: (String) -> Unit
 ) {
     val permissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
+    val context = LocalContext.current
     
     Column(
         modifier = Modifier
@@ -343,20 +346,17 @@ private fun ScanTabContent(
                 // Overlay border
                 Box(
                     modifier = Modifier
-                        .size(280.dp)
+                        .sizeIn(maxWidth = 280.dp, maxHeight = 280.dp)
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
                         .border(2.dp, accent.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
                 )
-                
-                // Corner accents for the overlay
-                Box(modifier = Modifier.size(260.dp)) {
-                    // This could be drawn with Canvas for cooler effect, but simple border is cleaner for now
-                }
                 
                 Text(
                     text = stringResource(R.string.verify_scan_prompt_friend),
                     color = Color.White,
-                    fontFamily = BitchatFontFamily,
-                    fontSize = 12.sp,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
+                    fontSize = 16.sp,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 32.dp)
@@ -369,6 +369,7 @@ private fun ScanTabContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .verticalScroll(rememberScrollState())
                     .background(
                         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                         RoundedCornerShape(24.dp)
@@ -386,7 +387,7 @@ private fun ScanTabContent(
                 Spacer(modifier = Modifier.height(24.dp))
                 Text(
                     text = stringResource(R.string.verify_camera_permission),
-                    fontFamily = BitchatFontFamily,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -397,9 +398,13 @@ private fun ScanTabContent(
                 ) {
                     Text(
                         text = stringResource(R.string.verify_request_camera),
-                        fontFamily = BitchatFontFamily
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Default
                     )
                 }
+                androidx.compose.material3.TextButton(onClick = {
+                    context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.parse("package:" + context.packageName)))
+                }) { Text("Réglages de l’app") }
             }
         }
     }
@@ -477,13 +482,13 @@ private fun ScannerView(
 }
 
 @Composable
-private fun QRCodeImage(data: String, size: Dp) {
+internal fun QRCodeImage(data: String, size: Dp) {
     val sizePx = with(LocalDensity.current) { size.toPx().toInt() }
     val bitmap = remember(data, sizePx) { generateQrBitmap(data, sizePx) }
     if (bitmap != null) {
         Image(
             bitmap = bitmap.asImageBitmap(),
-            contentDescription = null,
+            contentDescription = "Code QR de vérification d’identité",
             modifier = Modifier.size(size)
         )
     }

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Machine-translated (Claude) — pending native-speaker review -->
-    <string name="app_name">bitchat</string>
+    <string name="app_name">Wesh</string>
     <string name="permission_bluetooth_rationale">Kebenaran Bluetooth diperlukan untuk pemesejan rakan-ke-rakan tanpa internet.</string>
     <string name="permission_location_rationale">Kebenaran lokasi diperlukan untuk mengesan peranti berdekatan melalui Bluetooth.</string>
     <string name="permission_notification_rationale">Kebenaran pemberitahuan diperlukan untuk memaklumkan anda tentang mesej baharu.</string>
@@ -100,7 +100,7 @@
   <string name="cd_pick_file">Pilih fail</string>
 
   <!-- About sheet -->
-  <string name="about_tagline">pemesejan mesh terdesentralisasi dengan penyulitan hujung-ke-hujung</string>
+  <string name="about_tagline">Stay together, even offline</string>
   <string name="about_offline_mesh_title">Sembang Mesh Luar Talian</string>
   <string name="about_offline_mesh_desc">Berkomunikasi terus melalui Bluetooth LE tanpa internet atau pelayan. Mesej digeganti melalui peranti berdekatan untuk melanjutkan jarak.</string>
   <string name="about_online_geohash_title">Saluran Geohash Dalam Talian</string>
@@ -133,7 +133,7 @@
   <string name="about_debug_settings">Tetapan Nyahpepijat</string>
   <string name="about_footer">Sumber Terbuka • Privasi Diutamakan • Terdesentralisasi</string>
   <string name="close_plain">Tutup</string>
-  <string name="cd_privacy_protected">Privasi Dilindungi</string>
+  <string name="cd_privacy_protected">About message privacy</string>
   <string name="cancel_lower">batal</string>
 
   <!-- Generic content descriptions -->
@@ -201,7 +201,7 @@
   <string name="location_permission_denied">kebenaran lokasi ditolak. aktifkan dalam tetapan untuk menggunakan saluran lokasi.</string>
 
   <string name="location_permission_granted">✓ kebenaran lokasi diberikan</string>
-  <string name="checking_permissions">menyemak kebenaran...</string>
+  <string name="checking_permissions">menyemak kebenaran…</string>
   <string name="finding_nearby_channels">mencari saluran berdekatan…</string>
   <string name="bookmarked">ditanda buku</string>
   <string name="geohash_placeholder">geohash</string>
@@ -251,7 +251,6 @@
   <string name="debug_max_gcs_filter_size_fmt">saiz penapis GCS maksimum: %1$d bait (128–1024)</string>
   <string name="debug_target_fpr_fmt">FPR sasaran: %1$.2f%%</string>
   <string name="debug_connected_devices">peranti disambungkan</string>
-  <string name="debug_our_device_id_fmt">id peranti kami: %1$s</string>
   <string name="debug_none">tiada</string>
   <string name="debug_disconnect">putuskan sambungan</string>
   <string name="debug_recent_scan_results">keputusan imbasan terkini</string>
@@ -312,9 +311,9 @@
   <string name="location_needs_bullets">• Imbasan peranti Bluetooth\n• Mengesan pengguna berdekatan pada rangkaian mesh\n• Ciri sembang Geohash\n• Tiada penjejakan atau pengumpulan lokasi</string>
   <string name="background_location_required_title">Lokasi Latar Belakang Disyorkan</string>
   <string name="background_location_required_subtitle">pilihan, meningkatkan kebolehpercayaan mesh</string>
-  <string name="background_location_explanation">Android mengesyorkan lokasi latar belakang supaya bitchat boleh mengimbas peranti berdekatan semasa apl tidak dibuka. Ini mengekalkan mesh aktif selepas but semula.</string>
+  <string name="background_location_explanation">Android mengesyorkan lokasi latar belakang supaya Wesh boleh mengimbas peranti berdekatan semasa apl tidak dibuka. Ini mengekalkan mesh aktif selepas but semula.</string>
   <string name="background_location_settings_tip">Apabila tetapan dibuka, pilih "Benarkan sepanjang masa".</string>
-  <string name="background_location_needs_for">bitchat menggunakan lokasi latar belakang untuk:</string>
+  <string name="background_location_needs_for">Wesh menggunakan lokasi latar belakang untuk:</string>
   <string name="background_location_needs_bullets">- mengimbas peranti berdekatan semasa apl ditutup\n- menyambung semula selepas but semula\n- mengekalkan mesh berjalan di latar belakang</string>
   <string name="background_location_privacy_note">Kami TIDAK PERNAH mengumpul atau menyimpan lokasi anda. Privasi anda selamat.</string>
   <string name="grant_background_location">Benarkan Lokasi Latar Belakang</string>
@@ -323,17 +322,17 @@
   <string name="check_again">Semak Semula</string>
   <string name="location_services_unavailable">Perkhidmatan Lokasi Tidak Tersedia</string>
   <string name="location_unavailable_explanation">Perkhidmatan lokasi tidak tersedia pada peranti ini. Ini luar biasa kerana perkhidmatan lokasi adalah standard pada peranti Android.\n\nbitchat memerlukan perkhidmatan lokasi untuk imbasan Bluetooth berfungsi dengan betul (keperluan Android). Tanpa ini, apl tidak dapat mengesan pengguna berdekatan.</string>
-  <string name="checking_location_services">Menyemak perkhidmatan lokasi...</string>
+  <string name="checking_location_services">Menyemak perkhidmatan lokasi…</string>
   <string name="bluetooth_required">Bluetooth Diperlukan</string>
-  <string name="bluetooth_needs_for">bitchat memerlukan Bluetooth untuk:</string>
+  <string name="bluetooth_needs_for">Wesh memerlukan Bluetooth untuk:</string>
   <string name="bluetooth_needs_bullets">• Mengesan pengguna berdekatan\n• Mewujudkan sambungan rangkaian mesh\n• Menghantar dan menerima mesej\n• Berfungsi tanpa internet atau pelayan</string>
   <string name="enable_bluetooth">Aktifkan Bluetooth</string>
   <string name="bluetooth_not_supported">Bluetooth Tidak Disokong</string>
-  <string name="bluetooth_unsupported_explanation">Peranti ini tidak menyokong Bluetooth Low Energy (BLE), yang diperlukan untuk bitchat berfungsi.\n\nbitchat memerlukan BLE untuk mewujudkan rangkaian mesh dan berkomunikasi dengan peranti berdekatan tanpa internet.</string>
-  <string name="checking_bluetooth_status">Menyemak status Bluetooth...</string>
+  <string name="bluetooth_unsupported_explanation">Peranti ini tidak menyokong Bluetooth Low Energy (BLE), yang diperlukan untuk Wesh berfungsi.\n\nWesh memerlukan BLE untuk mewujudkan rangkaian mesh dan berkomunikasi dengan peranti berdekatan tanpa internet.</string>
+  <string name="checking_bluetooth_status">Menyemak status Bluetooth…</string>
   <string name="battery_optimization_detected_title">pengoptimuman bateri dikesan</string>
   <string name="battery_optimization_enabled_title">Pengoptimuman Bateri Diaktifkan</string>
-  <string name="battery_optimization_explanation_short">bitchat perlu berjalan di latar belakang untuk mengekalkan sambungan mesh. pengoptimuman bateri boleh mengganggu sambungan ini.</string>
+  <string name="battery_optimization_explanation_short">Wesh perlu berjalan di latar belakang untuk mengekalkan sambungan mesh. pengoptimuman bateri boleh mengganggu sambungan ini.</string>
   <string name="benefits_of_disabling">Faedah Melumpuhkan</string>
   <string name="battery_benefits_short">• penghantaran mesej yang boleh dipercayai\n• mengekalkan ketersambungan mesh\n• mengelakkan sambungan terputus</string>
   <string name="disable_battery_optimization">Lumpuhkan Pengoptimuman Bateri</string>
@@ -341,34 +340,24 @@
   <string name="continue_btn">Teruskan</string>
   <string name="initializing_mesh_network">Memulakan rangkaian mesh</string>
   <string name="dot">.</string>
-  <string name="setting_up_bluetooth">Menyediakan rangkaian mesh Bluetooth...</string>
+  <string name="setting_up_bluetooth">Menyediakan rangkaian mesh Bluetooth…</string>
   <string name="should_take_seconds">Ini sepatutnya hanya mengambil masa beberapa saat</string>
-  <string name="warning_emoji">⚠️</string>
   <string name="setup_not_complete">Persediaan Tidak Lengkap</string>
   <string name="try_again">Cuba Lagi</string>
   <string name="open_settings">Buka Tetapan</string>
-  <string name="privacy_protected">Privasi Anda Dilindungi</string>
-  <string name="privacy_bullets">• tiada penjejakan atau pengumpulan data\n• sembang mesh Bluetooth sepenuhnya luar talian\n• sembang Geohash menggunakan internet</string>
+  <string name="privacy_protected">Public salon and private contacts</string>
+  <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
   <string name="permissions_header">kebenaran</string>
   <string name="grant_permissions">Berikan Kebenaran</string>
   <string name="location_tracking_warning">bitchat TIDAK menjejaki lokasi anda</string>
-  <string name="at_symbol">@</string>
-  <string name="channel_count_prefix"> · ⧉ </string>
-  <string name="nobody_around">tiada sesiapa berdekatan...</string>
+  <string name="nobody_around">tiada sesiapa berdekatan…</string>
   <string name="you_suffix"> (anda)</string>
   <string name="pan_zoom_instruction">gerak dan zum untuk memilih geohash</string>
   <string name="select">pilih</string>
-  <string name="type_a_message_placeholder">taip mesej...</string>
-  <string name="mention_suggestion_at">@%1$s</string>
+  <string name="type_a_message_placeholder">taip mesej…</string>
   <string name="mention">sebutan</string>
   <string name="image_counter">%1$d / %2$d</string>
-  <string name="at_nickname">@%1$s</string>
   <string name="version_prefix">v%1$s</string>
-  <string name="hash_symbol">#</string>
-  <string name="underscore">_</string>
-  <string name="progress_bar_brackets">[%1$s] %2$d%%</string>
-  <string name="progress_filled">█</string>
-  <string name="progress_empty">░</string>
   <string name="image_star">image/*</string>
   <string name="media_type_image">Imej</string>
   <string name="media_type_file">Fail</string>
@@ -379,28 +368,22 @@
   <string name="notification_sent_image">📷 menghantar imej</string>
   <string name="notification_sent_voice">🎤 menghantar mesej suara</string>
   <string name="notification_sent_file">📎 menghantar fail</string>
-  <string name="notification_file_pdf">📄</string>
-  <string name="notification_file_zip">🗜️</string>
-  <string name="notification_file_doc">📄</string>
-  <string name="notification_file_xls">📊</string>
-  <string name="notification_file_ppt">📈</string>
-  <string name="notification_file_generic">📎</string>
 
   <!-- Voice player accessibility -->
   <string name="cd_play_voice">Main</string>
   <string name="cd_pause_voice">Jeda</string>
 
   <!-- Permission descriptions -->
-  <string name="perm_nearby_devices_desc">Diperlukan untuk mengesan pengguna bitchat melalui Bluetooth</string>
-  <string name="perm_nearby_devices_system">Benarkan bitchat menyambung kepada peranti berdekatan</string>
-  <string name="perm_location_desc">Diperlukan oleh Android untuk mengesan pengguna bitchat berdekatan melalui Bluetooth</string>
-  <string name="perm_location_system">bitchat memerlukan ini untuk mengimbas peranti berdekatan</string>
-  <string name="perm_background_location_desc">Disyorkan untuk mengimbas peranti berdekatan semasa apl di latar belakang</string>
-  <string name="perm_background_location_system">Benarkan akses lokasi latar belakang</string>
+  <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
+  <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
+  <string name="perm_location_desc">Android 11 and earlier requires this permission for Bluetooth scanning. Wesh does not use GPS coordinates.</string>
+  <string name="perm_location_system">Android permission needed for Bluetooth scanning on older phones.</string>
+  <string name="perm_background_location_desc">On Android 10 and 11 this system permission enables background Bluetooth scanning. Wesh does not use GPS coordinates.</string>
+  <string name="perm_background_location_system">Allow background Bluetooth scanning on this older Android.</string>
   <string name="perm_notifications_desc">Terima pemberitahuan apabila anda menerima mesej peribadi</string>
-  <string name="perm_notifications_system">Benarkan bitchat menghantar pemberitahuan kepada anda</string>
-  <string name="perm_battery_desc">Lumpuhkan pengoptimuman bateri untuk memastikan bitchat berjalan dengan boleh dipercayai di latar belakang dan mengekalkan sambungan rangkaian mesh</string>
-  <string name="perm_battery_system">Benarkan bitchat berjalan tanpa sekatan bateri</string>
+  <string name="perm_notifications_system">Allow Wesh to send notifications.</string>
+  <string name="perm_battery_desc">Battery restrictions can interrupt mesh connections in the background.</string>
+  <string name="perm_battery_system">Allow Wesh to run without battery restrictions.</string>
 
   <!-- Permission types -->
   <string name="perm_type_nearby_devices">Peranti Berdekatan</string>

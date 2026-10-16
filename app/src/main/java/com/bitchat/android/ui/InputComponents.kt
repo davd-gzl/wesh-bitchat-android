@@ -50,6 +50,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -341,6 +342,7 @@ fun MessageInput(
     var cancelBounds by remember { mutableStateOf<Rect?>(null) }
     var cancelFinger by remember { mutableStateOf<Offset?>(null) }
     val density = LocalDensity.current
+    val locale = LocalLocale.current.platformLocale
     val cancelSlackPx = with(density) { 8.dp.toPx() }
     val cancelHover = cancelFinger != null &&
         cancelBounds?.inflate(cancelSlackPx)?.contains(cancelFinger!!) == true
@@ -525,7 +527,7 @@ fun MessageInput(
                         val secs = (elapsedMs / 1000).toInt()
                         Text(
                             text = (if (isLiveRecording) "LIVE · " else "") +
-                                String.format("%02d:%02d", secs / 60, secs % 60),
+                                String.format(locale, "%02d:%02d", secs / 60, secs % 60),
                             fontFamily = BitchatFontFamily,
                             color = colorScheme.error,
                             fontSize = (BASE_FONT_SIZE - 4).sp

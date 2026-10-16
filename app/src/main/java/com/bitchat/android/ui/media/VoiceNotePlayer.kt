@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,6 +28,7 @@ fun VoiceNotePlayer(
     progressOverride: Float? = null,
     progressColor: Color? = null
 ) {
+    val locale = LocalLocale.current.platformLocale
     var isPlaying by remember { mutableStateOf(false) }
     var isPrepared by remember { mutableStateOf(false) }
     var isError by remember { mutableStateOf(false) }
@@ -110,7 +112,7 @@ fun VoiceNotePlayer(
             playbackProgress = if (progressOverride == null) progress else null,
             onSeek = seekTo
         )
-        val durText = if (durationMs > 0) String.format("%02d:%02d", (durationMs / 1000) / 60, (durationMs / 1000) % 60) else "--:--"
+        val durText = if (durationMs > 0) String.format(locale, "%02d:%02d", (durationMs / 1000) / 60, (durationMs / 1000) % 60) else "--:--"
         Text(text = durText, fontFamily = BitchatFontFamily, fontSize = 12.sp)
     }
 }

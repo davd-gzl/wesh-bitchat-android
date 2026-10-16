@@ -251,7 +251,13 @@ fun VoiceRecordButton(
                         if (cancel) {
                             path?.let { runCatching { File(it).delete() } }
                             try {
-                                view.performHapticFeedback(HapticFeedbackConstants.REJECT)
+                                view.performHapticFeedback(
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                                        HapticFeedbackConstants.REJECT
+                                    } else {
+                                        HapticFeedbackConstants.LONG_PRESS
+                                    }
+                                )
                             } catch (_: Exception) {
                             }
                             latestOnCancel.value()

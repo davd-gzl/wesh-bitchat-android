@@ -61,6 +61,12 @@ class BluetoothConnectionManager(
             delegate?.onPacketReceived(packet, peerID, device, ingressLinkID)
         }
         
+        override fun onServerConnectionRegistered(device: BluetoothDevice) {
+            // Enforce budgets even when a central never enables notifications.
+            // This is resource admission, not a ready transport notification.
+            enforceStrictLimits()
+        }
+
         override fun onDeviceConnected(device: BluetoothDevice) {
             // Trigger limit enforcement immediately upon any new connection
             enforceStrictLimits()
@@ -203,7 +209,11 @@ class BluetoothConnectionManager(
                 
                 toEvict.forEach { conn ->
                     if (conn.isClient) {
-                        try { conn.gatt?.disconnect() } catch (_: Exception) { }
+                        try {
+                            conn.gatt?.disconnect()
+                        } catch (_: SecurityException) {
+                            Log.w(TAG, "Bluetooth permission revoked while enforcing connection limits")
+                        } catch (_: Exception) { }
                     } else {
                         serverManager.disconnectDevice(conn.device)
                     }
@@ -229,8 +239,14 @@ class BluetoothConnectionManager(
             return false
         }
         
-        if (bluetoothAdapter?.isEnabled != true) {
-            Log.e(TAG, "Bluetooth is not enabled")
+        val bluetoothEnabled = try {
+            bluetoothAdapter?.isEnabled == true
+        } catch (_: SecurityException) {
+            Log.w(TAG, "Bluetooth permission revoked before startup")
+            false
+        }
+        if (!bluetoothEnabled) {
+            Log.e(TAG, "Bluetooth is not enabled or permission is unavailable")
             return false
         }
         
@@ -347,6 +363,12 @@ class BluetoothConnectionManager(
         )
     }
 
+    suspend fun broadcastPacketAndAwaitAcceptance(routed: RoutedPacket, authorized: () -> Boolean): Boolean {
+        if (!isActive || !isBleTransportEnabled()) return false
+        return packetBroadcaster.broadcastPacketAndAwaitAcceptance(routed, serverManager.getGattServer(),
+            serverManager.getCharacteristic(), authorized)
+    }
+
     suspend fun broadcastControlPacketAndAwaitAcceptance(routed: RoutedPacket): Boolean {
         if (!isActive || !isBleTransportEnabled()) return false
 
@@ -423,9 +445,6 @@ class BluetoothConnectionManager(
         }
     }
 
-    // Expose local adapter address for debug UI
-    fun getLocalAdapterAddress(): String? = try { bluetoothAdapter?.address } catch (e: Exception) { null }
-
     fun isClientConnection(address: String): Boolean? {
         return try { connectionTracker.getConnectedDevices()[address]?.isClient } catch (e: Exception) { null }
     }
@@ -467,9 +486,13 @@ class BluetoothConnectionManager(
     fun getDebugInfo(): String {
         return buildString {
             appendLine("=== Bluetooth Connection Manager ===")
-            appendLine("Bluetooth MAC Address: ${bluetoothAdapter?.address}")
             appendLine("Active: $isActive")
-            appendLine("Bluetooth Enabled: ${bluetoothAdapter?.isEnabled}")
+            val bluetoothEnabled = try {
+                bluetoothAdapter?.isEnabled?.toString() ?: "Unavailable"
+            } catch (_: SecurityException) {
+                "[Permission required]"
+            }
+            appendLine("Bluetooth Enabled: $bluetoothEnabled")
             appendLine("Has Permissions: ${permissionManager.hasBluetoothPermissions()}")
             appendLine("GATT Server Active: ${serverManager.getGattServer() != null}")
             appendLine()
@@ -491,6 +514,8 @@ interface BluetoothConnectionManagerDelegate {
         device: BluetoothDevice?,
         ingressLinkID: String
     )
+    /** A server link occupies a connection budget before CCCD readiness. */
+    fun onServerConnectionRegistered(device: BluetoothDevice) = Unit
     fun onDeviceConnected(device: BluetoothDevice)
     fun onDeviceDisconnected(device: BluetoothDevice, linkID: String?, peerID: String?)
     fun onRSSIUpdated(deviceAddress: String, rssi: Int)

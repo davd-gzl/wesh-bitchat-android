@@ -38,7 +38,10 @@ import kotlin.random.Random
  * - BluetoothConnectionManager: BLE connections and GATT operations
  * - PacketProcessor: Incoming packet routing
  */
-class BluetoothMeshService(private val context: Context) : TransportBridgeService.TransportLayer {
+class BluetoothMeshService(
+    private val context: Context,
+    private val encryptionService: EncryptionService = EncryptionService(context)
+) : TransportBridgeService.TransportLayer {
     private val debugManager by lazy { try { com.bitchat.android.ui.debug.DebugSettingsManager.getInstance() } catch (e: Exception) { null } }
     
     companion object {
@@ -48,7 +51,6 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
     }
     
     // Core components - each handling specific responsibilities
-    private val encryptionService = EncryptionService(context)
 
     // My peer identification - derived from persisted Noise identity fingerprint (first 16 hex chars)
     val myPeerID: String = encryptionService.getIdentityFingerprint().take(16)
@@ -122,14 +124,15 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
     )
     
     // Service state management
-    private var isActive = false
+    @Volatile private var isActive = false
     
     // Delegate for message callbacks (maintains same interface)
     var delegate: BluetoothMeshDelegate? = null
     
     // Coroutines
     // Tracks whether this instance has been terminated via stopServices()
-    private var terminated = false
+    @Volatile private var terminated = false
+    private val publicSendGeneration = java.util.concurrent.atomic.AtomicLong()
     
     init {
         serviceScope.launch {
@@ -489,7 +492,13 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
                 // callback or notify after panic mode rejected the message while wiping state.
                 if (
                     !com.bitchat.android.services.IncomingMessageAdmission
-                        .admitToAppState(message)
+                        .admitToAppState(message) { peerID ->
+                            val fingerprint = getAuthenticatedRemoteStaticKey(peerID)?.let {
+                                com.bitchat.android.services.ContactIdentityResolver.fingerprintHex(it)
+                            } ?: getPeerFingerprint(peerID)
+                            fingerprint != null && context.getSharedPreferences("bitchat_prefs", Context.MODE_PRIVATE)
+                                .getStringSet("blocked_users", emptySet())!!.contains(fingerprint)
+                        }
                 ) return
 
                 // And forward to UI delegate if attached
@@ -773,6 +782,7 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
         Log.i(TAG, "Starting Bluetooth mesh service with peer ID: $myPeerID")
         
         if (connectionManager.startServices()) {
+            publicSendGeneration.incrementAndGet()
             isActive = true
             TransportBridgeService.register("BLE", this)
             
@@ -797,6 +807,7 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
     private fun pauseServicesForTransportDisable() {
         Log.i(TAG, "Disabling BLE mesh transport")
         isActive = false
+        publicSendGeneration.incrementAndGet()
         com.bitchat.android.service.MeshServiceHolder.stopSharedGossip("BLE")
         TransportBridgeService.unregister("BLE")
         try { com.bitchat.android.services.AppStateStore.clearTransportPeers("BLE") } catch (_: Exception) { }
@@ -816,6 +827,7 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
         
         Log.i(TAG, "Stopping Bluetooth mesh service")
         isActive = false
+        publicSendGeneration.incrementAndGet()
         TransportBridgeService.unregister("BLE")
         try { com.bitchat.android.services.AppStateStore.clearTransportPeers("BLE") } catch (_: Exception) { }
         try { com.bitchat.android.services.AppStateStore.clearTransportDirectPeers("BLE") } catch (_: Exception) { }
@@ -852,6 +864,43 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
         return reusable
     }
     
+    /** The UI keeps this guard through the handoff and the final local echo admission. */
+    internal fun weshPublicSendGuard(authorized: () -> Boolean): () -> Boolean {
+        val capturedGeneration = publicSendGeneration.get()
+        return {
+            isActive && !terminated && serviceScope.isActive && isBleTransportEnabled() &&
+                publicSendGeneration.get() == capturedGeneration && authorized()
+        }
+    }
+
+    /** A Wesh public send succeeds only after a local BLE handoff, never on queueing alone. */
+    suspend fun sendWeshPublicMessage(content: String, authorized: () -> Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            admitWeshPublicMessage(
+                content = content,
+                ready = { isActive && !terminated && serviceScope.isActive && isBleTransportEnabled() && authorized() },
+                generation = publicSendGeneration::get,
+                prepare = {
+                    signPacketBeforeBroadcast(BitchatPacket(
+                        version = 1u,
+                        type = MessageType.MESSAGE.value,
+                        senderID = hexStringToByteArray(myPeerID),
+                        recipientID = SpecialRecipients.BROADCAST,
+                        timestamp = System.currentTimeMillis().toULong(),
+                        payload = content.toByteArray(Charsets.UTF_8),
+                        signature = null,
+                        ttl = MAX_TTL
+                    ))
+                },
+                handoff = { packet, stillAuthorized ->
+                    connectionManager.broadcastPacketAndAwaitAcceptance(RoutedPacket(packet), stillAuthorized)
+                },
+                recordAccepted = { packet ->
+                    try { gossipSyncManager.onPublicPacketSeen(packet) } catch (_: Exception) { }
+                }
+            )
+        }
+
     /**
      * Send public message
      */
@@ -1051,6 +1100,27 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
      * Send private message - SIMPLIFIED iOS-compatible version 
      * Uses NoisePayloadType system exactly like iOS SimplifiedBluetoothService
      */
+    /** Wesh handoff has a result and pins the generation at encryption, without changing the wire. */
+    suspend fun sendPrivateMessageBound(content: String, recipientPeerID: String, expectedKey: ByteArray,
+        messageID: String, authorized: () -> Boolean): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (content.isBlank() || content.toByteArray().size > 2000 || expectedKey.size != 32 || !authorized()) return@withContext false
+        val session = encryptionService.getAuthenticatedSession(recipientPeerID) ?: return@withContext false
+        if (!session.remoteStaticKey.contentEquals(expectedKey)) return@withContext false
+        runCatching {
+            val encoded = com.bitchat.android.model.PrivateMessagePacket(messageID, content).encode() ?: return@withContext false
+            val payload = com.bitchat.android.model.NoisePayload(com.bitchat.android.model.NoisePayloadType.PRIVATE_MESSAGE, encoded)
+            // encryptForSession atomically refuses a replacement generation, even for the same alias.
+            val encrypted = encryptionService.encryptForSession(payload.encode(), recipientPeerID, session)
+            if (!authorized()) return@withContext false
+            val packet = BitchatPacket(version = 1u, type = MessageType.NOISE_ENCRYPTED.value,
+                senderID = hexStringToByteArray(myPeerID), recipientID = hexStringToByteArray(recipientPeerID),
+                timestamp = System.currentTimeMillis().toULong(), payload = encrypted, signature = null, ttl = MAX_TTL)
+            connectionManager.broadcastPacketAndAwaitAcceptance(RoutedPacket(signPacketBeforeBroadcast(packet))) {
+                authorized() && encryptionService.getAuthenticatedSession(recipientPeerID) == session
+            }
+        }.getOrDefault(false)
+    }
+
     fun sendPrivateMessage(content: String, recipientPeerID: String, recipientNickname: String, messageID: String? = null) {
         if (content.isEmpty() || recipientPeerID.isEmpty()) return
         // Nicknames are presentation metadata. Routing and encryption are bound to the peer ID,
@@ -1462,6 +1532,9 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
         return encryptionService.getIdentityFingerprint()
     }
 
+    fun getAuthenticatedRemoteStaticKey(peerID: String): ByteArray? =
+        encryptionService.getAuthenticatedRemoteStaticKey(peerID)
+
     fun getStaticNoisePublicKey(): ByteArray? {
         return encryptionService.getStaticPublicKey()
     }
@@ -1657,4 +1730,30 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
 interface BluetoothMeshDelegate : MeshDelegate {
     override fun didReceiveVerifyChallenge(peerID: String, payload: ByteArray, timestampMs: Long)
     override fun didReceiveVerifyResponse(peerID: String, payload: ByteArray, timestampMs: Long)
+}
+
+/** Captures one lifecycle generation and checks it again at the concrete transport effect. */
+internal suspend fun <T> admitWeshPublicMessage(
+    content: String,
+    ready: () -> Boolean,
+    generation: () -> Long,
+    prepare: () -> T,
+    handoff: suspend (T, () -> Boolean) -> Boolean,
+    recordAccepted: (T) -> Unit
+): Boolean {
+    if (content.isBlank() || content.toByteArray(Charsets.UTF_8).size > 2000) return false
+    val capturedGeneration = generation()
+    val authorized = { ready() && generation() == capturedGeneration }
+    if (!authorized()) return false
+    return try {
+        val packet = prepare()
+        if (!authorized() || !handoff(packet, authorized) || !authorized()) false else {
+            recordAccepted(packet)
+            true
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false
+    }
 }

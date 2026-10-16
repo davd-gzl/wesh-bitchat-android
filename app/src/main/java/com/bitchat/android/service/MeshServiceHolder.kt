@@ -68,6 +68,15 @@ object MeshServiceHolder {
         }
     }
 
+    private fun createBluetooth(
+        context: Context,
+        preparedEncryption: com.bitchat.android.crypto.EncryptionService?
+    ): BluetoothMeshService = if (preparedEncryption != null) {
+        BluetoothMeshService(context.applicationContext, preparedEncryption)
+    } else {
+        BluetoothMeshService(context.applicationContext)
+    }
+
     @Volatile
     var meshService: BluetoothMeshService? = null
         private set
@@ -77,7 +86,10 @@ object MeshServiceHolder {
         private set
 
     @Synchronized
-    fun getOrCreate(context: Context): BluetoothMeshService {
+    fun getOrCreate(
+        context: Context,
+        preparedEncryption: com.bitchat.android.crypto.EncryptionService? = null
+    ): BluetoothMeshService {
         val existing = meshService
         if (existing != null) {
             // If the existing instance is healthy, reuse it; otherwise, replace it.
@@ -91,7 +103,7 @@ object MeshServiceHolder {
                     try { existing.stopServices() } catch (e: Exception) {
                         android.util.Log.w(TAG, "Error while stopping non-reusable instance: ${e.message}")
                     }
-                    val created = BluetoothMeshService(context.applicationContext)
+                    val created = createBluetooth(context, preparedEncryption)
                     android.util.Log.i(TAG, "Created new BluetoothMeshService (replacement)")
                     meshService = created
                     unifiedMeshService = null
@@ -99,13 +111,13 @@ object MeshServiceHolder {
                 }
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Error checking service reusability; creating new instance: ${e.message}")
-                val created = BluetoothMeshService(context.applicationContext)
+                val created = createBluetooth(context, preparedEncryption)
                 meshService = created
                 unifiedMeshService = null
                 created
             }
         }
-        val created = BluetoothMeshService(context.applicationContext)
+        val created = createBluetooth(context, preparedEncryption)
         android.util.Log.i(TAG, "Created new BluetoothMeshService (no existing instance)")
         meshService = created
         unifiedMeshService = null
@@ -113,8 +125,11 @@ object MeshServiceHolder {
     }
 
     @Synchronized
-    fun getUnifiedOrCreate(context: Context): UnifiedMeshService {
-        val bluetooth = getOrCreate(context)
+    fun getUnifiedOrCreate(
+        context: Context,
+        preparedEncryption: com.bitchat.android.crypto.EncryptionService? = null
+    ): UnifiedMeshService {
+        val bluetooth = getOrCreate(context, preparedEncryption)
         val existing = unifiedMeshService
         if (existing != null) {
             existing.refreshDelegates()

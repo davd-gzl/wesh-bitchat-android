@@ -1,105 +1,156 @@
-<img width="256" height="256" alt="icon_128x128@2x" src="https://github.com/user-attachments/assets/90133f83-b4f6-41c6-aab9-25d0859d2a47" />
+# Wesh Android validation fork
 
-## bitchat for Android
+This repository validates Wesh’s native Android experience on the upstream
+[BitChat Android](https://github.com/permissionlesstech/bitchat-android) codebase.
+It is an experimental fork, with production architecture still subject to the
+cross-platform physical-device validation sprint.
 
-A decentralized peer-to-peer messaging app with dual transport architecture: local Bluetooth mesh networks for offline communication and internet-based Nostr protocol for global reach. No accounts, no phone numbers, no central servers.
+Wesh V1 combines a public local Bluetooth mesh conversation with private
+contacts verified by scanning each other’s live QR code. Public messages can be
+read, relayed and retained by mesh participants. Private identity verification
+is local to this phone; a successful local handoff does not prove remote receipt
+or reading. The Wesh shell disables Internet, geographic and Wi-Fi Aware routes.
+It does not turn packaged upstream dependencies into absent code.
 
-This is the Android implementation of bitchat, fully protocol-compatible with the [iOS version](https://github.com/permissionlesstech/bitchat) for cross-platform mesh communication.
+The app uses the system typeface, a polished silver / pure black interface and
+an isolated application ID, `org.samouraiworld.wesh.android`. It does not replace
+an upstream BitChat installation. MeshCore and Meshtastic adapters are long-term
+roadmap exploration outside V1.
 
-[bitchat.free](http://bitchat.free)
+## Current development candidate
 
-[GitHub Releases](https://github.com/permissionlesstech/bitchat-android/releases)
+Candidate **0.1.0 (42)** was built from runtime source
+`8a5516eb4286a6df97d8790e0cdac8cb2aedc13c`.
 
-[<img alt="Get it on Google Play" height="60" src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"/>](https://play.google.com/store/apps/details?id=com.bitchat.droid)
+Wesh now prepares encrypted preferences and persisted crypto identity on IO,
+with a process-owned initializing / ready / failed state and explicit retry.
+Unreadable, partial or incorrectly sized stored keys do not become replacement
+identities. Checked persistence fences prevent a failed commit from being
+accepted just because its values entered memory. Bluetooth / unified service
+construction stays on Main and receives prepared crypto directly. The latest
+bounded pending route survives Activity state restoration and waits for secure
+startup plus onboarding; QR review and per-send authorization remain in force.
+Foreground-service promotion precedes suspension, and an ineligible sticky
+restart stops without waiting for the keystore. See the
+[startup verification and limits](docs/validation/STARTUP-PREPARATION.md).
 
-## See it in action
+Image export now uses an explicit document destination on API 26–28 and the
+Downloads API on API 29+, performs storage work on IO, and reports actual copy /
+publication failure. It adds no broad storage permission. This does not qualify
+all inherited image formats or physical providers.
 
-<table>
-  <tr>
-    <th>Offline mesh conversation</th>
-    <th>Geohash globe picker</th>
-  </tr>
-  <tr>
-    <td><img src="docs/screenshots/readme-mesh-chat.png" alt="Active four-peer Bitchat mesh conversation with an image, voice messages, and text messages" width="360"/></td>
-    <td><img src="docs/screenshots/readme-geohash-globe.png" alt="Bitchat geohash location picker showing the whole Earth and geohash grid" width="360"/></td>
-  </tr>
-</table>
+- App debug build and its full JVM collection passed: **684 passed, 3 inherited
+  skips (687 total)**. The final global invocation reused the Wear build,
+  **224 successful JVM cases** and lint results with unchanged shared inputs;
+  their actual execution also passed in the preceding complete run. Wear
+  remains an inherited module outside the Wesh V1 product scope.
+- The four Arti libraries and both checksum manifests remain unchanged and
+  byte-identical between the earlier two clean builds in the same pinned
+  environment. Independent review checked ELF/JNI/source correspondence.
+- The final universal APK passed package, label, version, existing debug-signer
+  and ZIP alignment checks. All 20 native ZIP entries are stored uncompressed;
+  all LOAD segments in its 10 packaged 64-bit libraries meet 16 KiB alignment.
+  This does not qualify a physical 16 KiB device.
+- App lint reports **304 errors, 321 warnings and 19 hints**; Wear reports
+  **37 errors, 52 warnings and 10 hints**. Compared with candidate 41, the
+  unsupported Downloads API error is removed. Each module has three new
+  UseKtx style warnings and two old ones removed (net +1); explicit editor
+  commits preserve their checked Boolean result. No new error, suppression,
+  baseline or privileged permission was added. The inherited
+  `abortOnError = false` remains; task success is not lint clean.
 
-## License
+The known isolated API 35 emulator accepted the upgrade and its installed APK
+hash matched the verified candidate exactly. Three CLI cold launches reported
+Activity first-frame TotalTime values of **8.136 / 4.149 / 7.884 seconds**. The
+same process stayed alive for 15 seconds after each, with no fatal observed in
+its bounded crash buffer and no new ANR exit record in the targeted before /
+after comparison. These are Activity/loading observations: secure-runtime
+readiness, completed onboarding, actual conversations, GUI and TalkBack were
+not independently observed. They are not phone performance or full ANR tests.
+The headless emulator was then shut down cleanly.
 
-This project is released into the public domain. See the [LICENSE](LICENSE.md) file for details.
+An earlier GUI emulator process exited with code 139 before candidate 42 was
+installed; its cause is not established and cannot be attributed to the app.
+Candidate 41's initial app ANR and one launch observed at roughly 28 seconds
+remain historical limitations, with no causal resolution inferred from this
+candidate's different first screen. The disposable earlier instrumented probe
+was incomplete and is not a performance baseline. Candidate 40 / 41 artifacts
+and provisional candidate-42 source checks remain preserved separately locally.
 
-## Features
+This is a local development candidate. Store publication, pilot distribution,
+regulatory classification and tester invitations require their own decisions.
+Physical BLE interoperability, multi-hop delivery, background / battery behavior,
+full GUI accessibility, TalkBack audio and service deadlines remain unqualified.
+Raw APKs, exact artifact hashes, command logs and detailed provenance stay local.
 
-- **Dual Transport Architecture**: Bluetooth LE mesh for offline messaging, Nostr relays for internet-based messaging
-- **Location-Based Channels**: Geographic chat rooms using geohash coordinates over Nostr relays
-- **Intelligent Message Routing**: Automatically chooses the best transport, with queuing and retry when a peer is unreachable
-- **End-to-End Encryption**: [Noise Protocol](https://noiseprotocol.org) (XX pattern, X25519 + ChaCha20-Poly1305) for private messages over the mesh
-- **Decentralized Mesh Network**: Automatic peer discovery and multi-hop relay over Bluetooth LE (max 7 hops)
-- **Wi-Fi Aware Transport**: Higher-bandwidth local mesh on supported devices
-- **Channel Chats**: Topic-based group messaging with optional password protection (Argon2id + AES-256-GCM)
-- **IRC-Style Commands**: Familiar `/join`, `/msg`, `/who` style interface
-- **Tor Support**: Built-in Tor (Arti) for private internet connectivity
-- **Emergency Wipe**: Triple-tap to instantly clear all data
-- **Cross-Platform**: Binary protocol compatible with bitchat on iOS and macOS
+## Build and test
 
-## Technical Architecture
+Use JDK 21, the SDK / Build Tools pinned in `gradle/libs.versions.toml` and the
+checked-in Gradle wrapper. See [CONTRIBUTING.md](CONTRIBUTING.md) for the evidence
+and privacy rules.
 
-### Bluetooth Mesh Network (Offline)
-
-- Direct peer-to-peer within Bluetooth range, multi-hop relay through nearby devices
-- Noise Protocol sessions with forward secrecy; peer identities derived from static keys
-- Compact binary packet format with fragmentation, TTL routing, and deduplication
-- Adaptive duty cycling and connection limits for battery efficiency
-- Foreground service keeps the mesh alive within Android background execution limits
-
-### Nostr Protocol (Internet)
-
-- Global reach via public relays, geohash-based location channels
-- Private messages fall back to Nostr for mutual favorites when the mesh is unavailable
-- Ephemeral keys per geohash area
-
-### Android Stack
-
-- Kotlin, Jetpack Compose (Material 3), MVVM
-- Coroutines and Flow for all networking and state
-- Core components: `MeshForegroundService` (persistent connectivity), `BluetoothMeshService` / `WifiAwareMeshService` (transports), `UnifiedMeshService` (transport selection), `NoiseSessionManager` (encryption sessions), `MessageRouter` (mesh/Nostr routing with outbox retry)
-
-## Building
-
-Requires Android Studio and the Android SDK (API 26+).
-
-```bash
-git clone https://github.com/permissionlesstech/bitchat-android.git
-cd bitchat-android
-./gradlew assembleDebug
+```sh
+python3 tools/arti-build/test-provenance.py
+tools/arti-build/verify-checksums.sh
+./gradlew :app:assembleDebug :wear:assembleDebug testDebugUnitTest
+./gradlew lintDebug
 ```
 
-Install on a connected device:
+The four Arti libraries are tracked vendored build inputs. The phone’s
+`preBuild` gate checks both their hashes and the exact wrapper, lock and pinned
+build-source hashes. A source-only dependency edit with stale libraries is
+rejected. Follow the [native rebuild guide](tools/arti-build/README.md), including
+two clean native builds and comparison of all four outputs.
 
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
+The native lock patches rustls to 0.23.46 and rustls-webpki to 0.103.15. It still
+contains RSA RUSTSEC-2023-0071 and unmaintained bincode / paste warnings. Keep
+this gate explicit: disabled Internet routes and a fixed TLS library do not
+establish private-RSA reachability or an advisory-free native graph.
 
-The app requests Bluetooth, location (required for BLE scanning), and notification permissions at runtime.
+## Identity parser and interoperability evidence
 
-Release APKs and the Android App Bundle can be rebuilt byte-for-byte in the
-pinned Linux container. Maintainers should follow the
-[Android release guide](docs/maintainer-release-guide.md). See
-[Reproducible builds](docs/reproducible-builds.md) for the build trust model
-and public GitHub/Google Play verification procedures.
+The QR verifier rejects malformed binary verification controls with unsigned,
+bounded lengths, exact field sizes and no trailing fields. Ten parser
+regressions include the formerly throwing high-bit length inputs. Existing
+challenge/response frames and the signing preimage are unchanged: 85 / 151
+bytes including the message type, with a 103-byte response signing preimage
+excluding that type.
 
-## Testing
+Four shared signed-QR tests use the same immutable synthetic fixture as iOS,
+the real signature verifier, tampered fields and clock boundaries at ±300 /
+301 seconds. These are API and source-level wire checks; live scanning, mixed
+client sessions and physical transport interoperability remain open. Test
+fixture URL, filename and test-class markers were absent from the APK. Pattern
+collisions in native lookup tables are not evidence of semantic key leakage
+or a proof that every matching byte pattern is absent.
 
-```bash
-# Unit tests
-./gradlew test
+## Validation and contribution
 
-# Lint
-./gradlew lint
+The [original baseline](docs/validation/BASELINE.md) describes the upstream
+starting point, including its old package/version and toolchain results; those
+facts are historical. Current candidate facts belong above and in the local
+provenance record. Source-only unit tests and build checks do not substitute for
+physical Mesh Lab evidence.
 
-# Instrumented tests (requires a device or emulator)
-./gradlew connectedAndroidTest
-```
+Use feature branches and pull requests. Keep raw APKs, build logs, signing
+material, contact data and device identifiers local. Synthetic fixtures are
+required. Read [AGENTS.md](AGENTS.md) before working on the fork.
 
-Note that BLE mesh behavior is difficult to emulate; protocol and session logic is covered by unit tests, while radio-level behavior needs real devices.
+## Upstream references and license
+
+The fork retains the existing upstream mesh / Noise wire formats while adding the
+Wesh UI and local identity gates. Unchanged wire formats still need physical
+cross-client validation. Upstream Internet, location, store and release
+procedures describe upstream functionality, not enabled Wesh routes or an
+authorization to publish this candidate.
+
+- [Upstream Android repository](https://github.com/permissionlesstech/bitchat-android)
+- [Upstream iOS repository](https://github.com/permissionlesstech/bitchat)
+- [Upstream release guide](docs/maintainer-release-guide.md)
+- [Upstream reproducible-build guide](docs/reproducible-builds.md)
+
+The checked-in [LICENSE.md](LICENSE.md) is GPLv3. The upstream public-domain
+claim conflicts with that file, as recorded in the historical baseline.
+Preserve third-party notices and licensing information; distribution requires
+license and corresponding-source review. Do not infer distribution terms from
+old upstream marketing text.

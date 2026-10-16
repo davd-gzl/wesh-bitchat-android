@@ -29,7 +29,7 @@ class BluetoothPermissionManager(private val context: Context) {
             ))
         }
         
-        permissions.addAll(listOf(
+        if (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY || android.os.Build.VERSION.SDK_INT < 31) permissions.addAll(listOf(
             Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.ACCESS_FINE_LOCATION
         ))

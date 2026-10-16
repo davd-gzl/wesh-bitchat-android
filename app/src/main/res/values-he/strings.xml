@@ -4,6 +4,7 @@
     <!-- Machine-translated (Claude) — pending native-speaker review -->
   <plurals name="location_notes_title">
     <item quantity="one">#%1$s ± 1 • %2$d הערה</item>
+    <item quantity="two">#%1$s ± 1 • %2$d הערות</item>
     <item quantity="other">#%1$s ± 1 • %2$d הערות</item>
   </plurals>
   <string name="location_notes_description">הוסף הערות קצרות וקבועות למיקום זה כדי שמבקרים אחרים ימצאו אותן.</string>
@@ -55,7 +56,7 @@
   <string name="verify_success_body">אימתת את %1$s</string>
   <string name="verify_success_system_message">אימת את %1$s</string>
 
-  <string name="app_name">bitchat</string>
+  <string name="app_name">Wesh</string>
   <string name="permission_bluetooth_rationale">נדרשת הרשאת Bluetooth להעברת הודעות בין עמיתים ללא אינטרנט.</string>
   <string name="permission_location_rationale">נדרשת הרשאת מיקום כדי לגלות מכשירים קרובים באמצעות Bluetooth.</string>
   <string name="permission_notification_rationale">נדרשת הרשאת התראות כדי להתריע לך על הודעות חדשות.</string>
@@ -111,6 +112,7 @@
   <string name="notification_more_locations">ועוד %1$d מיקומים</string>
   <plurals name="notification_and_more">
     <item quantity="one">ועוד %1$d</item>
+    <item quantity="two">ועוד %1$d</item>
     <item quantity="other">ועוד %1$d</item>
   </plurals>
   <string name="mesh_service_channel_name">שירות רקע של רשת Mesh</string>
@@ -142,7 +144,7 @@
   <string name="toast_failed_to_save_image">שמירת התמונה נכשלה</string>
   <string name="cd_image_index_of">תמונה %1$d מתוך %2$d</string>
   <string name="cd_pick_file">בחר קובץ</string>
-  <string name="about_tagline">העברת הודעות מבוזרת ברשת Mesh עם הצפנה מקצה לקצה</string>
+  <string name="about_tagline">Stay together, even offline</string>
   <string name="about_offline_mesh_title">צ׳אט Mesh לא מקוון</string>
   <string name="about_offline_mesh_desc">תקשר ישירות באמצעות Bluetooth LE ללא אינטרנט או שרתים. הודעות מועברות דרך מכשירים קרובים כדי להאריך את הטווח.</string>
   <string name="about_online_geohash_title">ערוצי geohash מקוונים</string>
@@ -175,7 +177,7 @@
   <string name="about_debug_settings">הגדרות דיבוג</string>
   <string name="about_footer">קוד פתוח • פרטיות תחילה • מבוזר</string>
   <string name="close_plain">סגור</string>
-  <string name="cd_privacy_protected">פרטיות מוגנת</string>
+  <string name="cd_privacy_protected">About message privacy</string>
   <string name="cancel_lower">בטל</string>
   <string name="cd_warning">אזהרה</string>
   <string name="cd_location_services">שירותי מיקום</string>
@@ -234,7 +236,7 @@
   <string name="grant_location_permission">הענק הרשאת מיקום</string>
   <string name="location_permission_denied">הרשאת המיקום נדחתה. אפשר בהגדרות כדי להשתמש בערוצי מיקום.</string>
   <string name="location_permission_granted">✓ הרשאת מיקום ניתנה</string>
-  <string name="checking_permissions">בודק הרשאות...</string>
+  <string name="checking_permissions">בודק הרשאות…</string>
   <string name="finding_nearby_channels">מחפש ערוצים בקרבת מקום…</string>
   <string name="bookmarked">סומן</string>
   <string name="geohash_placeholder">geohash</string>
@@ -268,7 +270,6 @@
   <string name="debug_max_gcs_filter_size_fmt">גודל מסנן GCS מקסימלי: %1$d בייטים (128–1024)</string>
   <string name="debug_target_fpr_fmt">FPR יעד: %1$.2f%%</string>
   <string name="debug_connected_devices">מכשירים מחוברים</string>
-  <string name="debug_our_device_id_fmt">מזהה המכשיר שלנו: %1$s</string>
   <string name="debug_none">ללא</string>
   <string name="debug_disconnect">נתק</string>
   <string name="debug_recent_scan_results">תוצאות סריקה אחרונות</string>
@@ -289,9 +290,9 @@
   <string name="location_needs_bullets">• סריקת מכשירי Bluetooth\n• איתור משתמשים קרובים ברשת ה-Mesh\n• תכונת צ׳אט Geohash\n• ללא מעקב או איסוף מיקום</string>
   <string name="background_location_required_title">מומלץ מיקום ברקע</string>
   <string name="background_location_required_subtitle">אופציונלי, משפר את אמינות ה-Mesh</string>
-  <string name="background_location_explanation">אנדרואיד ממליץ על מיקום ברקע כדי ש-bitchat יוכל לסרוק מכשירים קרובים כשהאפליקציה אינה פתוחה. זה שומר על פעילות ה-Mesh לאחר איתחול מחדש.</string>
+  <string name="background_location_explanation">אנדרואיד ממליץ על מיקום ברקע כדי ש-Wesh יוכל לסרוק מכשירים קרובים כשהאפליקציה אינה פתוחה. זה שומר על פעילות ה-Mesh לאחר איתחול מחדש.</string>
   <string name="background_location_settings_tip">כשההגדרות נפתחות, בחר \"אפשר תמיד\".</string>
-  <string name="background_location_needs_for">bitchat משתמש במיקום ברקע עבור:</string>
+  <string name="background_location_needs_for">Wesh משתמש במיקום ברקע עבור:</string>
   <string name="background_location_needs_bullets">- סריקת מכשירים קרובים כשהאפליקציה סגורה\n- חיבור מחדש לאחר איתחול\n- שמירה על פעילות ה-Mesh ברקע</string>
   <string name="background_location_privacy_note">אנחנו לעולם לא אוספים או שומרים את המיקום שלך. הפרטיות שלך בטוחה.</string>
   <string name="grant_background_location">אפשר מיקום ברקע</string>
@@ -300,17 +301,17 @@
   <string name="check_again">בדוק שוב</string>
   <string name="location_services_unavailable">שירותי מיקום אינם זמינים</string>
   <string name="location_unavailable_explanation">שירותי מיקום אינם זמינים במכשיר זה. זה נדיר, מכיוון ששירותי מיקום הם סטנדרטיים במכשירי אנדרואיד.\n\nbitchat זקוק לשירותי מיקום כדי שסריקת Bluetooth תפעל כראוי (דרישת אנדרואיד). ללא זה, האפליקציה אינה יכולה לאתר משתמשים קרובים.</string>
-  <string name="checking_location_services">בודק שירותי מיקום...</string>
+  <string name="checking_location_services">בודק שירותי מיקום…</string>
   <string name="bluetooth_required">נדרש Bluetooth</string>
-  <string name="bluetooth_needs_for">bitchat זקוק ל-Bluetooth כדי:</string>
+  <string name="bluetooth_needs_for">Wesh זקוק ל-Bluetooth כדי:</string>
   <string name="bluetooth_needs_bullets">• לאתר משתמשים קרובים\n• ליצור חיבורי רשת Mesh\n• לשלוח ולקבל הודעות\n• לפעול ללא אינטרנט או שרתים</string>
   <string name="enable_bluetooth">אפשר Bluetooth</string>
   <string name="bluetooth_not_supported">Bluetooth אינו נתמך</string>
-  <string name="bluetooth_unsupported_explanation">מכשיר זה אינו תומך ב-Bluetooth Low Energy‏ (BLE), הנדרש כדי ש-bitchat יפעל.\n\nbitchat זקוק ל-BLE כדי ליצור רשתות Mesh ולתקשר עם מכשירים קרובים ללא אינטרנט.</string>
-  <string name="checking_bluetooth_status">בודק סטטוס Bluetooth...</string>
+  <string name="bluetooth_unsupported_explanation">מכשיר זה אינו תומך ב-Bluetooth Low Energy‏ (BLE), הנדרש כדי ש-Wesh יפעל.\n\nWesh זקוק ל-BLE כדי ליצור רשתות Mesh ולתקשר עם מכשירים קרובים ללא אינטרנט.</string>
+  <string name="checking_bluetooth_status">בודק סטטוס Bluetooth…</string>
   <string name="battery_optimization_detected_title">זוהה ייעול צריכת סוללה</string>
   <string name="battery_optimization_enabled_title">ייעול צריכת סוללה מופעל</string>
-  <string name="battery_optimization_explanation_short">bitchat צריך לפעול ברקע כדי לשמור על חיבורי Mesh. ייעול צריכת סוללה עלול לשבש חיבורים אלה.</string>
+  <string name="battery_optimization_explanation_short">Wesh צריך לפעול ברקע כדי לשמור על חיבורי Mesh. ייעול צריכת סוללה עלול לשבש חיבורים אלה.</string>
   <string name="benefits_of_disabling">יתרונות הביטול</string>
   <string name="battery_benefits_short">• מסירת הודעות אמינה\n• שמירה על קישוריות Mesh\n• מניעת ניתוקי חיבור</string>
   <string name="disable_battery_optimization">בטל ייעול צריכת סוללה</string>
@@ -318,58 +319,42 @@
   <string name="continue_btn">המשך</string>
   <string name="initializing_mesh_network">מאתחל רשת Mesh</string>
   <string name="dot">.</string>
-  <string name="setting_up_bluetooth">מגדיר רשת Mesh דרך Bluetooth...</string>
+  <string name="setting_up_bluetooth">מגדיר רשת Mesh דרך Bluetooth…</string>
   <string name="should_take_seconds">זה אמור לקחת רק כמה שניות</string>
-  <string name="warning_emoji">⚠️</string>
   <string name="setup_not_complete">ההגדרה לא הושלמה</string>
   <string name="try_again">נסה שוב</string>
   <string name="open_settings">פתח הגדרות</string>
-  <string name="privacy_protected">הפרטיות שלך מוגנת</string>
-  <string name="privacy_bullets">• ללא מעקב או איסוף נתונים\n• צ׳אטים ברשת Mesh דרך Bluetooth הם לחלוטין לא מקוונים\n• צ׳אטים לפי מיקום (Geohash) משתמשים באינטרנט</string>
+  <string name="privacy_protected">Public salon and private contacts</string>
+  <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
   <string name="permissions_header">הרשאות</string>
   <string name="grant_permissions">הענק הרשאות</string>
   <string name="location_tracking_warning">bitchat לא עוקב אחר המיקום שלך</string>
-  <string name="at_symbol">@</string>
-  <string name="channel_count_prefix"> · ⧉ </string>
-  <string name="nobody_around">אין אף אחד בסביבה...</string>
+  <string name="nobody_around">אין אף אחד בסביבה…</string>
   <string name="you_suffix"> (אתה)</string>
   <string name="pan_zoom_instruction">הזז ושנה תצוגה כדי לבחור geohash</string>
   <string name="select">בחר</string>
-  <string name="type_a_message_placeholder">הקלד הודעה...</string>
-  <string name="mention_suggestion_at">@%1$s</string>
+  <string name="type_a_message_placeholder">הקלד הודעה…</string>
   <string name="mention">אזכור</string>
   <string name="image_counter">%1$d / %2$d</string>
-  <string name="at_nickname">@%1$s</string>
   <string name="version_prefix">v%1$s</string>
-  <string name="hash_symbol">#</string>
-  <string name="underscore">_</string>
-  <string name="progress_bar_brackets">[%1$s] %2$d%%</string>
-  <string name="progress_filled">█</string>
-  <string name="progress_empty">░</string>
   <string name="image_star">image/*</string>
   <string name="media_type_image">תמונה</string>
   <string name="media_type_file">קובץ</string>
   <string name="notification_sent_image">📷 שלח/ה תמונה</string>
   <string name="notification_sent_voice">🎤 שלח/ה הודעה קולית</string>
   <string name="notification_sent_file">📎 שלח/ה קובץ</string>
-  <string name="notification_file_pdf">📄</string>
-  <string name="notification_file_zip">🗜️</string>
-  <string name="notification_file_doc">📄</string>
-  <string name="notification_file_xls">📊</string>
-  <string name="notification_file_ppt">📈</string>
-  <string name="notification_file_generic">📎</string>
   <string name="cd_play_voice">נגן</string>
   <string name="cd_pause_voice">השהה</string>
-  <string name="perm_nearby_devices_desc">נדרש כדי לאתר משתמשי bitchat באמצעות Bluetooth</string>
-  <string name="perm_nearby_devices_system">אפשר ל-bitchat להתחבר למכשירים קרובים</string>
-  <string name="perm_location_desc">נדרש על ידי אנדרואיד כדי לאתר משתמשי bitchat קרובים באמצעות Bluetooth</string>
-  <string name="perm_location_system">bitchat זקוק לזה כדי לסרוק מכשירים קרובים</string>
-  <string name="perm_background_location_desc">מומלץ כדי לסרוק מכשירים קרובים כשהאפליקציה ברקע</string>
-  <string name="perm_background_location_system">אפשר גישה למיקום ברקע</string>
+  <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
+  <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
+  <string name="perm_location_desc">Android 11 and earlier requires this permission for Bluetooth scanning. Wesh does not use GPS coordinates.</string>
+  <string name="perm_location_system">Android permission needed for Bluetooth scanning on older phones.</string>
+  <string name="perm_background_location_desc">On Android 10 and 11 this system permission enables background Bluetooth scanning. Wesh does not use GPS coordinates.</string>
+  <string name="perm_background_location_system">Allow background Bluetooth scanning on this older Android.</string>
   <string name="perm_notifications_desc">קבל התראות כשאתה מקבל הודעות פרטיות</string>
-  <string name="perm_notifications_system">אפשר ל-bitchat לשלוח לך התראות</string>
-  <string name="perm_battery_desc">בטל ייעול צריכת סוללה כדי להבטיח ש-bitchat יפעל באופן אמין ברקע וישמור על חיבורי רשת Mesh</string>
-  <string name="perm_battery_system">אפשר ל-bitchat לפעול ללא הגבלות סוללה</string>
+  <string name="perm_notifications_system">Allow Wesh to send notifications.</string>
+  <string name="perm_battery_desc">Battery restrictions can interrupt mesh connections in the background.</string>
+  <string name="perm_battery_system">Allow Wesh to run without battery restrictions.</string>
   <string name="perm_type_nearby_devices">מכשירים קרובים</string>
   <string name="perm_type_precise_location">מיקום מדויק</string>
   <string name="perm_type_background_location">מיקום ברקע</string>
@@ -386,6 +371,7 @@
 
   <plurals name="people_count">
     <item quantity="one">איש אחד</item>
+    <item quantity="two">%1$d אנשים</item>
     <item quantity="other">%1$d אנשים</item>
   </plurals>
     <string name="about_language">שפה</string>

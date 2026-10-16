@@ -51,7 +51,7 @@ object AppShutdownCoordinator {
             try {
                 val intent = android.content.Intent(com.bitchat.android.util.AppConstants.UI.ACTION_FORCE_FINISH)
                     .setPackage(app.packageName)
-                app.sendBroadcast(intent, com.bitchat.android.util.AppConstants.UI.PERMISSION_FORCE_FINISH)
+                app.sendBroadcast(intent, app.packageName + ".permission.FORCE_FINISH")
             } catch (_: Exception) { }
 
             // Stop mesh (best-effort)

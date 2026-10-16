@@ -68,7 +68,9 @@ object ContactDirectory {
         val contactFingerprint = ContactIdentityResolver.fingerprintFromContactConversationId(conversationID)
 
         val favorite = contactFingerprint?.let { findFavoriteByFingerprint(it) }
+        val enrollment = appContext?.let { runCatching { WeshContactStore.get(it).forFingerprint(contactFingerprint ?: "") }.getOrNull() }
         val noiseKey = when {
+            enrollment != null -> enrollment.key
             favorite != null -> favorite.peerNoisePublicKey
             ContactIdentityResolver.isNoiseKeyHex(peerOrConversationID) ->
                 ContactIdentityResolver.bytesFromHex(peerOrConversationID)
@@ -94,6 +96,7 @@ object ContactDirectory {
                 ?: favorite?.peerNickname?.takeIf {
                     it.isNotBlank() && !it.equals("Unknown", ignoreCase = true)
                 }
+                ?: enrollment?.nickname
                 ?: contactFingerprint?.let { cachedFingerprintNickname(it) },
             isMutualFavorite = favorite?.isMutual == true
         )

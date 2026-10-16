@@ -35,8 +35,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ARTI_SOURCE_DIR="$SCRIPT_DIR/.arti-source"
 JNILIBS_DIR="$PROJECT_ROOT/app/src/main/jniLibs"
-TOOLCHAIN_FILE="$SCRIPT_DIR/TOOLCHAIN.env"
-LOCKFILE_SOURCE="$SCRIPT_DIR/Cargo.lock"
+# Capture wrapper, lock, and pins before using them; compile only these copies.
+# shellcheck source=provenance.sh
+source "$SCRIPT_DIR/provenance.sh"
+SOURCE_INPUT_DIR="$(mktemp -d)"
+trap 'rm -rf "$SOURCE_INPUT_DIR"' EXIT
+capture_source_inputs "$SCRIPT_DIR" "$SOURCE_INPUT_DIR"
+TOOLCHAIN_FILE="$SOURCE_INPUT_DIR/TOOLCHAIN.env"
+LOCKFILE_SOURCE="$SOURCE_INPUT_DIR/Cargo.lock"
 
 if [ ! -f "$TOOLCHAIN_FILE" ]; then
   echo -e "${RED}Error: TOOLCHAIN.env file not found${NC}"
@@ -336,16 +342,7 @@ clone_or_update_arti() {
   fi
   print_success "Arti source commit verified"
 
-  # Apply patches
-  if [ -d "$SCRIPT_DIR/patches" ]; then
-    print_info "Applying patches..."
-    for patch in "$SCRIPT_DIR/patches"/*.patch; do
-        if [ -f "$patch" ]; then
-            print_info "Applying $(basename "$patch")"
-            git apply "$patch" || { print_error "Failed to apply $patch"; exit 1; }
-        fi
-    done
-  fi
+  reject_unsupported_patches "$SCRIPT_DIR"
 
   echo ""
 }
@@ -359,8 +356,8 @@ setup_wrapper() {
   rm -rf "$WRAPPER_DIR"
   mkdir -p "$WRAPPER_DIR/src"
 
-  cp "$SCRIPT_DIR/src/lib.rs" "$WRAPPER_DIR/src/"
-  cp "$SCRIPT_DIR/Cargo.toml" "$WRAPPER_DIR/"
+  cp "$SOURCE_INPUT_DIR/src/lib.rs" "$WRAPPER_DIR/src/"
+  cp "$SOURCE_INPUT_DIR/Cargo.toml" "$WRAPPER_DIR/"
   cp "$LOCKFILE_SOURCE" "$WRAPPER_DIR/Cargo.lock"
 
   print_success "Wrapper files copied to $WRAPPER_DIR"
@@ -391,8 +388,9 @@ update_wrapper_lockfile() {
   print_header "Updating wrapper Cargo.lock"
 
   local WRAPPER_DIR="$ARTI_SOURCE_DIR/arti-android-wrapper"
+  chmod u+w "$WRAPPER_DIR/Cargo.lock"
   cargo generate-lockfile --manifest-path "$WRAPPER_DIR/Cargo.toml"
-  cp "$WRAPPER_DIR/Cargo.lock" "$LOCKFILE_SOURCE"
+  cp "$WRAPPER_DIR/Cargo.lock" "$SCRIPT_DIR/Cargo.lock"
 
   print_success "Updated $LOCKFILE_SOURCE"
   echo ""
@@ -438,25 +436,17 @@ build_for_target() {
     SIZE="$(du -h "$OUTPUT_PATH/$LIB_NAME" | cut -f1)"
     print_success "Final size: $SIZE"
 
-    # Verify 16KB page size alignment (best-effort)
-    print_info "Verifying 16KB page alignment..."
-    local READELF_TOOL=""
-    if [ -x "$LLVM_READELF" ]; then
-      READELF_TOOL="$LLVM_READELF"
-    elif command -v readelf >/dev/null 2>&1; then
-      READELF_TOOL="$(command -v readelf)"
+    # Android 16 KiB page-size support applies to the 64-bit libraries.
+    # Inspect every LOAD segment rather than accepting only the first one.
+    if [ ! -x "$LLVM_READELF" ]; then
+      print_error "Pinned llvm-readelf is required for native verification."
+      return 1
     fi
-
-    if [ -n "$READELF_TOOL" ]; then
-      local ALIGNMENT
-      ALIGNMENT="$("$READELF_TOOL" -l "$OUTPUT_PATH/$LIB_NAME" 2>/dev/null | grep "LOAD" | head -1 | awk '{print $NF}' || echo "unknown")"
-      if [ "$ALIGNMENT" = "0x4000" ] || [ "$ALIGNMENT" = "16384" ]; then
-        print_success "16KB page alignment verified: $ALIGNMENT"
-      else
-        print_info "Page alignment: $ALIGNMENT (NDK handles 16KB at link time)"
-      fi
+    if [ "$ABI" = "arm64-v8a" ] || [ "$ABI" = "x86_64" ]; then
+      assert_64bit_load_alignment "$OUTPUT_PATH/$LIB_NAME" "$LLVM_READELF" || return 1
+      print_success "All 64-bit LOAD segments meet 16 KiB alignment"
     else
-      print_info "Skipping alignment check (readelf not available)"
+      print_info "32-bit ABI verified separately; no 64-bit page-size claim"
     fi
   else
     print_error "Build failed: $LIB_NAME not found"
@@ -477,7 +467,7 @@ verify_no_host_paths() {
   for TARGET in "${TARGETS[@]}"; do
     local ABI="${ABI_MAP[$TARGET]}"
     local LIB_PATH="$JNILIBS_DIR/$ABI/libarti_android.so"
-    if strings "$LIB_PATH" | grep -Eq '/Users/|/home/|[A-Za-z]:\\\\Users\\\\'; then
+    if ! assert_no_host_paths "$LIB_PATH"; then
       print_error "Host-specific path detected in $ABI native library."
       return 1
     fi
@@ -490,6 +480,7 @@ verify_no_host_paths() {
 write_checksums() {
   print_header "Writing Native Checksums"
 
+  assert_source_inputs_unchanged "$SCRIPT_DIR" "$SOURCE_INPUT_DIR"
   local checksum_file="$SCRIPT_DIR/SHA256SUMS"
   : > "$checksum_file"
   for abi in arm64-v8a armeabi-v7a x86 x86_64; do
@@ -501,6 +492,9 @@ write_checksums() {
     fi
   done
   print_success "Wrote $checksum_file"
+
+  cp "$SOURCE_INPUT_DIR/SOURCE_SHA256SUMS" "$SCRIPT_DIR/SOURCE_SHA256SUMS"
+  print_success "Wrote native source snapshot checksums"
   echo ""
 }
 

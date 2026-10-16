@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -79,6 +80,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Locale
 
 /**
  * Leading column width matching settings rows: 22.dp glyph + 16.dp gutter before title text.
@@ -135,17 +137,17 @@ fun LocationChannelsSheet(
     val wifiAwareEnabled by WifiAwareController.enabled.collectAsStateWithLifecycle()
 
     var customGeohash by remember { mutableStateOf("") }
-    var customError by remember { mutableStateOf<String?>(null) }
+    var hasCustomError by remember { mutableStateOf(false) }
 
     val teleportToGeohash: (String) -> Unit = { value ->
         val channel = channelForManualGeohash(value)
         if (channel != null) {
-            customError = null
+            hasCustomError = false
             locationManager.selectManual(channel)
             onDismiss()
         } else {
             customGeohash = value.trim().lowercase().replace("#", "")
-            customError = context.getString(R.string.invalid_geohash)
+            hasCustomError = true
         }
     }
 
@@ -495,7 +497,7 @@ fun LocationChannelsSheet(
                                                 .replace("#", "")
                                                 .filter { it in allowed }
                                                 .take(12)
-                                            customError = null
+                                            hasCustomError = false
                                         },
                                         onFocusGained = {
                                             coroutineScope.launch { sheetState.expand() }
@@ -521,7 +523,7 @@ fun LocationChannelsSheet(
                             }
 
                             AnimatedVisibility(
-                                visible = customError != null,
+                                visible = hasCustomError,
                                 enter = fadeIn(tween(BitchatMotion.STANDARD_MS)) +
                                     expandVertically(
                                         tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing)
@@ -531,11 +533,8 @@ fun LocationChannelsSheet(
                                         tween(BitchatMotion.QUICK_MS, easing = FastOutSlowInEasing)
                                     )
                             ) {
-                                // Held across the exit animation: by the time it plays, the error
-                                // itself has already been cleared.
-                                val shownError = remember(customError) { customError ?: "" }
                                 Text(
-                                    text = shownError,
+                                    text = stringResource(R.string.invalid_geohash),
                                     fontSize = 12.sp,
                                     fontFamily = BitchatFontFamily,
                                     color = colorScheme.error,
@@ -1101,8 +1100,7 @@ private fun splitTitleAndCount(title: String): Pair<String, String?> {
 @Composable
 private fun meshTitleWithCount(viewModel: ChatViewModel): String {
     val meshCount = meshCount(viewModel)
-    val ctx = LocalContext.current
-    val peopleText = ctx.resources.getQuantityString(R.plurals.people_count, meshCount, meshCount)
+    val peopleText = pluralStringResource(R.plurals.people_count, meshCount, meshCount)
     val meshLabel = stringResource(R.string.mesh_title)
     return "$meshLabel$TITLE_COUNT_SEP$peopleText"
 }
@@ -1114,12 +1112,11 @@ private fun meshCount(viewModel: ChatViewModel): Int {
 
 @Composable
 private fun geohashTitleWithCount(channel: GeohashChannel, participantCount: Int): String {
-    val ctx = LocalContext.current
     val isHighPrecision = channel.level.precision > 5
     val peopleText = if (isHighPrecision && participantCount == 0) {
-        ctx.resources.getQuantityString(R.plurals.people_count, 0, 0).replace("0", "?")
+        stringResource(R.string.unknown)
     } else {
-        ctx.resources.getQuantityString(R.plurals.people_count, participantCount, participantCount)
+        pluralStringResource(R.plurals.people_count, participantCount, participantCount)
     }
     val levelName = when (channel.level) {
         GeohashChannelLevel.BUILDING -> "Building"
@@ -1134,13 +1131,12 @@ private fun geohashTitleWithCount(channel: GeohashChannel, participantCount: Int
 
 @Composable
 private fun geohashHashTitleWithCount(geohash: String, participantCount: Int): String {
-    val ctx = LocalContext.current
     val level = levelForLength(geohash.length)
     val isHighPrecision = level.precision > 5
     val peopleText = if (isHighPrecision && participantCount == 0) {
-        ctx.resources.getQuantityString(R.plurals.people_count, 0, 0).replace("0", "?")
+        stringResource(R.string.unknown)
     } else {
-        ctx.resources.getQuantityString(R.plurals.people_count, participantCount, participantCount)
+        pluralStringResource(R.plurals.people_count, participantCount, participantCount)
     }
     return "#$geohash$TITLE_COUNT_SEP$peopleText"
 }
@@ -1215,9 +1211,9 @@ private fun coverageString(precision: Int): String {
 
 private fun formatDistance(value: Double): String {
     return when {
-        value >= 100 -> String.format("%.0f", value)
-        value >= 10 -> String.format("%.1f", value)
-        else -> String.format("%.1f", value)
+        value >= 100 -> String.format(Locale.getDefault(), "%.0f", value)
+        value >= 10 -> String.format(Locale.getDefault(), "%.1f", value)
+        else -> String.format(Locale.getDefault(), "%.1f", value)
     }
 }
 

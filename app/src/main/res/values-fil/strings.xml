@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">bitchat</string>
+    <string name="app_name">Wesh</string>
 
     <!-- Mga dahilan ng permiso -->
     <string name="permission_bluetooth_rationale">Kailangan ang permiso sa Bluetooth para sa direktang pag‑usap kahit walang internet.</string>
@@ -219,7 +219,6 @@
     <string name="debug_max_gcs_filter_size_fmt">max laki ng GCS filter: %1$d bytes (128–1024)</string>
     <string name="debug_target_fpr_fmt">target FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">mga nakakonektang device</string>
-    <string name="debug_our_device_id_fmt">ID ng aming device: %1$s</string>
     <string name="debug_none">wala</string>
     <string name="debug_disconnect">i‑disconnect</string>
     <string name="debug_recent_scan_results">mga huling resulta ng scan</string>
@@ -245,15 +244,15 @@
     <string name="location_unavailable_explanation">Hindi available ang location services sa device na ito. Hindi ito karaniwan dahil standard ito sa Android.\n\nKailangan ito para maayos ang Bluetooth scanning. Kung wala ito, hindi matutuklasan ang mga kalapit na user.</string>
     <string name="checking_location_services">Sinusuri ang location services…</string>
     <string name="bluetooth_required">Kailangan ang Bluetooth</string>
-    <string name="bluetooth_needs_for">Kailangan ng bitchat ang Bluetooth para sa:</string>
+    <string name="bluetooth_needs_for">Kailangan ng Wesh ang Bluetooth para sa:</string>
     <string name="bluetooth_needs_bullets">• Tuklasin ang mga kalapit na user\n• Gumawa ng mesh na koneksyon\n• Magpadala at tumanggap ng mensahe\n• Gumana kahit walang internet o server</string>
     <string name="enable_bluetooth">I‑enable ang Bluetooth</string>
     <string name="bluetooth_not_supported">Hindi suportado ang Bluetooth</string>
-    <string name="bluetooth_unsupported_explanation">Hindi sinusuportahan ng device na ito ang Bluetooth Low Energy (BLE) na kailangan para gumana ang bitchat.\n\nKailangan ang BLE para bumuo ng mesh at makipag‑ugnayan sa kalapit na device kahit walang internet.</string>
+    <string name="bluetooth_unsupported_explanation">Hindi sinusuportahan ng device na ito ang Bluetooth Low Energy (BLE) na kailangan para gumana ang Wesh.\n\nKailangan ang BLE para bumuo ng mesh at makipag‑ugnayan sa kalapit na device kahit walang internet.</string>
     <string name="checking_bluetooth_status">Sinusuri ang status ng Bluetooth…</string>
     <string name="battery_optimization_detected_title">natukoy ang pag‑optimize ng baterya</string>
     <string name="battery_optimization_enabled_title">Naka‑enable ang pag‑optimize</string>
-    <string name="battery_optimization_explanation_short">kailangang tumakbo ang bitchat sa background para sa mesh; maaaring putulin ito ng pag‑optimize.</string>
+    <string name="battery_optimization_explanation_short">kailangang tumakbo ang Wesh sa background para sa mesh; maaaring putulin ito ng pag‑optimize.</string>
     <string name="benefits_of_disabling">Mga benepisyo ng pag‑disable</string>
     <string name="battery_benefits_short">• maaasahang paghatid\n• panatilihin ang koneksyon\n• iwas putol</string>
     <string name="disable_battery_optimization">I‑disable ang pag‑optimize</string>
@@ -263,31 +262,21 @@
     <string name="dot">.</string>
     <string name="setting_up_bluetooth">Ise‑set up ang Bluetooth mesh…</string>
     <string name="should_take_seconds">Ilang segundo lang ito</string>
-    <string name="warning_emoji">⚠️</string>
     <string name="setup_not_complete">Hindi kumpleto ang setup</string>
     <string name="try_again">Subukang muli</string>
-    <string name="privacy_protected">Protektado ang iyong privacy</string>
-    <string name="privacy_bullets">• walang tracking o koleksiyon\n• offline ang mesh chat sa Bluetooth\n• gumagamit ng internet ang geohash chat</string>
+    <string name="privacy_protected">Public salon and private contacts</string>
+    <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">mga permiso</string>
     <string name="grant_permissions">Payagan</string>
     <string name="location_tracking_warning">HINDI sinusubaybayan ng bitchat ang lokasyon mo</string>
-    <string name="at_symbol">@</string>
-    <string name="channel_count_prefix"> · ⧉ </string>
     <string name="nobody_around">walang tao sa paligid…</string>
     <string name="you_suffix"> (ikaw)</string>
     <string name="pan_zoom_instruction">i‑pan at i‑zoom para pumili ng geohash</string>
     <string name="select">piliin</string>
     <string name="type_a_message_placeholder">magtype ng mensahe…</string>
-    <string name="mention_suggestion_at">@%1$s</string>
     <string name="mention">banggit</string>
     <string name="image_counter">%1$d / %2$d</string>
-    <string name="at_nickname">@%1$s</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="hash_symbol">#</string>
-    <string name="underscore">_</string>
-    <string name="progress_bar_brackets">[%1$s] %2$d%%</string>
-    <string name="progress_filled">█</string>
-    <string name="progress_empty">░</string>
     <string name="image_star">image/*</string>
     <string name="media_type_image">Larawan</string>
     <string name="media_type_file">File</string>
@@ -298,26 +287,20 @@
     <string name="notification_sent_image">📷 nagpadala ng larawan</string>
     <string name="notification_sent_voice">🎤 nagpadala ng voice message</string>
     <string name="notification_sent_file">📎 nagpadala ng file</string>
-    <string name="notification_file_pdf">📄</string>
-    <string name="notification_file_zip">🗜️</string>
-    <string name="notification_file_doc">📄</string>
-    <string name="notification_file_xls">📊</string>
-    <string name="notification_file_ppt">📈</string>
-    <string name="notification_file_generic">📎</string>
 
     <!-- Voice player a11y -->
     <string name="cd_play_voice">I‑play</string>
     <string name="cd_pause_voice">I‑pause</string>
 
     <!-- Mga paglalarawan ng permiso -->
-    <string name="perm_nearby_devices_desc">Kailangan upang makakita ng mga bitchat user sa Bluetooth</string>
-    <string name="perm_nearby_devices_system">Payagan ang bitchat na kumonekta sa kalapit na device</string>
-    <string name="perm_location_desc">Kailangan ng Android para sa pagtuklas ng user sa Bluetooth</string>
-    <string name="perm_location_system">Kailangan ito ng bitchat para mag‑scan</string>
+    <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
+    <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
+    <string name="perm_location_desc">Android 11 and earlier requires this permission for Bluetooth scanning. Wesh does not use GPS coordinates.</string>
+    <string name="perm_location_system">Android permission needed for Bluetooth scanning on older phones.</string>
     <string name="perm_notifications_desc">Tumanggap ng abiso sa mga pribadong mensahe</string>
-    <string name="perm_notifications_system">Payagan ang bitchat na magpadala ng abiso</string>
-    <string name="perm_battery_desc">I‑disable ang pag‑optimize upang tumakbo nang maaasahan at mapanatili ang mesh na koneksyon</string>
-    <string name="perm_battery_system">Payagan ang bitchat na tumakbo nang walang limitasyong baterya</string>
+    <string name="perm_notifications_system">Allow Wesh to send notifications.</string>
+    <string name="perm_battery_desc">Battery restrictions can interrupt mesh connections in the background.</string>
+    <string name="perm_battery_system">Allow Wesh to run without battery restrictions.</string>
 
     <!-- Mga uri ng permiso -->
     <string name="perm_type_nearby_devices">Kalapit na device</string>

@@ -9,6 +9,7 @@ import java.util.Date
 import java.util.concurrent.ConcurrentLinkedQueue
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.util.toHexString
+import java.util.Locale
 
 /**
  * Debug settings manager for controlling debug features and collecting debug data
@@ -405,7 +406,7 @@ class DebugSettingsManager private constructor() {
         val clamped = value.coerceIn(0.1, 5.0)
         DebugPreferenceManager.setGcsFprPercent(clamped)
         _gcsFprPercent.value = clamped
-        addDebugMessage(DebugMessage.SystemMessage("🎯 GCS FPR set to ${String.format("%.2f", clamped)}%"))
+        addDebugMessage(DebugMessage.SystemMessage("🎯 GCS FPR set to ${String.format(Locale.ROOT, "%.2f", clamped)}%"))
     }
     
     // MARK: - Debug Message Creation Helpers

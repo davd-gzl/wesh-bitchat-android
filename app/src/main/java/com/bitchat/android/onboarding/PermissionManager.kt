@@ -26,6 +26,7 @@ class PermissionManager(private val context: Context) {
     private val sharedPrefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private fun shouldRequireWifiAwarePermission(): Boolean {
+        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) return false
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
         val enabled = try {
             com.bitchat.android.ui.debug.DebugPreferenceManager.getWifiAwareEnabled(false)
@@ -101,8 +102,8 @@ class PermissionManager(private val context: Context) {
             ))
         }
 
-        // Location permissions (required for Bluetooth LE scanning)
-        permissions.addAll(listOf(
+        // Legacy BLE scanning needs location permission; modern Wesh uses neverForLocation.
+        if (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY || Build.VERSION.SDK_INT < 31) permissions.addAll(listOf(
             Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.ACCESS_FINE_LOCATION
         ))
@@ -122,7 +123,8 @@ class PermissionManager(private val context: Context) {
      * Must be requested after foreground location permissions are granted.
      */
     fun needsBackgroundLocationPermission(): Boolean {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY || Build.VERSION.SDK_INT < 31)
     }
 
     fun getBackgroundLocationPermission(): String? {
@@ -255,10 +257,10 @@ class PermissionManager(private val context: Context) {
         categories.add(
             PermissionCategory(
                 type = PermissionType.NEARBY_DEVICES,
-                description = "Required to discover bitchat users via Bluetooth",
+                description = context.getString(R.string.perm_nearby_devices_desc),
                 permissions = bluetoothPermissions,
                 isGranted = bluetoothPermissions.all { isPermissionGranted(it) },
-                systemDescription = "Allow bitchat to connect to nearby devices"
+                systemDescription = context.getString(R.string.perm_nearby_devices_system)
             )
         )
 
@@ -268,13 +270,13 @@ class PermissionManager(private val context: Context) {
             Manifest.permission.ACCESS_FINE_LOCATION
         )
 
-        categories.add(
+        if (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY || Build.VERSION.SDK_INT < 31) categories.add(
             PermissionCategory(
                 type = PermissionType.PRECISE_LOCATION,
-                description = "Required by Android to discover nearby bitchat users via Bluetooth",
+                description = context.getString(R.string.perm_location_desc),
                 permissions = locationPermissions,
                 isGranted = locationPermissions.all { isPermissionGranted(it) },
-                systemDescription = "bitchat needs this to scan for nearby devices"
+                systemDescription = context.getString(R.string.perm_location_system)
             )
         )
 
@@ -310,10 +312,10 @@ class PermissionManager(private val context: Context) {
             categories.add(
                 PermissionCategory(
                     type = PermissionType.NOTIFICATIONS,
-                    description = "Receive notifications when you receive private messages",
+                    description = context.getString(R.string.perm_notifications_desc),
                     permissions = listOf(Manifest.permission.POST_NOTIFICATIONS),
                     isGranted = isPermissionGranted(Manifest.permission.POST_NOTIFICATIONS),
-                    systemDescription = "Allow bitchat to send you notifications"
+                    systemDescription = context.getString(R.string.perm_notifications_system)
                 )
             )
         }
@@ -325,10 +327,10 @@ class PermissionManager(private val context: Context) {
             categories.add(
                 PermissionCategory(
                     type = PermissionType.BATTERY_OPTIMIZATION,
-                    description = "Disable battery optimization to ensure bitchat runs reliably in the background and maintains mesh network connections",
+                    description = context.getString(R.string.perm_battery_desc),
                     permissions = listOf("BATTERY_OPTIMIZATION"), // Custom identifier
                     isGranted = isBatteryOptimizationDisabled(),
-                    systemDescription = "Allow bitchat to run without battery restrictions"
+                    systemDescription = context.getString(R.string.perm_battery_system)
                 )
             )
         }

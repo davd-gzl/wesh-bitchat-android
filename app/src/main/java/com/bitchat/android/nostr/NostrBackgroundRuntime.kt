@@ -43,6 +43,7 @@ object NostrBackgroundRuntime {
     private lateinit var eventProcessor: NostrBackgroundEventProcessor
 
     fun initialize(app: Application) {
+        if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) return
         synchronized(lock) {
             if (initialized) return
             application = app

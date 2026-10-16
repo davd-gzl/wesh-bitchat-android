@@ -20,6 +20,12 @@ if ! [[ "$NATIVE_SOURCE_DATE_EPOCH" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
+# The captured input snapshot is read-only. Its published checksum copy can
+# retain that mode; allow a later full rebuild to replace this output manifest.
+if [ -f "$SCRIPT_DIR/SOURCE_SHA256SUMS" ]; then
+  chmod u+w "$SCRIPT_DIR/SOURCE_SHA256SUMS"
+fi
+
 docker build \
   --platform linux/amd64 \
   --file "$SCRIPT_DIR/Dockerfile" \
@@ -33,6 +39,7 @@ docker run \
   --env CARGO_HOME=/workspace/.reproducible-build/cargo-home \
   --env HOME=/workspace/.reproducible-build \
   --env SOURCE_DATE_EPOCH="$NATIVE_SOURCE_DATE_EPOCH" \
+  --env CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" \
   --volume "$PROJECT_ROOT:/workspace" \
   "$IMAGE_NAME" \
   ${MODE:+"$MODE"}

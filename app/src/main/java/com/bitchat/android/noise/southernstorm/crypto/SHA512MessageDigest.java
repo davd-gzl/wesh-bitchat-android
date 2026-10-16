@@ -195,51 +195,51 @@ public class SHA512MessageDigest extends MessageDigest implements Destroyable {
     	return (value >>> n) | (value << (64 - n));
     }
 
-	private void transform(byte[] m, int offset)
-	{
-		long a, b, c, d, e, f, g, h;
-		long temp1, temp2;
-		int index;
+    private void transform(byte[] m, int offset)
+    {
+        long a, b, c, d, e, f, g, h;
+        long temp1, temp2;
+        int index;
 
-		// Initialize working variables to the current hash value.
-		a = this.h[0];
-		b = this.h[1];
-		c = this.h[2];
-		d = this.h[3];
-		e = this.h[4];
-		f = this.h[5];
-		g = this.h[6];
-		h = this.h[7];
+        // Initialize working variables to the current hash value.
+        a = this.h[0];
+        b = this.h[1];
+        c = this.h[2];
+        d = this.h[3];
+        e = this.h[4];
+        f = this.h[5];
+        g = this.h[6];
+        h = this.h[7];
 		
-		// Convert the 16 input message words from big endian to host byte order.
-		for (index = 0; index < 16; ++index) {
-			w[index] = ((m[offset] & 0xFFL) << 56) |
-					   ((m[offset + 1] & 0xFFL) << 48) |
-					   ((m[offset + 2] & 0xFFL) << 40) |
-					   ((m[offset + 3] & 0xFFL) << 32) |
-					   ((m[offset + 4] & 0xFFL) << 24) |
-					   ((m[offset + 5] & 0xFFL) << 16) |
-					   ((m[offset + 6] & 0xFFL) << 8) |
-					    (m[offset + 7] & 0xFFL);
-			offset += 8;
-		}
+        // Convert the 16 input message words from big endian to host byte order.
+        for (index = 0; index < 16; ++index) {
+            w[index] = ((m[offset] & 0xFFL) << 56) |
+                       ((m[offset + 1] & 0xFFL) << 48) |
+                       ((m[offset + 2] & 0xFFL) << 40) |
+                       ((m[offset + 3] & 0xFFL) << 32) |
+                       ((m[offset + 4] & 0xFFL) << 24) |
+                       ((m[offset + 5] & 0xFFL) << 16) |
+                       ((m[offset + 6] & 0xFFL) << 8) |
+                        (m[offset + 7] & 0xFFL);
+            offset += 8;
+        }
 		
-	    // Extend the first 16 words to 80.
-	    for (index = 16; index < 80; ++index) {
-	        w[index] = w[index - 16] + w[index - 7] +
-	            (rightRotate(w[index - 15], 1) ^
-	             rightRotate(w[index - 15], 8) ^
-	             (w[index - 15] >>> 7)) +
-	            (rightRotate(w[index - 2], 19) ^
-	             rightRotate(w[index - 2], 61) ^
-	             (w[index - 2] >>> 6));
-	    }
+        // Extend the first 16 words to 80.
+        for (index = 16; index < 80; ++index) {
+            w[index] = w[index - 16] + w[index - 7] +
+                (rightRotate(w[index - 15], 1) ^
+                 rightRotate(w[index - 15], 8) ^
+                 (w[index - 15] >>> 7)) +
+                (rightRotate(w[index - 2], 19) ^
+                 rightRotate(w[index - 2], 61) ^
+                 (w[index - 2] >>> 6));
+        }
 	    
-	    // Compression function main loop.
-	    for (index = 0; index < 80; ++index) {
-	        temp1 = (h) + k[index] + w[index] +
-	                (rightRotate((e), 14) ^ rightRotate((e), 18) ^ rightRotate((e), 41)) +
-	                (((e) & (f)) ^ ((~(e)) & (g)));
+        // Compression function main loop.
+        for (index = 0; index < 80; ++index) {
+            temp1 = (h) + k[index] + w[index] +
+                    (rightRotate((e), 14) ^ rightRotate((e), 18) ^ rightRotate((e), 41)) +
+                    (((e) & (f)) ^ ((~(e)) & (g)));
             temp2 = (rightRotate((a), 28) ^ rightRotate((a), 34) ^ rightRotate((a), 39)) +
                     (((a) & (b)) ^ ((a) & (c)) ^ ((b) & (c)));
             h = g;
@@ -250,16 +250,16 @@ public class SHA512MessageDigest extends MessageDigest implements Destroyable {
             c = b;
             b = a;
             a = temp1 + temp2;
-	    }
+        }
 
-		// Add the compressed chunk to the current hash value.
-		this.h[0] += a;
-		this.h[1] += b;
-		this.h[2] += c;
-		this.h[3] += d;
-		this.h[4] += e;
-		this.h[5] += f;
-		this.h[6] += g;
-		this.h[7] += h;
-	}
+        // Add the compressed chunk to the current hash value.
+        this.h[0] += a;
+        this.h[1] += b;
+        this.h[2] += c;
+        this.h[3] += d;
+        this.h[4] += e;
+        this.h[5] += f;
+        this.h[6] += g;
+        this.h[7] += h;
+    }
 }

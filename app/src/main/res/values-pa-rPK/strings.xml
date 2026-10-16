@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">bitchat</string>
+    <string name="app_name">Wesh</string>
 
     <!-- اجازت دی وجہ -->
     <string name="permission_bluetooth_rationale">انٹرنیٹ توں بغیر سیدھی چیٹ لئی بلوٹوتھ دی اجازت ضروری اے۔</string>
@@ -156,7 +156,7 @@
     <string name="cd_save_current_image">موجودہ تصویر سیو کرو</string>
     <string name="cd_close">بند کرو</string>
     <string name="cd_image_index_of">تصویر %1$d توں %2$d</string>
-    <string name="cd_privacy_protected">پرائیویسی محفوظ اے</string>
+    <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">وائس پیغام ریکارڈ کرو</string>
     <string name="cd_offline_mesh_chat">آف لائن میش چیٹ</string>
     <string name="cd_online_geohash_channels">آن لائن geohash چینل</string>
@@ -229,7 +229,6 @@
     <string name="debug_max_gcs_filter_size_fmt">وڈ توں وڈ GCS فلٹر سائز: %1$d بائٹ (128–1024)</string>
     <string name="debug_target_fpr_fmt">ٹارگٹ FPR: %1$.2f%%</string>
     <string name="debug_connected_devices">جڑے ڈیوائس</string>
-    <string name="debug_our_device_id_fmt">ساڈا ڈیوائس ID: %1$s</string>
     <string name="debug_none">کچھ وی نئیں</string>
     <string name="debug_disconnect">ڈس کنیکٹ</string>
     <string name="debug_recent_scan_results">حال ہی وچ سکین ہوۓ ڈیوائس</string>
@@ -254,15 +253,15 @@
     <string name="location_unavailable_explanation">اس ڈیوائس تے لوکیشن سروسز دستیاب نئیں۔ ایہ غیر معمولی اے کیونجے Android ڈیوائساں تے لوکیشن سروسز معیاری نیں۔\n\nبلوٹوتھ سکیننگ نوں ٹھیک کم کرن لئی bitchat نوں لوکیشن سروسز چاہیدیاں نیں (Android دی شرط)۔ بنا اس دے، ایپ نیڑے یوزر نئیں لبھ سکدی۔</string>
     <string name="checking_location_services">لوکیشن سروسز چیک ہورھیاں نیں …</string>
     <string name="bluetooth_required">بلوٹوتھ لازمی اے</string>
-    <string name="bluetooth_needs_for">bitchat نوں بلوٹوتھ چاہیدا اے لئی:</string>
+    <string name="bluetooth_needs_for">Wesh نوں بلوٹوتھ چاہیدا اے لئی:</string>
     <string name="bluetooth_needs_bullets">• نیڑے یوزر لبھنا\n• میش نیٹ ورک کنکشن بنانا\n• پیغام بھیجنا تے لینا\n• انٹرنیٹ یا سرور توں بغیر کم کرنا</string>
     <string name="enable_bluetooth">بلوٹوتھ چالو کرو</string>
     <string name="bluetooth_not_supported">بلوٹوتھ سپورٹڈ نئیں</string>
-    <string name="bluetooth_unsupported_explanation">ایہ ڈیوائس Bluetooth Low Energy (BLE) نئیں سپورٹ کردا، جو bitchat لئی ضروری اے۔\n\nbitchat نوں BLE چاہیدا اے میش نیٹ ورک بناؤن تے نیڑے ڈیوائساں نال انٹرنیٹ توں بغیر گل کرن لئی۔</string>
+    <string name="bluetooth_unsupported_explanation">ایہ ڈیوائس Bluetooth Low Energy (BLE) نئیں سپورٹ کردا، جو Wesh لئی ضروری اے۔\n\nWesh نوں BLE چاہیدا اے میش نیٹ ورک بناؤن تے نیڑے ڈیوائساں نال انٹرنیٹ توں بغیر گل کرن لئی۔</string>
     <string name="checking_bluetooth_status">بلوٹوتھ حالت چیک ہورہی اے …</string>
     <string name="battery_optimization_detected_title">بیٹری آپٹمائزیشن لبھیا گیا</string>
     <string name="battery_optimization_enabled_title">بیٹری آپٹمائزیشن چالو اے</string>
-    <string name="battery_optimization_explanation_short">میش کنکشن قائم رکھن لئی bitchat نوں پس منظر وچ چلنا پوے گا۔ بیٹری آپٹمائزیشن ایہ کنکشناں وچ رکاوٹ پا سکدی اے۔</string>
+    <string name="battery_optimization_explanation_short">میش کنکشن قائم رکھن لئی Wesh نوں پس منظر وچ چلنا پوے گا۔ بیٹری آپٹمائزیشن ایہ کنکشناں وچ رکاوٹ پا سکدی اے۔</string>
     <string name="benefits_of_disabling">بند کرن دے فائدے</string>
     <string name="battery_benefits_short">• معتبر پیغام رسانی\n• میش کنکشن برقرار\n• کنکشن ٹٹّن توں بچاؤ</string>
     <string name="disable_battery_optimization">بیٹری آپٹمائزیشن بند کرو</string>
@@ -273,8 +272,8 @@
     <string name="should_take_seconds">ایہ صرف چند سیکنڈ لگنے چاہیدے نیں</string>
     <string name="setup_not_complete">سیٹ اپ مکمل نئیں</string>
     <string name="try_again">فیر کوشِش کرو</string>
-    <string name="privacy_protected">توانڈی پرائیویسی محفوظ اے</string>
-    <string name="privacy_bullets">• کوئی ٹریکنگ یا ڈیٹا جمع نئیں\n• بلوٹوتھ میش چیٹ مکمل آف لائن\n• geohash چیٹ انٹرنیٹ استعمال کردی اے</string>
+    <string name="privacy_protected">Public salon and private contacts</string>
+    <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">اجازتاں</string>
     <string name="grant_permissions">اجازت دو</string>
     <string name="location_tracking_warning">bitchat توانڈی لوکیشن نئیں ٹریک کردا</string>
@@ -299,14 +298,14 @@
     <string name="cd_pause_voice">روکੋ</string>
 
     <!-- اجازت دیاں وضاحتاں -->
-    <string name="perm_nearby_devices_desc">بلوٹوتھ راہین bitchat یوزر لبھن لئی ضروری</string>
-    <string name="perm_nearby_devices_system">bitchat نوں نیڑے ڈیوائساں نال جُڑن دی اجازت دو</string>
-    <string name="perm_location_desc">Android نوں بلوٹوتھ راہین نیڑے bitchat یوزراں دی تلاش لئی لوڑ اے</string>
-    <string name="perm_location_system">bitchat نوں نیڑے ڈیوائساں سکین کرن لئی ایہ چاہیدہ</string>
+    <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
+    <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
+    <string name="perm_location_desc">Android 11 and earlier requires this permission for Bluetooth scanning. Wesh does not use GPS coordinates.</string>
+    <string name="perm_location_system">Android permission needed for Bluetooth scanning on older phones.</string>
     <string name="perm_notifications_desc">جدو تُہانوں ذاتی پیغام مِلن تاں نوٹیفکیشن لؤ</string>
-    <string name="perm_notifications_system">bitchat نوں نوٹیفکیشن بھیجن دی اجازت دو</string>
-    <string name="perm_battery_desc">ایہ یقینی بناؤن لئی بیٹری آپٹمائزیشن بند کرو کہ bitchat پس منظر وچ معتبر چلّے تے میش نیٹ ورک کنکشناں برقرار رہن</string>
-    <string name="perm_battery_system">bitchat نوں بغیر بیٹری پابندیاں دے چلّن دی اجازت دو</string>
+    <string name="perm_notifications_system">Allow Wesh to send notifications.</string>
+    <string name="perm_battery_desc">Battery restrictions can interrupt mesh connections in the background.</string>
+    <string name="perm_battery_system">Allow Wesh to run without battery restrictions.</string>
 
     <!-- اجازت دیاں قسماں -->
     <string name="perm_type_nearby_devices">نیڑے ڈیوائس</string>
@@ -330,7 +329,7 @@
     </plurals>
 
     <plurals name="people_count">
-        <item quantity="one">1 بندہ</item>
+        <item quantity="one">%d بندہ</item>
         <item quantity="other">%d بندے</item>
     </plurals>
 

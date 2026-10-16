@@ -1,0 +1,80 @@
+package com.bitchat.android.mesh
+
+import android.app.Application
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCharacteristic
+import com.bitchat.android.model.RoutedPacket
+import com.bitchat.android.protocol.BitchatPacket
+import com.bitchat.android.protocol.MessageType
+import kotlinx.coroutines.*
+import org.junit.*
+import org.junit.Assert.*
+import org.junit.runner.RunWith
+import org.mockito.kotlin.*
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.util.Random
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28], manifest = Config.NONE, application = Application::class)
+class WeshBluetoothHandoffTest {
+    private val peerID = "aaaabbbbccccdddd"
+    private val address = "synthetic-link"
+    private lateinit var scope: CoroutineScope
+    private lateinit var tracker: BluetoothConnectionTracker
+    private lateinit var broadcaster: BluetoothPacketBroadcaster
+    private lateinit var gatt: BluetoothGatt
+    private lateinit var characteristic: BluetoothGattCharacteristic
+    @Before fun setup() {
+        scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+        tracker = mock()
+        gatt = mock()
+        characteristic = BluetoothGattCharacteristic(java.util.UUID.fromString("00000000-0000-4000-8000-000000000001"),
+            BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE, BluetoothGattCharacteristic.PERMISSION_WRITE)
+        val device: BluetoothDevice = mock()
+        whenever(device.address).thenReturn(address)
+        val link = BluetoothConnectionTracker.DeviceConnection(device, gatt, characteristic,
+            isClient = true, peerID = peerID, linkID = "synthetic-generation")
+        whenever(tracker.getSubscribedDevices()).thenReturn(emptyList())
+        whenever(tracker.getConnectedDevices()).thenReturn(mapOf(address to link))
+        whenever(tracker.getDeviceConnection(address)).thenReturn(link)
+        whenever(tracker.addressPeerMap).thenReturn(java.util.concurrent.ConcurrentHashMap<String, String>().apply { put(address, peerID) })
+        broadcaster = BluetoothPacketBroadcaster(scope, tracker, FragmentManager(), "1111222233334444")
+    }
+    @After fun cleanup() { broadcaster.shutdown(); scope.cancel() }
+    private fun packet(bytes: Int): RoutedPacket {
+        val payload = ByteArray(bytes).also { Random(42).nextBytes(it) }
+        return RoutedPacket(BitchatPacket(version = 1u, type = MessageType.NOISE_ENCRYPTED.value,
+            senderID = MeshPacketUtils.hexStringToByteArray("1111222233334444"),
+            recipientID = MeshPacketUtils.hexStringToByteArray(peerID), timestamp = 1uL, payload = payload, ttl = 7u))
+    }
+    @Test fun `no live target is not a handoff even when the actor accepts a fragmented request`() = runBlocking<Unit> {
+        whenever(tracker.getConnectedDevices()).thenReturn(emptyMap())
+        assertFalse(withTimeout(5_000) { broadcaster.broadcastPacketAndAwaitAcceptance(packet(2000), null, null) { true } })
+        verify(gatt, never()).writeCharacteristic(any())
+    }
+    @Test fun `rejected GATT operation produces failure rather than sent or unbounded retries`() = runBlocking<Unit> {
+        whenever(gatt.writeCharacteristic(any())).thenReturn(false)
+        assertFalse(withTimeout(5_000) { broadcaster.broadcastPacketAndAwaitAcceptance(packet(2000), null, null) { true } })
+        verify(gatt, atLeastOnce()).writeCharacteristic(any())
+    }
+    @Test fun `fragmented handoff waits for accepted GATT writes and preserves native packet limits`() = runBlocking<Unit> {
+        val writes = java.util.concurrent.ConcurrentLinkedQueue<ByteArray>()
+        whenever(gatt.writeCharacteristic(any())).thenAnswer {
+            writes.add(characteristic.value.copyOf())
+            broadcaster.onGattClientWriteComplete(address, "synthetic-generation", BluetoothGatt.GATT_SUCCESS)
+            true
+        }
+        assertTrue(withTimeout(5_000) { broadcaster.broadcastPacketAndAwaitAcceptance(packet(2000), null, null) { true } })
+        assertTrue(writes.size > 1)
+        assertTrue(writes.all { it.size <= 512 })
+    }
+    @Test fun `revocation while routing is rechecked before the concrete GATT call`() = runBlocking<Unit> {
+        var allowed = true
+        val links = tracker.getConnectedDevices()
+        whenever(tracker.getConnectedDevices()).thenAnswer { allowed = false; links }
+        assertFalse(withTimeout(5_000) { broadcaster.broadcastPacketAndAwaitAcceptance(packet(2000), null, null) { allowed } })
+        verify(gatt, never()).writeCharacteristic(any())
+    }
+}

@@ -87,6 +87,7 @@ class MeshForegroundService : Service() {
     private lateinit var notificationManager: NotificationManagerCompat
     private lateinit var peerAvailabilityNotifier: PeerAvailabilityNotifier
     private var updateJob: Job? = null
+    private var startupJob: Job? = null
     private val meshService: BluetoothMeshService?
         get() = MeshServiceHolder.meshService
     private val unifiedMeshService: com.bitchat.android.mesh.MeshService?
@@ -97,6 +98,17 @@ class MeshForegroundService : Service() {
     private var isInForeground: Boolean = false
     private var isShuttingDown: Boolean = false
     private var lastNotifiedPeerCount: Int? = null
+
+    // A sticky service can be recreated before the IO bootstrap loads preferences. Promote
+    // promptly with a minimal notification, then enforce the stored policy before transport.
+    private fun runtimeReady(): Boolean = !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY ||
+        (com.bitchat.android.startup.WeshRuntime.transportAllowed &&
+            com.bitchat.android.startup.WeshRuntime.get(applicationContext).state.value is
+            com.bitchat.android.startup.StartupCoordinator.State.Ready)
+
+    private fun backgroundRequested(): Boolean =
+        (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY || com.bitchat.android.startup.WeshRuntime.transportAllowed) &&
+            (!runtimeReady() || MeshServicePreferences.isBackgroundEnabled(true))
 
     override fun onCreate() {
         super.onCreate()
@@ -112,17 +124,6 @@ class MeshForegroundService : Service() {
             }
         )
         createChannel()
-
-        // Ensure mesh service exists in holder (create if needed)
-        val existing = MeshServiceHolder.meshService
-        if (existing != null) {
-            Log.d("MeshForegroundService", "Using existing BluetoothMeshService from holder")
-        } else {
-            val created = MeshServiceHolder.getOrCreate(applicationContext)
-            Log.i("MeshForegroundService", "Created new BluetoothMeshService via holder")
-            MeshServiceHolder.attach(created)
-        }
-        MeshServiceHolder.getUnifiedOrCreate(applicationContext)
 
         // Notification content is driven by peer-state changes, not a permanent timer.
         updateJob = scope.launch {
@@ -153,6 +154,8 @@ class MeshForegroundService : Service() {
         when (intent?.action) {
             ACTION_STOP -> {
                 // Stop FGS and mesh cleanly
+                startupJob?.cancel()
+                startupJob = null
                 updateJob?.cancel()
                 updateJob = null
                 try { com.bitchat.android.services.MessageRouter.tryGetInstance()?.stopOutboxScheduler() } catch (_: Exception) { }
@@ -166,6 +169,8 @@ class MeshForegroundService : Service() {
             }
             ACTION_QUIT -> {
                 isShuttingDown = true
+                startupJob?.cancel()
+                startupJob = null
                 updateJob?.cancel()
                 updateJob = null
                 try { stopForeground(true) } catch (_: Exception) { }
@@ -186,7 +191,7 @@ class MeshForegroundService : Service() {
             }
             ACTION_UPDATE_NOTIFICATION -> {
                 // If we became eligible and are not in foreground yet, promote once
-                if (MeshServicePreferences.isBackgroundEnabled(true) && hasAllRequiredPermissions() && !isInForeground) {
+                if (backgroundRequested() && hasAllRequiredPermissions() && !isInForeground) {
                     val count = getUnifiedActivePeerCount()
                     val n = buildNotification(count)
                     startForegroundCompat(n)
@@ -199,13 +204,23 @@ class MeshForegroundService : Service() {
             else -> { /* ACTION_START or null */ }
         }
 
-        // Ensure mesh is running (only after permissions are granted)
-        ensureMeshStarted()
+        // A sticky restart can outlive permission or policy changes. Do not wait for
+        // encrypted storage when promotion/transport is already disallowed.
+        if ((com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY && !com.bitchat.android.startup.WeshRuntime.transportAllowed) ||
+            !hasAllRequiredPermissions() || (runtimeReady() && !MeshServicePreferences.isBackgroundEnabled(true))) {
+            startupJob?.cancel()
+            startupJob = null
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            isInForeground = false
+            clearMeshNotifications()
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         // Promote exactly once when eligible, otherwise stay background (or stop).
         // POST_NOTIFICATIONS is intentionally not an eligibility requirement: Android 13+
         // still allows foreground services and exposes them in the system task manager.
-        if (MeshServicePreferences.isBackgroundEnabled(true) && hasAllRequiredPermissions() && !isInForeground) {
+        if (backgroundRequested() && hasAllRequiredPermissions() && !isInForeground) {
             val count = getUnifiedActivePeerCount()
             val notification = buildNotification(count)
             startForegroundCompat(notification)
@@ -213,23 +228,38 @@ class MeshForegroundService : Service() {
             lastNotifiedPeerCount = count
         }
 
+        // Promotion above must finish before any suspendable secure startup work.
+        ensureMeshStarted()
         return START_STICKY
     }
 
     private fun ensureMeshStarted() {
-        if (isShuttingDown) return
-        try {
-            com.bitchat.android.wifiaware.WifiAwareController.startIfPossible()
-        } catch (e: Exception) {
-            android.util.Log.e("MeshForegroundService", "Failed to ensure Wi-Fi Aware transport: ${e.message}")
-        }
-
-        try {
-            android.util.Log.d("MeshForegroundService", "Ensuring mesh service is started")
-            val service = MeshServiceHolder.getUnifiedOrCreate(applicationContext)
-            service.startServices()
-        } catch (e: Exception) {
-            android.util.Log.e("MeshForegroundService", "Failed to start mesh service: ${e.message}")
+        if (isShuttingDown || startupJob?.isActive == true) return
+        startupJob = scope.launch {
+            try {
+                if (com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY) {
+                    com.bitchat.android.startup.WeshRuntime.awaitTransportReady(applicationContext)
+                }
+                if (isShuttingDown) return@launch
+                if ((com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY && !com.bitchat.android.startup.WeshRuntime.transportAllowed) ||
+                    !MeshServicePreferences.isBackgroundEnabled(true) || !hasAllRequiredPermissions()) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    isInForeground = false
+                    clearMeshNotifications()
+                    stopSelf()
+                    return@launch
+                }
+                com.bitchat.android.wifiaware.WifiAwareController.startIfPossible()
+                MeshServiceHolder.getUnifiedOrCreate(applicationContext).startServices()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // An unavailable identity never starts a substitute transport identity.
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                isInForeground = false
+                clearMeshNotifications()
+                stopSelf()
+            }
         }
     }
 
@@ -239,7 +269,7 @@ class MeshForegroundService : Service() {
             return
         }
         val count = getUnifiedActivePeerCount()
-        if (MeshServicePreferences.isBackgroundEnabled(true) && hasAllRequiredPermissions()) {
+        if (backgroundRequested() && hasAllRequiredPermissions()) {
             if (lastNotifiedPeerCount != count) {
                 startForegroundCompat(buildNotification(count))
                 lastNotifiedPeerCount = count
@@ -367,6 +397,8 @@ class MeshForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        startupJob?.cancel()
+        startupJob = null
         updateJob?.cancel()
         updateJob = null
         // Cancel the service coroutine scope to prevent leaks

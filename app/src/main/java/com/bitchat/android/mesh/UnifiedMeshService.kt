@@ -116,6 +116,10 @@ class UnifiedMeshService(
         }
     }
 
+    override suspend fun sendPrivateMessageBound(content: String, recipientPeerID: String, expectedKey: ByteArray,
+        messageID: String, authorized: () -> Boolean): Boolean =
+        bluetooth.sendPrivateMessageBound(content, recipientPeerID, expectedKey, messageID, authorized)
+
     override fun sendReadReceipt(messageID: String, recipientPeerID: String, readerNickname: String) {
         when {
             isBleReady(recipientPeerID) -> bluetooth.sendReadReceipt(messageID, recipientPeerID, readerNickname)
@@ -322,6 +326,9 @@ class UnifiedMeshService(
     }
 
     override fun getIdentityFingerprint(): String = bluetooth.getIdentityFingerprint()
+
+    override fun getAuthenticatedRemoteStaticKey(peerID: String): ByteArray? =
+        bluetooth.getAuthenticatedRemoteStaticKey(peerID)
 
     override fun getStaticNoisePublicKey(): ByteArray? {
         return bluetooth.getStaticNoisePublicKey() ?: wifiService()?.getStaticNoisePublicKey()

@@ -240,10 +240,11 @@ fun DebugSettingsSheet(
     ) { _ ->
         // Check live state, not the result map — already-held permissions are filtered out
         // before launching. Only NEARBY_WIFI_DEVICES blocks startup; the other is defensive.
-        val nearbyPermission = android.Manifest.permission.NEARBY_WIFI_DEVICES
-        val nearbyGranted = nearbyPermission !in wifiAwarePermissions ||
-            ContextCompat.checkSelfPermission(context, nearbyPermission) ==
-                PackageManager.PERMISSION_GRANTED
+        val nearbyGranted = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU || run {
+            val nearbyPermission = android.Manifest.permission.NEARBY_WIFI_DEVICES
+            nearbyPermission !in wifiAwarePermissions ||
+                ContextCompat.checkSelfPermission(context, nearbyPermission) == PackageManager.PERMISSION_GRANTED
+        }
         if (nearbyGranted) {
             manager.setWifiAwareEnabled(true)
         } else {
@@ -851,8 +852,6 @@ fun DebugSettingsSheet(
                             Icon(Icons.Filled.Devices, contentDescription = null, tint = Color(0xFF4CAF50))
                             Text(stringResource(R.string.debug_connected_devices), fontFamily = BitchatFontFamily, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         }
-                        val localAddr = remember { meshService.connectionManager.getLocalAdapterAddress() }
-                        Text(stringResource(R.string.debug_our_device_id_fmt, localAddr ?: stringResource(R.string.unknown)), fontFamily = BitchatFontFamily, fontSize = 11.sp, color = colorScheme.onSurface.copy(alpha = 0.7f))
                         if (connectedDevices.isEmpty()) {
                             Text("None", fontFamily = BitchatFontFamily, fontSize = 11.sp, color = colorScheme.onSurface.copy(alpha = 0.6f))
                         } else {

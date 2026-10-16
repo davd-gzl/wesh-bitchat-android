@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">bitchat</string>
+    <string name="app_name">Wesh</string>
 
     <!-- Alasan izin -->
     <string name="permission_bluetooth_rationale">Izin Bluetooth diperlukan untuk chatting langsung dengan orang lain tanpa Internet.</string>
@@ -156,7 +156,7 @@
     <string name="cd_save_current_image">Simpan gambar saat ini</string>
     <string name="cd_close">Tutup</string>
     <string name="cd_image_index_of">Gambar %1$d dari %2$d</string>
-    <string name="cd_privacy_protected">Privasi terlindungi</string>
+    <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">Rekam pesan suara</string>
     <string name="cd_offline_mesh_chat">Chat Mesh Offline</string>
     <string name="cd_online_geohash_channels">Channel Geohash Online</string>
@@ -229,7 +229,6 @@
     <string name="debug_max_gcs_filter_size_fmt">ukuran filter GCS maks: %1$d Byte (128–1024)</string>
     <string name="debug_target_fpr_fmt">FPR target: %1$.2f%%</string>
     <string name="debug_connected_devices">perangkat terhubung</string>
-    <string name="debug_our_device_id_fmt">ID perangkat kami: %1$s</string>
     <string name="debug_none">tidak ada</string>
     <string name="debug_disconnect">putuskan koneksi</string>
     <string name="debug_recent_scan_results">perangkat yang baru dipindai</string>
@@ -254,15 +253,15 @@
     <string name="location_unavailable_explanation">Layanan lokasi tidak tersedia di perangkat ini. Ini tidak biasa karena layanan lokasi standar di perangkat Android.\n\nbitchat memerlukan layanan lokasi agar pemindaian Bluetooth berfungsi dengan benar (persyaratan Android). Tanpanya, aplikasi tidak dapat menemukan pengguna terdekat.</string>
     <string name="checking_location_services">Memeriksa layanan lokasi …</string>
     <string name="bluetooth_required">Bluetooth diperlukan</string>
-    <string name="bluetooth_needs_for">bitchat memerlukan Bluetooth untuk:</string>
+    <string name="bluetooth_needs_for">Wesh memerlukan Bluetooth untuk:</string>
     <string name="bluetooth_needs_bullets">• Menemukan pengguna terdekat\n• Membuat koneksi jaringan mesh\n• Mengirim dan menerima pesan\n• Berfungsi tanpa Internet atau server</string>
     <string name="enable_bluetooth">Aktifkan Bluetooth</string>
     <string name="bluetooth_not_supported">Bluetooth tidak didukung</string>
-    <string name="bluetooth_unsupported_explanation">Perangkat ini tidak mendukung Bluetooth Low Energy (BLE), yang diperlukan agar bitchat berfungsi.\n\nbitchat memerlukan BLE untuk membuat jaringan mesh dan berkomunikasi dengan perangkat terdekat tanpa Internet.</string>
+    <string name="bluetooth_unsupported_explanation">Perangkat ini tidak mendukung Bluetooth Low Energy (BLE), yang diperlukan agar Wesh berfungsi.\n\nWesh memerlukan BLE untuk membuat jaringan mesh dan berkomunikasi dengan perangkat terdekat tanpa Internet.</string>
     <string name="checking_bluetooth_status">Memeriksa status Bluetooth …</string>
     <string name="battery_optimization_detected_title">Optimalisasi baterai terdeteksi</string>
     <string name="battery_optimization_enabled_title">Optimalisasi baterai diaktifkan</string>
-    <string name="battery_optimization_explanation_short">bitchat harus berjalan di latar belakang untuk mempertahankan koneksi mesh. Optimalisasi baterai dapat mengganggu koneksi ini.</string>
+    <string name="battery_optimization_explanation_short">Wesh harus berjalan di latar belakang untuk mempertahankan koneksi mesh. Optimalisasi baterai dapat mengganggu koneksi ini.</string>
     <string name="benefits_of_disabling">Manfaat menonaktifkan</string>
     <string name="battery_benefits_short">• pengiriman pesan yang andal\n• mempertahankan koneksi mesh\n• mencegah putusnya koneksi</string>
     <string name="disable_battery_optimization">Nonaktifkan optimalisasi baterai</string>
@@ -273,8 +272,8 @@
     <string name="should_take_seconds">Ini seharusnya hanya memakan waktu beberapa detik</string>
     <string name="setup_not_complete">Penyiapan tidak lengkap</string>
     <string name="try_again">Coba lagi</string>
-    <string name="privacy_protected">Privasi Anda terlindungi</string>
-    <string name="privacy_bullets">• tidak ada pelacakan atau pengumpulan data\n• Bluetooth mesh chat sepenuhnya offline\n• Geohash chat menggunakan Internet</string>
+    <string name="privacy_protected">Public salon and private contacts</string>
+    <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">Izin</string>
     <string name="grant_permissions">Berikan izin</string>
     <string name="location_tracking_warning">bitchat TIDAK melacak lokasi Anda</string>
@@ -299,14 +298,14 @@
     <string name="cd_pause_voice">Jeda</string>
 
     <!-- Deskripsi izin -->
-    <string name="perm_nearby_devices_desc">Diperlukan untuk menemukan pengguna bitchat melalui Bluetooth</string>
-    <string name="perm_nearby_devices_system">Izinkan bitchat terhubung dengan perangkat terdekat</string>
-    <string name="perm_location_desc">Diperlukan oleh Android untuk menemukan pengguna bitchat terdekat melalui Bluetooth</string>
-    <string name="perm_location_system">bitchat memerlukan ini untuk memindai perangkat terdekat</string>
+    <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
+    <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
+    <string name="perm_location_desc">Android 11 and earlier requires this permission for Bluetooth scanning. Wesh does not use GPS coordinates.</string>
+    <string name="perm_location_system">Android permission needed for Bluetooth scanning on older phones.</string>
     <string name="perm_notifications_desc">Terima notifikasi saat Anda menerima pesan pribadi</string>
-    <string name="perm_notifications_system">Izinkan bitchat mengirim notifikasi kepada Anda</string>
-    <string name="perm_battery_desc">Nonaktifkan optimalisasi baterai untuk memastikan bitchat berjalan andal di latar belakang dan mempertahankan koneksi jaringan mesh</string>
-    <string name="perm_battery_system">Izinkan bitchat berjalan tanpa pembatasan baterai</string>
+    <string name="perm_notifications_system">Allow Wesh to send notifications.</string>
+    <string name="perm_battery_desc">Battery restrictions can interrupt mesh connections in the background.</string>
+    <string name="perm_battery_system">Allow Wesh to run without battery restrictions.</string>
 
     <!-- Jenis izin -->
     <string name="perm_type_nearby_devices">Perangkat terdekat</string>
@@ -325,17 +324,14 @@
 
     <!-- Jamak -->
     <plurals name="notification_and_more">
-        <item quantity="one">dan %d lagi</item>
         <item quantity="other">dan %d lagi</item>
     </plurals>
 
     <plurals name="people_count">
-        <item quantity="one">1 orang</item>
         <item quantity="other">%d orang</item>
     </plurals>
 
   <plurals name="location_notes_title">
-    <item quantity="one">#%1$s ± 1 • %2$d catatan</item>
     <item quantity="other">#%1$s ± 1 • %2$d catatan</item>
   </plurals>
   <string name="location_notes_description">tambahkan catatan singkat permanen ke lokasi ini agar pengunjung lain dapat menemukannya.</string>

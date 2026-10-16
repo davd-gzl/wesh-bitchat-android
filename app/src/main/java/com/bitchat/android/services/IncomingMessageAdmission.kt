@@ -11,7 +11,12 @@ import kotlinx.coroutines.runBlocking
  * Public and channel messages retain their existing best-effort behavior if state reflection fails.
  */
 internal object IncomingMessageAdmission {
-    fun admitToAppState(message: BitchatMessage): Boolean = try {
+    fun admitToAppState(
+        message: BitchatMessage,
+        isSenderBlocked: (String) -> Boolean = { false }
+    ): Boolean = if (message.senderPeerID?.let { peerID ->
+        runCatching { isSenderBlocked(peerID) }.getOrDefault(true)
+    } == true) false else try {
         when {
             message.isPrivate -> {
                 val peerID = message.senderPeerID?.takeIf(String::isNotBlank)

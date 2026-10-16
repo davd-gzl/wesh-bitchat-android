@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
 FROM rust:1.95.0-slim-bookworm@sha256:d7482085ff5b415f84dba5647ae71606650bdef00db7aeb69f4b3d170c3e4082
+ENV CARGO_BUILD_JOBS=1
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 

@@ -14,6 +14,9 @@ interface MeshService {
 
     fun sendMessage(content: String, mentions: List<String> = emptyList(), channel: String? = null)
     fun sendPrivateMessage(content: String, recipientPeerID: String, recipientNickname: String, messageID: String? = null)
+    /** Fail closed by default; implementations must pin the actual encryption generation. */
+    suspend fun sendPrivateMessageBound(content: String, recipientPeerID: String, expectedKey: ByteArray,
+        messageID: String, authorized: () -> Boolean): Boolean = false
     fun sendReadReceipt(messageID: String, recipientPeerID: String, readerNickname: String)
     fun sendDeliveryAck(messageID: String, recipientPeerID: String) {}
     fun sendFavoriteNotification(peerID: String, isFavorite: Boolean) {}
@@ -49,6 +52,7 @@ interface MeshService {
         isVerified: Boolean
     ): Boolean
     fun getIdentityFingerprint(): String
+    fun getAuthenticatedRemoteStaticKey(peerID: String): ByteArray? = null
     fun getStaticNoisePublicKey(): ByteArray?
     fun shouldShowEncryptionIcon(peerID: String): Boolean
     fun getEncryptedPeers(): List<String>
