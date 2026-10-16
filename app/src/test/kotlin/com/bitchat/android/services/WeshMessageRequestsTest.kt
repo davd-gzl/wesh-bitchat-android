@@ -63,6 +63,24 @@ class WeshMessageRequestsTest {
     }
 
     @Test
+    fun `a newcomer after a full window replaces the oldest request shown long enough`() {
+        repeat(WeshMessageRequests.MAX_NEW_SOURCES_PER_WINDOW) { WeshMessageRequests.record("flood-$it", "Synthetic", fp(it), time) }
+        time += WeshMessageRequests.MIN_DISPLAY_AGE_MS
+
+        WeshMessageRequests.record("peer-legit", "Synthetic", fp(500), time)
+        val requests = WeshMessageRequests.requests.value
+        assertEquals("the window still bounds growth", WeshMessageRequests.MAX_NEW_SOURCES_PER_WINDOW, requests.size)
+        assertEquals("peer-legit", requests.first().peerID)
+    }
+
+    @Test
+    fun `a full window refuses a newcomer while every request is still recent`() {
+        repeat(WeshMessageRequests.MAX_NEW_SOURCES_PER_WINDOW) { WeshMessageRequests.record("flood-$it", "Synthetic", fp(it), time) }
+        WeshMessageRequests.record("peer-early", "Synthetic", fp(500), time + 1_000)
+        assertTrue(WeshMessageRequests.requests.value.none { it.peerID == "peer-early" })
+    }
+
+    @Test
     fun `request nicknames go through the shared display name sanitizer`() {
         WeshMessageRequests.record("peer-a", "‮evil​name", fp(1), time)
         assertEquals("evilname", WeshMessageRequests.requests.value.single().nickname)
