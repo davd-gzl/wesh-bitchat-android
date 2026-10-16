@@ -123,8 +123,8 @@ class PermissionManager(private val context: Context) {
      * Must be requested after foreground location permissions are granted.
      */
     fun needsBackgroundLocationPermission(): Boolean {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-            (!com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY || Build.VERSION.SDK_INT < 31)
+        // Wesh never asks for background location; the manifest removes the permission.
+        return !com.bitchat.android.BuildConfig.WESH_LOCAL_ONLY && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
     }
 
     fun getBackgroundLocationPermission(): String? {

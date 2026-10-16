@@ -128,6 +128,11 @@ object NostrIdentityBridge {
         return newIdentity
     }
     
+    /** Read-only: the stored identity, or null. Never generates or persists key material. */
+    fun peekCurrentNostrIdentity(context: Context): NostrIdentity? = runCatching {
+        loadNostrPrivateKey(SecureIdentityStateManager(context))?.let(NostrIdentity::fromPrivateKey)
+    }.getOrNull()
+
     /**
      * Derive a deterministic, unlinkable Nostr identity for a given geohash
      * Uses HMAC-SHA256(deviceSeed, geohash) as private key material with fallback rehashing
@@ -144,38 +149,44 @@ object NostrIdentityBridge {
         
         val stateManager = SecureIdentityStateManager(context)
         val seed = getOrCreateDeviceSeed(stateManager)
-        
+        val identity = identityFromSeed(seed, forGeohash)
+        // Cache the result for future UI responsiveness
+        geohashIdentityCache[forGeohash] = identity
+        return identity
+    }
+
+    private fun identityFromSeed(seed: ByteArray, forGeohash: String): NostrIdentity {
         val geohashBytes = forGeohash.toByteArray(Charsets.UTF_8)
-        
+
         // Try a few iterations to ensure a valid key can be formed (exactly like iOS)
         for (i in 0 until 10) {
-            val candidateKey = candidateKey(seed, geohashBytes, i.toUInt())
-            val candidateKeyHex = candidateKey.toHexStringLocal()
-            
-            if (NostrCrypto.isValidPrivateKey(candidateKeyHex)) {
-                val identity = NostrIdentity.fromPrivateKey(candidateKeyHex)
-                
-                // Cache the result for future UI responsiveness
-                geohashIdentityCache[forGeohash] = identity
-                
-                Log.d(TAG, "Derived geohash identity")
-                return identity
+            val candidateKeyHex = candidateKey(seed, geohashBytes, i.toUInt()).toHexStringLocal()
+            if (NostrCrypto.isValidPrivateKey(candidateKeyHex)) return NostrIdentity.fromPrivateKey(candidateKeyHex)
+        }
+
+        // As a final fallback, hash the seed+msg and try again (exactly like iOS)
+        val fallbackKey = MessageDigest.getInstance("SHA-256").digest(seed + geohashBytes)
+        return NostrIdentity.fromPrivateKey(fallbackKey.toHexStringLocal())
+    }
+
+    /**
+     * Every npub this device can sign as, read-only (never creates a key or the device seed):
+     * the current identity, every cached geohash identity, and the geohash identity of each
+     * geohash in [persistedGeohashes]. Null when a source cannot be read: callers fail closed.
+     */
+    fun ownedNpubs(context: Context, persistedGeohashes: Collection<String>): Set<String>? =
+        runCatching { ownedNpubs(SecureIdentityStateManager(context), persistedGeohashes) }.getOrNull()
+
+    internal fun ownedNpubs(stateManager: SecureIdentityStateManager, persistedGeohashes: Collection<String>): Set<String>? = runCatching {
+        buildSet {
+            stateManager.getSecureValue(NOSTR_PRIVATE_KEY)?.let { add(NostrIdentity.fromPrivateKey(it).npub) }
+            geohashIdentityCache.values.forEach { add(it.npub) }
+            stateManager.getSecureValue(DEVICE_SEED_KEY)?.let { encoded ->
+                val seed = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+                persistedGeohashes.forEach { add(identityFromSeed(seed, it).npub) }
             }
         }
-        
-        // As a final fallback, hash the seed+msg and try again (exactly like iOS)
-        val combined = seed + geohashBytes
-        val digest = MessageDigest.getInstance("SHA-256")
-        val fallbackKey = digest.digest(combined)
-        
-        val fallbackIdentity = NostrIdentity.fromPrivateKey(fallbackKey.toHexStringLocal())
-        
-        // Cache the fallback result too
-        geohashIdentityCache[forGeohash] = fallbackIdentity
-        
-        Log.d(TAG, "Used fallback geohash identity derivation")
-        return fallbackIdentity
-    }
+    }.getOrNull()
     
     /**
      * Generate candidate key for a specific iteration (matches iOS implementation)
@@ -219,6 +230,14 @@ object NostrIdentityBridge {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to clear Nostr data: ${e.message}")
         }
+    }
+
+    /** Panic path: the Nostr key and device seed are gone from disk when this returns true. */
+    fun panicClearKeys(context: Context): Boolean {
+        geohashIdentityCache.clear()
+        val stateManager = SecureIdentityStateManager(context)
+        return stateManager.clearSecureValuesSynchronously(NOSTR_PRIVATE_KEY, DEVICE_SEED_KEY) &&
+            !stateManager.hasSecureValue(NOSTR_PRIVATE_KEY) && !stateManager.hasSecureValue(DEVICE_SEED_KEY)
     }
 
     fun clearGeohashIdentityCache(geohashes: Collection<String>) {

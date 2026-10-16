@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- TODO: Polish translations -->
-    <!-- Machine-translated (Claude) — pending native-speaker review -->
+    <!-- Machine-translated — pending native-speaker review -->
     
   <plurals name="location_notes_title">
     <item quantity="one">#%1$s ± 1 • %2$d notatka</item>
@@ -82,12 +82,12 @@
     <string name="battery_optimization_not_required">Optymalizacja baterii niewymagana</string>
     <string name="battery_optimization_checking">Sprawdzanie optymalizacji baterii</string>
     <string name="battery_optimization_why_disable">Dlaczego wyłączyć optymalizację baterii?</string>
-    <string name="battery_optimization_explanation">bitchat działa w tle, aby utrzymać połączenia z siecią mesh z pobliskimi urządzeniami. Optymalizacja baterii może przerywać te połączenia, powodując opóźnienia lub utratę wiadomości.\n\nWyłączenie optymalizacji baterii zapewnia niezawodną komunikację peer-to-peer.</string>
+    <string name="battery_optimization_explanation">Wesh działa w tle, aby utrzymać połączenia z siecią mesh z pobliskimi urządzeniami. Optymalizacja baterii może przerywać te połączenia, powodując opóźnienia lub utratę wiadomości.\n\nWyłączenie optymalizacji baterii zapewnia niezawodną komunikację peer-to-peer.</string>
     <string name="battery_optimization_disable_button">Wyłącz optymalizację baterii</string>
-    <string name="battery_optimization_note">Uwaga: możesz zmienić to ustawienie później w Ustawieniach Androida &gt; Aplikacje &gt; bitchat &gt; Bateria</string>
-    <string name="battery_optimization_not_supported_explanation">Twoje urządzenie nie wymaga ustawień optymalizacji baterii. bitchat będzie działać normalnie.</string>
-    <string name="battery_optimization_not_supported_message">Twoje urządzenie nie wymaga ustawień optymalizacji baterii. bitchat będzie działać normalnie.</string>
-    <string name="battery_optimization_success_message">bitchat może działać niezawodnie w tle</string>
+    <string name="battery_optimization_note">Uwaga: możesz zmienić to ustawienie później w Ustawieniach Androida &gt; Aplikacje &gt; Wesh &gt; Bateria</string>
+    <string name="battery_optimization_not_supported_explanation">Twoje urządzenie nie wymaga ustawień optymalizacji baterii. Wesh będzie działać normalnie.</string>
+    <string name="battery_optimization_not_supported_message">Twoje urządzenie nie wymaga ustawień optymalizacji baterii. Wesh będzie działać normalnie.</string>
+    <string name="battery_optimization_success_message">Wesh może działać niezawodnie w tle</string>
     <string name="battery_optimization_benefits">• Zapewnia niezawodne dostarczanie wiadomości\n• Utrzymuje łączność sieci mesh\n• Umożliwia przekazywanie wiadomości w tle\n• Zapobiega zrywaniu połączeń</string>
     <string name="battery_optimization_check_again">Sprawdź ponownie</string>
     <string name="battery_optimization_skip">Pomiń na razie</string>
@@ -96,7 +96,7 @@
     <string name="notification_summary_more">i jeszcze %1$d</string>
     <string name="notification_messages_from_people">%1$d wiadomości od %2$d osób</string>
     <string name="notification_more_conversations">i jeszcze %1$d rozmów</string>
-    <string name="notification_active_peers_title">👥 bitchatowicze w pobliżu!</string>
+    <string name="notification_active_peers_title">👥 Weshowicze w pobliżu!</string>
     <string name="notification_active_peers_one">1 osoba w pobliżu</string>
     <string name="notification_active_peers_many">%1$d osób w pobliżu</string>
     <string name="notification_new_messages">Nowe wiadomości</string>
@@ -107,8 +107,8 @@
     <string name="notification_new_activity_in">Nowa aktywność w %1$s</string>
     <string name="notification_messages_in">Wiadomości w %1$s</string>
     <string name="notification_joined_conversation">%1$s dołączył(a) do rozmowy</string>
-    <string name="notification_geohash_summary_title_mentions">bitchat - %1$d wzmianek</string>
-    <string name="notification_geohash_summary_title">bitchat - czaty lokalizacyjne</string>
+    <string name="notification_geohash_summary_title_mentions">Wesh - %1$d wzmianek</string>
+    <string name="notification_geohash_summary_title">Wesh - czaty lokalizacyjne</string>
     <string name="notification_geohash_summary_text">%1$d wiadomości z %2$d lokalizacji</string>
     <string name="notification_mesh_mention_title_singular">Wzmianka w czacie Mesh</string>
     <string name="notification_mesh_mention_title_plural">%1$d wzmianek w czacie Mesh</string>
@@ -190,7 +190,7 @@
     <string name="cd_open_map">Otwórz mapę</string>
     <string name="cd_remove_bookmark">Usuń zakładkę</string>
     <string name="cd_teleport">Teleportuj</string>
-    <string name="notification_action_quit_bitchat">Zamknij bitchat</string>
+    <string name="notification_action_quit_bitchat">Zamknij Wesh</string>
     <string name="about_background_title">działaj w tle</string>
     <string name="about_background_desc">utrzymuj sieć mesh aktywną po zamknięciu aplikacji (usługa pierwszoplanowa)</string>
     <string name="cd_leave_channel">Opuść kanał</string>
@@ -283,8 +283,8 @@
     <string name="debug_role_client">jako klient (łączymy się)</string>
     <string name="location_services_required">Wymagane usługi lokalizacji</string>
     <string name="privacy_first">Prywatność przede wszystkim</string>
-    <string name="location_explanation">bitchat NIE śledzi Twojej lokalizacji.\n\nUsługi lokalizacji są wymagane do skanowania Bluetooth oraz do funkcji czatu Geohash.</string>
-    <string name="location_needs_for">bitchat potrzebuje usług lokalizacji do:</string>
+    <string name="location_explanation">Wesh NIE śledzi Twojej lokalizacji.\n\nUsługi lokalizacji są wymagane do skanowania Bluetooth oraz do funkcji czatu Geohash.</string>
+    <string name="location_needs_for">Wesh potrzebuje usług lokalizacji do:</string>
     <string name="location_needs_bullets">• Skanowania urządzeń Bluetooth\n• Wykrywania pobliskich użytkowników w sieci mesh\n• Funkcji czatu geohash\n• Brak śledzenia lub gromadzenia lokalizacji</string>
     <string name="background_location_required_title">Zalecana lokalizacja w tle</string>
     <string name="background_location_required_subtitle">opcjonalne, poprawia niezawodność sieci mesh</string>
@@ -298,7 +298,7 @@
     <string name="open_location_settings">Otwórz ustawienia lokalizacji</string>
     <string name="check_again">Sprawdź ponownie</string>
     <string name="location_services_unavailable">Usługi lokalizacji niedostępne</string>
-    <string name="location_unavailable_explanation">Usługi lokalizacji są niedostępne na tym urządzeniu. Jest to nietypowe, ponieważ usługi lokalizacji są standardem w urządzeniach z Androidem.\n\nbitchat potrzebuje usług lokalizacji, aby skanowanie Bluetooth działało poprawnie (wymóg Androida). Bez tego aplikacja nie może wykrywać pobliskich użytkowników.</string>
+    <string name="location_unavailable_explanation">Usługi lokalizacji są niedostępne na tym urządzeniu. Jest to nietypowe, ponieważ usługi lokalizacji są standardem w urządzeniach z Androidem.\n\nWesh potrzebuje usług lokalizacji, aby skanowanie Bluetooth działało poprawnie (wymóg Androida). Bez tego aplikacja nie może wykrywać pobliskich użytkowników.</string>
     <string name="checking_location_services">Sprawdzanie usług lokalizacji…</string>
     <string name="bluetooth_required">Wymagany Bluetooth</string>
     <string name="bluetooth_needs_for">Wesh potrzebuje Bluetooth, aby:</string>
@@ -326,7 +326,7 @@
     <string name="privacy_bullets">• The local salon is public: peers can read, relay and retain messages.\n• Private messages are encrypted. Verify each contact by QR on your own phone.\n• Bluetooth messages can be relayed: no geographic boundary is guaranteed.</string>
     <string name="permissions_header">uprawnienia</string>
     <string name="grant_permissions">Przyznaj uprawnienia</string>
-    <string name="location_tracking_warning">bitchat NIE śledzi Twojej lokalizacji</string>
+    <string name="location_tracking_warning">Wesh NIE śledzi Twojej lokalizacji</string>
     <string name="nobody_around">nikogo w pobliżu…</string>
     <string name="you_suffix"> (ty)</string>
     <string name="pan_zoom_instruction">przesuwaj i powiększaj, aby wybrać geohash</string>

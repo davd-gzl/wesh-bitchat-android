@@ -61,7 +61,7 @@ class BluetoothStatusManager(
             if (isEnabled) {
                 onBluetoothEnabled()
             } else {
-                onBluetoothDisabled("Bluetooth is required for bitchat to discover and connect to nearby users. Please enable Bluetooth to continue.")
+                onBluetoothDisabled(context.getString(com.bitchat.android.R.string.wesh_bluetooth_required_to_discover))
             }
         }
     }
@@ -146,7 +146,7 @@ class BluetoothStatusManager(
             }
             BluetoothStatus.NOT_SUPPORTED -> {
                 Log.e(TAG, "Bluetooth not supported")
-                onBluetoothDisabled("This device doesn't support Bluetooth, which is required for bitchat to function.")
+                onBluetoothDisabled(context.getString(com.bitchat.android.R.string.wesh_bluetooth_unsupported))
             }
         }
     }
@@ -157,7 +157,7 @@ class BluetoothStatusManager(
     fun getStatusMessage(status: BluetoothStatus): String {
         return when (status) {
             BluetoothStatus.ENABLED -> "Bluetooth is enabled and ready"
-            BluetoothStatus.DISABLED -> "Bluetooth is disabled. Please enable Bluetooth to use bitchat."
+            BluetoothStatus.DISABLED -> context.getString(com.bitchat.android.R.string.wesh_bluetooth_disabled)
             BluetoothStatus.NOT_SUPPORTED -> "This device doesn't support Bluetooth."
         }
     }
