@@ -86,7 +86,7 @@ class WeshVerificationHandlerTest {
     }
     @After fun cleanup() {
         WeshContactStore.resetForTesting()
-        com.bitchat.android.services.WeshQrIdentity.io = kotlinx.coroutines.Dispatchers.IO
+        com.bitchat.android.services.WeshQrIdentity.resetForTesting()
     }
     private fun respond() = handler.didReceiveVerifyResponse(peer, VerificationService.buildVerifyResponse(qr.noiseKeyHex, nonce!!)!!)
     @Test fun `pending response completes local proof only within exact sixty second window`() = scope.runTest {
@@ -215,6 +215,30 @@ class WeshVerificationHandlerTest {
         assertTrue(handler.beginQRVerification(qr))
         respond(); runCurrent()
         assertNull(store.contacts.value.single().npub)
+    }
+    @Test fun `a panic while owned npubs are read off the Main thread enrolls nothing`() = scope.runTest {
+        // A key-store dispatcher that holds its work until released.
+        val held = ArrayDeque<Runnable>()
+        com.bitchat.android.services.WeshQrIdentity.io = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) { held.addLast(block) }
+        }
+        val identity: SecureIdentityStateManager = mock()
+        handler = VerificationHandler(mock<Context>().also {
+            whenever(it.getString(any())).thenReturn("Synthetic verification title")
+            whenever(it.getString(any(), any())).thenReturn("Synthetic verification notice")
+        }, scope, { mesh }, identity, state(), mock(), mock(), { time })
+        qr = npubQR(syntheticNpub, "Synthetic panic race", syntheticSigner)
+        assertTrue(handler.beginQRVerification(qr))
+        respond(); runCurrent()
+        // The response is checked and the handler now waits on the key store read: panic now.
+        handler.clearWeshVerifications()
+        store.clear()
+        assertTrue(held.isNotEmpty())
+        while (held.isNotEmpty()) held.removeFirst().run()
+        runCurrent()
+        assertTrue(store.contacts.value.isEmpty())
+        verify(identity, never()).setVerifiedFingerprint(any(), any())
+        assertEquals("unavailable", handler.weshProgress(qr.noiseKeyHex))
     }
     @Test fun `my own or unknown own npub enrolls the contact Bluetooth only`() = scope.runTest {
         enroll(npubQR(syntheticNpub), mine = syntheticNpub)

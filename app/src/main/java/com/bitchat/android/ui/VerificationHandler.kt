@@ -157,11 +157,17 @@ class VerificationHandler(
             )
             if (!ok) return@launch
 
-            pendingQRVerifications.remove(peerID)
+            // Read my npubs (key store, off the Main thread) before claiming the attempt. A panic
+            // during that read clears the attempt and bumps the generation; nothing suspends between
+            // the claim below and the writes, so a wiped contact can never be re-enrolled.
+            val generation = weshGeneration
+            val owned = ownedNpubs()
+            if (generation != weshGeneration || !pendingQRVerifications.remove(peerID, pending)) return@launch
+            if (!isFreshAttempt(pending)) return@launch
             val fp = fingerprintFromNoiseHex(pending.noiseKeyHex) ?: return@launch
             // The QR signature covers the npub and this response proves the signer holds the Noise session.
             // A contact list that could not be read must never be replaced: abort the verification.
-            contacts.enroll(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname, pending.npub, pending.npubProof, ownedNpubs())
+            contacts.enroll(pending.noiseKeyHex.dataFromHexString() ?: return@launch, pending.nickname, pending.npub, pending.npubProof, owned)
                 ?: return@launch
             completedAttempts[pending.noiseKeyHex.lowercase()] = nowMs()
             identityManager.setVerifiedFingerprint(fp, true)
@@ -190,7 +196,10 @@ class VerificationHandler(
     internal fun isFreshAttemptTime(startedAt: Long): Boolean = (nowMs() - startedAt) in 0..60_000L
     private fun isFreshAttempt(pending: PendingVerification): Boolean = isFreshAttemptTime(pending.startedAtMs)
 
-    fun clearWeshVerifications() { pendingQRVerifications.clear(); completedAttempts.clear() }
+    /** Bumped by panic so a verification resumed after it never writes. */
+    @Volatile private var weshGeneration = 0L
+
+    fun clearWeshVerifications() { weshGeneration++; pendingQRVerifications.clear(); completedAttempts.clear() }
 
     fun cancelWeshVerification(conversationID: String) {
         pendingQRVerifications.entries.removeIf { (_, pending) ->

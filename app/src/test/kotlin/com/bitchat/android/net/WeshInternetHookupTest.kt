@@ -34,6 +34,7 @@ class WeshInternetHookupTest {
 
     @Before fun closed() {
         WeshInternetMode.resetForTesting()
+        WeshQrIdentity.resetForTesting()
         NostrRelayManager.shared.disconnect()
     }
 

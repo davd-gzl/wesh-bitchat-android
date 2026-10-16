@@ -18,10 +18,17 @@ internal object WeshQrIdentity {
      * stays closed until the user opts in. While closed, my QR carries no npub and scanned npubs
      * are not bound.
      */
-    @Volatile var internetActive: () -> Boolean = { com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork() }
+    @Volatile var internetActive: () -> Boolean = ::networkGateOpen
 
     /** Key store and registry reads never run on the caller's (often Main) thread. */
     @Volatile internal var io: CoroutineDispatcher = Dispatchers.IO
+
+    private fun networkGateOpen(): Boolean = com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()
+
+    internal fun resetForTesting() {
+        internetActive = ::networkGateOpen
+        io = Dispatchers.IO
+    }
 
     fun isActive(): Boolean = runCatching { internetActive() }.getOrDefault(false)
 
