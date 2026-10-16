@@ -167,4 +167,42 @@ class PaveDisplayNameTest {
         assertEquals("a a a a a a a a…a a a a a a a a", safe(filler + "Vous", listOf("Vous")))
         assertEquals("a a a a a a a a…a a a a a a a a", safe(filler + "No" + cp(0x200B) + "ra"))
     }
+
+    @Test
+    fun `default-ignorable code points are invisible, not marks`() {
+        assertEquals("?", safe("Nora" + cp(0x034F) + "Lee")) // combining grapheme joiner
+        assertEquals("?", safe("Nora" + cp(0xE0100) + "Lee")) // variation selector 17
+        assertEquals("?", safe("Nora" + cp(0x180F) + "Lee")) // Mongolian free variation selector four
+        assertEquals("?", safe("Nora" + cp(0xFFF0) + "Lee")) // reserved default-ignorable
+        assertEquals("Nora", safe("Nora" + cp(0x034F, 0xE0100)))
+    }
+
+    @Test
+    fun `capital I and small i read like l on both sides`() {
+        val reserved = listOf("No nickname", "Not verified", "Failed")
+        assertEquals("!", safe("NO NICKNAME", reserved))
+        assertEquals("!", safe("NOT VERIFIED", reserved))
+        assertEquals("!", safe("FAILED", reserved))
+        assertEquals("!", safe("Fa1led", reserved))
+        assertEquals("Lina", safe("Lina", reserved))
+    }
+
+    @Test
+    fun `emoji joiners and selectors are kept only in their exact place`() {
+        val heart = cp(0x2764)
+        val fire = cp(0x1F525)
+        assertEquals(heart + cp(0xFE0F, 0x200D) + fire, safe(heart + cp(0xFE0F, 0x200D) + fire))
+        assertEquals(cp(0x23, 0xFE0F, 0x20E3), safe(cp(0x23, 0xFE0F, 0x20E3)))
+        assertEquals("?", safe(heart + cp(0xFE0F, 0xFE0F) + " Nora")) // doubled selector
+        assertEquals("?", safe(heart + cp(0x200D) + " Nora")) // joiner not followed by a symbol
+        assertEquals("?", safe(cp(0x1F469, 0x200D, 0x200D, 0x1F4BB) + " Nora")) // doubled joiner
+        assertEquals("?", safe("Nora " + cp(0x200D) + heart)) // joiner not preceded by a symbol
+        assertEquals("?", safe("A" + cp(0xFE0F, 0x20E3) + " Nora")) // keycap needs 0-9, # or *
+    }
+
+    @Test
+    fun `kept selectors do not reset the mark budget`() {
+        val heart = cp(0x2764, 0xFE0F)
+        assertEquals("$heart$acute$acute", safe(heart + acute.repeat(4)))
+    }
 }

@@ -20,6 +20,13 @@ class PaveDisplayNameVectorsTest {
     }
 
     @Test
+    fun `after-lowercase table matches the shared fixture`() {
+        val shared = fixture.getAsJsonObject("afterLowercase").entrySet().associate { (key, value) -> key to value.asString }
+        val local = PaveDisplayName.AFTER_LOWERCASE.entries.associate { (key, value) -> key.toString() to value.toString() }
+        assertEquals(shared, local)
+    }
+
+    @Test
     fun `every shared vector gives the expected outcome in French and English`() {
         val reservedWords = fixture.getAsJsonArray("reservedForTest").map { it.asString } +
             PaveStringResources.reservedWords()

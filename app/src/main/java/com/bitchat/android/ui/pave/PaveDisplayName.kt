@@ -11,7 +11,7 @@ import java.text.Normalizer
  * 2. Invisible characters (control, format such as bidi and zero-width, surrogate, private-use,
  *    unassigned, blank glyphs) are stripped at both ends; one between visible characters makes
  *    the whole name unnamed rather than being removed silently. Emoji keep their joiner and
- *    presentation selectors ([hiddenFlags]); tag characters are refused everywhere.
+ *    presentation selectors, strictly in place ([isKeptEmojiJoiner]); tags are refused everywhere.
  * 3. At most [MAX_COMBINING_MARKS] marks per character; one line.
  * 4. Letters mixing confusable scripts (Latin, Greek, Cyrillic, Armenian, Cherokee) make it unnamed.
  * 5. At most [MAX_GRAPHEMES] graphemes, elided in the middle.
@@ -36,66 +36,95 @@ object PaveDisplayName {
     )
 
     /**
-     * Look-alikes folded before lowercasing when comparing with reserved words. Same table as the
-     * shared vectors file; PaveDisplayNameVectorsTest keeps the two equal.
+     * Look-alikes (Cyrillic, Greek, Latin small capitals, dotless i) folded before lowercasing when
+     * comparing with reserved words. Same table as the shared vectors file;
+     * PaveDisplayNameVectorsTest keeps the two equal.
      */
     internal val CONFUSABLES: Map<Char, Char> = mapOf(
-        'А' to 'a', // Cyrillic Capital Letter A
-        'В' to 'b', // Cyrillic Capital Letter Ve
-        'Е' to 'e', // Cyrillic Capital Letter Ie
-        'К' to 'k', // Cyrillic Capital Letter Ka
-        'М' to 'm', // Cyrillic Capital Letter Em
-        'Н' to 'h', // Cyrillic Capital Letter En
-        'О' to 'o', // Cyrillic Capital Letter O
-        'Р' to 'p', // Cyrillic Capital Letter Er
-        'С' to 'c', // Cyrillic Capital Letter Es
-        'Т' to 't', // Cyrillic Capital Letter Te
-        'Х' to 'x', // Cyrillic Capital Letter Ha
-        'У' to 'y', // Cyrillic Capital Letter U
-        'а' to 'a', // Cyrillic Small Letter A
-        'е' to 'e', // Cyrillic Small Letter Ie
-        'о' to 'o', // Cyrillic Small Letter O
-        'р' to 'p', // Cyrillic Small Letter Er
-        'с' to 'c', // Cyrillic Small Letter Es
-        'у' to 'y', // Cyrillic Small Letter U
-        'х' to 'x', // Cyrillic Small Letter Ha
-        'і' to 'i', // Cyrillic Small Letter Byelorussian-Ukrainian I
-        'ј' to 'j', // Cyrillic Small Letter Je
-        'ѕ' to 's', // Cyrillic Small Letter Dze
-        'ԁ' to 'd', // Cyrillic Small Letter Komi De
-        'һ' to 'h', // Cyrillic Small Letter Shha
-        'ӏ' to 'l', // Cyrillic Small Letter Palochka
-        'Ӏ' to 'l', // Cyrillic Letter Palochka
-        'І' to 'i', // Cyrillic Capital Letter Byelorussian-Ukrainian I
-        'Ј' to 'j', // Cyrillic Capital Letter Je
-        'Ѕ' to 's', // Cyrillic Capital Letter Dze
-        'ԛ' to 'q', // Cyrillic Small Letter Qa
-        'ԝ' to 'w', // Cyrillic Small Letter We
-        'Α' to 'a', // Greek Capital Letter Alpha
-        'Β' to 'b', // Greek Capital Letter Beta
-        'Ε' to 'e', // Greek Capital Letter Epsilon
-        'Ζ' to 'z', // Greek Capital Letter Zeta
-        'Η' to 'h', // Greek Capital Letter Eta
-        'Ι' to 'i', // Greek Capital Letter Iota
-        'Κ' to 'k', // Greek Capital Letter Kappa
-        'Μ' to 'm', // Greek Capital Letter Mu
-        'Ν' to 'n', // Greek Capital Letter Nu
-        'Ο' to 'o', // Greek Capital Letter Omicron
-        'Ρ' to 'p', // Greek Capital Letter Rho
-        'Τ' to 't', // Greek Capital Letter Tau
-        'Υ' to 'y', // Greek Capital Letter Upsilon
-        'Χ' to 'x', // Greek Capital Letter Chi
-        'α' to 'a', // Greek Small Letter Alpha
-        'ι' to 'i', // Greek Small Letter Iota
-        'κ' to 'k', // Greek Small Letter Kappa
-        'ν' to 'v', // Greek Small Letter Nu
-        'ο' to 'o', // Greek Small Letter Omicron
-        'ρ' to 'p', // Greek Small Letter Rho
-        '0' to 'o',
-        '1' to 'l',
-        'I' to 'l',
-        'υ' to 'u', // Greek Small Letter Upsilon
+        '\u0410' to 'a', // Cyrillic Capital Letter A
+        '\u0412' to 'b', // Cyrillic Capital Letter Ve
+        '\u0415' to 'e', // Cyrillic Capital Letter Ie
+        '\u041A' to 'k', // Cyrillic Capital Letter Ka
+        '\u041C' to 'm', // Cyrillic Capital Letter Em
+        '\u041D' to 'h', // Cyrillic Capital Letter En
+        '\u041E' to 'o', // Cyrillic Capital Letter O
+        '\u0420' to 'p', // Cyrillic Capital Letter Er
+        '\u0421' to 'c', // Cyrillic Capital Letter Es
+        '\u0422' to 't', // Cyrillic Capital Letter Te
+        '\u0425' to 'x', // Cyrillic Capital Letter Ha
+        '\u0423' to 'y', // Cyrillic Capital Letter U
+        '\u0430' to 'a', // Cyrillic Small Letter A
+        '\u0435' to 'e', // Cyrillic Small Letter Ie
+        '\u043E' to 'o', // Cyrillic Small Letter O
+        '\u0440' to 'p', // Cyrillic Small Letter Er
+        '\u0441' to 'c', // Cyrillic Small Letter Es
+        '\u0443' to 'y', // Cyrillic Small Letter U
+        '\u0445' to 'x', // Cyrillic Small Letter Ha
+        '\u0456' to 'i', // Cyrillic Small Letter Byelorussian-Ukrainian I
+        '\u0458' to 'j', // Cyrillic Small Letter Je
+        '\u0455' to 's', // Cyrillic Small Letter Dze
+        '\u0501' to 'd', // Cyrillic Small Letter Komi De
+        '\u04BB' to 'h', // Cyrillic Small Letter Shha
+        '\u04CF' to 'l', // Cyrillic Small Letter Palochka
+        '\u04C0' to 'l', // Cyrillic Letter Palochka
+        '\u0406' to 'i', // Cyrillic Capital Letter Byelorussian-Ukrainian I
+        '\u0408' to 'j', // Cyrillic Capital Letter Je
+        '\u0405' to 's', // Cyrillic Capital Letter Dze
+        '\u051B' to 'q', // Cyrillic Small Letter Qa
+        '\u051D' to 'w', // Cyrillic Small Letter We
+        '\u0391' to 'a', // Greek Capital Letter Alpha
+        '\u0392' to 'b', // Greek Capital Letter Beta
+        '\u0395' to 'e', // Greek Capital Letter Epsilon
+        '\u0396' to 'z', // Greek Capital Letter Zeta
+        '\u0397' to 'h', // Greek Capital Letter Eta
+        '\u0399' to 'i', // Greek Capital Letter Iota
+        '\u039A' to 'k', // Greek Capital Letter Kappa
+        '\u039C' to 'm', // Greek Capital Letter Mu
+        '\u039D' to 'n', // Greek Capital Letter Nu
+        '\u039F' to 'o', // Greek Capital Letter Omicron
+        '\u03A1' to 'p', // Greek Capital Letter Rho
+        '\u03A4' to 't', // Greek Capital Letter Tau
+        '\u03A5' to 'y', // Greek Capital Letter Upsilon
+        '\u03A7' to 'x', // Greek Capital Letter Chi
+        '\u03B1' to 'a', // Greek Small Letter Alpha
+        '\u03B9' to 'i', // Greek Small Letter Iota
+        '\u03BA' to 'k', // Greek Small Letter Kappa
+        '\u03BD' to 'v', // Greek Small Letter Nu
+        '\u03BF' to 'o', // Greek Small Letter Omicron
+        '\u03C1' to 'p', // Greek Small Letter Rho
+        '\u03C5' to 'u', // Greek Small Letter Upsilon
+        '\u1D00' to 'a', // Latin Letter Small Capital A
+        '\u0299' to 'b', // Latin Letter Small Capital B
+        '\u1D04' to 'c', // Latin Letter Small Capital C
+        '\u1D05' to 'd', // Latin Letter Small Capital D
+        '\u1D07' to 'e', // Latin Letter Small Capital E
+        '\uA730' to 'f', // Latin Letter Small Capital F
+        '\u0262' to 'g', // Latin Letter Small Capital G
+        '\u029C' to 'h', // Latin Letter Small Capital H
+        '\u026A' to 'i', // Latin Letter Small Capital I
+        '\u1D0A' to 'j', // Latin Letter Small Capital J
+        '\u1D0B' to 'k', // Latin Letter Small Capital K
+        '\u029F' to 'l', // Latin Letter Small Capital L
+        '\u1D0D' to 'm', // Latin Letter Small Capital M
+        '\u0274' to 'n', // Latin Letter Small Capital N
+        '\u1D0F' to 'o', // Latin Letter Small Capital O
+        '\u1D18' to 'p', // Latin Letter Small Capital P
+        '\u0280' to 'r', // Latin Letter Small Capital R
+        '\uA731' to 's', // Latin Letter Small Capital S
+        '\u1D1B' to 't', // Latin Letter Small Capital T
+        '\u1D1C' to 'u', // Latin Letter Small Capital U
+        '\u1D20' to 'v', // Latin Letter Small Capital V
+        '\u1D21' to 'w', // Latin Letter Small Capital W
+        '\u028F' to 'y', // Latin Letter Small Capital Y
+        '\u1D22' to 'z', // Latin Letter Small Capital Z
+        '\u0131' to 'i', // Latin Small Letter Dotless I
     )
+
+    /**
+     * Applied after lowercasing, to names and reserved words alike, so "NO NICKNAME", "N0 nickname"
+     * and "no nickname" share one skeleton. Same table as the shared vectors file.
+     */
+    internal val AFTER_LOWERCASE: Map<Char, Char> = mapOf('i' to 'l', 'l' to 'l', '1' to 'l', '0' to 'o')
 
     /**
      * Assigned code points that still draw nothing: Hangul fillers, Braille blank, Khmer inherent
@@ -106,38 +135,50 @@ object PaveDisplayName {
             codePoint == 0x2800 || codePoint == 0x17B4 || codePoint == 0x17B5 ||
             codePoint in 0x180B..0x180E || codePoint in 0xFE00..0xFE0F
 
-    private fun isInvisible(codePoint: Int): Boolean = isBlankGlyph(codePoint) ||
+    /** Unicode Default_Ignorable_Code_Point (DerivedCoreProperties): never drawn, never a mark. */
+    private fun isDefaultIgnorable(codePoint: Int): Boolean =
+        codePoint == 0x00AD || codePoint == 0x034F || codePoint == 0x061C || codePoint == 0xFEFF ||
+            codePoint in 0x115F..0x1160 || codePoint in 0x17B4..0x17B5 || codePoint in 0x180B..0x180F ||
+            codePoint in 0x200B..0x200F || codePoint in 0x202A..0x202E || codePoint in 0x2060..0x206F ||
+            codePoint == 0x3164 || codePoint in 0xFE00..0xFE0F || codePoint == 0xFFA0 ||
+            codePoint in 0xFFF0..0xFFF8 || codePoint in 0x1BCA0..0x1BCA3 || codePoint in 0x1D173..0x1D17A ||
+            codePoint in 0xE0000..0xE0FFF
+
+    private fun isInvisible(codePoint: Int): Boolean = isBlankGlyph(codePoint) || isDefaultIgnorable(codePoint) ||
         when (Character.getType(codePoint).toByte()) {
             Character.CONTROL, Character.FORMAT, Character.SURROGATE,
             Character.PRIVATE_USE, Character.UNASSIGNED -> true
             else -> false
         }
 
+    /** For each code point, whether it draws nothing (see [isKeptEmojiJoiner] for the exception). */
+    private fun hiddenFlags(codePoints: IntArray): BooleanArray =
+        BooleanArray(codePoints.size) { index -> isInvisible(codePoints[index]) && !isKeptEmojiJoiner(codePoints, index) }
+
+    private fun isSymbol(codePoint: Int?): Boolean =
+        codePoint != null && Character.getType(codePoint).toByte() == Character.OTHER_SYMBOL
+
+    private fun isKeycapBase(codePoint: Int?): Boolean =
+        codePoint != null && (codePoint in '0'.code..'9'.code || codePoint == '#'.code || codePoint == '*'.code)
+
     /**
-     * For each code point of [text], whether it draws nothing. The zero-width joiner and the text
-     * and emoji presentation selectors are kept inside a grapheme that holds a symbol (So) or the
-     * keycap mark, so "❤️", "👩‍💻" and "1️⃣" survive; anywhere else they count as invisible.
+     * The only invisible code points kept, so "❤️", "👩‍💻" and "1️⃣" survive: a presentation selector
+     * once, right after a symbol (So) or after 0-9, # or * followed by the keycap mark; a zero-width
+     * joiner between two symbols, the first one possibly with its selector. A doubled, leading or
+     * trailing joiner or selector stays invisible.
      */
-    private fun hiddenFlags(text: String): BooleanArray {
-        val flags = BooleanArray(text.codePointCount(0, text.length))
-        val graphemes = BreakIterator.getCharacterInstance().apply { setText(text) }
-        var start = graphemes.first()
-        var end = graphemes.next()
-        var index = 0
-        while (end != BreakIterator.DONE) {
-            val grapheme = text.substring(start, end)
-            val emoji = grapheme.codePoints().anyMatch {
-                Character.getType(it).toByte() == Character.OTHER_SYMBOL || it == COMBINING_KEYCAP
-            }
-            grapheme.codePoints().forEach { codePoint ->
-                val emojiJoiner = codePoint == ZERO_WIDTH_JOINER || codePoint == TEXT_PRESENTATION ||
-                    codePoint == EMOJI_PRESENTATION
-                flags[index++] = isInvisible(codePoint) && !(emoji && emojiJoiner)
-            }
-            start = end
-            end = graphemes.next()
+    private fun isKeptEmojiJoiner(codePoints: IntArray, index: Int): Boolean {
+        val before = codePoints.getOrNull(index - 1)
+        val after = codePoints.getOrNull(index + 1)
+        return when (codePoints[index]) {
+            TEXT_PRESENTATION, EMOJI_PRESENTATION ->
+                isSymbol(before) || (isKeycapBase(before) && after == COMBINING_KEYCAP)
+            ZERO_WIDTH_JOINER -> isSymbol(after) && (
+                isSymbol(before) ||
+                    ((before == TEXT_PRESENTATION || before == EMOJI_PRESENTATION) && isSymbol(codePoints.getOrNull(index - 2)))
+                )
+            else -> false
         }
-        return flags
     }
 
     private fun isSpace(codePoint: Int): Boolean = Character.isWhitespace(codePoint) || Character.isSpaceChar(codePoint)
@@ -173,7 +214,7 @@ object PaveDisplayName {
         if (raw.isNullOrEmpty()) return null
         val normalized = Normalizer.normalize(clampRaw(raw), Normalizer.Form.NFKC)
         val codePoints = normalized.codePoints().toArray()
-        val hidden = hiddenFlags(normalized)
+        val hidden = hiddenFlags(codePoints)
         var start = 0
         var end = codePoints.size
         while (start < end && (hidden[start] || isSpace(codePoints[start]))) start++
@@ -183,6 +224,11 @@ object PaveDisplayName {
         for (index in start until end) {
             val codePoint = codePoints[index]
             if (hidden[index]) return null
+            if (isInvisible(codePoint)) {
+                // A kept emoji joiner or selector: neither a mark nor a reset of the mark count.
+                out.appendCodePoint(codePoint)
+                continue
+            }
             if (isMark(codePoint)) {
                 if (out.isEmpty() || out.last() == ' ' || ++marks > MAX_COMBINING_MARKS) continue
             } else {
@@ -249,14 +295,14 @@ object PaveDisplayName {
     }
 
     /**
-     * Words of [text] as skeletons: NFKD, [CONFUSABLES], lowercase, marks dropped, letters and digits
+     * Words of [text] as skeletons: NFKD, [CONFUSABLES], lowercase, [AFTER_LOWERCASE], marks dropped, letters and digits
      * only. Anything that is not a letter, digit or mark separates words: "V.ó-us" is v, o, us.
      */
     internal fun skeletonWords(text: String): List<String> {
         val words = mutableListOf<String>()
         val word = StringBuilder()
         Normalizer.normalize(text, Normalizer.Form.NFKD).codePoints().forEach { codePoint ->
-            val folded = Character.toLowerCase(fold(codePoint))
+            val folded = fold(codePoint)
             when {
                 Character.isLetterOrDigit(folded) -> word.appendCodePoint(folded)
                 isMark(folded) -> Unit
@@ -270,8 +316,11 @@ object PaveDisplayName {
         return words
     }
 
-    private fun fold(codePoint: Int): Int =
-        if (Character.isBmpCodePoint(codePoint)) CONFUSABLES[codePoint.toChar()]?.code ?: codePoint else codePoint
+    private fun fold(codePoint: Int): Int {
+        if (!Character.isBmpCodePoint(codePoint)) return Character.toLowerCase(codePoint)
+        val lower = Character.toLowerCase(CONFUSABLES[codePoint.toChar()]?.code ?: codePoint)
+        return if (Character.isBmpCodePoint(lower)) AFTER_LOWERCASE[lower.toChar()]?.code ?: lower else lower
+    }
 
     /**
      * At most [MAX_GRAPHEMES] graphemes, ellipsis included. A long name keeps its start and its end

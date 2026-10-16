@@ -58,10 +58,32 @@
     "ν": "v",
     "ο": "o",
     "ρ": "p",
-    "0": "o",
-    "1": "l",
-    "I": "l",
-    "υ": "u"
+    "υ": "u",
+    "ᴀ": "a",
+    "ʙ": "b",
+    "ᴄ": "c",
+    "ᴅ": "d",
+    "ᴇ": "e",
+    "ꜰ": "f",
+    "ɢ": "g",
+    "ʜ": "h",
+    "ɪ": "i",
+    "ᴊ": "j",
+    "ᴋ": "k",
+    "ʟ": "l",
+    "ᴍ": "m",
+    "ɴ": "n",
+    "ᴏ": "o",
+    "ᴘ": "p",
+    "ʀ": "r",
+    "ꜱ": "s",
+    "ᴛ": "t",
+    "ᴜ": "u",
+    "ᴠ": "v",
+    "ᴡ": "w",
+    "ʏ": "y",
+    "ᴢ": "z",
+    "ı": "i"
   },
   "reservedForTest": [
     "Vous",
@@ -189,6 +211,59 @@
     {
       "input": "Nora󠁁󠁂 Lee",
       "expect": "unnamed"
+    },
+    {
+      "input": "NO NICKNAME",
+      "expect": "reserved"
+    },
+    {
+      "input": "No nıckname",
+      "expect": "reserved"
+    },
+    {
+      "input": "ᴠᴏᴜꜱ",
+      "expect": "reserved"
+    },
+    {
+      "input": "ʏᴏᴜ",
+      "expect": "reserved"
+    },
+    {
+      "input": "Nora͏Lee",
+      "expect": "unnamed"
+    },
+    {
+      "input": "Nora󠄀Lee",
+      "expect": "unnamed"
+    },
+    {
+      "input": "Lina",
+      "expect": "display",
+      "display": "Lina"
+    },
+    {
+      "input": "❤️️ Nora",
+      "expect": "unnamed"
+    },
+    {
+      "input": "❤‍ Nora",
+      "expect": "unnamed"
+    },
+    {
+      "input": "👩‍‍💻 Nora",
+      "expect": "unnamed"
+    },
+    {
+      "input": "1️⃣ Nora",
+      "expect": "display",
+      "display": "1️⃣ Nora"
     }
-  ]
+  ],
+  "afterLowercase": {
+    "i": "l",
+    "l": "l",
+    "1": "l",
+    "0": "o"
+  },
+  "afterLowercaseNote": "Applied after the confusables table and lowercasing, on both the name and every reserved word."
 }
