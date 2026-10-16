@@ -221,6 +221,14 @@ object NostrIdentityBridge {
         }
     }
 
+    /** Panic path: the Nostr key and device seed are gone from disk when this returns true. */
+    fun panicClearKeys(context: Context): Boolean {
+        geohashIdentityCache.clear()
+        val stateManager = SecureIdentityStateManager(context)
+        return stateManager.clearSecureValuesSynchronously(NOSTR_PRIVATE_KEY, DEVICE_SEED_KEY) &&
+            !stateManager.hasSecureValue(NOSTR_PRIVATE_KEY) && !stateManager.hasSecureValue(DEVICE_SEED_KEY)
+    }
+
     fun clearGeohashIdentityCache(geohashes: Collection<String>) {
         geohashes.forEach(geohashIdentityCache::remove)
     }

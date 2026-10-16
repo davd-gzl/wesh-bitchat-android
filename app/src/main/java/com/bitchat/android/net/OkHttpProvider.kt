@@ -1,13 +1,20 @@
 package com.bitchat.android.net
 
+import okhttp3.Dns
 import okhttp3.OkHttpClient
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Proxy
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
+/** No SOCKS address: Wesh never falls back to a direct connection. */
+class TorRequiredException : IOException("Tor is not available; direct connections are disabled")
+
 /**
- * Centralized OkHttp provider to ensure all network traffic honors Tor settings.
+ * Centralized OkHttp provider. Every client goes through Tor's SOCKS proxy; without a SOCKS
+ * address no client is built and callers get [TorRequiredException].
  */
 object OkHttpProvider {
     enum class Route {
@@ -23,6 +30,11 @@ object OkHttpProvider {
     private val httpClientRef = AtomicReference<RoutedClient?>(null)
     private val wsClientRef = AtomicReference<OkHttpClient?>(null)
     private val clientLock = Any()
+
+    internal var socksAddressProvider: () -> InetSocketAddress? = { ArtiTorManager.getInstance().currentSocksAddress() }
+
+    /** Host names go to Tor unresolved (SOCKS5 ATYP 0x03); a local lookup would leak them. */
+    private val noLocalDns = Dns { hostname -> throw UnknownHostException("Local DNS disabled: $hostname") }
 
     fun reset() {
         synchronized(clientLock) {
@@ -67,15 +79,12 @@ object OkHttpProvider {
     }
 
     private fun baseBuilderForCurrentProxy(): Pair<OkHttpClient.Builder, Route> {
+        // Tor publishes the SOCKS address as soon as Tor mode is ON, even before bootstrap, so
+        // early calls fail on the local port instead of leaking. No address means no client.
+        val socks: InetSocketAddress = socksAddressProvider() ?: throw TorRequiredException()
         val builder = OkHttpClient.Builder()
-        val torProvider = ArtiTorManager.getInstance()
-        val socks: InetSocketAddress? = torProvider.currentSocksAddress()
-        // If a SOCKS address is defined, always use it. TorProvider sets this as soon as Tor mode is ON,
-        // even before bootstrap, to prevent any direct connections from occurring.
-        if (socks != null) {
-            val proxy = Proxy(Proxy.Type.SOCKS, socks)
-            builder.proxy(proxy)
-        }
-        return builder to if (socks == null) Route.DIRECT else Route.TOR
+            .proxy(Proxy(Proxy.Type.SOCKS, socks))
+            .dns(noLocalDns)
+        return builder to Route.TOR
     }
 }
