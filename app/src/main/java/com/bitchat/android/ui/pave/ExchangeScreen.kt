@@ -81,7 +81,9 @@ fun ExchangeScreen(
     LaunchedEffect(progress.complete) { if (progress.complete) currentOnCompleted() }
 
     val modules = remember(myQrPayload) { myQrPayload?.let(::encodeQrModules) }
-    val contact = contactNickname ?: stringResource(R.string.wesh_pave_exchange_contact_fallback)
+    // The contact's nickname comes from their QR code: sanitized here so no caller can forget it.
+    val contact = PaveDisplayName.safe(contactNickname, stringResource(R.string.wesh_pave_exchange_contact_fallback))
+    val me = PaveDisplayName.safe(myNickname, stringResource(R.string.wesh_pave_unnamed))
     val shape = RoundedCornerShape(WeshRadius.control)
 
     Column(
@@ -119,7 +121,7 @@ fun ExchangeScreen(
             }
         }
         Text(
-            stringResource(R.string.wesh_pave_exchange_renew, myNickname, renewsInMinutes),
+            stringResource(R.string.wesh_pave_exchange_renew, me, renewsInMinutes),
             style = WeshType.caption,
             color = c.inkMuted,
         )

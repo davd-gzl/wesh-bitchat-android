@@ -82,7 +82,7 @@ fun SettingsScreen(
         )
         Column {
             val rows = listOf(
-                PaveSettingsEntry.Profile to (R.string.wesh_pave_settings_profile to summary.nickname),
+                PaveSettingsEntry.Profile to (R.string.wesh_pave_settings_profile to PaveDisplayName.safe(summary.nickname, stringResource(R.string.wesh_pave_unnamed))),
                 PaveSettingsEntry.Connexion to (R.string.wesh_pave_settings_connexion to stringResource(R.string.wesh_pave_settings_connexion_value)),
                 PaveSettingsEntry.Discretion to (R.string.wesh_pave_settings_discretion to stringResource(
                     if (summary.previewsHidden) R.string.wesh_pave_settings_previews_hidden else R.string.wesh_pave_settings_previews_shown
