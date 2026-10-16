@@ -2,11 +2,11 @@ package com.bitchat.android.ui.pave
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PaveDisplayNameTest {
-    private fun safe(raw: String?) = PaveDisplayName.safe(raw, fallback = "?")
+    private fun safe(raw: String?, reserved: List<String> = emptyList()) =
+        PaveDisplayName.remote(raw, unnamed = "?", reserved = "!", reservedWords = reserved)
 
     /** Builds strings from code points so no invisible character sits in this source file. */
     private fun cp(vararg codePoints: Int) = String(codePoints, 0, codePoints.size)
@@ -24,23 +24,32 @@ class PaveDisplayNameTest {
     }
 
     @Test
-    fun `strips bidi overrides and invisible format characters`() {
-        assertEquals("Noragpj.exe", safe("Nora${rlo}gpj.exe"))
-        assertEquals("Nora", safe("No${zwsp}ra$lri$pdi"))
+    fun `an invisible character inside the name hides the whole name`() {
+        assertEquals("?", safe("Nora${rlo}gpj.exe"))
+        assertEquals("?", safe("No${zwsp}ra$lri$pdi"))
+        assertEquals("?", safe("Nora $zwsp Sami"))
+    }
+
+    @Test
+    fun `invisible characters at either end are stripped`() {
+        assertEquals("Nora", safe("$lri$zwsp Nora $pdi$rlo"))
     }
 
     @Test
     fun `stays on one line without control or private-use characters`() {
-        val name = safe("Nora\nVérifiée\r\t" + cp(0x07, 0xE000))
+        assertEquals("?", safe("Nora\nVérifiée"))
+        assertEquals("?", safe("Nora" + cp(0xE000) + "Sami"))
+        val name = safe("\tNora Vérifiée\r\n" + cp(0x07, 0xE000))
         assertFalse(name.contains('\n') || name.contains('\r') || name.contains('\t'))
-        assertEquals("NoraVérifiée", name)
+        assertEquals("Nora Vérifiée", name)
         assertEquals("Nora Sami", safe("Nora" + cp(0x2028) + "Sami"))
         assertEquals("Nora Sami", safe("  Nora " + cp(0x00A0, 0x3000) + " Sami  "))
     }
 
     @Test
-    fun `lone surrogates are removed`() {
-        assertEquals("Nora", safe("No" + 0xD800.toChar() + "ra"))
+    fun `lone surrogates are stripped at the ends and hide the name inside`() {
+        assertEquals("Nora", safe("Nora" + 0xD800.toChar()))
+        assertEquals("?", safe("No" + 0xD800.toChar() + "ra"))
     }
 
     @Test
@@ -57,11 +66,11 @@ class PaveDisplayNameTest {
     }
 
     @Test
-    fun `long names are clamped to whole graphemes`() {
+    fun `long names are elided in the middle on whole graphemes`() {
         val grapheme = "x$acute$acute"
         val result = safe(grapheme.repeat(40))
-        assertTrue(result.endsWith("…"))
-        assertEquals(grapheme.repeat(PaveDisplayName.MAX_GRAPHEMES), result.removeSuffix("…"))
+        assertEquals(grapheme.repeat(16) + "…" + grapheme.repeat(15), result)
+        assertEquals("Nora la vraie qu…ongtemps ou pas", safe("Nora la vraie qui ecrit trop longtemps ou pas"))
         val exact = "a".repeat(PaveDisplayName.MAX_GRAPHEMES)
         assertEquals(exact, safe(exact))
     }
@@ -72,7 +81,8 @@ class PaveDisplayNameTest {
         assertEquals("?", safe(cp(0x2800))) // Braille blank
         assertEquals("?", safe(cp(0x1160))) // Hangul jungseong filler
         assertEquals("?", safe(cp(0x115F, 0xFFA0, 0x17B4, 0x17B5, 0x180B, 0x180E, 0xFE00, 0xFE0F)))
-        assertEquals("Nora", safe("No" + cp(0x3164) + "ra" + cp(0x2800)))
+        assertEquals("Nora", safe(cp(0x3164) + "Nora" + cp(0x2800)))
+        assertEquals("?", safe("No" + cp(0x3164) + "ra"))
     }
 
     @Test
@@ -87,5 +97,31 @@ class PaveDisplayNameTest {
         assertEquals("?", safe(null))
         assertEquals("?", safe("   "))
         assertEquals("?", safe(rlo + zwsp + cp(0)))
+    }
+
+    @Test
+    fun `letters mixing confusable scripts hide the name`() {
+        assertEquals("?", safe("N" + cp(0x043E) + "ra")) // Cyrillic o in a Latin name
+        assertEquals("?", safe(cp(0x0391) + "lex")) // Greek Alpha
+        assertEquals("Вера 42", safe("Вера 42"))
+        assertEquals("小明 Lee", safe("小明 Lee"))
+    }
+
+    @Test
+    fun `a name reading as a reserved word is masked`() {
+        val reserved = listOf("Vous", "Sans surnom", "You")
+        assertEquals("!", safe("v o u s", reserved))
+        assertEquals("!", safe("Sans surnom Nora", reserved))
+        assertEquals("You Nora", safe("You Nora", reserved)) // under 4 letters: only the whole name
+        assertEquals("!", safe("Y0U", reserved))
+        assertEquals("Nora", safe("Nora", reserved))
+    }
+
+    @Test
+    fun `the elided name is checked too`() {
+        // In full, "zz" splits it into "vo zz us"; once elided, only "vo…us" is left.
+        val name = "Vo" + ".".repeat(15) + "zz" + ".".repeat(15) + "us"
+        assertEquals("Vo" + ".".repeat(14) + "…" + ".".repeat(13) + "us", safe(name))
+        assertEquals("!", safe(name, listOf("Vous")))
     }
 }

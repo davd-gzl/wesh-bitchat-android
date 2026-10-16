@@ -59,7 +59,7 @@ fun Composer(
     val over = ComposerLimits.isOverLimit(bytes)
     val canSend = enabled && ComposerLimits.canSend(value)
     val isPublic = room == PaveRoom.Public
-    val name = PaveDisplayName.safe(recipient, stringResource(R.string.wesh_pave_unnamed))
+    val name = remoteDisplayName(recipient)
     val hint = if (isPublic) stringResource(R.string.wesh_pave_composer_public_hint)
     else stringResource(R.string.wesh_pave_composer_private_hint, name)
     val sendLabel = if (isPublic) stringResource(R.string.wesh_pave_send_public)

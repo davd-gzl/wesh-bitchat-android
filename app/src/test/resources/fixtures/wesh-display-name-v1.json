@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "rule": "docs/plan/design/system/README.md#surnom-distant-regle-unique-ios-et-android-v1",
+  "outcomes": {
+    "display": "the expected visible string",
+    "unnamed": "the platform string for « Sans surnom » / « No nickname »",
+    "reserved": "the platform string for « Sans surnom (réservé) » / « No nickname (reserved) »"
+  },
+  "confusables": {
+    "А": "a",
+    "В": "b",
+    "Е": "e",
+    "К": "k",
+    "М": "m",
+    "Н": "h",
+    "О": "o",
+    "Р": "p",
+    "С": "c",
+    "Т": "t",
+    "Х": "x",
+    "У": "y",
+    "а": "a",
+    "е": "e",
+    "о": "o",
+    "р": "p",
+    "с": "c",
+    "у": "y",
+    "х": "x",
+    "і": "i",
+    "ј": "j",
+    "ѕ": "s",
+    "ԁ": "d",
+    "һ": "h",
+    "ӏ": "l",
+    "Ӏ": "l",
+    "І": "i",
+    "Ј": "j",
+    "Ѕ": "s",
+    "ԛ": "q",
+    "ԝ": "w",
+    "Α": "a",
+    "Β": "b",
+    "Ε": "e",
+    "Ζ": "z",
+    "Η": "h",
+    "Ι": "i",
+    "Κ": "k",
+    "Μ": "m",
+    "Ν": "n",
+    "Ο": "o",
+    "Ρ": "p",
+    "Τ": "t",
+    "Υ": "y",
+    "Χ": "x",
+    "α": "a",
+    "ι": "i",
+    "κ": "k",
+    "ν": "v",
+    "ο": "o",
+    "ρ": "p",
+    "0": "o",
+    "1": "l",
+    "I": "l",
+    "υ": "u"
+  },
+  "reservedForTest": [
+    "Vous",
+    "You",
+    "Sans surnom",
+    "No nickname",
+    "Sans surnom (réservé)",
+    "No nickname (reserved)"
+  ],
+  "vectors": [
+    {
+      "input": "Nora",
+      "expect": "display",
+      "display": "Nora"
+    },
+    {
+      "input": "  Nora  ",
+      "expect": "display",
+      "display": "Nora"
+    },
+    {
+      "input": "​Nora​",
+      "expect": "display",
+      "display": "Nora"
+    },
+    {
+      "input": "No​ra",
+      "expect": "unnamed"
+    },
+    {
+      "input": "No‮ra",
+      "expect": "unnamed"
+    },
+    {
+      "input": "ㅤ",
+      "expect": "unnamed"
+    },
+    {
+      "input": "",
+      "expect": "unnamed"
+    },
+    {
+      "input": "Nóra",
+      "expect": "display",
+      "display": "Nóra"
+    },
+    {
+      "input": "Вера",
+      "expect": "display",
+      "display": "Вера"
+    },
+    {
+      "input": "Nоra",
+      "expect": "unnamed"
+    },
+    {
+      "input": "Υου",
+      "expect": "reserved"
+    },
+    {
+      "input": "Vоus",
+      "expect": "unnamed"
+    },
+    {
+      "input": "VOUS",
+      "expect": "reserved"
+    },
+    {
+      "input": "V0us",
+      "expect": "reserved"
+    },
+    {
+      "input": "V.ó-us",
+      "expect": "reserved"
+    },
+    {
+      "input": "Sans  surnom",
+      "expect": "reserved"
+    },
+    {
+      "input": "Nora sans surnom",
+      "expect": "reserved"
+    },
+    {
+      "input": "Vousseau",
+      "expect": "display",
+      "display": "Vousseau"
+    },
+    {
+      "input": "Vous Nora",
+      "expect": "reserved"
+    },
+    {
+      "input": "Nora la vraie qui ecrit trop longtemps ou pas",
+      "expect": "display",
+      "display": "Nora la vraie qu…ongtemps ou pas"
+    },
+    {
+      "input": "小明 Lee",
+      "expect": "display",
+      "display": "小明 Lee"
+    },
+    {
+      "input": "Nora (No nickname)",
+      "expect": "reserved"
+    }
+  ]
+}
