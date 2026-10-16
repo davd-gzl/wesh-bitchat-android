@@ -100,4 +100,4 @@ done
   } | sort -k2 > SHA256SUMS
 )
 
-echo "Verified unsigned phone and Wear AABs were signed locally with the Play upload key and checksummed."
+echo "Verified unsigned phone AAB was signed locally with the Play upload key and checksummed."
