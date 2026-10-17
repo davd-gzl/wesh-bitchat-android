@@ -495,26 +495,55 @@ class FragmentManager(
     /**
      * Releases what [ingressKey] holds. Each reconnection gets a new link ID, so without this a
      * radio reconnecting a few times would hold every global slot until they expire.
-     * - An assembly only this link fed is dropped.
-     * - One other open links also fed is kept, so their genuine fragments are not lost, and is
-     *   handed to the contributor that delivered most of it: its slot then counts there.
-     * - The closed link's byte share is struck from every assembly it fed.
+     * - An assembly the closed link opened is handed, with the closed link's byte share, to an
+     *   open contributor that still has slot and byte room (the one that delivered most of it
+     *   first), so honest fragments are not lost; with no such contributor it is dropped.
+     * - In an assembly another link owns, the closed link's share moves to that owner, or the
+     *   assembly is dropped when the owner has no byte room for it.
+     * Every buffered byte thus stays counted against an open link, and quotas stay bounded.
      * Fragments still queued from the closed link are relayed but not kept.
      */
     fun onIngressLinkClosed(ingressKey: String) {
+        val limits = com.bitchat.android.util.AppConstants.Fragmentation
         synchronized(fragmentStateLock) {
             closedLinks.remove(ingressKey)
             closedLinks.add(ingressKey)
             if (closedLinks.size > MAX_CLOSED_LINKS) closedLinks.remove(closedLinks.first())
-            linkBufferedBytes.remove(ingressKey)
             fragmentMetadata.entries.toList().forEach { (assemblyKey, metadata) ->
+                val opened = metadata.ingressKey == ingressKey
+                if (!opened && ingressKey !in metadata.bytesByLink) return@forEach
+                val share = metadata.bytesByLink[ingressKey] ?: 0
+                fun hasRoom(link: String) =
+                    (linkBufferedBytes[link] ?: 0L) + share <= limits.MAX_FRAGMENT_BYTES_PER_LINK
+                val heir = if (!opened) {
+                    metadata.ingressKey.takeIf(::hasRoom)
+                } else {
+                    metadata.bytesByLink.entries
+                        .filter { it.key != ingressKey && it.key !in closedLinks }
+                        .sortedByDescending { it.value }
+                        .map { it.key }
+                        .firstOrNull { link ->
+                            val linkSets = fragmentMetadata.values.filter { it.ingressKey == link }
+                            hasRoom(link) &&
+                                linkSets.size < limits.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK &&
+                                linkSets.count { it.senderKey == metadata.senderKey } < limits.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK_SENDER
+                        }
+                }
+                if (heir == null) {
+                    removeFragmentSetLocked(assemblyKey)
+                    return@forEach
+                }
                 metadata.bytesByLink.remove(ingressKey)
-                if (metadata.ingressKey != ingressKey) return@forEach
-                val heir = metadata.bytesByLink.entries
-                    .filter { it.key !in closedLinks }
-                    .maxByOrNull { it.value }?.key
-                if (heir == null) removeFragmentSetLocked(assemblyKey) else metadata.ingressKey = heir
+                if (share > 0) {
+                    metadata.bytesByLink.merge(heir, share) { a, b -> a + b }
+                    linkBufferedBytes.merge(heir, share.toLong()) { a, b -> a + b }
+                    val left = (linkBufferedBytes[ingressKey] ?: 0L) - share
+                    if (left > 0L) linkBufferedBytes[ingressKey] = left else linkBufferedBytes.remove(ingressKey)
+                }
+                metadata.ingressKey = heir
             }
+            // Every share was handed over or freed above.
+            linkBufferedBytes.remove(ingressKey)
         }
     }
 
