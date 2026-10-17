@@ -119,28 +119,6 @@ class PermissionManager(private val context: Context) {
     }
 
     /**
-     * Background location permission is required on Android 10+ for background BLE scanning.
-     * Must be requested after foreground location permissions are granted.
-     */
-    fun needsBackgroundLocationPermission(): Boolean {
-        // Wesh never asks for background location; the manifest removes the permission.
-        return !com.bitchat.android.BuildConfig.WESH_POLICY && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-    }
-
-    fun getBackgroundLocationPermission(): String? {
-        return if (needsBackgroundLocationPermission()) {
-            Manifest.permission.ACCESS_BACKGROUND_LOCATION
-        } else {
-            null
-        }
-    }
-
-    fun isBackgroundLocationGranted(): Boolean {
-        val permission = getBackgroundLocationPermission() ?: return true
-        return isPermissionGranted(permission)
-    }
-
-    /**
      * Get optional permissions that improve the experience but aren't required.
      * Currently includes POST_NOTIFICATIONS on Android 13+.
      */
@@ -229,11 +207,6 @@ class PermissionManager(private val context: Context) {
         return getRequiredPermissions().filter { !isPermissionGranted(it) }
     }
 
-    fun getMissingBackgroundLocationPermission(): List<String> {
-        val permission = getBackgroundLocationPermission() ?: return emptyList()
-        return if (isPermissionGranted(permission)) emptyList() else listOf(permission)
-    }
-
     /**
      * Get categorized permission information for display
      */
@@ -294,19 +267,6 @@ class PermissionManager(private val context: Context) {
             )
         }
 
-        if (needsBackgroundLocationPermission()) {
-            val backgroundPermission = listOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-            categories.add(
-                PermissionCategory(
-                    type = PermissionType.BACKGROUND_LOCATION,
-                    description = context.getString(R.string.perm_background_location_desc),
-                    permissions = backgroundPermission,
-                    isGranted = backgroundPermission.all { isPermissionGranted(it) },
-                    systemDescription = context.getString(R.string.perm_background_location_system)
-                )
-            )
-        }
-
         // Notifications category (if applicable)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             categories.add(
@@ -358,7 +318,7 @@ class PermissionManager(private val context: Context) {
                 appendLine()
             }
             
-            val missing = getMissingPermissions() + getMissingBackgroundLocationPermission()
+            val missing = getMissingPermissions()
             if (missing.isNotEmpty()) {
                 appendLine("Missing permissions:")
                 missing.forEach { permission ->
@@ -390,7 +350,6 @@ data class PermissionCategory(
 enum class PermissionType(val nameValue: String) {
     NEARBY_DEVICES("Nearby Devices"),
     PRECISE_LOCATION("Precise Location"),
-    BACKGROUND_LOCATION("Background Location"),
     MICROPHONE("Microphone"),
     NOTIFICATIONS("Notifications"),
     WIFI_AWARE("Wi‑Fi Aware"),

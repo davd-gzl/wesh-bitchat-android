@@ -36,7 +36,6 @@
     <string name="wesh_pave_bt_legacy_no_gps">Wesh n’utilise pas votre position.</string>
     <string name="wesh_pave_continue">Continuer</string>
     <string name="wesh_pave_bt_denied">Sans Bluetooth, Wesh ne trouve personne autour.</string>
-    <string name="wesh_pave_bt_continue_without">Continuer sans Bluetooth</string>
     <string name="wesh_pave_connexion_title">Connexion</string>
     <string name="wesh_pave_bt_active">Bluetooth actif</string>
     <string name="wesh_pave_bt_off_body">Activez Bluetooth pour parler aux téléphones autour.</string>

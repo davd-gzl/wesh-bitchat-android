@@ -21,14 +21,18 @@ class WeshPermissionPolicyTest {
         assertFalse(permissions.contains(Manifest.permission.ACCESS_FINE_LOCATION))
         assertFalse(permissions.contains(Manifest.permission.ACCESS_COARSE_LOCATION))
         assertFalse(permissions.contains(Manifest.permission.NEARBY_WIFI_DEVICES))
-        assertFalse(manager.needsBackgroundLocationPermission())
+        assertNoBackgroundLocation(manager)
     }
 
     @Test @Config(sdk = [30])
     fun `legacy Android keeps foreground location for Bluetooth scanning but never background location`() {
         val manager = PermissionManager(ApplicationProvider.getApplicationContext<Application>())
         assertTrue(manager.getRequiredPermissions().contains(Manifest.permission.ACCESS_FINE_LOCATION))
-        assertFalse(manager.needsBackgroundLocationPermission())
-        assertTrue(manager.getMissingBackgroundLocationPermission().isEmpty())
+        assertNoBackgroundLocation(manager)
+    }
+
+    private fun assertNoBackgroundLocation(manager: PermissionManager) {
+        val requested = manager.getRequiredPermissions() + manager.getOptionalPermissions()
+        assertFalse(requested.contains(Manifest.permission.ACCESS_BACKGROUND_LOCATION))
     }
 }

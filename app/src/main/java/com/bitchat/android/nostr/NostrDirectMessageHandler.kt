@@ -29,8 +29,6 @@ class NostrDirectMessageHandler(
     private val privateChatManager: PrivateChatManager,
     private val updateDeliveryStatus: (String, DeliveryStatus) -> Unit,
     private val scope: CoroutineScope,
-    private val repo: GeohashRepository,
-    private val dataManager: com.bitchat.android.ui.DataManager,
     private val seenStoreProvider: () -> SeenMessageStore = {
         SeenMessageStore.getInstance(application)
     }
@@ -55,7 +53,7 @@ class NostrDirectMessageHandler(
         return false
     }
 
-    fun onGiftWrap(giftWrap: NostrEvent, geohash: String, identity: NostrIdentity) {
+    fun onGiftWrap(giftWrap: NostrEvent, identity: NostrIdentity) {
         scope.launch {
             try {
                 if (dedupe(giftWrap.id)) return@launch
@@ -72,9 +70,6 @@ class NostrDirectMessageHandler(
                 val (content, rawSenderPubkey, rumorTimestamp) = decryptResult
                 val senderPubkey = rawSenderPubkey.lowercase()
 
-                // If sender is blocked for geohash contexts, drop any events from this pubkey
-                // Applies to both geohash DMs (geohash != "") and account DMs (geohash == "")
-                if (dataManager.isGeohashUserBlocked(senderPubkey)) return@launch
                 if (!content.startsWith("bitchat1:")) return@launch
 
                 val base64Content = content.removePrefix("bitchat1:")
@@ -86,26 +81,10 @@ class NostrDirectMessageHandler(
                 val noisePayload = NoisePayload.decode(packet.payload) ?: return@launch
                 val messageTimestamp = Date(rumorTimestamp * 1000L)
                 val convKey = "nostr_${senderPubkey.take(16)}"
-                repo.putNostrKeyMapping(convKey, senderPubkey)
                 com.bitchat.android.nostr.GeohashAliasRegistry.put(convKey, senderPubkey)
-                if (geohash.isNotEmpty()) {
-                    // Remember which geohash this conversation belongs to so we can subscribe on-demand
-                    repo.setConversationGeohash(convKey, geohash)
-                    GeohashConversationRegistry.set(convKey, geohash)
-                }
 
-                // Ensure sender appears in geohash people list even if they haven't posted publicly yet
-                if (geohash.isNotEmpty()) {
-                    // Cache a best-effort nickname and mark as participant
-                    val cached = repo.getCachedNickname(senderPubkey)
-                    if (cached == null) {
-                        val base = repo.displayNameForNostrPubkeyUI(senderPubkey).substringBefore("#")
-                        repo.cacheNickname(senderPubkey, base)
-                    }
-                    repo.updateParticipant(geohash, senderPubkey, messageTimestamp)
-                }
-
-                val senderNickname = repo.displayNameForNostrPubkeyUI(senderPubkey)
+                // Account DMs carry no nickname; the conversation list resolves the contact name.
+                val senderNickname = "anon"
                 val conversationID = ContactDirectory.canonicalConversationId(convKey)
 
                 processNoisePayload(noisePayload, conversationID, senderNickname, messageTimestamp, senderPubkey, identity)

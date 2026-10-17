@@ -3,7 +3,6 @@ package com.bitchat.android.ui
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
-import com.bitchat.android.geohash.DEFAULT_LIVE_LOCATION_ENABLED
 import com.google.gson.Gson
 import kotlin.random.Random
 
@@ -45,33 +44,6 @@ class DataManager(private val context: Context) {
     
     fun saveNickname(nickname: String) {
         prefs.edit().putString("nickname", nickname).apply()
-    }
-    
-    // MARK: - Geohash Channel Persistence
-    
-    fun loadLastGeohashChannel(): String? {
-        return prefs.getString("last_geohash_channel", null)
-    }
-    
-    fun saveLastGeohashChannel(channelData: String) {
-        prefs.edit().putString("last_geohash_channel", channelData).apply()
-        Log.d(TAG, "Saved last geohash channel")
-    }
-    
-    fun clearLastGeohashChannel() {
-        prefs.edit().remove("last_geohash_channel").apply()
-        Log.d(TAG, "Cleared last geohash channel")
-    }
-
-    // MARK: - Location Services State
-    
-    fun saveLocationServicesEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("location_services_enabled", enabled).commit()
-        Log.d(TAG, "Saved location services enabled state: $enabled")
-    }
-    
-    fun isLocationServicesEnabled(): Boolean {
-        return prefs.getBoolean("location_services_enabled", DEFAULT_LIVE_LOCATION_ENABLED)
     }
     
     // MARK: - Channel Data Management
@@ -224,44 +196,12 @@ class DataManager(private val context: Context) {
         return _blockedUsers.contains(fingerprint)
     }
     
-    // MARK: - Geohash Blocked Users Management
-    
-    private val _geohashBlockedUsers = mutableSetOf<String>() // Set of nostr pubkey hex
-    val geohashBlockedUsers: Set<String> get() = _geohashBlockedUsers.toSet()
-    
-    @Synchronized
-    fun loadGeohashBlockedUsers() {
-        val savedGeohashBlockedUsers = prefs.getStringSet("geohash_blocked_users", emptySet()) ?: emptySet()
-        _geohashBlockedUsers.clear()
-        _geohashBlockedUsers.addAll(savedGeohashBlockedUsers)
-    }
-    
-    fun saveGeohashBlockedUsers() {
-        prefs.edit().putStringSet("geohash_blocked_users", _geohashBlockedUsers).apply()
-    }
-    
-    fun addGeohashBlockedUser(pubkeyHex: String) {
-        _geohashBlockedUsers.add(pubkeyHex)
-        saveGeohashBlockedUsers()
-    }
-    
-    fun removeGeohashBlockedUser(pubkeyHex: String) {
-        _geohashBlockedUsers.remove(pubkeyHex)
-        saveGeohashBlockedUsers()
-    }
-    
-    @Synchronized
-    fun isGeohashUserBlocked(pubkeyHex: String): Boolean {
-        return _geohashBlockedUsers.contains(pubkeyHex)
-    }
-    
     // MARK: - Emergency Clear
     
     fun clearAllData() {
         _channelCreators.clear()
         _favoritePeers.clear()
         _blockedUsers.clear()
-        _geohashBlockedUsers.clear()
         _channelMembers.clear()
         prefs.edit().clear().apply()
     }

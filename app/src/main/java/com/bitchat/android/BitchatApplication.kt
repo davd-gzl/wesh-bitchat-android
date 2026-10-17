@@ -1,7 +1,6 @@
 package com.bitchat.android
 
 import android.app.Application
-import com.bitchat.android.nostr.RelayDirectory
 import com.bitchat.android.ui.theme.ThemePreferenceManager
 import com.bitchat.android.net.ArtiTorManager
 
@@ -34,12 +33,6 @@ class BitchatApplication : Application() {
         if (com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) {
             try { ArtiTorManager.getInstance().init(this) } catch (_: Exception) { }
         }
-        // Product policy: Wesh has no relay directory and no location notes, Internet or not.
-        if (!BuildConfig.WESH_POLICY) {
-            RelayDirectory.initialize(this)
-            try { com.bitchat.android.nostr.LocationNotesInitializer.initialize(this) } catch (_: Exception) { }
-        }
-
         // Initialize favorites persistence early so MessageRouter/NostrTransport can use it on startup
         com.bitchat.android.favorites.FavoritesPersistenceService.initialize(this)
 
@@ -71,15 +64,13 @@ class BitchatApplication : Application() {
             com.bitchat.android.wifiaware.WifiAwareController.initialize(this, enabled)
         } catch (_: Exception) { }
 
-        // Initialize Geohash Registries for persistence
+        // Initialize the Nostr alias registry for persistence
         try {
             com.bitchat.android.nostr.GeohashAliasRegistry.initialize(this)
-            com.bitchat.android.nostr.GeohashConversationRegistry.initialize(this)
         } catch (_: Exception) { }
 
-        // Own relay connectivity, selected-channel subscriptions, and presence scheduling at the
-        // process level so closing the Activity does not disconnect Nostr.
-        // Self-gated: Wesh runs no geohash channel or presence, and its relay sockets follow the toggle.
+        // Own relay connectivity and account-DM subscriptions at the process level so closing the
+        // Activity does not disconnect Nostr. Self-gated: its relay sockets follow the toggle.
         try { com.bitchat.android.nostr.NostrBackgroundRuntime.initialize(this) } catch (_: Exception) { }
 
         // Initialize mesh service preferences

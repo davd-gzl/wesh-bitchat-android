@@ -30,10 +30,8 @@ internal class NostrBackgroundEventProcessor(
     private val dataManager = DataManager(application.applicationContext).apply {
         state.setNickname(loadNickname())
         loadBlockedUsers()
-        loadGeohashBlockedUsers()
     }
     private val messageManager = MessageManager(state)
-    private val geohashRepository = GeohashRepository(application, state, dataManager)
     private val privateChatManager = PrivateChatManager(
         state = state,
         messageManager = messageManager,
@@ -45,21 +43,12 @@ internal class NostrBackgroundEventProcessor(
         },
         trackUnreadMessages = false
     )
-    private val geohashMessageHandler = GeohashMessageHandler(
-        application = application,
-        repo = geohashRepository,
-        scope = scope,
-        dataManager = dataManager,
-        addChannelMessage = AppStateStore::addChannelMessage
-    )
     private val directMessageHandler = NostrDirectMessageHandler(
         application = application,
         state = state,
         privateChatManager = privateChatManager,
         updateDeliveryStatus = ::updateDeliveryStatus,
-        scope = scope,
-        repo = geohashRepository,
-        dataManager = dataManager
+        scope = scope
     )
 
     init {
@@ -78,28 +67,8 @@ internal class NostrBackgroundEventProcessor(
 
     fun onAccountDm(event: NostrEvent, identity: NostrIdentity) {
         refreshBlockLists()
-        directMessageHandler.onGiftWrap(event, "", identity)
+        directMessageHandler.onGiftWrap(event, identity)
     }
-
-    fun onGeohashMessage(event: NostrEvent, geohash: String) {
-        refreshBlockLists()
-        geohashMessageHandler.onEvent(event, geohash)
-    }
-
-    fun onGeohashDm(event: NostrEvent, geohash: String, identity: NostrIdentity) {
-        refreshBlockLists()
-        directMessageHandler.onGiftWrap(event, geohash, identity)
-    }
-
-    fun conversationGeohash(conversationKey: String): String? =
-        geohashRepository.getConversationGeohash(conversationKey)
-            ?: GeohashConversationRegistry.get(conversationKey)
-
-    fun displayNameForNostrPubkey(pubkeyHex: String): String =
-        geohashRepository.displayNameForNostrPubkeyUI(pubkeyHex)
-
-    fun displayNameForGeohashConversation(pubkeyHex: String, sourceGeohash: String): String =
-        geohashRepository.displayNameForGeohashConversation(pubkeyHex, sourceGeohash)
 
     private fun updateDeliveryStatus(messageId: String, status: DeliveryStatus) {
         messageManager.updateMessageDeliveryStatus(messageId, status)
@@ -110,6 +79,5 @@ internal class NostrBackgroundEventProcessor(
 
     private fun refreshBlockLists() {
         dataManager.loadBlockedUsers()
-        dataManager.loadGeohashBlockedUsers()
     }
 }

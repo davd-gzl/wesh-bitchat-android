@@ -193,7 +193,7 @@ private fun appendMutedTimestamp(
 }
 
 /**
- * Build the message body: neutral text with mention/URL/geohash accents, followed by an inline
+ * Build the message body: neutral text with mention/URL accents, followed by an inline
  * trailing timestamp.
  *
  * Body text is intentionally neutral rather than peer-colored. Colour is reserved for
@@ -407,7 +407,7 @@ internal fun colorForMention(
 }
 
 /**
- * A bare `anon` label means the geohash heartbeat has not announced a username yet. The transport
+ * A bare `anon` label means the peer has not announced a username yet. The transport
  * may append a `#abcd` disambiguator, which does not turn it into an announced name. Names such as
  * `anon1234`, `anonymous`, and `anonracer` are real announced usernames.
  */
@@ -420,8 +420,8 @@ internal fun isUnannouncedNickname(displayName: String): Boolean {
  * iOS-style content formatting with proper hashtag and mention handling.
  *
  * Redesign notes:
- *  - Plain text renders in Material `onSurface`; colour is reserved for `@mentions`,
- *    links and geohashes.
+ *  - Plain text renders in Material `onSurface`; colour is reserved for `@mentions`
+ *    and links.
  *  - Mentions get a tinted background chip so they read as a distinct token inside a sentence.
  *    The chip is tinted by *the mentioned peer's* colour, not the sender's, so `@alice` looks
  *    the same everywhere she is referenced.
@@ -465,16 +465,6 @@ private fun appendIOSFormattedContent(
         allMatches.add(match.range to "mention") 
     }
 
-    // Add standalone geohash matches (e.g., "#9q") that are not part of another word
-    // We use MessageSpecialParser to find exact ranges; then merge with existing ranges avoiding overlaps
-    val geoMatches = MessageSpecialParser.findStandaloneGeohashes(content)
-    for (gm in geoMatches) {
-        val range = gm.start until gm.endExclusive
-        if (!overlapsMention(range)) {
-            allMatches.add(range to "geohash")
-        }
-    }
-
     // Add URL matches (http/https/www/bare domains). Exclude overlaps with mentions.
     val urlMatches = MessageSpecialParser.findUrls(content)
     for (um in urlMatches) {
@@ -484,20 +474,18 @@ private fun appendIOSFormattedContent(
         }
     }
 
-    // Remove generic hashtag matches that overlap with detected geohash ranges to avoid duplicate rendering
+    // Remove generic hashtag matches that overlap with detected URL ranges to avoid duplicate rendering
     fun rangesOverlap(a: IntRange, b: IntRange): Boolean {
         return a.first < b.last && a.last > b.first
     }
     val urlRanges = allMatches.filter { it.second == "url" }.map { it.first }
-    val geoRanges = allMatches.filter { it.second == "geohash" }.map { it.first }
-    if (geoRanges.isNotEmpty() || urlRanges.isNotEmpty()) {
+    if (urlRanges.isNotEmpty()) {
         val iterator = allMatches.listIterator()
         while (iterator.hasNext()) {
             val (range, type) = iterator.next()
-            // Remove generic hashtags that overlap with geohashes or URLs, and geohashes that overlap with URLs
-            val overlapsGeo = geoRanges.any { rangesOverlap(range, it) }
+            // Remove generic hashtags that overlap with URLs
             val overlapsUrl = urlRanges.any { rangesOverlap(range, it) }
-            if ((type == "hashtag" && (overlapsGeo || overlapsUrl)) || (type == "geohash" && overlapsUrl)) iterator.remove()
+            if (type == "hashtag" && overlapsUrl) iterator.remove()
         }
     }
     
@@ -584,21 +572,7 @@ private fun appendIOSFormattedContent(
                 builder.pop()
             }
             else -> {
-                if (type == "geohash") {
-                    // Style geohash as a link and add click annotation
-                    builder.pushStyle(linkStyle)
-                    val start = builder.length
-                    builder.append(matchText)
-                    val end = builder.length
-                    val geohash = matchText.removePrefix("#").lowercase()
-                    builder.addStringAnnotation(
-                        tag = "geohash_click",
-                        annotation = geohash,
-                        start = start,
-                        end = end
-                    )
-                    builder.pop()
-                } else if (type == "url") {
+                if (type == "url") {
                     // Style URL as a link and add click annotation with the raw text
                     builder.pushStyle(linkStyle)
                     val start = builder.length

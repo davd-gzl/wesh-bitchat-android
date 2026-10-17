@@ -21,7 +21,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.Lifecycle
 import com.bitchat.android.mesh.BluetoothMeshService
 import com.bitchat.android.mesh.MeshService
-import com.bitchat.android.geohash.LocationChannelManager
 import com.bitchat.android.onboarding.BluetoothCheckScreen
 import com.bitchat.android.onboarding.BluetoothStatus
 import com.bitchat.android.onboarding.BluetoothStatusManager
@@ -29,7 +28,6 @@ import com.bitchat.android.onboarding.BatteryOptimizationManager
 import com.bitchat.android.onboarding.BatteryOptimizationPreferenceManager
 import com.bitchat.android.onboarding.BatteryOptimizationScreen
 import com.bitchat.android.onboarding.BatteryOptimizationStatus
-import com.bitchat.android.onboarding.BackgroundLocationPermissionScreen
 import com.bitchat.android.onboarding.InitializationErrorScreen
 import com.bitchat.android.onboarding.InitializingScreen
 import com.bitchat.android.onboarding.LocationCheckScreen
@@ -37,7 +35,6 @@ import com.bitchat.android.onboarding.LocationStatus
 import com.bitchat.android.onboarding.LocationStatusManager
 import com.bitchat.android.onboarding.OnboardingCoordinator
 import com.bitchat.android.onboarding.OnboardingState
-import com.bitchat.android.onboarding.PermissionExplanationScreen
 import com.bitchat.android.onboarding.PermissionManager
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.OrientationAwareActivity
@@ -146,9 +143,6 @@ class MainActivity : OrientationAwareActivity() {
             activity = this,
             permissionManager = permissionManager,
             onOnboardingComplete = ::handleOnboardingComplete,
-            onBackgroundLocationRequired = {
-                mainViewModel.updateOnboardingState(OnboardingState.BACKGROUND_LOCATION_EXPLANATION)
-            },
             onOnboardingFailed = ::handleOnboardingFailed
         )
         
@@ -320,28 +314,30 @@ class MainActivity : OrientationAwareActivity() {
             }
             
             OnboardingState.PERMISSION_EXPLANATION -> {
-                PermissionExplanationScreen(
-                    modifier = modifier,
-                    permissionCategories = permissionManager.getCategorizedPermissions(),
-                    onContinue = {
+                // Pavé welcome: nickname, the Bluetooth explanation, then (Android 13+) the
+                // notifications explanation, each before its system prompt.
+                val prefs = chatViewModel.weshPreferences
+                val currentNickname by chatViewModel.nickname.collectAsState()
+                val initialNickname = remember(currentNickname) { welcomeNickname(prefs.welcomed, currentNickname) }
+                val notifications = permissionManager.getUnrequestedOptionalPermissions()
+                    .filter { it == android.Manifest.permission.POST_NOTIFICATIONS }
+                val requiredGranted = permissionManager.areRequiredPermissionsGranted()
+                com.bitchat.android.ui.pave.OnboardingFlow(
+                    onFinished = { chosen, _ ->
+                        // Only a nickname the person actually set replaces the stored one.
+                        if (chosen != initialNickname && com.bitchat.android.ui.pave.NicknameGenerator.isValid(chosen)) {
+                            chatViewModel.setNickname(chosen)
+                        }
+                        prefs.welcomed = true
                         mainViewModel.updateOnboardingState(OnboardingState.PERMISSION_REQUESTING)
+                        // The welcome only finishes with Bluetooth granted; the coordinator asks for anything else missing.
                         onboardingCoordinator.requestPermissions()
-                    }
-                )
-            }
-
-            OnboardingState.BACKGROUND_LOCATION_EXPLANATION -> {
-                BackgroundLocationPermissionScreen(
+                    },
                     modifier = modifier,
-                    onContinue = {
-                        onboardingCoordinator.requestBackgroundLocation()
-                    },
-                    onRetry = {
-                        onboardingCoordinator.checkBackgroundLocationAndProceed()
-                    },
-                    onSkip = {
-                        onboardingCoordinator.skipBackgroundLocation()
-                    }
+                    initialNickname = initialNickname,
+                    start = welcomeStart(prefs.welcomed, requiredGranted, notifications.isNotEmpty()),
+                    askNotifications = notifications.isNotEmpty(),
+                    onNotificationsAsked = { permissionManager.markOptionalPermissionsRequested(notifications) },
                 )
             }
 
@@ -464,15 +460,8 @@ class MainActivity : OrientationAwareActivity() {
             } else if (permissionManager.getUnrequestedOptionalPermissions().isNotEmpty()) {
                 mainViewModel.updateOnboardingState(OnboardingState.PERMISSION_EXPLANATION)
             } else if (permissionManager.areRequiredPermissionsGranted()) {
-                if (permissionManager.needsBackgroundLocationPermission() &&
-                    !permissionManager.isBackgroundLocationGranted() &&
-                    !com.bitchat.android.onboarding.BackgroundLocationPreferenceManager.isSkipped(this@MainActivity)
-                ) {
-                    mainViewModel.updateOnboardingState(OnboardingState.BACKGROUND_LOCATION_EXPLANATION)
-                } else {
-                    mainViewModel.updateOnboardingState(OnboardingState.INITIALIZING)
-                    initializeApp()
-                }
+                mainViewModel.updateOnboardingState(OnboardingState.INITIALIZING)
+                initializeApp()
             } else {
                 mainViewModel.updateOnboardingState(OnboardingState.PERMISSION_EXPLANATION)
             }
@@ -732,14 +721,12 @@ class MainActivity : OrientationAwareActivity() {
                 // Initialize PoW preferences early in the initialization process
                 PoWPreferenceManager.init(this@MainActivity)
                 
-                // Initialize Location Notes Manager (extracted to separate file)
-                if (!BuildConfig.WESH_POLICY) com.bitchat.android.nostr.LocationNotesInitializer.initialize(this@MainActivity)
-                
                 // Ensure all permissions are still granted (user might have revoked in settings)
                 if (!permissionManager.areAllPermissionsGranted()) {
                     val missing = permissionManager.getMissingPermissions()
                     Log.w("MainActivity", "Permissions revoked during initialization: $missing")
-                    handleOnboardingFailed("Some permissions were revoked. Please grant all permissions to continue.")
+                    // Back to the Pavé Bluetooth step, which explains and asks again: never a dead-end error.
+                    mainViewModel.updateOnboardingState(OnboardingState.PERMISSION_EXPLANATION)
                     return@launch
                 }
 
@@ -758,7 +745,7 @@ class MainActivity : OrientationAwareActivity() {
                 dispatchPendingRoute()
             } catch (e: Exception) {
                 Log.e("MainActivity", "Failed to initialize app", e)
-                handleOnboardingFailed("Failed to initialize the app: ${e.message}")
+                handleOnboardingFailed(getString(R.string.wesh_pave_fluo_init_failed))
             }
         }
     }
@@ -810,8 +797,6 @@ class MainActivity : OrientationAwareActivity() {
     
     override fun onResume() {
         super.onResume()
-        // Revoke stale live-location work before any resumed UI can use cached channels.
-        if (!BuildConfig.WESH_POLICY) LocationChannelManager.getInstance(applicationContext).syncPermissionState()
 
         // Check Bluetooth and Location status on resume and handle accordingly
         if (runtimeAttached && mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
@@ -855,16 +840,11 @@ class MainActivity : OrientationAwareActivity() {
     }
     
     /**
-     * Handle intents from notification clicks - open specific private chat or geohash chat
+     * Handle intents from notification clicks - open a specific private chat
      */
     private fun handleNotificationIntent(intent: Intent) {
         val shouldOpenPrivateChat = intent.getBooleanExtra(
             com.bitchat.android.ui.NotificationManager.EXTRA_OPEN_PRIVATE_CHAT, 
-            false
-        )
-        
-        val shouldOpenGeohashChat = intent.getBooleanExtra(
-            com.bitchat.android.ui.NotificationManager.EXTRA_OPEN_GEOHASH_CHAT,
             false
         )
         
@@ -878,33 +858,6 @@ class MainActivity : OrientationAwareActivity() {
                     
                     // Clear notifications for this sender since user is now viewing the chat
                     chatViewModel.clearNotificationsForSender(peerID)
-                }
-            }
-            
-            shouldOpenGeohashChat -> {
-                val geohash = intent.getStringExtra(com.bitchat.android.ui.NotificationManager.EXTRA_GEOHASH)
-                
-                if (geohash != null) {
-                    Log.d("MainActivity", "Opening geohash chat from notification")
-                    
-                    // Switch to the geohash channel - create appropriate geohash channel level
-                    val level = when (geohash.length) {
-                        7 -> com.bitchat.android.geohash.GeohashChannelLevel.BLOCK
-                        6 -> com.bitchat.android.geohash.GeohashChannelLevel.NEIGHBORHOOD
-                        5 -> com.bitchat.android.geohash.GeohashChannelLevel.CITY
-                        4 -> com.bitchat.android.geohash.GeohashChannelLevel.PROVINCE
-                        2 -> com.bitchat.android.geohash.GeohashChannelLevel.REGION
-                        else -> com.bitchat.android.geohash.GeohashChannelLevel.CITY // Default fallback
-                    }
-                    val geohashChannel = com.bitchat.android.geohash.GeohashChannel(level, geohash)
-                    val channelId = com.bitchat.android.geohash.ChannelID.Location(geohashChannel)
-                    chatViewModel.selectLocationChannel(channelId)
-                    
-                    // Update current geohash state for notifications
-                    chatViewModel.setCurrentGeohash(geohash)
-                    
-                    // Clear notifications for this geohash since user is now viewing it
-                    chatViewModel.clearNotificationsForGeohash(geohash)
                 }
             }
         }
@@ -941,4 +894,19 @@ class MainActivity : OrientationAwareActivity() {
         
         // Do not stop mesh here; ForegroundService owns lifecycle for background reliability
     }
+}
+
+/** The nickname the welcome starts from: the stored one, unless it is BitChat's default "anon1234". */
+internal fun welcomeNickname(welcomed: Boolean, stored: String): String? = when {
+    welcomed -> stored
+    stored.isBlank() || Regex("^anon\\d{4}$").matches(stored) -> null
+    else -> stored
+}
+
+/** First launch starts at the welcome; a returning person goes straight to what is missing. */
+internal fun welcomeStart(welcomed: Boolean, requiredGranted: Boolean, notificationsPending: Boolean) = when {
+    !welcomed && !requiredGranted -> com.bitchat.android.ui.pave.OnboardingStart.Welcome
+    !requiredGranted -> com.bitchat.android.ui.pave.OnboardingStart.Bluetooth
+    notificationsPending -> com.bitchat.android.ui.pave.OnboardingStart.Notifications
+    else -> com.bitchat.android.ui.pave.OnboardingStart.Welcome
 }

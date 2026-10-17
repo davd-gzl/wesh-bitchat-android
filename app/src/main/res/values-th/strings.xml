@@ -49,34 +49,19 @@
     <string name="notification_active_peers_title">มีผู้ใช้ใกล้คุณ!</string>
     <string name="notification_active_peers_one">มี 1 คนใกล้คุณ</string>
     <string name="notification_active_peers_many">มี %1$d คนใกล้คุณ</string>
-    <string name="notification_new_messages">ข้อความใหม่</string>
     <string name="notification_new_location_messages">ข้อความตำแหน่งใหม่</string>
-    <string name="notification_mentions_in">ถูกกล่าวถึงใน %1$s</string>
-    <string name="notification_mentions_in_more">ถูกกล่าวถึงใน %1$s (+%2$d)</string>
-    <string name="notification_mentions_in_plural">มี %1$d การกล่าวถึงใน %2$s</string>
-    <string name="notification_new_activity_in">กิจกรรมใหม่ใน %1$s</string>
-    <string name="notification_messages_in">ข้อความใน %1$s</string>
-    <string name="notification_joined_conversation">%1$s ได้เข้าร่วมการสนทนา</string>
-    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d การกล่าวถึง</string>
-    <string name="notification_geohash_summary_title">Wesh – แชทตามตำแหน่ง</string>
-    <string name="notification_geohash_summary_text">%1$d ข้อความจาก %2$d พื้นที่</string>
     <string name="notification_mesh_mention_title_singular">ถูกกล่าวถึงในแชทเมช</string>
     <string name="notification_mesh_mention_title_plural">ถูกกล่าวถึง %1$d ครั้งในแชทเมช</string>
-    <string name="notification_more_locations">และอีก %1$d พื้นที่</string>
     <string name="notification_and_more">และอีก %1$d</string>
 
     <!-- การช่วยสำหรับการเข้าถึงรายการโปรด -->
     <string name="cd_add_favorite">เพิ่มในรายการโปรด</string>
     <string name="cd_remove_favorite">เอาออกจากรายการโปรด</string>
-    <string name="cd_add_bookmark">เพิ่มที่คั่นหน้า</string>
 
     <!-- ส่วนหัวแชท &amp; การช่วยสำหรับการเข้าถึง -->
     <string name="cd_nostr_reachable">ติดต่อได้ผ่าน Nostr</string>
     <string name="cd_unread_private_messages">ข้อความส่วนตัวยังไม่ได้อ่าน</string>
-    <string name="cd_teleported">เทเลพอร์ตแล้ว</string>
-    <string name="cd_open_location_channels">เปิดการตั้งค่าตำแหน่งและช่อง</string>
     <string name="cd_connected_peers">เพียร์ที่เชื่อมต่อ</string>
-    <string name="cd_geohash_participants">ผู้เข้าร่วม geohash</string>
     <string name="cd_ready_for_handshake">พร้อมสำหรับการจับมือ</string>
     <string name="cd_handshake_in_progress">กำลังจับมือ</string>
     <string name="cd_encrypted">เข้ารหัสจากปลายทางถึงปลายทาง</string>
@@ -94,8 +79,6 @@
     <!-- แผ่นข้อมูลเกี่ยวกับ -->
     <string name="about_offline_mesh_title">แชทเมชออฟไลน์</string>
     <string name="about_offline_mesh_desc">สื่อสารโดยตรงผ่าน Bluetooth LE โดยไม่ใช้อินเทอร์เน็ตหรือเซิร์ฟเวอร์ ข้อความจะถูกส่งต่อผ่านอุปกรณ์ใกล้เคียงเพื่อขยายระยะ</string>
-    <string name="about_online_geohash_title">ช่อง geohash ออนไลน์</string>
-    <string name="about_online_geohash_desc">เชื่อมต่อกับผู้คนใกล้คุณผ่านช่องที่อ้างอิง geohash ขยายเมชผ่านรีเลย์อินเทอร์เน็ตสาธารณะ</string>
     <string name="about_e2e_title">การเข้ารหัสแบบปลายทางถึงปลายทาง</string>
     <string name="about_e2e_desc">ข้อความส่วนตัวถูกเข้ารหัส ข้อความในช่องเป็นสาธารณะ</string>
     <string name="about_system">ระบบ</string>
@@ -137,15 +120,9 @@
     <string name="cd_not_supported_battery_optimization">ไม่รองรับการเพิ่มประสิทธิภาพแบตเตอรี่</string>
     <string name="cd_bluetooth">Bluetooth</string>
     <string name="cd_unread_message">ข้อความที่ยังไม่ได้อ่าน</string>
-    <string name="cd_open_map">เปิดแผนที่</string>
-    <string name="cd_remove_bookmark">เอาที่คั่นหน้าออก</string>
-    <string name="cd_teleport">เทเลพอร์ต</string>
     <string name="cd_leave_channel">ออกจากช่อง</string>
     <string name="cd_reachable_via_nostr">ติดต่อได้ผ่าน Nostr</string>
     <string name="cd_offline_favorite">รายการโปรด (ออฟไลน์)</string>
-    <string name="cd_decrease_precision">ลดความแม่นยำ</string>
-    <string name="cd_increase_precision">เพิ่มความแม่นยำ</string>
-    <string name="cd_select_geohash">เลือก geohash</string>
     <string name="cd_scroll_to_bottom">เลื่อนไปด้านล่างสุด</string>
     <string name="cd_file">ไฟล์</string>
     <string name="cd_image">รูปภาพ</string>
@@ -159,7 +136,6 @@
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">บันทึกบันทึกเสียง</string>
     <string name="cd_offline_mesh_chat">แชทเมชออฟไลน์</string>
-    <string name="cd_online_geohash_channels">ช่อง geohash ออนไลน์</string>
     <string name="cd_end_to_end_encryption">การเข้ารหัสแบบปลายทางถึงปลายทาง</string>
 
     <!-- รูปภาพ &amp; ไฟล์ -->
@@ -186,26 +162,9 @@
     <string name="action_block_subtitle">บล็อกข้อความทั้งหมดจากผู้ใช้นี้</string>
 
     <!-- แผ่นช่อง geohash -->
-    <string name="location_channels_title">#ช่องตามตำแหน่ง</string>
-    <string name="location_channels_desc">แชทกับผู้คนใกล้คุณผ่านช่อง geohash จะแชร์เฉพาะ geohash โดยคร่าว ๆ เท่านั้น ไม่ใช่ข้อมูล GPS ที่แม่นยำ เพื่อคุ้มครองความเป็นส่วนตัวของคุณ โปรดอย่าถ่ายภาพหน้าจอหรือแชร์หน้าจอนี้</string>
-    <string name="grant_location_permission">ให้สิทธิ์ตำแหน่ง</string>
-    <string name="location_permission_denied">ปฏิเสธสิทธิ์ตำแหน่ง เปิดใช้งานในการตั้งค่าเพื่อใช้ช่องตามตำแหน่ง</string>
     <string name="open_settings">เปิดการตั้งค่า</string>
-    <string name="location_permission_granted">\u2713 อนุญาตตำแหน่งแล้ว</string>
     <string name="checking_permissions">กำลังตรวจสอบสิทธิ์…</string>
-    <string name="finding_nearby_channels">กำลังค้นหาช่องใกล้เคียง…</string>
-    <string name="bookmarked">มีที่คั่นหน้า</string>
-    <string name="geohash_placeholder">Geohash</string>
-    <string name="invalid_geohash">geohash ไม่ถูกต้อง</string>
-    <string name="teleport">เทเลพอร์ต</string>
-    <string name="disable_location_services">ปิดบริการตำแหน่ง</string>
-    <string name="enable_location_services">เปิดบริการตำแหน่ง</string>
     <string name="mesh_label">mesh</string>
-    <string name="location_level_block">บล็อก</string>
-    <string name="location_level_neighborhood">ละแวกใกล้เคียง</string>
-    <string name="location_level_city">เมือง</string>
-    <string name="location_level_province">จังหวัด</string>
-    <string name="location_level_region">ภูมิภาค</string>
     <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
 
     <!-- ดีบัก / วินิจฉัย -->
@@ -370,9 +329,6 @@
   <string name="verify_success_body">You verified %1$s</string>
   <string name="verify_success_system_message">verified %1$s</string>
     <string name="cd_open_about">เปิดเกี่ยวกับ</string>
-  <string name="nearby_notes_reveal">ดูว่ามีโน้ตทิ้งไว้ที่นี่หรือไม่</string>
-  <string name="nearby_notes_one">มี 1 โน้ตทิ้งไว้ที่นี่ — แตะเพื่ออ่าน</string>
-  <string name="nearby_notes_many">มี %d โน้ตทิ้งไว้ที่นี่ — แตะเพื่ออ่าน</string>
     <string name="about_language">ภาษา</string>
     <string name="about_app_language">ภาษาของแอป</string>
     <string name="about_system_default">ค่าเริ่มต้นของระบบ</string>

@@ -54,7 +54,7 @@ with a specific destination.
 ## Project Structure & Architecture
 
 `app/` is the Kotlin/Compose phone client; its main packages cover UI, services,
-BLE/Wi-Fi mesh, protocol, Noise/crypto, identity, Nostr, geohash, and media.
+BLE/Wi-Fi mesh, protocol, Noise/crypto, identity, Nostr, and media.
 Module resources live in `app/src/main/`
 and JVM tests in `app/src/test/`. Specifications are in `docs/`; tooling is in
 `tools/`.

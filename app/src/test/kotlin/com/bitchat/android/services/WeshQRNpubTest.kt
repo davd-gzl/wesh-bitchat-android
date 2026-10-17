@@ -195,22 +195,21 @@ class WeshQRNpubTest {
         assertTrue(reloaded.contacts.value.single { it.noiseHex == noiseB }.npubWarning)
     }
 
-    @Test fun `owned npubs cover my key and persisted geohash identities without creating a seed`() {
+    @Test fun `owned npubs are exactly my key and reading creates no key material`() {
+        assertEquals(emptySet<String>(), com.bitchat.android.nostr.NostrIdentityBridge.ownedNpubs(secure))
+        assertFalse("Reading never creates a key", secure.hasSecureValue("nostr_private_key"))
+
         val identity = com.bitchat.android.nostr.NostrIdentity.fromPrivateKey("00".repeat(31) + "07")
         secure.storeSecureValue("nostr_private_key", identity.privateKeyHex)
-        assertEquals(setOf(identity.npub), com.bitchat.android.nostr.NostrIdentityBridge.ownedNpubs(secure, listOf("u09tu")))
-        assertFalse("Reading never creates the device seed", secure.hasSecureValue("nostr_device_seed"))
-
+        // A seed left by an older build no longer yields extra identities.
         secure.storeSecureValue("nostr_device_seed", java.util.Base64.getEncoder().encodeToString(ByteArray(32) { 9 }))
-        val owned = com.bitchat.android.nostr.NostrIdentityBridge.ownedNpubs(secure, listOf("u09tu", "gcpvj"))!!
-        assertEquals(3, owned.size)
-        assertTrue(identity.npub in owned)
-        assertEquals(owned, com.bitchat.android.nostr.NostrIdentityBridge.ownedNpubs(secure, listOf("gcpvj", "u09tu")))
+        val owned = com.bitchat.android.nostr.NostrIdentityBridge.ownedNpubs(secure)!!
+        assertEquals(setOf(identity.npub), owned)
         owned.forEach { assertTrue(WeshNpubPolicy.isValid(it)) }
 
         val broken: SharedPreferences = org.mockito.kotlin.mock()
         org.mockito.kotlin.whenever(broken.getString(org.mockito.kotlin.any(), org.mockito.kotlin.anyOrNull())).thenThrow(SecurityException("synthetic"))
-        assertNull(com.bitchat.android.nostr.NostrIdentityBridge.ownedNpubs(SecureIdentityStateManager(broken, true), emptyList()))
+        assertNull(com.bitchat.android.nostr.NostrIdentityBridge.ownedNpubs(SecureIdentityStateManager(broken, true)))
     }
 
     @Test fun `npub is stored bound to the Noise key and survives reload`() {

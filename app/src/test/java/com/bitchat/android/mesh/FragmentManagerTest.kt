@@ -6,6 +6,7 @@ import com.bitchat.android.protocol.MessagePadding
 import com.bitchat.android.model.FragmentPayload
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -284,6 +285,124 @@ class FragmentManagerTest {
 
         assertNull(fragmentManager.handleFragment(packet))
     }
+
+    @Test
+    fun `fragment wrapping another fragment is refused`() {
+        val payload = FragmentPayload(
+            fragmentID = ByteArray(8) { 3 },
+            index = 0,
+            total = 1,
+            originalType = MessageType.FRAGMENT.value,
+            data = ByteArray(32) { 1 }
+        ).encode()
+
+        assertNull(fragmentManager.handleFragment(fragmentPacket(payload)))
+        assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: 0"))
+    }
+
+    @Test
+    fun `assembly is bounded by the frame its claimed type can fill`() {
+        val limit = com.bitchat.android.protocol.PacketPayloadLimits.maxFrameBytes(MessageType.ANNOUNCE.value)
+        val chunk = 400
+        val total = limit / chunk + 2
+        var last: BitchatPacket? = null
+        // Stop at the first fragment that crosses the bound: the set must be gone by then.
+        for (index in 0..limit / chunk) {
+            last = fragmentManager.handleFragment(fragmentPacket(FragmentPayload(
+                fragmentID = ByteArray(8) { 4 },
+                index = index,
+                total = total,
+                originalType = MessageType.ANNOUNCE.value,
+                data = ByteArray(chunk) { 1 }
+            ).encode()))
+        }
+
+        assertNull(last)
+        assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: 0"))
+    }
+
+    @Test
+    fun `directed fragments for another peer are relayed without being buffered`() {
+        val manager = FragmentManager(myPeerID = "0102030405060708")
+        try {
+            val result = manager.receiveFragment(fragmentPacket(fragment(MessageType.NOISE_ENCRYPTED, index = 0, total = 2)))
+
+            assertEquals(FragmentResult.Skipped, result)
+            assertTrue(manager.getDebugInfo().contains("Active Fragment Sets: 0"))
+        } finally {
+            manager.shutdown()
+        }
+    }
+
+    @Test
+    fun `directed fragments for this peer are buffered`() {
+        val manager = FragmentManager(myPeerID = recipientID)
+        try {
+            val result = manager.receiveFragment(fragmentPacket(fragment(MessageType.NOISE_ENCRYPTED, index = 0, total = 2)))
+
+            assertEquals(FragmentResult.Pending, result)
+        } finally {
+            manager.shutdown()
+        }
+    }
+
+    @Test
+    fun `file fragments are not buffered when media is refused`() {
+        fragmentManager.acceptMediaFragments = false
+
+        val result = fragmentManager.receiveFragment(
+            fragmentPacket(fragment(MessageType.FILE_TRANSFER, index = 0, total = 2), recipient = com.bitchat.android.protocol.SpecialRecipients.BROADCAST)
+        )
+
+        assertEquals(FragmentResult.Skipped, result)
+        assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: 0"))
+    }
+
+    @Test
+    fun `public text fragment set is refused once it outgrows the public text frame`() {
+        val broadcast = com.bitchat.android.protocol.SpecialRecipients.BROADCAST
+        val chunk = 400
+        val total = com.bitchat.android.protocol.PacketPayloadLimits.PUBLIC_TEXT_FRAME_BYTES / chunk + 2
+        val results = (0..com.bitchat.android.protocol.PacketPayloadLimits.PUBLIC_TEXT_FRAME_BYTES / chunk).map { index ->
+            fragmentManager.receiveFragment(fragmentPacket(fragment(MessageType.MESSAGE, index, total, chunk), recipient = broadcast))
+        }
+
+        assertTrue(results.dropLast(1).all { it == FragmentResult.Pending })
+        assertEquals(FragmentResult.Refused, results.last())
+        assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: 0"))
+    }
+
+    @Test
+    fun `a complete set whose content is another type is refused`() {
+        val inner = BitchatPacket(
+            version = 1u, type = MessageType.LEAVE.value, senderID = hexStringToByteArray(senderID),
+            recipientID = hexStringToByteArray(recipientID), timestamp = 1u, payload = ByteArray(8), ttl = 7u
+        ).toBinaryData(padding = false)!!
+        val payload = FragmentPayload(ByteArray(8) { 6 }, 0, 1, MessageType.ANNOUNCE.value, inner).encode()
+
+        assertEquals(FragmentResult.Refused, fragmentManager.receiveFragment(fragmentPacket(payload)))
+    }
+
+    @Test
+    fun `only fragments accepted for reassembly are kept for sync`() {
+        assertTrue(FragmentResult.Pending.keptForSync)
+        assertTrue(FragmentResult.Complete(fragmentPacket(ByteArray(16))).keptForSync)
+        assertFalse(FragmentResult.Refused.keptForSync)
+        assertFalse(FragmentResult.Skipped.keptForSync)
+    }
+
+    private fun fragment(type: MessageType, index: Int, total: Int, size: Int = 32) =
+        FragmentPayload(ByteArray(8) { 5 }, index, total, type.value, ByteArray(size) { 1 }).encode()
+
+    private fun fragmentPacket(payload: ByteArray, recipient: ByteArray = hexStringToByteArray(recipientID)) = BitchatPacket(
+        version = 1u,
+        type = MessageType.FRAGMENT.value,
+        senderID = hexStringToByteArray(senderID),
+        recipientID = recipient,
+        timestamp = 1u,
+        payload = payload,
+        ttl = 7u
+    )
 
     @Test
     fun `fragment payload refuses UInt16 truncation`() {
