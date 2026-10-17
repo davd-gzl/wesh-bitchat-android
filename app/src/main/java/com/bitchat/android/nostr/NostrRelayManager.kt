@@ -1,6 +1,7 @@
 package com.bitchat.android.nostr
 
 import android.util.Log
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -80,6 +81,8 @@ class NostrRelayManager private constructor() {
     // Published state
     private val _relays = MutableStateFlow<List<Relay>>(emptyList())
     val relays: StateFlow<List<Relay>> = _relays.asStateFlow()
+    /** Relays with an open socket; the Internet state machine and the Pave screen both read it. */
+    val connectedCount: Flow<Int> = relays.map { list -> list.count { it.isConnected } }.distinctUntilChanged()
     
     private val _isConnected = MutableStateFlow<Boolean>(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
@@ -90,6 +93,8 @@ class NostrRelayManager private constructor() {
     private val reconnectJobs = ConcurrentHashMap<String, Job>()
     /** Relays with a socket being created; Tor ready and the Internet toggle can both connect. */
     private val connecting = ConcurrentHashMap.newKeySet<String>()
+    /** Relays asked for again while an attempt was in flight; that attempt re-runs once it ends. */
+    private val connectAgain = ConcurrentHashMap.newKeySet<String>()
     private val desiredConnected = AtomicBoolean(false)
     private val subscriptions = ConcurrentHashMap<String, Set<String>>() // relay URL -> subscription IDs
     private val messageHandlers = ConcurrentHashMap<String, (NostrEvent) -> Unit>()
@@ -609,8 +614,14 @@ class NostrRelayManager private constructor() {
     ) {
         if (urlString !in WESH_PINNED_RELAYS || !com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) return
         if (!desiredConnected.get()) return
-        // One attempt per relay: a second caller returns while the first is still creating it.
-        if (!connecting.add(urlString)) return
+        // One attempt per relay. A caller that finds one in flight is not dropped: the attempt may
+        // be abandoned (a disconnect closed its socket), so it is asked to run once more.
+        if (!connecting.add(urlString)) {
+            connectAgain.add(urlString)
+            // The attempt may have ended between the two calls; then this caller takes over.
+            if (!connecting.add(urlString)) return
+            connectAgain.remove(urlString)
+        }
         try {
             // Skip if we already have a connection
             if (connections.containsKey(urlString)) return
@@ -634,6 +645,9 @@ class NostrRelayManager private constructor() {
             handleConnectionCreationFailure(urlString, e)
         } finally {
             connecting.remove(urlString)
+            if (connectAgain.remove(urlString) && desiredConnected.get() && !connections.containsKey(urlString)) {
+                scope.launch { connectToRelay(urlString) }
+            }
         }
     }
     
