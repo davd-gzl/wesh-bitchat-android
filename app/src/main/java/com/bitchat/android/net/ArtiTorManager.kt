@@ -181,6 +181,9 @@ class ArtiTorManager internal constructor(
 
     fun currentSocksAuth(): SocksAuth? = socksAuth
 
+    /** A native stop did not confirm that the Tor runtime is gone; an erase must not report success. */
+    fun hasNativeStopFailed(): Boolean = artiProxy?.hasStopFailed() == true
+
     /** Only after our proxy bound the port: a process squatting it never gets credentials or traffic. */
     private fun publishSocks(address: InetSocketAddress, credentials: SocksCredentials) {
         socksAuth = SocksAuth(address, credentials)

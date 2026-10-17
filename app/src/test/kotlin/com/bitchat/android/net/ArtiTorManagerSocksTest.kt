@@ -33,7 +33,8 @@ class ArtiTorManagerSocksTest {
 
         private fun published() = manager().currentSocksAddress() != null || manager().currentSocksAuth() != null
         override fun setLogCallback(callback: ArtiLogListener) = Unit
-        override fun initialize(dataDir: String): Int { publishedDuringStart += published(); return initResult }
+        override fun generation() = 0L
+        override fun initialize(dataDir: String, generation: Long): Int { publishedDuringStart += published(); return initResult }
         override fun startSocksProxyWithAuth(port: Int, username: String, password: String): Int {
             publishedDuringStart += published()
             ports += port; usernames += username

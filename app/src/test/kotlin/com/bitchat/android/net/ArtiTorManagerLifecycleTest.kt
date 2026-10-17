@@ -47,7 +47,8 @@ class ArtiTorManagerLifecycleTest {
         val stops = AtomicInteger(0)
         fun snapshot() = synchronized(calls) { calls.toList() }
         override fun setLogCallback(callback: ArtiLogListener) { listener = callback }
-        override fun initialize(dataDir: String): Int {
+        override fun generation() = 0L
+        override fun initialize(dataDir: String, generation: Long): Int {
             synchronized(calls) { calls += "initialize" }
             initializeEntered.countDown()
             blockInitialize?.await(10, TimeUnit.SECONDS)

@@ -32,11 +32,22 @@ class ArtiProxyTest {
         var stopGate: CountDownLatch? = null
         val stopping = CountDownLatch(1)
         var stopResult = 0
+        /** Like the native side with the generation token: initialize refuses a stale generation. */
+        var honorGeneration = false
+        /** Runs at the native initialize, before the generation is checked. */
+        var beforeBegin: (() -> Unit)? = null
+        @Volatile var generation = 0L
+        override fun generation() = generation
         override fun setLogCallback(callback: ArtiLogListener) {
             synchronized(calls) { calls += "log" }
             onLogCallback?.invoke()
         }
-        override fun initialize(dataDir: String): Int {
+        override fun initialize(dataDir: String, generation: Long): Int {
+            beforeBegin?.invoke()
+            if (honorGeneration && generation != this.generation) {
+                synchronized(calls) { calls += "refused" }
+                return -4
+            }
             synchronized(calls) { calls += "initialize" }
             bootstrapping.countDown()
             onInitialize?.invoke()
@@ -50,6 +61,7 @@ class ArtiProxyTest {
             return 0
         }
         override fun stop(): Int {
+            generation++
             synchronized(calls) { calls += "stop" }
             stopping.countDown()
             stopGate?.await(30, TimeUnit.SECONDS)
@@ -146,6 +158,21 @@ class ArtiProxyTest {
         assertEquals(listOf("initialize", "stop", "stop"), native.calls)
     }
 
+    @Test fun `a stop that completes just before the native start still cancels it`() {
+        val native = FakeNative().apply { honorGeneration = true; blockBootstrap = CountDownLatch(1) }
+        val proxy = ArtiProxy(app, null, native)
+        // The stop runs and returns after every Kotlin-side check, before the native start begins.
+        native.beforeBegin = {
+            native.beforeBegin = null
+            thread { proxy.stop() }.join(5_000)
+        }
+        val began = System.nanoTime()
+        assertTrue(runCatching { proxy.start(23456, credentials) }.exceptionOrNull() is ArtiException)
+        assertTrue("refused at once, no bootstrap to wait for", System.nanoTime() - began < 5_000_000_000L)
+        assertFalse("no bootstrap after the stop", native.calls.contains("initialize"))
+        assertTrue(native.calls.contains("refused"))
+    }
+
     @Test fun `a start waits until a stop in progress has torn down`() {
         val gate = CountDownLatch(1)
         val native = FakeNative().apply { stopGate = gate }
@@ -171,9 +198,13 @@ class ArtiProxyTest {
         val native = FakeNative()
         val proxy = ArtiProxy(app, null, native)
         proxy.start(23456, credentials)
-        native.stopResult = -1
+        native.stopResult = -5
         proxy.stop()
-        proxy.start(23456, credentials)
+        assertTrue(proxy.hasStopFailed())
+        assertTrue(
+            "a start over a runtime that may still run fails instead of reporting success",
+            runCatching { proxy.start(23456, credentials) }.exceptionOrNull() is ArtiException
+        )
         assertEquals("no second start over a client that may still run", 1, native.calls.count { it == "initialize" })
         native.stopResult = 0
         proxy.stop()

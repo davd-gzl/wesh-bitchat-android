@@ -509,6 +509,7 @@ verify_jni_symbols_for_lib() {
   local EXPECTED_SYMBOLS=(
     "Java_org_torproject_arti_ArtiNative_getVersion"
     "Java_org_torproject_arti_ArtiNative_setLogCallback"
+    "Java_org_torproject_arti_ArtiNative_generation"
     "Java_org_torproject_arti_ArtiNative_initialize"
     "Java_org_torproject_arti_ArtiNative_startSocksProxyWithAuth"
     "Java_org_torproject_arti_ArtiNative_stop"

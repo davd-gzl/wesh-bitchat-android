@@ -9,7 +9,8 @@ import java.io.File
 /** The native calls ArtiProxy makes; tests replace it. */
 internal interface ArtiNativeApi {
     fun setLogCallback(callback: ArtiLogListener)
-    fun initialize(dataDir: String): Int
+    fun generation(): Long
+    fun initialize(dataDir: String, generation: Long): Int
     fun startSocksProxyWithAuth(port: Int, username: String, password: String): Int
     fun stop(): Int
 }
@@ -17,7 +18,8 @@ internal interface ArtiNativeApi {
 /** Loads the native library only on first use. */
 internal object DefaultArtiNative : ArtiNativeApi {
     override fun setLogCallback(callback: ArtiLogListener) = ArtiNative.setLogCallback(callback)
-    override fun initialize(dataDir: String) = ArtiNative.initialize(dataDir)
+    override fun generation() = ArtiNative.generation()
+    override fun initialize(dataDir: String, generation: Long) = ArtiNative.initialize(dataDir, generation)
     override fun startSocksProxyWithAuth(port: Int, username: String, password: String) =
         ArtiNative.startSocksProxyWithAuth(port, username, password)
     override fun stop() = ArtiNative.stop()
@@ -63,6 +65,12 @@ class ArtiProxy internal constructor(
     /** Guarded by [lock]. Starts requested and not yet finished, including those still waiting. */
     private var startsRequested = 0
 
+    /** Guarded by [lock]. The last native stop failed: Tor work may still run. */
+    private var stopFailed = false
+
+    /** The last native stop did not confirm that the Tor runtime is gone. */
+    fun hasStopFailed(): Boolean = synchronized(lock) { stopFailed }
+
     fun isStartInFlight(): Boolean = synchronized(lock) { startsRequested > 0 }
 
     /**
@@ -85,18 +93,22 @@ class ArtiProxy internal constructor(
         // or this start sees the wipe and refuses.
         synchronized(lock) { startsRequested++ }
         try {
-            val stopsAtStart = synchronized(lock) {
+            val (stopsAtStart, generation) = synchronized(lock) {
                 while (stopInProgress) lock.wait()
                 if (ArtiWipeLatch.isWiping()) throw ArtiException("Arti state is being wiped")
                 if (!stillWanted()) throw ArtiException("Arti start withdrawn")
+                // Never report a start over a runtime that may still run.
+                if (stopFailed) throw ArtiException("The last Arti stop did not complete")
                 if (isRunning) {
                     Log.w(TAG, "Arti already running")
                     return
                 }
                 startAttempted = true
-                stops
+                // Read with stopsAtStart: a native stop after this point cancels the bootstrap,
+                // even one that completes before initialize() reaches the native side.
+                stops to native.generation()
             }
-            startRegistered(stopsAtStart, socksPort, credentials)
+            startRegistered(stopsAtStart, generation, socksPort, credentials)
         } finally {
             synchronized(lock) {
                 startsRequested--
@@ -105,7 +117,7 @@ class ArtiProxy internal constructor(
         }
     }
 
-    private fun startRegistered(stopsAtStart: Long, socksPort: Int, credentials: SocksCredentials) {
+    private fun startRegistered(stopsAtStart: Long, generation: Long, socksPort: Int, credentials: SocksCredentials) {
         try {
             logListener?.let { listener ->
                 Log.d(TAG, "Registering log callback")
@@ -117,7 +129,7 @@ class ArtiProxy internal constructor(
             val dataDir = getDataDirectory()
             Log.i(TAG, "Initializing Arti")
 
-            when (val initResult = native.initialize(dataDir.absolutePath)) {
+            when (val initResult = native.initialize(dataDir.absolutePath, generation)) {
                 0 -> Unit
                 -4 -> throw ArtiException("Arti stopped during bootstrap")
                 else -> throw ArtiException("Failed to initialize Arti: error code $initResult")
@@ -184,6 +196,7 @@ class ArtiProxy internal constructor(
         } finally {
             synchronized(lock) {
                 if (stopped) isRunning = false
+                stopFailed = !stopped
                 stopInProgress = false
                 lock.notifyAll()
             }

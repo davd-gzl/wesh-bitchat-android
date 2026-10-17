@@ -1,6 +1,6 @@
 use jni::JNIEnv;
 use jni::objects::{JClass, JString, JObject, GlobalRef};
-use jni::sys::{jint, jstring};
+use jni::sys::{jint, jlong, jstring};
 use jni::JavaVM;
 
 use arti_client::TorClient;
@@ -38,9 +38,17 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
 /// How often an in-progress bootstrap checks whether a stop cancelled it.
 const CANCEL_POLL: Duration = Duration::from_millis(50);
 
+/// Longest a SOCKS client may take for its greeting, authentication and request.
+const SOCKS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Concurrent SOCKS connections. More are closed at once, so no local app can exhaust our
+/// file descriptors.
+const MAX_SOCKS_CONNECTIONS: usize = 64;
+
 /// Aborts the SOCKS task, drops the client inside its runtime, then shuts the runtime down,
-/// which ends every Arti background task (circuits, guards, directory fetches).
-fn teardown(session: Session) {
+/// which ends every Arti background task (circuits, guards, directory fetches). False when the
+/// runtime did not finish in time.
+fn teardown(session: Session) -> bool {
     let Session { runtime, client, socks_task } = session;
     if let Some(task) = socks_task {
         task.abort();
@@ -49,7 +57,20 @@ fn teardown(session: Session) {
         let _context = runtime.enter();
         drop(client);
     }
-    runtime.shutdown_timeout(SHUTDOWN_TIMEOUT);
+    shut_down(runtime)
+}
+
+/// Dropping a runtime waits for every task and thread it owns. False when that did not finish
+/// within SHUTDOWN_TIMEOUT: Tor work may still run, so the stop must be reported as failed.
+fn shut_down(runtime: tokio::runtime::Runtime) -> bool {
+    deadline::finishes_within(SHUTDOWN_TIMEOUT, move || drop(runtime))
+}
+
+/// Records a teardown that did not finish; every later stop then reports a failure.
+fn note_teardown(clean: bool) {
+    if !clean {
+        SESSION.mark_unclean();
+    }
 }
 
 // ============================================================================
@@ -135,14 +156,25 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_setLogCallback(
     }
 }
 
+/// The stop generation. A start reads it before its first native call and passes it to
+/// initialize(), so a stop that completes in between still cancels that start.
+#[no_mangle]
+pub extern "C" fn Java_org_torproject_arti_ArtiNative_generation(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jlong {
+    SESSION.generation() as jlong
+}
+
 /// Initialize Arti: a fresh runtime and a freshly bootstrapped client on every call.
 ///
-/// Returns 0 on success, -4 when a concurrent stop() cancelled the bootstrap.
+/// Returns 0 on success, -4 when a stop came after `generation` was read or cancelled the bootstrap.
 #[no_mangle]
 pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
     mut env: JNIEnv,
     _class: JClass,
     data_dir: JString,
+    generation: jlong,
 ) -> jint {
     // Cache JavaVM if not already cached
     if JAVA_VM.lock().unwrap().is_none() {
@@ -164,10 +196,14 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
 
     // Waits out a stop in progress. A client left by an earlier start is released first:
     // a start never reuses guards or circuits from before.
-    let (start, previous) = SESSION.begin_start();
+    let (start, previous) = SESSION.begin_start(generation as u64);
     if let Some(session) = previous {
         log_info!("Releasing the previous Tor client");
-        teardown(session);
+        note_teardown(teardown(session));
+    }
+    if start.is_cancelled() {
+        log_info!("Arti start cancelled by an earlier stop");
+        return -4;
     }
 
     let runtime = match tokio::runtime::Builder::new_multi_thread()
@@ -225,19 +261,19 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
                 }
                 Err(session) => {
                     log_info!("Arti stopped during bootstrap; client released");
-                    teardown(session);
+                    note_teardown(teardown(session));
                     -4
                 }
             }
         }
         Some(Err(e)) => {
             log_error!("Failed to initialize Arti: {:?}", e);
-            runtime.shutdown_timeout(SHUTDOWN_TIMEOUT);
+            note_teardown(shut_down(runtime));
             -3
         }
         None => {
             log_info!("Arti bootstrap cancelled by stop");
-            runtime.shutdown_timeout(SHUTDOWN_TIMEOUT);
+            note_teardown(shut_down(runtime));
             -4
         }
     }
@@ -308,14 +344,21 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_startSocksProxyWithAuth(
             log_info!("We have found that guard [scrubbed] is usable.");
 
             // Accept connections
+            let slots = Arc::new(tokio::sync::Semaphore::new(MAX_SOCKS_CONNECTIONS));
             loop {
                 match listener.accept().await {
                     Ok((stream, peer_addr)) => {
+                        let Ok(slot) = Arc::clone(&slots).try_acquire_owned() else {
+                            log_error!("SOCKS connection limit reached; closing {}", peer_addr);
+                            drop(stream);
+                            continue;
+                        };
                         log_info!("SOCKS connection from: {}", peer_addr);
                         let client_clone = Arc::clone(&client);
                         let credentials = Arc::clone(&credentials);
 
                         tokio::spawn(async move {
+                            let _slot = slot;
                             if let Err(e) = handle_socks_connection(stream, client_clone, credentials).await {
                                 log_error!("SOCKS connection error: {:?}", e);
                             }
@@ -355,6 +398,69 @@ async fn handle_socks_connection(
     client: Arc<TorClient<PreferredRuntime>>,
     credentials: Arc<socks_auth::Credentials>,
 ) -> Result<()> {
+    use tokio::io::AsyncWriteExt;
+
+    // A client that stalls before its request never holds a connection slot for long.
+    let (target_host, target_port) =
+        match tokio::time::timeout(SOCKS_HANDSHAKE_TIMEOUT, socks_handshake(&mut stream, &credentials)).await {
+            Ok(target) => target?,
+            Err(_) => return Err(anyhow::anyhow!("SOCKS handshake timed out")),
+        };
+
+    log_info!("SOCKS5 CONNECT to {}:{}", target_host, target_port);
+
+    // Establish Tor connection
+    let tor_stream = match client.connect((target_host.as_str(), target_port)).await {
+        Ok(s) => s,
+        Err(e) => {
+            log_error!("Failed to connect through Tor: {:?}", e);
+            // Send SOCKS5 error: general failure
+            stream.write_all(&[0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
+            return Err(e.into());
+        }
+    };
+
+    log_info!("Tor connection established to {}:{}", target_host, target_port);
+
+    // Send SOCKS5 success response
+    stream.write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
+
+    // Bidirectional data forwarding
+    let (mut client_read, mut client_write) = stream.split();
+    let (mut tor_read, mut tor_write) = tor_stream.split();
+
+    let client_to_tor = async {
+        tokio::io::copy(&mut client_read, &mut tor_write).await
+    };
+
+    let tor_to_client = async {
+        tokio::io::copy(&mut tor_read, &mut client_write).await
+    };
+
+    // Run both directions concurrently, exit when either completes
+    tokio::select! {
+        result = client_to_tor => {
+            if let Err(ref e) = result {
+                log_error!("Client->Tor copy error: {:?}", e);
+            }
+        }
+        result = tor_to_client => {
+            if let Err(ref e) = result {
+                log_error!("Tor->Client copy error: {:?}", e);
+            }
+        }
+    };
+
+    log_info!("SOCKS connection closed for {}:{}", target_host, target_port);
+
+    Ok(())
+}
+
+/// Greeting, username/password authentication and CONNECT request; returns the target.
+async fn socks_handshake(
+    stream: &mut tokio::net::TcpStream,
+    credentials: &socks_auth::Credentials,
+) -> Result<(String, u16)> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     // Greeting: VER NMETHODS METHODS. Only username/password is accepted, so another app
@@ -427,7 +533,10 @@ async fn handle_socks_connection(
             if n < 5 + len + 2 {
                 return Err(anyhow::anyhow!("Invalid domain name length"));
             }
-            let domain = String::from_utf8_lossy(&buf[5..5 + len]).to_string();
+            let Some(domain) = socks_auth::domain(&buf[5..5 + len]) else {
+                stream.write_all(&[0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
+                return Err(anyhow::anyhow!("Invalid domain name"));
+            };
             let port = u16::from_be_bytes([buf[5 + len], buf[5 + len + 1]]);
             (domain, port)
         }
@@ -450,59 +559,13 @@ async fn handle_socks_connection(
             return Err(anyhow::anyhow!("Unsupported address type: {}", atyp));
         }
     };
-
-    log_info!("SOCKS5 CONNECT to {}:{}", target_host, target_port);
-
-    // Establish Tor connection
-    let tor_stream = match client.connect((target_host.as_str(), target_port)).await {
-        Ok(s) => s,
-        Err(e) => {
-            log_error!("Failed to connect through Tor: {:?}", e);
-            // Send SOCKS5 error: general failure
-            stream.write_all(&[0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
-            return Err(e.into());
-        }
-    };
-
-    log_info!("Tor connection established to {}:{}", target_host, target_port);
-
-    // Send SOCKS5 success response
-    stream.write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
-
-    // Bidirectional data forwarding
-    let (mut client_read, mut client_write) = stream.split();
-    let (mut tor_read, mut tor_write) = tor_stream.split();
-
-    let client_to_tor = async {
-        tokio::io::copy(&mut client_read, &mut tor_write).await
-    };
-
-    let tor_to_client = async {
-        tokio::io::copy(&mut tor_read, &mut client_write).await
-    };
-
-    // Run both directions concurrently, exit when either completes
-    tokio::select! {
-        result = client_to_tor => {
-            if let Err(ref e) = result {
-                log_error!("Client->Tor copy error: {:?}", e);
-            }
-        }
-        result = tor_to_client => {
-            if let Err(ref e) = result {
-                log_error!("Tor->Client copy error: {:?}", e);
-            }
-        }
-    };
-
-    log_info!("SOCKS connection closed for {}:{}", target_host, target_port);
-
-    Ok(())
+    Ok((target_host, target_port))
 }
 
 /// Stop Arti: cancels a bootstrap in progress, then drops the client and shuts its runtime
-/// down. When this returns no Tor task is left, so the data directory can be deleted and the
-/// next initialize() builds a new client with new guards.
+/// down. When this returns 0 no Tor task is left, so the data directory can be deleted and the
+/// next initialize() builds a new client with new guards. Returns -5 when a runtime did not
+/// stop in time, now or earlier in this process: Tor work may still run.
 #[no_mangle]
 pub extern "C" fn Java_org_torproject_arti_ArtiNative_stop(
     _env: JNIEnv,
@@ -514,11 +577,15 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_stop(
     let mut stop = SESSION.begin_stop();
     if let Some(session) = stop.take() {
         log_info!("Releasing the Tor client");
-        teardown(session);
+        note_teardown(teardown(session));
     }
     drop(stop);
 
     log_info!("AMEx: state changed to Stopped");
+    if SESSION.is_unclean() {
+        log_error!("A Tor runtime did not stop within {:?}", SHUTDOWN_TIMEOUT);
+        return -5;
+    }
     log_info!("Arti stopped successfully");
 
     0
@@ -546,7 +613,8 @@ mod android_logger {
     pub fn log(message: &str) {
         unsafe {
             let tag = CString::new("ArtiNative").unwrap();
-            let text = CString::new(message).unwrap();
+            // A NUL byte (from a peer-supplied host name, say) must never panic across JNI.
+            let Ok(text) = CString::new(message.replace('\0', "\\0")) else { return };
             __android_log_write(ANDROID_LOG_INFO, tag.as_ptr() as *const c_char, text.as_ptr() as *const c_char);
         }
     }
@@ -565,6 +633,8 @@ mod lifecycle {
         /// A start or stop is in progress; the other side waits.
         busy: bool,
         current: Option<R>,
+        /// A teardown did not finish in time. Never cleared: its threads may still run.
+        unclean: bool,
     }
 
     /// Holds at most one session. Starts and stops never overlap, and a stop cancels a start
@@ -577,7 +647,7 @@ mod lifecycle {
     impl<R> Lifecycle<R> {
         pub const fn new() -> Self {
             Self {
-                inner: Mutex::new(Inner { generation: 0, busy: false, current: None }),
+                inner: Mutex::new(Inner { generation: 0, busy: false, current: None, unclean: false }),
                 changed: Condvar::new(),
             }
         }
@@ -598,13 +668,27 @@ mod lifecycle {
             self.changed.notify_all();
         }
 
+        /// The stop generation, read by a start before it waits for anything.
+        pub fn generation(&self) -> u64 {
+            self.lock().generation
+        }
+
         /// Waits out any other start or stop, then returns the previous session for teardown:
-        /// every start builds a fresh one.
-        pub fn begin_start(&self) -> (Start<'_, R>, Option<R>) {
+        /// every start builds a fresh one. `generation` was read before the caller began, so any
+        /// stop since then, even one this start queued behind, leaves it cancelled.
+        pub fn begin_start(&self, generation: u64) -> (Start<'_, R>, Option<R>) {
             let mut inner = self.wait_idle(self.lock());
             inner.busy = true;
             let previous = inner.current.take();
-            (Start { owner: self, generation: inner.generation }, previous)
+            (Start { owner: self, generation }, previous)
+        }
+
+        pub fn mark_unclean(&self) {
+            self.lock().unclean = true;
+        }
+
+        pub fn is_unclean(&self) -> bool {
+            self.lock().unclean
         }
 
         /// Cancels a start in progress, waits for it to return, and takes the current session.
@@ -680,7 +764,7 @@ mod lifecycle {
         #[test]
         fn start_stop_start_builds_a_new_session() {
             let life = Lifecycle::new();
-            let (start, previous) = life.begin_start();
+            let (start, previous) = life.begin_start(life.generation());
             assert!(previous.is_none());
             assert!(start.install(1).is_ok());
             drop(start);
@@ -690,7 +774,7 @@ mod lifecycle {
             drop(stop);
             assert_eq!(life.with_current(|s| *s), None);
 
-            let (start, previous) = life.begin_start();
+            let (start, previous) = life.begin_start(life.generation());
             assert!(previous.is_none(), "the stopped session is never handed to the next start");
             assert!(!start.is_cancelled());
             assert!(start.install(2).is_ok());
@@ -701,10 +785,10 @@ mod lifecycle {
         #[test]
         fn a_start_without_stop_still_releases_the_previous_session() {
             let life = Lifecycle::new();
-            let (start, _) = life.begin_start();
+            let (start, _) = life.begin_start(life.generation());
             start.install(1).unwrap();
             drop(start);
-            let (start, previous) = life.begin_start();
+            let (start, previous) = life.begin_start(life.generation());
             assert_eq!(previous, Some(1));
             start.install(2).unwrap();
             drop(start);
@@ -718,7 +802,7 @@ mod lifecycle {
             let worker = {
                 let life = Arc::clone(&life);
                 thread::spawn(move || {
-                    let (start, _) = life.begin_start();
+                    let (start, _) = life.begin_start(life.generation());
                     started_tx.send(()).unwrap();
                     // A bootstrap that would take a minute unless cancelled.
                     let deadline = Instant::now() + Duration::from_secs(60);
@@ -746,7 +830,7 @@ mod lifecycle {
             let worker = {
                 let life = Arc::clone(&life);
                 thread::spawn(move || {
-                    let (start, _) = life.begin_start();
+                    let (start, _) = life.begin_start(life.generation());
                     started_tx.send(()).unwrap();
                     while !start.is_cancelled() {
                         thread::sleep(Duration::from_millis(5));
@@ -763,11 +847,71 @@ mod lifecycle {
         }
 
         #[test]
+        fn a_stop_after_the_generation_was_read_cancels_the_start() {
+            let life = Lifecycle::<u32>::new();
+            let generation = life.generation();
+            drop(life.begin_stop());
+            let (start, _) = life.begin_start(generation);
+            assert!(start.is_cancelled());
+            assert_eq!(start.install(1), Err(1));
+        }
+
+        #[test]
+        fn a_start_queued_behind_another_cannot_escape_a_stop() {
+            for _ in 0..50 {
+                let life = Arc::new(Lifecycle::<u32>::new());
+                let (a_tx, a_rx) = mpsc::channel();
+                let a = {
+                    let life = Arc::clone(&life);
+                    thread::spawn(move || {
+                        let (start, _) = life.begin_start(life.generation());
+                        a_tx.send(()).unwrap();
+                        while !start.is_cancelled() {
+                            thread::sleep(Duration::from_millis(1));
+                        }
+                    })
+                };
+                a_rx.recv().unwrap();
+                let (b_tx, b_rx) = mpsc::channel();
+                let b = {
+                    let life = Arc::clone(&life);
+                    thread::spawn(move || {
+                        let generation = life.generation();
+                        b_tx.send(()).unwrap();
+                        // Queued behind A until the stop below.
+                        let (start, _) = life.begin_start(generation);
+                        let began = Instant::now();
+                        while !start.is_cancelled() && began.elapsed() < Duration::from_secs(2) {
+                            thread::sleep(Duration::from_millis(1));
+                        }
+                        start.is_cancelled()
+                    })
+                };
+                b_rx.recv().unwrap();
+                thread::sleep(Duration::from_millis(5));
+                let began = Instant::now();
+                drop(life.begin_stop());
+                assert!(began.elapsed() < Duration::from_secs(1), "the stop waited for B's bootstrap");
+                a.join().unwrap();
+                assert!(b.join().unwrap(), "a queued start escaped the stop");
+            }
+        }
+
+        #[test]
+        fn an_unclean_teardown_is_remembered() {
+            let life = Lifecycle::<u32>::new();
+            assert!(!life.is_unclean());
+            life.mark_unclean();
+            drop(life.begin_stop());
+            assert!(life.is_unclean());
+        }
+
+        #[test]
         fn a_start_after_a_stop_is_not_cancelled() {
             let life = Lifecycle::new();
             drop(life.begin_stop());
             drop(life.begin_stop());
-            let (start, _) = life.begin_start();
+            let (start, _) = life.begin_start(life.generation());
             assert!(!start.is_cancelled());
             assert!(start.install(3).is_ok());
         }
@@ -775,7 +919,45 @@ mod lifecycle {
 }
 
 // ============================================================================
-// SOCKS5 username/password rules (std only)
+// Teardown deadline (std only)
+// ============================================================================
+
+mod deadline {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    /// Runs `work` on its own thread; true only if it finished within `limit`. Work that is
+    /// late keeps running on that thread.
+    pub fn finishes_within<F: FnOnce() + Send + 'static>(limit: Duration, work: F) -> bool {
+        let (done, finished) = mpsc::channel();
+        let spawned = std::thread::Builder::new()
+            .name("arti-teardown".into())
+            .spawn(move || {
+                work();
+                let _ = done.send(());
+            });
+        spawned.is_ok() && finished.recv_timeout(limit).is_ok()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::finishes_within;
+        use std::time::Duration;
+
+        #[test]
+        fn quick_work_finishes() {
+            assert!(finishes_within(Duration::from_secs(5), || {}));
+        }
+
+        #[test]
+        fn late_work_is_reported() {
+            assert!(!finishes_within(Duration::from_millis(50), || std::thread::sleep(Duration::from_millis(500))));
+        }
+    }
+}
+
+// ============================================================================
+// SOCKS5 username/password and request rules (std only)
 // ============================================================================
 
 mod socks_auth {
@@ -813,6 +995,12 @@ mod socks_auth {
         }
     }
 
+    /// A requested host name: nonempty UTF-8 without NUL, or None and the request is refused.
+    pub fn domain(bytes: &[u8]) -> Option<String> {
+        let name = std::str::from_utf8(bytes).ok()?;
+        (!name.is_empty() && !name.contains('\0')).then(|| name.to_owned())
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -833,6 +1021,14 @@ mod socks_auth {
             assert!(!c.accepts(b"synthetic-user", b"synthetic-pass!"));
             assert!(!c.accepts(b"other-user", b"synthetic-pass"));
             assert!(!c.accepts(b"", b""));
+        }
+
+        #[test]
+        fn host_names_with_nul_or_invalid_utf8_are_refused() {
+            assert_eq!(domain(b"example.onion").as_deref(), Some("example.onion"));
+            assert_eq!(domain(b"exa\0mple.org"), None);
+            assert_eq!(domain(b""), None);
+            assert_eq!(domain(&[0xff, 0xfe]), None);
         }
 
         #[test]

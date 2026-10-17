@@ -32,12 +32,17 @@ object ArtiNative {
      */
     external fun setLogCallback(callback: ArtiLogListener)
 
+    /** The stop generation: read before a start, it lets any later [stop] cancel that start. */
+    external fun generation(): Long
+
     /**
      * Builds a fresh runtime and bootstraps a fresh Tor client; any earlier client is released.
      * @param dataDir Directory for Arti state/cache
-     * @return 0 on success, -4 when [stop] cancelled the bootstrap, another error code otherwise
+     * @param generation [generation] read when the start began
+     * @return 0 on success, -4 when a [stop] came after [generation] was read or cancelled the
+     *   bootstrap, another error code otherwise
      */
-    external fun initialize(dataDir: String): Int
+    external fun initialize(dataDir: String, generation: Long): Int
 
     /**
      * Start the SOCKS proxy on 127.0.0.1:[port]. Only RFC 1929 username/password with exactly
@@ -49,7 +54,8 @@ object ArtiNative {
     /**
      * Cancels a bootstrap in progress, drops the Tor client and shuts its runtime down. When it
      * returns no Tor traffic remains and the data directory can be deleted.
-     * @return 0 on success, error code otherwise
+     * @return 0 on success; -5 when a Tor runtime did not stop in time, now or earlier in this
+     *   process, so Tor work may still run
      */
     external fun stop(): Int
 }
