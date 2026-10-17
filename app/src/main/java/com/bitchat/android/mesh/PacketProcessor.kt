@@ -204,20 +204,24 @@ class PacketProcessor(
                 // Public text above the local bound is refused outright: not shown, kept or relayed.
                 if (isOversizedPublicText(packet)) validPacket = false else handleMessage(routed)
             }
-            // Wesh ships no media: a file is never relayed, never refreshes liveness, and only a
-            // copy addressed to us reaches the handler (which keeps no file, see handleMessage).
-            MessageType.FILE_TRANSFER -> {
-                validPacket = false
-                if (packetRelayManager.isPacketAddressedToMe(packet)) handleMessage(routed)
+            // Wesh ships no media. A file addressed to us reaches the handler, which keeps nothing
+            // (see handleMessage) and is never relayed. A file for another peer is relayed as before
+            // and not processed here. A broadcast file is dropped: the V1 never spreads public files.
+            MessageType.FILE_TRANSFER -> when {
+                packetRelayManager.isPacketAddressedToMe(packet) -> {
+                    validPacket = false
+                    handleMessage(routed)
+                }
+                isDirectedToAnotherPeer(packet) -> Unit
+                else -> validPacket = false
             }
             MessageType.VOICE_FRAME -> validPacket = delegate?.handleVoiceFrame(routed) ?: false
             MessageType.LEAVE -> handleLeave(routed)
             MessageType.FRAGMENT -> {
                 if (isFileTransferFragment(packet)) {
-                    // Fragments of a file are never relayed; only a file addressed to us is
-                    // reassembled, in memory, so it can reach the handler like an unfragmented one.
-                    validPacket = false
-                    if (packetRelayManager.isPacketAddressedToMe(packet)) handleFragment(routed)
+                    // No media is reassembled here. Fragments of a file for another peer are relayed
+                    // as before; those addressed to us or broadcast are dropped.
+                    validPacket = isDirectedToAnotherPeer(packet)
                 } else {
                     validPacket = handleFragment(routed)
                 }
@@ -320,6 +324,12 @@ class PacketProcessor(
     }
 
     /** Reads the original-type byte of the fragment header without copying the fragment data. */
+    private fun isDirectedToAnotherPeer(packet: BitchatPacket): Boolean {
+        val recipient = packet.recipientID ?: return false
+        return !recipient.contentEquals(SpecialRecipients.BROADCAST) &&
+            !packetRelayManager.isPacketAddressedToMe(packet)
+    }
+
     private fun isFileTransferFragment(packet: BitchatPacket): Boolean =
         packet.payload.size >= com.bitchat.android.model.FragmentPayload.HEADER_SIZE &&
             packet.payload[com.bitchat.android.model.FragmentPayload.HEADER_SIZE - 1].toUByte() ==

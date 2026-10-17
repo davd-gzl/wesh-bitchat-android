@@ -173,11 +173,8 @@ class MessageHandler(
                 com.bitchat.android.model.NoisePayloadType.FILE_TRANSFER -> {
                     // Strangers get silence: no message, no request, no ACK.
                     if (!isEnrolledContactKey(decryption.authenticatedSession.remoteStaticKey)) return true
-                    val placeholder = unsupportedMediaPlaceholder(peerID, packet)
-                    // ACK with the generated message ID, only once admitted.
-                    if (delegate?.onPrivateMessageReceived(placeholder) == true) {
-                        sendDeliveryAck(placeholder.id, peerID)
-                    }
+                    // No DELIVERED: the media itself was not received.
+                    delegate?.onPrivateMessageReceived(unsupportedMediaPlaceholder(peerID, packet))
                 }
 
                 com.bitchat.android.model.NoisePayloadType.VOICE_FRAME -> {
