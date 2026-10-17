@@ -688,6 +688,43 @@ class FragmentManagerTest {
     }
 
     @Test
+    fun `closing the link that opened a shared assembly hands it to another contributor`() {
+        val packet = privatePacket(senderID, seed = 14)
+        val fragments = fragmentsWithID(packet, ByteArray(8) { 0x0F })
+        assertTrue(fragments.size > 2)
+        val sizes = fragments.map { FragmentPayload.decode(it.payload)!!.data.size }
+
+        // LINK_B opens the assembly with a genuine fragment, LINK_A contributes the next one.
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments[0], LINK_B))
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments[1], LINK_A))
+        // An assembly only LINK_B fed goes away with it.
+        val lone = FragmentPayload(ByteArray(8) { 0x1F }, 0, 2, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 1 }).encode()
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragmentPacket(lone), LINK_B))
+
+        fragmentManager.onIngressLinkClosed(LINK_B)
+
+        assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: 1"))
+        assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: ${sizes[0] + sizes[1]}"))
+        // The assembly now counts against LINK_A: closing LINK_A drops it.
+        val completed = fragments.drop(2).mapNotNull { fragmentManager.handleFragment(it, LINK_A) }
+        assertEquals(1, completed.size)
+        assertArrayEquals(packet.payload, completed.single().payload)
+        assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: 0"))
+    }
+
+    @Test
+    fun `a handed-over assembly counts against its new link`() {
+        val fragments = fragmentsWithID(privatePacket(senderID, seed = 15), ByteArray(8) { 0x2E })
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments[0], LINK_B))
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments[1], LINK_A))
+        fragmentManager.onIngressLinkClosed(LINK_B)
+
+        fragmentManager.onIngressLinkClosed(LINK_A)
+        assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: 0"))
+        assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: 0"))
+    }
+
+    @Test
     fun `one link cannot buffer more than its byte share but still fits one assembly of the largest size`() {
         val limits = com.bitchat.android.util.AppConstants.Fragmentation
         val type = MessageType.NOISE_ENCRYPTED.value
