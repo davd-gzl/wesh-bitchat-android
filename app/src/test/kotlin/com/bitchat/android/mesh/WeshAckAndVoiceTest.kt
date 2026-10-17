@@ -79,6 +79,16 @@ class WeshAckAndVoiceTest {
     }
 
     @Test
+    fun `a sender without a known nickname is left blank, never a placeholder word`() = runBlocking<Unit> {
+        whenever(delegate.getPeerNickname(peerID)).thenReturn(null)
+        whenever(delegate.onPrivateMessageReceived(any())).thenReturn(false)
+        handler.handleNoiseEncrypted(encrypted(privateText()))
+        val captured = org.mockito.kotlin.argumentCaptor<com.bitchat.android.model.BitchatMessage>()
+        verify(delegate).onPrivateMessageReceived(captured.capture())
+        assertTrue(captured.firstValue.sender.isEmpty())
+    }
+
+    @Test
     fun `a delegate that does not opt in never acknowledges`() = runBlocking<Unit> {
         // Real interface default, as for any transport that does not run admission itself.
         org.mockito.kotlin.doCallRealMethod().whenever(delegate).onPrivateMessageReceived(any())

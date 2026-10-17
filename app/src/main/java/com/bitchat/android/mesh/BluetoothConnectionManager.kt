@@ -91,11 +91,13 @@ class BluetoothConnectionManager(
         }
     }
     
+    // One limiter for both roles, so its shared ceiling covers every inbound link.
+    private val inboundLimiter = InboundLinkRateLimiter()
     private val serverManager = BluetoothGattServerManager(
-        context, connectionScope, connectionTracker, permissionManager, powerManager, componentDelegate
+        context, connectionScope, connectionTracker, permissionManager, powerManager, componentDelegate, inboundLimiter
     )
     private val clientManager = BluetoothGattClientManager(
-        context, connectionScope, connectionTracker, permissionManager, powerManager, componentDelegate
+        context, connectionScope, connectionTracker, permissionManager, powerManager, componentDelegate, inboundLimiter
     )
     
     // Service state

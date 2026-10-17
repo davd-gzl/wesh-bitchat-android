@@ -1,5 +1,7 @@
 package com.bitchat.android.ui
 
+import com.bitchat.android.util.booleanOr
+import com.bitchat.android.util.stringOr
 import android.content.Context
 import android.content.SharedPreferences
 import kotlinx.coroutines.CancellationException
@@ -45,6 +47,16 @@ internal object WeshMessagePolicy {
         return true
     }
 
+    /**
+     * The Wesh public room: public text not from a blocked peer, and no system line. No local system
+     * line sets senderPeerID to ours today, so every public system line is hidden; one without a known
+     * local origin could carry a remote name or a BitChat notice.
+     */
+    fun showsInPublicRoom(message: BitchatMessage, myPeerID: String, isBlocked: (String) -> Boolean): Boolean =
+        !message.isPrivate && message.channel == null &&
+            (message.sender != "system" || message.senderPeerID == myPeerID) &&
+            (message.senderPeerID == null || !isBlocked(message.senderPeerID))
+
     fun deliveryLabel(status: DeliveryStatus?): String = when (status) {
         null, DeliveryStatus.Sending -> "En attente d’envoi"
         DeliveryStatus.Sent -> "Transmis · réception non confirmée"
@@ -69,7 +81,7 @@ internal class WeshPreferences(
         /** Notifications show no sender unless the person explicitly opted in on this phone. */
         fun notificationShowsSender(context: Context): Boolean =
             context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-                .getBoolean(NOTIFICATION_SENDER, false)
+                .booleanOr(NOTIFICATION_SENDER, false)
     }
 
     private val lock = Any()
@@ -79,26 +91,38 @@ internal class WeshPreferences(
     private data class MeetingSnapshot(val text: String, val epoch: Long, val revision: Long)
     private val _resetEpoch = MutableStateFlow(0L)
     val resetEpoch = _resetEpoch.asStateFlow()
-    private val _meetingDraft = MutableStateFlow(prefs.getString("meeting_note", "") ?: "")
+    private val _meetingDraft = MutableStateFlow(prefs.stringOr("meeting_note", "") ?: "")
     val meetingDraft = _meetingDraft.asStateFlow()
 
     var publicMuted: Boolean
-        get() = prefs.getBoolean("public_muted", false)
+        get() = prefs.booleanOr("public_muted", false)
         set(value) {
             synchronized(lock) { if (!fenced) prefs.edit { putBoolean("public_muted", value) } }
         }
     var publicDisclosureAccepted: Boolean
-        get() = prefs.getBoolean("public_disclosure", false)
+        get() = prefs.booleanOr("public_disclosure", false)
         set(value) {
             synchronized(lock) { if (!fenced) prefs.edit { putBoolean("public_disclosure", value) } }
         }
     var notificationShowsSender: Boolean
-        get() = prefs.getBoolean(NOTIFICATION_SENDER, false)
+        get() = prefs.booleanOr(NOTIFICATION_SENDER, false)
         set(value) {
             synchronized(lock) { if (!fenced) prefs.edit { putBoolean(NOTIFICATION_SENDER, value) } }
         }
+    /** True once the Pavé welcome was completed on this phone (cleared by an erase). */
+    var welcomed: Boolean
+        get() = prefs.getBoolean("welcomed", false)
+        set(value) {
+            synchronized(lock) { if (!fenced) prefs.edit { putBoolean("welcomed", value) } }
+        }
+    /** Pavé appearance name ("Nuit", "Jour", "Automatique"); Nuit when unset or after an erase. */
+    var appearance: String
+        get() = prefs.stringOr("appearance", "Nuit") ?: "Nuit"
+        set(value) {
+            synchronized(lock) { if (!fenced) prefs.edit { putString("appearance", value) } }
+        }
     val meetingNote: String
-        get() = prefs.getString("meeting_note", "") ?: ""
+        get() = prefs.stringOr("meeting_note", "") ?: ""
 
     fun editMeetingDraft(value: String, expectedEpoch: Long): Boolean = synchronized(lock) {
         if (fenced || expectedEpoch != _resetEpoch.value) return@synchronized false
@@ -118,7 +142,7 @@ internal class WeshPreferences(
                 try {
                     // Retry the actual commit even when a failed prior commit changed the RAM cache.
                     val committed = commitEditor(prefs.edit().putString("meeting_note", snapshot.text))
-                    committed && prefs.getString("meeting_note", null) == snapshot.text && isCurrent(snapshot)
+                    committed && prefs.stringOr("meeting_note", null) == snapshot.text && isCurrent(snapshot)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
@@ -165,6 +189,15 @@ internal class WeshPreferences(
     }
 }
 
+/** Preference files of the removed location features, which an older build may have written. */
+internal val LEGACY_FEATURE_PREFERENCES = listOf("geohash_prefs", "geohash_conversation_registry")
+
+/** Deletes every legacy preference file; true only when none is left behind. */
+internal fun deleteLegacyFeaturePreferences(context: Context): Boolean =
+    LEGACY_FEATURE_PREFERENCES
+        .map { name -> runCatching { context.deleteSharedPreferences(name) }.getOrDefault(false) }
+        .all { it }
+
 /** The draft marker must stay pending until every application wipe is confirmed. */
 internal suspend fun resumeAfterWeshPanicWipe(
     draftsCleared: Boolean,
@@ -173,7 +206,9 @@ internal suspend fun resumeAfterWeshPanicWipe(
     clearPreferences: suspend () -> Boolean,
     resume: suspend () -> Boolean,
     /** Internet off, Tor state deleted and Nostr keys erased. */
-    internetCleared: Boolean = true
+    internetCleared: Boolean = true,
+    /** The removed features' preference files are gone. */
+    legacyStoresCleared: Boolean = true
 ): Boolean {
     val preferencesCleared = try {
         clearPreferences()
@@ -182,6 +217,8 @@ internal suspend fun resumeAfterWeshPanicWipe(
     } catch (_: Exception) {
         false
     }
-    if (!draftsCleared || !conversationsCleared || !mediaCleared || !internetCleared || !preferencesCleared) return false
+    if (!draftsCleared || !conversationsCleared || !mediaCleared || !internetCleared || !legacyStoresCleared ||
+        !preferencesCleared
+    ) return false
     return resume()
 }

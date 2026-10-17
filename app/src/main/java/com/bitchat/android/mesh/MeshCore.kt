@@ -56,7 +56,7 @@ class MeshCore(
     )
 
     private val peerManager = PeerManager()
-    val fragmentManager = FragmentManager()
+    val fragmentManager = FragmentManager(myPeerID).apply { acceptMediaFragments = !weshLocalOnly }
     private val readReceiptRetrySender = RetryingControlPacketSender(scope)
     private val authenticatedPeerStateStore = SecureAuthenticatedPeerStateStore(context)
     private val authenticatedPeerState by lazy {
@@ -461,14 +461,17 @@ class MeshCore(
                 scope.launch { messageHandler.handleLeave(routed) }
             }
 
-            override fun handleFragment(packet: BitchatPacket): BitchatPacket? {
-                try {
-                    val isBroadcast = (packet.recipientID == null || packet.recipientID.contentEquals(SpecialRecipients.BROADCAST))
-                    if (isBroadcast && packet.type == MessageType.FRAGMENT.value) {
-                        gossipSyncManager.onPublicPacketSeen(packet)
-                    }
-                } catch (_: Exception) { }
-                return fragmentManager.handleFragment(packet)
+            override fun handleFragment(packet: BitchatPacket): FragmentResult {
+                val result = fragmentManager.receiveFragment(packet)
+                if (result.keptForSync) {
+                    try {
+                        val isBroadcast = (packet.recipientID == null || packet.recipientID.contentEquals(SpecialRecipients.BROADCAST))
+                        if (isBroadcast && packet.type == MessageType.FRAGMENT.value) {
+                            gossipSyncManager.onPublicPacketSeen(packet)
+                        }
+                    } catch (_: Exception) { }
+                }
+                return result
             }
 
             override fun sendAnnouncementToPeer(peerID: String) {

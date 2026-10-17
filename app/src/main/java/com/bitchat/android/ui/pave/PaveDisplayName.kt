@@ -166,7 +166,8 @@ object PaveDisplayName {
             codePoint in 0xFFF0..0xFFF8 || codePoint in 0x1BCA0..0x1BCA3 || codePoint in 0x1D173..0x1D17A ||
             codePoint in 0xE0000..0xE0FFF
 
-    private fun isInvisible(codePoint: Int): Boolean = isBlankGlyph(codePoint) || isDefaultIgnorable(codePoint) ||
+    /** Draws nothing or steers the text: controls, format (bidi, zero-width), unassigned and the like. */
+    internal fun isInvisible(codePoint: Int): Boolean = isBlankGlyph(codePoint) || isDefaultIgnorable(codePoint) ||
         when (Character.getType(codePoint).toByte()) {
             Character.CONTROL, Character.FORMAT, Character.SURROGATE,
             Character.PRIVATE_USE, Character.UNASSIGNED -> true

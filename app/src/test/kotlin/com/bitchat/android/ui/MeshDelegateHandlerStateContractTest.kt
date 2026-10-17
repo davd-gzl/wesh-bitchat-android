@@ -143,6 +143,17 @@ class MeshDelegateHandlerStateContractTest {
     }
 
     @Test
+    fun `a private message from a sender without a nickname notifies with no name, not the peer ID`() {
+        val peerID = "1122334455667788"
+        whenever(notifications.getAppBackgroundState()).thenReturn(true)
+        listOf(peerID, "").forEachIndexed { index, sender ->
+            handler.didReceiveMessage(BitchatMessage(id = "unnamed-$index", sender = sender, content = "hello $index",
+                timestamp = Date(1), isPrivate = true, senderPeerID = peerID))
+        }
+        verify(notifications, times(2)).showPrivateMessageNotification(eq(peerID), org.mockito.kotlin.isNull(), any())
+    }
+
+    @Test
     fun `unicode mention notifies once and duplicate transport delivery is suppressed`() {
         val incoming = message(
             id = "incoming",

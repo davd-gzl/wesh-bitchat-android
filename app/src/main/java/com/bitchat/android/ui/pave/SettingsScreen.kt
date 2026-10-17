@@ -161,6 +161,7 @@ fun AboutScreen(versionName: String, onBack: () -> Unit, onOpenLicenses: () -> U
 /** Third-party notices shipped with Wesh. Names and license identifiers stay untranslated. */
 internal val WeshNotices = listOf(
     "bitchat-android" to "GPL-3.0",
+    "Archivo" to "OFL-1.1",
     "AndroidX, Jetpack Compose, CameraX" to "Apache-2.0",
     "Kotlin, kotlinx.coroutines" to "Apache-2.0",
     "Accompanist" to "Apache-2.0",

@@ -200,7 +200,7 @@ class WeshInboundMediaTest {
         override suspend fun handleAnnounce(routed: RoutedPacket) = true
         override fun handleMessage(routed: RoutedPacket) { handled += routed }
         override fun handleLeave(routed: RoutedPacket) = Unit
-        override fun handleFragment(packet: BitchatPacket): BitchatPacket? { fragmentsHandled += 1; return null }
+        override fun handleFragment(packet: BitchatPacket): FragmentResult { fragmentsHandled += 1; return FragmentResult.Pending }
         override fun handleRequestSync(routed: RoutedPacket) = Unit
         override fun sendAnnouncementToPeer(peerID: String) = Unit
         override fun sendCachedMessages(peerID: String) = Unit
@@ -213,7 +213,8 @@ class WeshInboundMediaTest {
 
     @Test
     fun `public text above the V1 limit is dropped silently`() = runBlocking {
-        handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, ByteArray(2_001) { 'a'.code.toByte() }), peerID, "link"))
+        // Refused (false): the caller neither stores it for gossip sync nor treats it as delivered.
+        assertFalse(handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, ByteArray(2_001) { 'a'.code.toByte() }), peerID, "link")))
         verify(delegate, never()).onMessageReceived(any())
         assertEquals(1L, handler.publicBudget.dropped)
 
@@ -282,6 +283,8 @@ class WeshInboundMediaTest {
         assertFalse(fresh.acceptDirectedPlaintext || fresh.acceptFavoriteNotices)
         fresh.applyInboundPolicy(weshLocalOnly = false)
         assertTrue(fresh.acceptDirectedPlaintext && fresh.acceptFavoriteNotices)
+        // No build decodes compressed media any more, whatever the product policy.
+        assertFalse(com.bitchat.android.protocol.PacketPayloadLimits.acceptCompressedMedia)
     }
 
     @Test

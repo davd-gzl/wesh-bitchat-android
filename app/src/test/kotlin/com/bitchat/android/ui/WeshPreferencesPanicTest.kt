@@ -424,4 +424,25 @@ class WeshPreferencesPanicTest {
         assertTrue(preferences.saveMeetingDraft(preferences.resetEpoch.value))
         assertEquals("synthetic fresh note", preferences.meetingNote)
     }
+
+    @Test fun `a legacy preference file that cannot be deleted keeps the panic marker`() = runTest {
+        var resumes = 0
+        assertFalse(resumeAfterWeshPanicWipe(true, true, mediaCleared = true, legacyStoresCleared = false,
+            clearPreferences = { true }, resume = { resumes++; true }))
+        assertEquals(0, resumes)
+        assertTrue(resumeAfterWeshPanicWipe(true, true, mediaCleared = true, legacyStoresCleared = true,
+            clearPreferences = { true }, resume = { resumes++; true }))
+        assertEquals(1, resumes)
+    }
+
+    @Test fun `legacy geohash preference files are deleted and an absent one counts as cleared`() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val file = File(context.applicationInfo.dataDir, "shared_prefs/geohash_prefs.xml")
+        context.getSharedPreferences("geohash_prefs", android.content.Context.MODE_PRIVATE)
+            .edit().putString("last_geohash", "u09tvw").commit()
+        assertTrue(file.isFile)
+        assertTrue(deleteLegacyFeaturePreferences(context))
+        assertFalse(file.exists())
+        assertTrue(deleteLegacyFeaturePreferences(context))
+    }
 }

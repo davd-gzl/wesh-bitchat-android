@@ -45,6 +45,7 @@ class MessageHandler(
 
     /** Wesh accepts no incoming plaintext private text or favorite notices, on any transport. */
     fun applyInboundPolicy(weshLocalOnly: Boolean) {
+        com.bitchat.android.protocol.PacketPayloadLimits.acceptCompressedMedia = false
         acceptDirectedPlaintext = !weshLocalOnly
         acceptFavoriteNotices = !weshLocalOnly
     }
@@ -142,7 +143,7 @@ class MessageHandler(
                         // Create BitchatMessage - preserve source packet timestamp
                         val message = BitchatMessage(
                             id = privateMessage.messageID,
-                            sender = delegate?.getPeerNickname(peerID) ?: "Unknown",
+                            sender = delegate?.getPeerNickname(peerID).orEmpty(),
                             content = privateMessage.content,
                             timestamp = java.util.Date(packet.timestamp.toLong()),
                             isRelay = false,
@@ -415,8 +416,8 @@ class MessageHandler(
      * Handle broadcast or private message
      */
     /**
-     * Returns false only when a public message was dropped by the inbound budget, so the caller
-     * does not mark it seen for gossip and it can be fetched again later.
+     * Returns false when a public message was refused (inbound budget or size bound), so the
+     * caller does not keep it for gossip sync.
      */
     suspend fun handleMessage(routed: RoutedPacket): Boolean {
         val packet = routed.packet
@@ -463,10 +464,11 @@ class MessageHandler(
         if (!publicBudget.tryAdmit(budgetSource, routed.ingressLinkID ?: routed.relayAddress, peerID, enrolledContact)) return false
         
         try {
-            // Plain text, bounded like outgoing Wesh public text.
+            // Plain text, bounded like outgoing Wesh public text. Refused, so it is neither shown
+            // nor kept for gossip sync.
             if (packet.payload.size > PublicInboundBudget.MAX_PUBLIC_TEXT_BYTES) {
                 publicBudget.recordDrop()
-                return true
+                return false
             }
             val message = BitchatMessage(
                 id = PacketIdUtil.computeIdHex(packet).uppercase(),

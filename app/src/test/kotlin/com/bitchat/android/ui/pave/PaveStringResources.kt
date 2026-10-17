@@ -34,4 +34,11 @@ internal object PaveStringResources {
     /** Every reserved label as shipped, in every locale directory. */
     fun reservedWords(): Set<String> =
         PaveReservedWords.words(localeDirectories.map(::strings)) { getValue(name(it)) }
+
+    /** The shipped [RemoteNameRule] on a phone set to [directory]'s language, for JVM tests. */
+    fun remoteNameRule(directory: String = "values-fr"): RemoteNameRule {
+        val labels = strings(directory)
+        val reserved = reservedWords()
+        return RemoteNameRule { raw -> remoteDisplayName(raw, { labels.getValue(name(it)) }, reserved) }
+    }
 }

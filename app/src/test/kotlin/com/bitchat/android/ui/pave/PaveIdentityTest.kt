@@ -20,6 +20,13 @@ class PaveIdentityTest {
     }
 
     @Test
+    fun `a bare badge or state word is masked in both languages`() {
+        listOf("Vérifié", "VERIFIED", "Verifie", "Réessayer", "retry", "Pas encore de message", "No message yet").forEach { name ->
+            assertEquals(name, "Sans surnom (réservé)", shown(name, "values-fr"))
+        }
+    }
+
+    @Test
     fun `labels come from the phone language`() {
         assertEquals("Nora", shown("Nora", "values"))
         assertEquals("No nickname", shown(null, "values"))
