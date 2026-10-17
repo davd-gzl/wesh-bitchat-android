@@ -63,22 +63,24 @@ private fun PaveTextArea(value: String, onChange: (String) -> Unit, label: Strin
     val shape = RoundedCornerShape(WeshRadius.control)
     Column(verticalArrangement = Arrangement.spacedBy(WeshSpace.s2)) {
         Text(label, style = WeshType.label, color = c.ink)
-        BasicTextField(
-            value = value,
-            onValueChange = onChange,
-            singleLine = singleLine,
-            minLines = if (singleLine) 1 else 5,
-            textStyle = WeshType.body.copy(color = c.ink),
-            cursorBrush = SolidColor(c.ink),
-            keyboardOptions = KeyboardOptions(capitalization = if (singleLine) KeyboardCapitalization.Words else KeyboardCapitalization.Sentences),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = WeshTouch.primary)
-                .background(c.surface, shape)
-                .border(WeshStroke.s2, c.lineStrong, shape)
-                .padding(WeshSpace.s4)
-                .semantics { contentDescription = label },
-        )
+        NoPersonalizedLearning {
+            BasicTextField(
+                value = value,
+                onValueChange = onChange,
+                singleLine = singleLine,
+                minLines = if (singleLine) 1 else 5,
+                textStyle = WeshType.body.copy(color = c.ink),
+                cursorBrush = SolidColor(c.ink),
+                keyboardOptions = KeyboardOptions(capitalization = if (singleLine) KeyboardCapitalization.Words else KeyboardCapitalization.Sentences),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = WeshTouch.primary)
+                    .background(c.surface, shape)
+                    .border(WeshStroke.s2, c.lineStrong, shape)
+                    .padding(WeshSpace.s4)
+                    .semantics { contentDescription = label },
+            )
+        }
     }
 }
 
