@@ -40,7 +40,8 @@ object ArtiNative {
      * @param dataDir Directory for Arti state/cache
      * @param generation [generation] read when the start began
      * @return 0 on success, -4 when a [stop] came after [generation] was read or cancelled the
-     *   bootstrap, another error code otherwise
+     *   bootstrap, -5 without starting when an earlier runtime did not stop in time, another
+     *   error code otherwise
      */
     external fun initialize(dataDir: String, generation: Long): Int
 

@@ -132,6 +132,11 @@ class ArtiProxy internal constructor(
             when (val initResult = native.initialize(dataDir.absolutePath, generation)) {
                 0 -> Unit
                 -4 -> throw ArtiException("Arti stopped during bootstrap")
+                -5 -> {
+                    // The previous runtime outlived its teardown: Tor work may still run.
+                    synchronized(lock) { stopFailed = true }
+                    throw ArtiException("The previous Arti runtime did not stop")
+                }
                 else -> throw ArtiException("Failed to initialize Arti: error code $initResult")
             }
             // A stop may have reached the native side before this bootstrap did.

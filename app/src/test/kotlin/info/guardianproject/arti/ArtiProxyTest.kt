@@ -212,6 +212,14 @@ class ArtiProxyTest {
         assertEquals(2, native.calls.count { it == "initialize" })
     }
 
+    @Test fun `a start whose previous runtime outlived its teardown is reported as a failed stop`() {
+        val native = FakeNative(initResult = -5)
+        val proxy = ArtiProxy(app, null, native)
+        assertTrue(runCatching { proxy.start(23456, credentials) }.exceptionOrNull() is ArtiException)
+        assertTrue(proxy.hasStopFailed())
+        assertTrue("no SOCKS proxy over a runtime that may still run", native.calls.none { it.startsWith("socks") })
+    }
+
     @Test fun `no start begins while the Arti directory is being wiped`() {
         val native = FakeNative()
         val proxy = ArtiProxy(app, ArtiLogListener { }, native)

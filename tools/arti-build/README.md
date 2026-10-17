@@ -103,10 +103,12 @@ The wrapper exports the native methods used by `ArtiNative`:
 - `generation`: the stop generation, read when a start begins
 - `initialize(dataDir, generation)`: a fresh Tokio runtime and a freshly
   bootstrapped client per call; returns `-4` when a `stop` came after
-  `generation` was read or cancelled the bootstrap
+  `generation` was read or cancelled the bootstrap, and `-5` without starting
+  when an earlier runtime did not stop in time
 - `startSocksProxyWithAuth`: SOCKS5 on `127.0.0.1:<port>`, RFC 1929
-  username/password only, with per-start credentials; 10 s for the greeting,
-  authentication and request, at most 64 connections at a time
+  username/password only, with per-start credentials; 3 s for the greeting,
+  authentication and request, at most 16 connections in that handshake and 64
+  authenticated connections at a time; logs never name a destination
 - `stop`: cancels a bootstrap in progress, drops the client and shuts its
   runtime down; when it returns `0` no Tor task remains and the data directory
   can be deleted. It returns `-5` when a runtime did not stop within 3 s, now

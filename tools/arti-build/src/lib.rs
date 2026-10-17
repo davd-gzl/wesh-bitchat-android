@@ -38,12 +38,23 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
 /// How often an in-progress bootstrap checks whether a stop cancelled it.
 const CANCEL_POLL: Duration = Duration::from_millis(50);
 
-/// Longest a SOCKS client may take for its greeting, authentication and request.
-const SOCKS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Longest a SOCKS client may take for its greeting, authentication and request. Our own
+/// clients answer at once over loopback; a short limit keeps stalled sockets from holding places.
+const SOCKS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// Concurrent SOCKS connections. More are closed at once, so no local app can exhaust our
-/// file descriptors.
+/// Concurrent authenticated SOCKS connections. More are refused, so no local app can exhaust
+/// our file descriptors.
 const MAX_SOCKS_CONNECTIONS: usize = 64;
+
+/// Concurrent connections still in their handshake. Kept apart and small, so sockets that never
+/// authenticate cannot take the places of authenticated ones.
+const MAX_SOCKS_HANDSHAKES: usize = 16;
+
+/// Pause after a failed accept (for example out of file descriptors) before accepting again.
+const ACCEPT_RETRY: Duration = Duration::from_millis(500);
+
+/// At most one log line per interval for refused connections, so a burst cannot flood the logs.
+const REFUSAL_LOG_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Aborts the SOCKS task, drops the client inside its runtime, then shuts the runtime down,
 /// which ends every Arti background task (circuits, guards, directory fetches). False when the
@@ -168,7 +179,8 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_generation(
 
 /// Initialize Arti: a fresh runtime and a freshly bootstrapped client on every call.
 ///
-/// Returns 0 on success, -4 when a stop came after `generation` was read or cancelled the bootstrap.
+/// Returns 0 on success, -4 when a stop came after `generation` was read or cancelled the bootstrap,
+/// -5 when an earlier runtime did not stop in time: Tor work may still run, so nothing starts.
 #[no_mangle]
 pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
     mut env: JNIEnv,
@@ -200,6 +212,10 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
     if let Some(session) = previous {
         log_info!("Releasing the previous Tor client");
         note_teardown(teardown(session));
+    }
+    if SESSION.is_unclean() {
+        log_error!("A Tor runtime did not stop within {:?}; not starting", SHUTDOWN_TIMEOUT);
+        return -5;
     }
     if start.is_cancelled() {
         log_info!("Arti start cancelled by an earlier stop");
@@ -343,35 +359,44 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_startSocksProxyWithAuth(
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             log_info!("We have found that guard [scrubbed] is usable.");
 
-            // Accept connections
+            // Accept connections. Logs name a connection by a counter only, never its destination.
+            let handshakes = Arc::new(tokio::sync::Semaphore::new(MAX_SOCKS_HANDSHAKES));
             let slots = Arc::new(tokio::sync::Semaphore::new(MAX_SOCKS_CONNECTIONS));
+            let mut next_id: u64 = 0;
+            let mut refused: u64 = 0;
+            let mut last_refusal_log: Option<std::time::Instant> = None;
             loop {
                 match listener.accept().await {
-                    Ok((stream, peer_addr)) => {
-                        let Ok(slot) = Arc::clone(&slots).try_acquire_owned() else {
-                            log_error!("SOCKS connection limit reached; closing {}", peer_addr);
+                    Ok((stream, _peer_addr)) => {
+                        next_id += 1;
+                        let id = next_id;
+                        let Ok(handshake) = Arc::clone(&handshakes).try_acquire_owned() else {
                             drop(stream);
+                            refused += 1;
+                            if last_refusal_log.map_or(true, |t| t.elapsed() >= REFUSAL_LOG_INTERVAL) {
+                                log_error!("SOCKS: {} connections refused, too many handshakes", refused);
+                                refused = 0;
+                                last_refusal_log = Some(std::time::Instant::now());
+                            }
                             continue;
                         };
-                        log_info!("SOCKS connection from: {}", peer_addr);
                         let client_clone = Arc::clone(&client);
                         let credentials = Arc::clone(&credentials);
+                        let slots = Arc::clone(&slots);
 
                         tokio::spawn(async move {
-                            let _slot = slot;
-                            if let Err(e) = handle_socks_connection(stream, client_clone, credentials).await {
-                                log_error!("SOCKS connection error: {:?}", e);
+                            if let Err(e) = handle_socks_connection(id, stream, client_clone, credentials, handshake, slots).await {
+                                log_error!("SOCKS connection {}: {}", id, e);
                             }
                         });
                     }
                     Err(e) => {
+                        // Keep serving: a transient error such as EMFILE must not end the proxy.
                         log_error!("Failed to accept SOCKS connection: {:?}", e);
-                        break; // Exit loop on error
+                        tokio::time::sleep(ACCEPT_RETRY).await;
                     }
                 }
             }
-
-            log_info!("SOCKS proxy task exiting");
         });
 
         // Store handle for cleanup
@@ -392,35 +417,45 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_startSocksProxyWithAuth(
     }
 }
 
-/// Handle a single SOCKS connection
+/// Handle a single SOCKS connection. `handshake` is held until the request is read; a place
+/// in `slots` is taken only after authentication.
 async fn handle_socks_connection(
+    id: u64,
     mut stream: tokio::net::TcpStream,
     client: Arc<TorClient<PreferredRuntime>>,
     credentials: Arc<socks_auth::Credentials>,
+    handshake: tokio::sync::OwnedSemaphorePermit,
+    slots: Arc<tokio::sync::Semaphore>,
 ) -> Result<()> {
     use tokio::io::AsyncWriteExt;
 
-    // A client that stalls before its request never holds a connection slot for long.
+    // A client that stalls before its request never holds a handshake place for long.
     let (target_host, target_port) =
         match tokio::time::timeout(SOCKS_HANDSHAKE_TIMEOUT, socks_handshake(&mut stream, &credentials)).await {
             Ok(target) => target?,
             Err(_) => return Err(anyhow::anyhow!("SOCKS handshake timed out")),
         };
+    drop(handshake);
 
-    log_info!("SOCKS5 CONNECT to {}:{}", target_host, target_port);
+    let Ok(_slot) = slots.try_acquire_owned() else {
+        // General failure: the client may retry once a connection closes.
+        stream.write_all(&[0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
+        return Err(anyhow::anyhow!("SOCKS connection limit reached"));
+    };
 
-    // Establish Tor connection
+    log_info!("SOCKS connection {}: CONNECT", id);
+
+    // Establish Tor connection. The Arti error may name the destination, so it is not logged.
     let tor_stream = match client.connect((target_host.as_str(), target_port)).await {
         Ok(s) => s,
-        Err(e) => {
-            log_error!("Failed to connect through Tor: {:?}", e);
+        Err(_) => {
             // Send SOCKS5 error: general failure
             stream.write_all(&[0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
-            return Err(e.into());
+            return Err(anyhow::anyhow!("Failed to connect through Tor"));
         }
     };
 
-    log_info!("Tor connection established to {}:{}", target_host, target_port);
+    log_info!("SOCKS connection {}: Tor stream established", id);
 
     // Send SOCKS5 success response
     stream.write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
@@ -441,17 +476,17 @@ async fn handle_socks_connection(
     tokio::select! {
         result = client_to_tor => {
             if let Err(ref e) = result {
-                log_error!("Client->Tor copy error: {:?}", e);
+                log_error!("Client->Tor copy error: {:?}", e.kind());
             }
         }
         result = tor_to_client => {
             if let Err(ref e) = result {
-                log_error!("Tor->Client copy error: {:?}", e);
+                log_error!("Tor->Client copy error: {:?}", e.kind());
             }
         }
     };
 
-    log_info!("SOCKS connection closed for {}:{}", target_host, target_port);
+    log_info!("SOCKS connection {}: closed", id);
 
     Ok(())
 }
