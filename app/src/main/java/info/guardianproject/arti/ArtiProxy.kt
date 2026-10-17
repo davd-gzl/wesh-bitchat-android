@@ -48,9 +48,9 @@ class ArtiProxy internal constructor(
         private const val TAG = "ArtiProxy"
     }
 
-    private val lock = Any()
+    private val lock = Object()
 
-    /** Guarded by [lock]. */
+    /** Guarded by [lock]. True from a successful start until a native stop succeeds. */
     private var isRunning = false
 
     /** Guarded by [lock]. Once a start began, every stop reaches the native side (it is idempotent). */
@@ -58,6 +58,14 @@ class ArtiProxy internal constructor(
 
     /** Guarded by [lock]. Bumped by every stop, so a start can tell a stop happened while it ran. */
     private var stops = 0L
+
+    /** Guarded by [lock]. A native stop is running; a new start waits for its teardown. */
+    private var stopInProgress = false
+
+    /** Guarded by [lock]. A start is between its first native call and its outcome. */
+    private var startInFlight = false
+
+    fun isStartInFlight(): Boolean = synchronized(lock) { startInFlight }
 
     /**
      * Start the Arti Tor proxy.
@@ -67,15 +75,20 @@ class ArtiProxy internal constructor(
      * 2. Bootstraps a fresh Tor client (blocks; [stop] from another thread cancels it)
      * 3. Starts SOCKS proxy on configured port
      *
+     * Waits for a stop in progress. A stop that lands at any point of the start wins: the start
+     * stops whatever it began and throws.
+     *
      * @throws ArtiException if initialization or startup fails
      */
     fun start() {
         val stopsAtStart = synchronized(lock) {
+            while (stopInProgress) lock.wait()
             if (isRunning) {
                 Log.w(TAG, "Arti already running")
                 return
             }
             startAttempted = true
+            startInFlight = true
             stops
         }
 
@@ -85,6 +98,8 @@ class ArtiProxy internal constructor(
                 native.setLogCallback(listener)
             }
 
+            // Before any file or native client is created.
+            abortIfStopped(stopsAtStart)
             val dataDir = getDataDirectory()
             Log.i(TAG, "Initializing Arti")
 
@@ -93,6 +108,8 @@ class ArtiProxy internal constructor(
                 -4 -> throw ArtiException("Arti stopped during bootstrap")
                 else -> throw ArtiException("Failed to initialize Arti: error code $initResult")
             }
+            // A stop may have reached the native side before this bootstrap did.
+            abortIfStopped(stopsAtStart)
 
             Log.i(TAG, "Starting SOCKS proxy on port $socksPort (DNS port: $dnsPort)")
             val startResult = native.startSocksProxy(socksPort)
@@ -102,7 +119,6 @@ class ArtiProxy internal constructor(
                         (stops != stopsAtStart).also { if (!it) isRunning = true }
                     }
                     if (stoppedMeanwhile) {
-                        // A stop landed between our native calls: whatever started must not run.
                         native.stop()
                         throw ArtiException("Arti stopped during start")
                     }
@@ -121,30 +137,47 @@ class ArtiProxy internal constructor(
             } else {
                 throw ArtiException("Failed to start Arti: ${e.message}", e)
             }
+        } finally {
+            synchronized(lock) {
+                startInFlight = false
+                lock.notifyAll()
+            }
+        }
+    }
+
+    private fun abortIfStopped(stopsAtStart: Long) {
+        if (synchronized(lock) { stops != stopsAtStart }) {
+            native.stop()
+            throw ArtiException("Arti stopped during start")
         }
     }
 
     /**
      * Stop the Arti Tor proxy: drops the Tor client and its runtime, and cancels a start still
-     * bootstrapping. Also runs after a failed start, which can leave a client behind.
+     * bootstrapping. Also runs after a failed start, which can leave a client behind. Starts
+     * wait until it returns; the running state is cleared only once the native stop succeeded.
      */
     fun stop() {
         synchronized(lock) {
             if (!startAttempted) return
             stops++
-            isRunning = false
+            stopInProgress = true
         }
 
+        var stopped = false
         try {
             Log.i(TAG, "Stopping Arti...")
             val stopResult = native.stop()
-            if (stopResult != 0) {
-                Log.w(TAG, "Stop returned error code: $stopResult")
-            }
-            Log.i(TAG, "Arti stopped successfully")
-
+            stopped = stopResult == 0
+            if (stopped) Log.i(TAG, "Arti stopped successfully") else Log.w(TAG, "Stop returned error code: $stopResult")
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping Arti", e)
+        } finally {
+            synchronized(lock) {
+                if (stopped) isRunning = false
+                stopInProgress = false
+                lock.notifyAll()
+            }
         }
     }
 

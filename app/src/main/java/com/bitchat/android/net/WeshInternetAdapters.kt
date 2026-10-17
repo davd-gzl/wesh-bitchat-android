@@ -8,6 +8,7 @@ import android.net.NetworkCapabilities
 import com.bitchat.android.nostr.NostrIdentityBridge
 import com.bitchat.android.nostr.NostrRelayManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,7 +26,8 @@ internal class ArtiTorControl(
     private val applyOff: suspend () -> Unit = { ArtiTorManager.getInstance().applyMode(app, TorMode.OFF) },
     private val stopTimeoutMs: Long = STOP_TIMEOUT_MS,
     private val deleteArti: (File) -> Boolean = ::deleteDirectory,
-    private val createMarker: (File) -> Boolean = { it.exists() || it.createNewFile() }
+    private val createMarker: (File) -> Boolean = { it.exists() || it.createNewFile() },
+    private val startInFlight: () -> Boolean = { ArtiTorManager.getInstance().isStartInFlight() }
 ) : WeshTorControl {
     override val progress: Flow<Pair<Int, Boolean>> = status.map { it.bootstrapPercent to it.isReady() }
 
@@ -58,8 +60,17 @@ internal class ArtiTorControl(
         OkHttpProvider.reset()
         return withContext(Dispatchers.IO) {
             val marked = runCatching { createMarker(pendingMarker(app)) }.getOrDefault(false)
-            val deleted = runCatching { deleteArti(artiDirectory(app)) }.getOrDefault(false)
-            val done = stopped && deleted
+            var deleted = runCatching { deleteArti(artiDirectory(app)) }.getOrDefault(false)
+            // A start still in flight could recreate the directory after this delete: wait it
+            // out, then stop and delete once more if it left anything behind.
+            val settled = withTimeoutOrNull(stopTimeoutMs) {
+                while (runCatching(startInFlight).getOrDefault(true)) delay(SETTLE_POLL_MS)
+            } != null
+            if (artiDirectory(app).exists()) {
+                withTimeoutOrNull(stopTimeoutMs) { applyOff() }
+                deleted = runCatching { deleteArti(artiDirectory(app)) }.getOrDefault(false)
+            }
+            val done = stopped && deleted && settled
             when {
                 done -> clearPendingSignals(app)
                 // No marker: a committed preference is the second durable signal.
@@ -75,6 +86,7 @@ internal class ArtiTorControl(
     companion object {
         /** Above ArtiTorManager's own 7 s stop wait. */
         const val STOP_TIMEOUT_MS = 15_000L
+        private const val SETTLE_POLL_MS = 50L
 
         /** ArtiProxy keeps its `cache` and `state` directories here. */
         fun artiDirectory(context: Context): File = File(context.filesDir, "arti")

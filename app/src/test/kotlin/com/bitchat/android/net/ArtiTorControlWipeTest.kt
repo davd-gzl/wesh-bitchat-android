@@ -65,6 +65,26 @@ class ArtiTorControlWipeTest {
         assertFalse(arti.exists())
     }
 
+    @Test fun `a start still in flight cannot leave the wiped directory behind`() = runBlocking {
+        val status = MutableStateFlow(ArtiTorManager.TorStatus())
+        var stops = 0
+        var inFlightChecks = 0
+        val control = ArtiTorControl(
+            app, status,
+            applyOff = { stops++; status.value = ArtiTorManager.TorStatus() },
+            startInFlight = {
+                // A late bootstrap recreates the directory after the first delete, then ends.
+                if (++inFlightChecks == 1) File(arti, "state").apply { mkdirs() }.resolve("late").writeText("x")
+                inFlightChecks < 3
+            }
+        )
+        assertTrue(control.stopAndWipe())
+        assertTrue(inFlightChecks >= 3)
+        assertEquals("stopped again once the start settled", 2, stops)
+        assertFalse(arti.exists())
+        assertFalse(ArtiTorControl.pendingMarker(app).exists())
+    }
+
     @Test fun `a stop timeout still deletes the state and leaves a wipe for the next start`() = runBlocking {
         val status = MutableStateFlow(running)
         val control = ArtiTorControl(app, status, applyOff = { }, stopTimeoutMs = 200)

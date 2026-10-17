@@ -25,10 +25,19 @@ class ArtiProxyTest {
         /** A bootstrap the stop does not reach (the stop came before the native start). */
         var uncancellable: CountDownLatch? = null
         val bootstrapping = CountDownLatch(1)
-        override fun setLogCallback(callback: ArtiLogListener) { synchronized(calls) { calls += "log" } }
+        var onLogCallback: (() -> Unit)? = null
+        var onInitialize: (() -> Unit)? = null
+        var stopGate: CountDownLatch? = null
+        val stopping = CountDownLatch(1)
+        var stopResult = 0
+        override fun setLogCallback(callback: ArtiLogListener) {
+            synchronized(calls) { calls += "log" }
+            onLogCallback?.invoke()
+        }
         override fun initialize(dataDir: String): Int {
             synchronized(calls) { calls += "initialize" }
             bootstrapping.countDown()
+            onInitialize?.invoke()
             // Like the native side: a stop() cancels the bootstrap, which then returns -4.
             blockBootstrap?.let { return if (it.await(30, TimeUnit.SECONDS)) -4 else 0 }
             uncancellable?.await(30, TimeUnit.SECONDS)
@@ -40,8 +49,10 @@ class ArtiProxyTest {
         }
         override fun stop(): Int {
             synchronized(calls) { calls += "stop" }
+            stopping.countDown()
+            stopGate?.await(30, TimeUnit.SECONDS)
             blockBootstrap?.countDown()
-            return 0
+            return stopResult
         }
     }
 
@@ -112,6 +123,58 @@ class ArtiProxyTest {
 
         // Not left marked as running: the next start really starts.
         native.uncancellable = null
+        proxy.start()
+        assertEquals(2, native.calls.count { it == "initialize" })
+    }
+
+    @Test fun `a stop before the bootstrap begins means no bootstrap at all`() {
+        val native = FakeNative()
+        val proxy = ArtiProxy(app, 23456, 23457, ArtiLogListener { }, native)
+        native.onLogCallback = { native.onLogCallback = null; proxy.stop() }
+        assertTrue(runCatching { proxy.start() }.exceptionOrNull() is ArtiException)
+        assertEquals(listOf("log", "stop", "stop"), native.calls)
+    }
+
+    @Test fun `a stop that reached the native side before the bootstrap stops it right after`() {
+        val native = FakeNative()
+        val proxy = ArtiProxy(app, 23456, 23457, null, native)
+        // The bootstrap still returns 0: the stop came before it reached the native side.
+        native.onInitialize = { native.onInitialize = null; proxy.stop() }
+        assertTrue(runCatching { proxy.start() }.exceptionOrNull() is ArtiException)
+        assertEquals(listOf("initialize", "stop", "stop"), native.calls)
+    }
+
+    @Test fun `a start waits until a stop in progress has torn down`() {
+        val gate = CountDownLatch(1)
+        val native = FakeNative().apply { stopGate = gate }
+        val proxy = ArtiProxy(app, 23456, 23457, null, native)
+        native.stopGate = null
+        proxy.start()
+        native.stopGate = gate
+        val stopper = thread { proxy.stop() }
+        assertTrue(native.stopping.await(5, TimeUnit.SECONDS))
+        val starter = thread { proxy.start() }
+        starter.join(300)
+        assertTrue("start must wait for the teardown", starter.isAlive)
+        assertEquals(1, native.calls.count { it == "initialize" })
+
+        gate.countDown()
+        stopper.join(5_000)
+        starter.join(5_000)
+        assertFalse(starter.isAlive)
+        assertEquals(2, native.calls.count { it == "initialize" })
+    }
+
+    @Test fun `a failed native stop leaves the proxy marked running`() {
+        val native = FakeNative()
+        val proxy = ArtiProxy(app, 23456, 23457, null, native)
+        proxy.start()
+        native.stopResult = -1
+        proxy.stop()
+        proxy.start()
+        assertEquals("no second start over a client that may still run", 1, native.calls.count { it == "initialize" })
+        native.stopResult = 0
+        proxy.stop()
         proxy.start()
         assertEquals(2, native.calls.count { it == "initialize" })
     }
