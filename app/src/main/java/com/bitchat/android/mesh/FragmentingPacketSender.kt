@@ -7,82 +7,41 @@ import com.bitchat.android.protocol.MessageType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.security.MessageDigest
-import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Shared transport send wrapper that applies bitchat packet fragmentation and
- * transfer progress before a transport writes packets to its concrete medium.
+ * Shared transport send wrapper that applies bitchat packet fragmentation before a transport
+ * writes packets to its concrete medium.
  */
 class FragmentingPacketSender(
     private val scope: CoroutineScope,
     private val fragmentManager: FragmentManager?,
     private val logTag: String,
-    private val interFragmentDelayMs: Long = 20L,
-    private val onFailure: (String) -> Unit = TransferProgressManager::fail,
-    private val onComplete: (String, Int) -> Unit = TransferProgressManager::complete
+    private val interFragmentDelayMs: Long = 20L
 ) {
-    private val transferJobs = ConcurrentHashMap<String, Job>()
-
     fun send(
         routed: RoutedPacket,
         description: String,
         sendSingle: (RoutedPacket) -> Boolean
     ): Boolean {
-        val transferId = transferIdFor(routed)
-        val packets = packetsForTransport(routed)
-        if (packets == null) {
-            if (transferId != null) {
-                onFailure(transferId)
-            }
-            return false
-        }
+        val packets = packetsForTransport(routed) ?: return false
         val total = packets.size
 
         if (total <= 1) {
-            if (transferId != null) {
-                TransferProgressManager.start(transferId, 1)
-            }
-            val sent = sendSingle(
-                routed.copy(
-                    packet = packets.first(),
-                    transferId = transferId,
-                    preparedPackets = null
-                )
-            )
-            if (transferId != null) {
-                if (sent) {
-                    TransferProgressManager.progress(transferId, 1, 1)
-                    onComplete(transferId, 1)
-                } else {
-                    onFailure(transferId)
-                }
-            }
-            return sent
+            return sendSingle(routed.copy(packet = packets.first()))
         }
 
         Log.d(logTag, "Fragmenting packet type ${routed.packet.type} into $total fragments for $description")
-        if (transferId != null) {
-            TransferProgressManager.start(transferId, total)
-        }
 
         val job = scope.launch(start = CoroutineStart.LAZY) {
             var sent = 0
             for (packet in packets) {
                 if (!isActive) return@launch
-                if (transferId != null && transferJobs[transferId]?.isCancelled == true) return@launch
 
-                val fragment = routed.copy(
-                    packet = packet,
-                    transferId = transferId,
-                    preparedPackets = null
-                )
                 val delivered = try {
-                    sendSingle(fragment)
+                    sendSingle(routed.copy(packet = packet))
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (e: Exception) {
@@ -93,49 +52,19 @@ class FragmentingPacketSender(
                 if (!delivered) {
                     if (!isActive) return@launch
                     Log.w(logTag, "Stopping fragmented send for $description after $sent/$total fragments")
-                    if (transferId != null) onFailure(transferId)
                     return@launch
                 }
 
                 sent += 1
-                if (transferId != null) {
-                    TransferProgressManager.progress(transferId, sent, total)
-                }
                 if (sent < total) {
                     delay(interFragmentDelayMs)
                 }
             }
-
-            if (transferId != null) {
-                onComplete(transferId, total)
-            }
         }
-
-        if (transferId != null) {
-            transferJobs[transferId] = job
-            job.invokeOnCompletion { transferJobs.remove(transferId, job) }
-        }
-        val started = job.start()
-        if (!started && transferId != null) onFailure(transferId)
-        return started
-    }
-
-    fun cancelTransfer(transferId: String): Boolean {
-        val job = transferJobs.remove(transferId) ?: return false
-        job.cancel()
-        return true
+        return job.start()
     }
 
     internal fun packetsForTransport(routed: RoutedPacket): List<BitchatPacket>? {
-        routed.preparedPackets?.let { prepared ->
-            if (prepared.isEmpty() ||
-                prepared.size > com.bitchat.android.util.AppConstants.Fragmentation.MAX_FRAGMENTS_PER_ID) {
-                Log.e(logTag, "Rejected invalid prepared fragment plan (${prepared.size} packets)")
-                return null
-            }
-            return prepared
-        }
-
         val packet = routed.packet
         if (packet.type == MessageType.FRAGMENT.value) {
             return listOf(packet)
@@ -159,23 +88,5 @@ class FragmentingPacketSender(
             Log.e(logTag, "Fragment creation failed for packet type ${packet.type}: ${e.message}", e)
             null
         }
-    }
-
-    private fun transferIdFor(routed: RoutedPacket): String? {
-        routed.transferId?.let { return it }
-        val packet = routed.packet
-        return if (packet.type == MessageType.FILE_TRANSFER.value) {
-            sha256Hex(packet.payload)
-        } else {
-            null
-        }
-    }
-
-    private fun sha256Hex(bytes: ByteArray): String = try {
-        val md = MessageDigest.getInstance("SHA-256")
-        md.update(bytes)
-        md.digest().joinToString("") { "%02x".format(it) }
-    } catch (_: Exception) {
-        bytes.size.toString(16)
     }
 }

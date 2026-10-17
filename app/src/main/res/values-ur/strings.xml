@@ -68,13 +68,6 @@
     <string name="cd_handshake_failed">ہینڈ شیک ناکام</string>
 
     <!-- فائل ویور ڈائیلاگ -->
-    <string name="file_viewer_title">📎 فائل موصولہ</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 سائز: %1$s</string>
-    <string name="file_viewer_type">🏷️ قسم: %1$s</string>
-    <string name="file_viewer_open_save">📂 کھولیں / محفوظ کریں</string>
-    <string name="close_with_emoji">❌ بند کریں</string>
-    <string name="pick_image">تصویر منتخب کریں</string>
 
     <!-- تفصیلات شیٹ -->
     <string name="about_offline_mesh_title">آف لائن میش چیٹ</string>
@@ -124,29 +117,14 @@
     <string name="cd_reachable_via_nostr">Nostr کے ذریعے رسائی</string>
     <string name="cd_offline_favorite">پسندیدہ (آف لائن)</string>
     <string name="cd_scroll_to_bottom">نیچے اسکرول کریں</string>
-    <string name="cd_file">فائل</string>
-    <string name="cd_image">تصویر</string>
     <string name="cd_cancel">منسوخ کریں</string>
     <string name="cd_link">لنک</string>
-    <string name="cd_pick_media">میڈیا منتخب کریں</string>
-    <string name="cd_pick_file">فائل منتخب کریں</string>
-    <string name="cd_save_current_image">موجودہ تصویر محفوظ کریں</string>
-    <string name="cd_close">بند کریں</string>
-    <string name="cd_image_index_of">تصویر %1$d / %2$d</string>
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">وائس نوٹ ریکارڈ کریں</string>
     <string name="cd_offline_mesh_chat">آف لائن میش چیٹ</string>
     <string name="cd_end_to_end_encryption">اینڈ‑ٹو‑اینڈ انکرپشن</string>
 
     <!-- تصاویر اور فائلیں -->
-    <string name="image_page_of">تصویر %1$d / %2$d</string>
-    <string name="image_unavailable">تصویر دستیاب نہیں</string>
-    <string name="image_saved_to_downloads">تصویر "Downloads" میں محفوظ ہوئی</string>
-    <string name="image_save_failed">تصویر محفوظ نہیں ہو سکی</string>
-    <string name="toast_image_saved">تصویر "Downloads" میں محفوظ ہوئی</string>
-    <string name="toast_failed_to_save_image">تصویر محفوظ نہیں ہو سکی</string>
-    <string name="pick_file">فائل منتخب کریں</string>
-    <string name="file_unavailable">[فائل دستیاب نہیں]</string>
     <string name="unknown">نامعلوم</string>
 
     <!-- صارف ایکشن شیٹ -->
@@ -243,18 +221,10 @@
     <string name="type_a_message_placeholder">پیغام لکھیں…</string>
     <string name="mention">ذکر</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">تصویر</string>
-    <string name="media_type_file">فائل</string>
 
     <!-- نوٹیفیکیشن ٹیکسٹ ہیلپرز -->
-    <string name="notification_sent_image">📷 تصویر بھیجی</string>
-    <string name="notification_sent_voice">🎤 وائس نوٹ بھیجا</string>
-    <string name="notification_sent_file">📎 فائل بھیجی</string>
 
     <!-- وائس پلیئر رسائی -->
-    <string name="cd_play_voice">چلائیں</string>
-    <string name="cd_pause_voice">روکیں</string>
 
     <!-- اجازات کی تفصیل -->
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>

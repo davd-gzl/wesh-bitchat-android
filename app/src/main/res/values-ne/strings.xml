@@ -68,13 +68,6 @@
     <string name="cd_handshake_failed">ह्यान्डशेक असफल</string>
 
     <!-- फाइल दर्शक संवाद -->
-    <string name="file_viewer_title">📎 फाइल प्राप्त भयो</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 साइज: %1$s</string>
-    <string name="file_viewer_type">🏷️ प्रकार: %1$s</string>
-    <string name="file_viewer_open_save">📂 खोल्नुहोस् / बचत गर्नुहोस्</string>
-    <string name="close_with_emoji">❌ बन्द गर्नुहोस्</string>
-    <string name="pick_image">तस्वीर छान्नुहोस्</string>
 
     <!-- अबाउट शीट -->
     <string name="about_offline_mesh_title">अफलाइन मेष च्याट</string>
@@ -124,22 +117,13 @@
     <string name="cd_reachable_via_nostr">Nostr बाट पहुँचयोग्य</string>
     <string name="cd_offline_favorite">मनपर्ने (अफलाइन)</string>
     <string name="cd_scroll_to_bottom">तल स्क्रोल गर्नुहोस्</string>
-    <string name="cd_file">फाइल</string>
-    <string name="cd_image">तस्वीर</string>
     <string name="cd_cancel">रद्द</string>
     <string name="cd_link">लिङ्क</string>
-    <string name="cd_pick_media">मेडिया छान्नुहोस्</string>
     <string name="cd_record_voice">भ्वाइस नोट रेकर्ड</string>
     <string name="cd_offline_mesh_chat">अफलाइन मेष च्याट</string>
     <string name="cd_end_to_end_encryption">एन्ड‑टु‑एन्ड इन्क्रिप्सन</string>
 
     <!-- छवि / फाइल -->
-    <string name="image_page_of">तस्वीर %1$d / %2$d</string>
-    <string name="image_unavailable">तस्वीर उपलब्ध छैन</string>
-    <string name="image_saved_to_downloads">तस्वीर "Downloads" मा सुरक्षित भयो</string>
-    <string name="image_save_failed">तस्वीर बचत असफल</string>
-    <string name="pick_file">फाइल छान्नुहोस्</string>
-    <string name="file_unavailable">[फाइल उपलब्ध छैन]</string>
     <string name="unknown">अज्ञात</string>
 
     <!-- प्रयोगकर्ता कार्य शीट -->
@@ -234,22 +218,13 @@
     <string name="select">छान्नुहोस्</string>
     <string name="type_a_message_placeholder">सन्देश टाइप गर्नुहोस्…</string>
     <string name="mention">उल्लेख</string>
-    <string name="image_counter">%1$d / %2$d</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">तस्वीर</string>
-    <string name="media_type_file">फाइल</string>
 
     <!-- सन्देश स्थिति -->
 
     <!-- सूचना पाठ सहायक -->
-    <string name="notification_sent_image">📷 तस्वीर पठाइयो</string>
-    <string name="notification_sent_voice">🎤 भ्वाइस सन्देश पठाइयो</string>
-    <string name="notification_sent_file">📎 फाइल पठाइयो</string>
 
     <!-- भ्वाइस प्लेयर पहुँचयोग्यता -->
-    <string name="cd_play_voice">प्ले</string>
-    <string name="cd_pause_voice">पज</string>
 
     <!-- अनुमति विवरण -->
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>

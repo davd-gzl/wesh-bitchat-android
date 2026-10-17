@@ -68,13 +68,6 @@
     <string name="cd_handshake_failed">فشلت المصافحة</string>
 
     <!-- مربع عرض الملفات -->
-    <string name="file_viewer_title">📎 تم استلام ملف</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 الحجم: %1$s</string>
-    <string name="file_viewer_type">🏷️ النوع: %1$s</string>
-    <string name="file_viewer_open_save">📂 فتح / حفظ</string>
-    <string name="close_with_emoji">❌ إغلاق</string>
-    <string name="pick_image">اختيار صورة</string>
 
     <!-- ورقة حول التطبيق -->
     <string name="about_offline_mesh_title">دردشة شبكية دون اتصال</string>
@@ -124,29 +117,14 @@
     <string name="cd_reachable_via_nostr">يمكن الوصول عبر Nostr</string>
     <string name="cd_offline_favorite">مفضل (غير متصل)</string>
     <string name="cd_scroll_to_bottom">التمرير إلى الأسفل</string>
-    <string name="cd_file">ملف</string>
-    <string name="cd_image">صورة</string>
     <string name="cd_cancel">إلغاء</string>
     <string name="cd_link">رابط</string>
-    <string name="cd_pick_media">اختيار وسائط</string>
-    <string name="cd_pick_file">اختيار ملف</string>
-    <string name="cd_save_current_image">حفظ الصورة الحالية</string>
-    <string name="cd_close">إغلاق</string>
-    <string name="cd_image_index_of">صورة %1$d من %2$d</string>
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">تسجيل مذكرة صوتية</string>
     <string name="cd_offline_mesh_chat">دردشة شبكية دون اتصال</string>
     <string name="cd_end_to_end_encryption">تشفير طرف إلى طرف</string>
 
     <!-- الصور والملفات -->
-    <string name="image_page_of">صورة %1$d من %2$d</string>
-    <string name="image_unavailable">الصورة غير متاحة</string>
-    <string name="image_saved_to_downloads">تم حفظ الصورة في "التنزيلات"</string>
-    <string name="image_save_failed">تعذّر حفظ الصورة</string>
-    <string name="toast_image_saved">تم حفظ الصورة في "التنزيلات"</string>
-    <string name="toast_failed_to_save_image">تعذّر حفظ الصورة</string>
-    <string name="pick_file">اختيار ملف</string>
-    <string name="file_unavailable">[الملف غير متاح]</string>
     <string name="unknown">غير معروف</string>
 
     <!-- ورقة إجراءات المستخدم -->
@@ -243,18 +221,10 @@
     <string name="type_a_message_placeholder">اكتب رسالة…</string>
     <string name="mention">إشارة</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">صورة</string>
-    <string name="media_type_file">ملف</string>
 
     <!-- مساعدو نص الإشعارات -->
-    <string name="notification_sent_image">📷 أرسل صورة</string>
-    <string name="notification_sent_voice">🎤 أرسل مذكرة صوتية</string>
-    <string name="notification_sent_file">📎 أرسل ملفًا</string>
 
     <!-- سهولة استخدام مشغّل الصوت -->
-    <string name="cd_play_voice">تشغيل</string>
-    <string name="cd_pause_voice">إيقاف مؤقت</string>
 
     <!-- أوصاف الأذونات -->
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>

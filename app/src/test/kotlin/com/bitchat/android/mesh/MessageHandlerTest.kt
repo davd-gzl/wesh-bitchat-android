@@ -3,7 +3,8 @@ package com.bitchat.android.mesh
 import android.os.Build
 import com.bitchat.android.model.IdentityAnnouncement
 import com.bitchat.android.model.AuthenticatedPeerState
-import com.bitchat.android.model.BitchatFilePacket
+import com.bitchat.android.model.BitchatMessage
+import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.model.NoisePayload
 import com.bitchat.android.model.NoisePayloadType
 import com.bitchat.android.model.PeerCapabilities
@@ -18,6 +19,7 @@ import com.bitchat.android.services.meshgraph.MeshGraphService
 import com.bitchat.android.util.AppConstants
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -25,6 +27,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -152,78 +155,62 @@ class MessageHandlerTest {
         }
     }
 
+    private fun enrollSender() {
+        whenever(delegate.getAuthenticatedRemoteStaticKey(peerID)).thenReturn(noiseKey)
+        whenever(delegate.isEnrolledContactKey(any())).thenReturn(true)
+    }
+
+    private fun directedRawFile(signature: ByteArray?) = BitchatPacket(
+        version = 2u,
+        type = MessageType.FILE_TRANSFER.value,
+        senderID = peerID.hexToBytes(),
+        recipientID = myPeerID.hexToBytes(),
+        timestamp = System.currentTimeMillis().toULong(),
+        payload = byteArrayOf(1, 2, 3),
+        signature = signature,
+        ttl = 7u
+    )
+
     @Test
-    fun `directed raw private media requires a valid signature`() {
+    fun `directed raw media from an enrolled contact requires a valid signature`() {
         runBlocking {
+            enrollSender()
             whenever(delegate.getBroadcastRecipient()).thenReturn(SpecialRecipients.BROADCAST)
             whenever(delegate.getPeerNickname(peerID)).thenReturn(nickname)
             whenever(delegate.verifySignature(any(), eq(peerID))).thenReturn(false)
-            val file = BitchatFilePacket(
-                fileName = "legacy.jpg",
-                fileSize = 3,
-                mimeType = "image/jpeg",
-                content = byteArrayOf(1, 2, 3)
-            )
-            val unsigned = BitchatPacket(
-                version = 2u,
-                type = MessageType.FILE_TRANSFER.value,
-                senderID = peerID.hexToBytes(),
-                recipientID = myPeerID.hexToBytes(),
-                timestamp = System.currentTimeMillis().toULong(),
-                payload = file.encode()!!,
-                signature = null,
-                ttl = 7u
-            )
 
-            handler.handleMessage(RoutedPacket(unsigned, peerID, "direct-link"))
-            handler.handleMessage(
-                RoutedPacket(unsigned.copy(signature = ByteArray(64) { 1 }), peerID, "direct-link")
-            )
+            handler.handleMessage(RoutedPacket(directedRawFile(null), peerID, "direct-link"))
+            handler.handleMessage(RoutedPacket(directedRawFile(ByteArray(64) { 1 }), peerID, "direct-link"))
 
             verify(delegate, never()).onMessageReceived(any())
         }
     }
 
     @Test
-    fun `valid signed directed raw private media remains interoperable`() {
+    fun `signed directed raw media from an enrolled contact becomes an empty placeholder`() {
         runBlocking {
+            enrollSender()
             whenever(delegate.getBroadcastRecipient()).thenReturn(SpecialRecipients.BROADCAST)
             whenever(delegate.getPeerNickname(peerID)).thenReturn(nickname)
             whenever(delegate.verifySignature(any(), eq(peerID))).thenReturn(true)
-            val file = BitchatFilePacket(
-                fileName = "legacy-valid.jpg",
-                fileSize = 3,
-                mimeType = "image/jpeg",
-                content = byteArrayOf(1, 2, 3)
-            )
-            val packet = BitchatPacket(
-                version = 2u,
-                type = MessageType.FILE_TRANSFER.value,
-                senderID = peerID.hexToBytes(),
-                recipientID = myPeerID.hexToBytes(),
-                timestamp = System.currentTimeMillis().toULong(),
-                payload = file.encode()!!,
-                signature = signature,
-                ttl = 7u
-            )
+            val packet = directedRawFile(signature)
 
             handler.handleMessage(RoutedPacket(packet, peerID, "direct-link"))
 
             verify(delegate).verifySignature(packet, peerID)
-            verify(delegate).onMessageReceived(any())
+            val captor = argumentCaptor<BitchatMessage>()
+            verify(delegate).onMessageReceived(captor.capture())
+            assertEquals("", captor.firstValue.content)
+            assertEquals(BitchatMessageType.File, captor.firstValue.type)
+            assertTrue(captor.firstValue.isPrivate)
         }
     }
 
     @Test
-    fun `encrypted prerelease iOS Noise 0x09 private media is delivered`() {
+    fun `prerelease iOS Noise 0x09 media from an enrolled contact becomes a placeholder`() {
         runBlocking {
-            val file = BitchatFilePacket(
-                fileName = "prerelease-ios.pdf",
-                fileSize = 4,
-                mimeType = "application/pdf",
-                content = byteArrayOf(1, 2, 3, 4)
-            )
-            val prereleasePlaintext = byteArrayOf(0x09) + file.encode()!!
+            enrollSender()
+            val prereleasePlaintext = byteArrayOf(0x09, 1, 2, 3, 4)
             val ciphertext = byteArrayOf(0x41, 0x42, 0x43)
             whenever(delegate.decryptFromPeer(any(), eq(peerID))).thenReturn(
                 NoiseDecryptionResult(prereleasePlaintext, authenticatedSession)
@@ -246,7 +233,10 @@ class MessageHandlerTest {
             handler.handleNoiseEncrypted(RoutedPacket(outerPacket, peerID, "direct-link"))
 
             verify(delegate).decryptFromPeer(ciphertext, peerID)
-            verify(delegate).onPrivateMessageReceived(any())
+            val captor = argumentCaptor<BitchatMessage>()
+            verify(delegate).onPrivateMessageReceived(captor.capture())
+            assertEquals("", captor.firstValue.content)
+            assertEquals(BitchatMessageType.File, captor.firstValue.type)
         }
     }
 

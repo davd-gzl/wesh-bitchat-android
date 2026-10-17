@@ -138,6 +138,77 @@ class NostrDirectMessageHandlerTest {
         assertEquals(secondRumorTime * 1000L, messages[1].timestamp.time)
     }
 
+    @Test
+    fun `a Nostr file transfer is dropped with no message and no file`() {
+        val application = RuntimeEnvironment.getApplication()
+        val incoming = listOf("files/incoming", "images/incoming").map { java.io.File(application.cacheDir, it) }
+        incoming.forEach { it.deleteRecursively() }
+        val state = ChatState(scope).apply { setNickname("recipient") }
+        val privateChatManager = PrivateChatManager(
+            state = state,
+            messageManager = MessageManager(state),
+            dataManager = DataManager(application),
+            noiseSessionDelegate = mock<NoiseSessionDelegate>()
+        )
+        val seenStore = mock<SeenMessageStore>()
+        whenever(seenStore.hasDelivered(any())).thenReturn(true)
+        whenever(seenStore.hasBeenReadLocally(any())).thenReturn(false)
+        val handler = NostrDirectMessageHandler(
+            application = application,
+            state = state,
+            privateChatManager = privateChatManager,
+            updateDeliveryStatus = { _, _ -> },
+            scope = scope,
+            seenStoreProvider = { seenStore }
+        )
+        val sender = NostrIdentity.generate()
+        val recipient = NostrIdentity.generate()
+        val now = (System.currentTimeMillis() / 1000).toInt()
+        // A well-formed file TLV (name "a", 2 bytes, MIME "m"), as a BitChat peer would send it.
+        val fileTlv = hexBytes("01000161020004000000020300016d0400000002dead")
+        val filePacket = com.bitchat.android.protocol.BitchatPacket(
+            version = 1u,
+            type = com.bitchat.android.protocol.MessageType.NOISE_ENCRYPTED.value,
+            senderID = hexBytes("0011223344556677"),
+            recipientID = null,
+            timestamp = System.currentTimeMillis().toULong(),
+            payload = com.bitchat.android.model.NoisePayload(
+                com.bitchat.android.model.NoisePayloadType.FILE_TRANSFER,
+                fileTlv
+            ).encode(),
+            signature = null,
+            ttl = 7u
+        )
+        val fileContent = "bitchat1:" + java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(requireNotNull(filePacket.toBinaryData()))
+
+        handler.onGiftWrap(privateMessageGiftWrap(fileContent, sender, recipient, now - 30, now - 5), recipient)
+        // A later text from the same sender proves the file was processed, and dropped, first.
+        val textId = "after-file"
+        handler.onGiftWrap(
+            privateMessageGiftWrap(
+                content = requireNotNull(
+                    NostrEmbeddedBitChat.encodePMForNostrNoRecipient(
+                        content = "text",
+                        messageID = textId,
+                        senderPeerID = "0011223344556677"
+                    )
+                ),
+                sender = sender,
+                recipient = recipient,
+                rumorCreatedAt = now - 20,
+                giftWrapCreatedAt = now - 5
+            ),
+            recipient
+        )
+        waitForMessage(state, textId)
+
+        assertEquals(listOf(textId), state.getPrivateChatsValue().values.flatten().map { it.id })
+        incoming.forEach { dir -> assertEquals(dir.path, 0, dir.listFiles()?.size ?: 0) }
+    }
+
+    private fun hexBytes(value: String): ByteArray = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+
     private fun waitForMessage(state: ChatState, messageId: String) {
         kotlinx.coroutines.runBlocking {
             withTimeout(5_000) {

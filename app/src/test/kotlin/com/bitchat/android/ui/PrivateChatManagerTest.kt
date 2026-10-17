@@ -14,6 +14,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -133,6 +135,34 @@ class PrivateChatManagerTest {
         )
 
         verify(meshService).sendReadReceipt(message.id, meshPeerID, "bob")
+    }
+
+    @Test
+    fun `a media placeholder is never reported read, a text beside it is`() {
+        val noiseKey = ByteArray(32) { 7 }
+        val meshPeerID = ContactIdentityResolver.peerIdForNoiseKey(noiseKey)
+        val conversationID = ContactIdentityResolver.contactConversationIdForNoiseKey(noiseKey)
+        val text = BitchatMessage(
+            id = "text-message", sender = "alice", content = "hello", timestamp = Date(1),
+            isPrivate = true, senderPeerID = meshPeerID
+        )
+        val placeholder = text.copy(
+            id = "media-placeholder", content = "", type = com.bitchat.android.model.BitchatMessageType.File
+        )
+        val meshService = mock<MeshService>()
+        whenever(meshService.getPeerInfo(meshPeerID)).thenReturn(PeerInfo(
+            id = meshPeerID, nickname = "alice", isConnected = true, isDirectConnection = true,
+            noisePublicKey = noiseKey, signingPublicKey = null, isVerifiedNickname = false,
+            lastSeen = System.currentTimeMillis()
+        ))
+        whenever(meshService.hasEstablishedSession(meshPeerID)).thenReturn(true)
+        state.setNickname("bob")
+        state.setPrivateChats(mapOf(conversationID to listOf(placeholder, text)))
+
+        manager.sendReadReceiptsForPeer(conversationID, meshPeerID, meshService)
+
+        verify(meshService).sendReadReceipt(text.id, meshPeerID, "bob")
+        verify(meshService, never()).sendReadReceipt(eq(placeholder.id), any(), any())
     }
 
     @Test

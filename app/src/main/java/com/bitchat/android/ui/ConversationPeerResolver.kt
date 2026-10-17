@@ -4,7 +4,7 @@ import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.services.ContactDirectory
 import com.bitchat.android.services.ContactIdentityResolver
 
-internal data class PrivateMediaRecipient(
+internal data class ConversationPeer(
     val conversationID: String,
     val meshPeerID: String
 )
@@ -13,8 +13,8 @@ internal data class PrivateMediaRecipient(
  * Private-chat state is keyed by a stable contact/conversation ID, while mesh
  * encryption and transport APIs require the current 16-hex peer ID.
  */
-internal object PrivateMediaRecipientResolver {
-    fun resolve(requestedRecipientID: String, meshService: MeshService): PrivateMediaRecipient? {
+internal object ConversationPeerResolver {
+    fun resolve(requestedRecipientID: String, meshService: MeshService): ConversationPeer? {
         val requested = requestedRecipientID.trim()
         val conversationID = ContactDirectory.canonicalConversationId(requested)
 
@@ -44,6 +44,6 @@ internal object PrivateMediaRecipientResolver {
         val meshPeerID = (directoryPeerID ?: directPeerID ?: discoveredPeerID)
             ?.takeIf(ContactIdentityResolver::isMeshPeerId)
             ?: return null
-        return PrivateMediaRecipient(conversationID, meshPeerID)
+        return ConversationPeer(conversationID, meshPeerID)
     }
 }

@@ -68,13 +68,6 @@
     <string name="cd_handshake_failed">Handshake falhado</string>
 
     <!-- Diálogo do visualizador de ficheiros -->
-    <string name="file_viewer_title">📎 Ficheiro recebido</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 Tamanho: %1$s</string>
-    <string name="file_viewer_type">🏷️ Tipo: %1$s</string>
-    <string name="file_viewer_open_save">📂 Abrir / Guardar</string>
-    <string name="close_with_emoji">❌ Fechar</string>
-    <string name="pick_image">Escolher imagem</string>
 
     <!-- Folha sobre -->
     <string name="about_offline_mesh_title">Chat mesh offline</string>
@@ -124,29 +117,14 @@
     <string name="cd_reachable_via_nostr">Alcançável via Nostr</string>
     <string name="cd_offline_favorite">Favorito (offline)</string>
     <string name="cd_scroll_to_bottom">Deslocar para baixo</string>
-    <string name="cd_file">Ficheiro</string>
-    <string name="cd_image">Imagem</string>
     <string name="cd_cancel">Cancelar</string>
     <string name="cd_link">Ligação</string>
-    <string name="cd_pick_media">Escolher multimédia</string>
-    <string name="cd_pick_file">Escolher ficheiro</string>
-    <string name="cd_save_current_image">Guardar imagem atual</string>
-    <string name="cd_close">Fechar</string>
-    <string name="cd_image_index_of">Imagem %1$d de %2$d</string>
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">Gravar nota de voz</string>
     <string name="cd_offline_mesh_chat">Chat mesh offline</string>
     <string name="cd_end_to_end_encryption">Encriptação ponto a ponto</string>
 
     <!-- Imagens e ficheiros -->
-    <string name="image_page_of">Imagem %1$d de %2$d</string>
-    <string name="image_unavailable">Imagem indisponível</string>
-    <string name="image_saved_to_downloads">Imagem guardada em "Transferências"</string>
-    <string name="image_save_failed">Não foi possível guardar a imagem</string>
-    <string name="toast_image_saved">Imagem guardada em "Transferências"</string>
-    <string name="toast_failed_to_save_image">Não foi possível guardar a imagem</string>
-    <string name="pick_file">Escolher ficheiro</string>
-    <string name="file_unavailable">[Ficheiro indisponível]</string>
     <string name="unknown">desconhecido</string>
 
     <!-- Folha de ações do utilizador -->
@@ -243,18 +221,10 @@
     <string name="type_a_message_placeholder">Digite uma mensagem…</string>
     <string name="mention">mencionar</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">Imagem</string>
-    <string name="media_type_file">Ficheiro</string>
 
     <!-- Auxiliares de texto de notificação -->
-    <string name="notification_sent_image">📷 enviou uma imagem</string>
-    <string name="notification_sent_voice">🎤 enviou uma nota de voz</string>
-    <string name="notification_sent_file">📎 enviou um ficheiro</string>
 
     <!-- Acessibilidade do reprodutor de voz -->
-    <string name="cd_play_voice">Reproduzir</string>
-    <string name="cd_pause_voice">Pausar</string>
 
     <!-- Descrições de permissões -->
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>

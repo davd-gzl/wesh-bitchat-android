@@ -68,13 +68,6 @@
     <string name="cd_handshake_failed">Handshake gagal</string>
 
     <!-- Dialog penampil file -->
-    <string name="file_viewer_title">📎 File diterima</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 Ukuran: %1$s</string>
-    <string name="file_viewer_type">🏷️ Jenis: %1$s</string>
-    <string name="file_viewer_open_save">📂 Buka / Simpan</string>
-    <string name="close_with_emoji">❌ Tutup</string>
-    <string name="pick_image">Pilih gambar</string>
 
     <!-- Sheet tentang -->
     <string name="about_offline_mesh_title">Chat Mesh Offline</string>
@@ -124,29 +117,14 @@
     <string name="cd_reachable_via_nostr">Dapat dijangkau melalui Nostr</string>
     <string name="cd_offline_favorite">Favorit (offline)</string>
     <string name="cd_scroll_to_bottom">Gulir ke bawah</string>
-    <string name="cd_file">File</string>
-    <string name="cd_image">Gambar</string>
     <string name="cd_cancel">Batal</string>
     <string name="cd_link">Tautan</string>
-    <string name="cd_pick_media">Pilih media</string>
-    <string name="cd_pick_file">Pilih file</string>
-    <string name="cd_save_current_image">Simpan gambar saat ini</string>
-    <string name="cd_close">Tutup</string>
-    <string name="cd_image_index_of">Gambar %1$d dari %2$d</string>
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">Rekam pesan suara</string>
     <string name="cd_offline_mesh_chat">Chat Mesh Offline</string>
     <string name="cd_end_to_end_encryption">Enkripsi end-to-end</string>
 
     <!-- Gambar &amp; file -->
-    <string name="image_page_of">Gambar %1$d dari %2$d</string>
-    <string name="image_unavailable">Gambar tidak tersedia</string>
-    <string name="image_saved_to_downloads">Gambar disimpan ke \"Downloads\"</string>
-    <string name="image_save_failed">Gagal menyimpan gambar</string>
-    <string name="toast_image_saved">Gambar disimpan ke \"Downloads\"</string>
-    <string name="toast_failed_to_save_image">Gagal menyimpan gambar</string>
-    <string name="pick_file">Pilih file</string>
-    <string name="file_unavailable">[File tidak tersedia]</string>
     <string name="unknown">tidak diketahui</string>
 
     <!-- Sheet aksi pengguna -->
@@ -243,18 +221,10 @@
     <string name="type_a_message_placeholder">Ketik pesan …</string>
     <string name="mention">sebut</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">Gambar</string>
-    <string name="media_type_file">File</string>
 
     <!-- Pembantu teks notifikasi -->
-    <string name="notification_sent_image">📷 mengirim gambar</string>
-    <string name="notification_sent_voice">🎤 mengirim pesan suara</string>
-    <string name="notification_sent_file">📎 mengirim file</string>
 
     <!-- Aksesibilitas pemutar suara -->
-    <string name="cd_play_voice">Putar</string>
-    <string name="cd_pause_voice">Jeda</string>
 
     <!-- Deskripsi izin -->
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>

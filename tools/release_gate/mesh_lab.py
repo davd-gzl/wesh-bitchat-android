@@ -3,7 +3,7 @@
 
 Drives the debug-only TestHookReceiver in the app
 (intent action: com.bitchat.droid.TEST_HOOK) to perform mesh operations:
-peer scanning, connect, Noise handshake, DMs, file transfer, broadcast,
+peer scanning, connect, Noise handshake, DMs, broadcast,
 announce, and raw packet injection.
 
 Each on-device command writes a JSON result to
@@ -21,13 +21,10 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
-import hashlib
 import json
-import random
 import shlex
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -41,8 +38,6 @@ from tools.release_gate.android_lab import APPLICATION_ID, find_adb, run_adb
 TEST_HOOK_ACTION = "com.bitchat.droid.TEST_HOOK"
 TEST_HOOK_COMPONENT = f"{APPLICATION_ID}/com.bitchat.android.testhook.TestHookReceiver"
 RESULTS_DIR = "cache/testhook/results"
-DEVICE_TMP_DIR = "/data/local/tmp/meshlab"
-APP_FIXTURE_DIR = f"/data/data/{APPLICATION_ID}/cache/fixtures"
 
 PERMISSIONS = [
     "android.permission.BLUETOOTH_SCAN",
@@ -164,39 +159,6 @@ class Device:
             check=False, capture_output=True, text=True, timeout=30,
         )
 
-    # -- fixtures -----------------------------------------------------------
-
-    def push_fixture(self, local: Path, name: str | None = None) -> str:
-        """Stage a fixture inside the app sandbox and return its app-readable path.
-
-        adb push lands files as shell:ext_data_rw, which the app cannot read
-        through the FUSE Android/data mount, so the bytes are piped through
-        the shell into the app's own cache directory via run-as.
-        """
-        fname = name or local.name
-        tmp = f"{DEVICE_TMP_DIR}/{fname}"
-        _shell(self.serial, f"mkdir -p {DEVICE_TMP_DIR}")
-        result = subprocess.run(
-            [find_adb(), "-s", self.serial, "push", str(local), tmp],
-            check=False, capture_output=True, text=True, timeout=120,
-        )
-        if result.returncode != 0:
-            raise MeshLabError(f"[{self.alias}] push failed: {result.stderr}")
-        fixture_dir = f"/data/data/{self.package}/cache/fixtures"
-        target = f"{fixture_dir}/{fname}"
-        _shell(
-            self.serial,
-            f"run-as {self.package} mkdir -p {fixture_dir} && "
-            f"cat {tmp} | run-as {self.package} sh -c 'cat > {target}' && rm -f {tmp}",
-        )
-        return target
-
-    def clear_incoming(self) -> None:
-        _shell(
-            self.serial,
-            f"run-as {self.package} rm -rf cache/files/incoming cache/images/incoming",
-        )
-
     # -- test hook commands -------------------------------------------------
 
     def cmd(self, cmd: str, timeout_ms: int = 60_000, **extras: object) -> dict:
@@ -251,50 +213,6 @@ class Device:
         return _shell(self.serial, f"logcat -d -t {lines}")
 
 
-# MARK: - fixtures
-
-FIXTURE_SIZES = {
-    "small_1k.bin": 1_024,
-    "medium_512k.bin": 512 * 1_024,
-    "large_2m.bin": 2 * 1_024 * 1_024,
-}
-
-
-def make_fixtures(directory: Path, seed: int = 1337, names: list[str] | None = None) -> dict[str, dict]:
-    directory.mkdir(parents=True, exist_ok=True)
-    fixtures = {}
-    rng = random.Random(seed)
-    for name, size in FIXTURE_SIZES.items():
-        if names is not None and name not in names:
-            rng.randbytes(size)  # keep the stream deterministic across subsets
-            continue
-        path = directory / name
-        data = rng.randbytes(size)
-        path.write_bytes(data)
-        fixtures[name] = {"path": path, "sha256": hashlib.sha256(data).hexdigest(), "bytes": size}
-    return fixtures
-
-
-def make_private_media_fixtures(directory: Path, seed: int = 7331) -> dict[str, dict]:
-    """Small attachment fixtures covering every private-media UI type."""
-    directory.mkdir(parents=True, exist_ok=True)
-    fixtures = {}
-    rng = random.Random(seed)
-    for name, mime in (
-        ("voice_note.m4a", "audio/mp4"),
-        ("image_note.jpg", "image/jpeg"),
-        ("document_note.txt", "text/plain"),
-    ):
-        path = directory / name
-        data = rng.randbytes(1_024)
-        path.write_bytes(data)
-        fixtures[name] = {
-            "path": path,
-            "sha256": hashlib.sha256(data).hexdigest(),
-            "bytes": len(data),
-            "mime": mime,
-        }
-    return fixtures
 
 
 # MARK: - setup
@@ -580,58 +498,6 @@ def scenario_ptt_broadcast(a: Device, b: Device) -> dict:
     }
 
 
-def scenario_file(
-    a: Device,
-    b: Device,
-    fixtures: dict[str, dict],
-    private: bool = False,
-    recipient: str | None = None,
-) -> dict:
-    """File transfer A -> B with sha256 integrity verification."""
-    id_b = whoami(b)["peer_id"]
-    b.clear_incoming()  # avoid name-uniquified collisions across runs
-    results = {}
-    for name, fixture in fixtures.items():
-        remote = a.push_fixture(fixture["path"])
-        send_kwargs: dict[str, object] = {"path": remote}
-        if private:
-            send_kwargs["peer"] = recipient or id_b
-        if fixture.get("mime"):
-            send_kwargs["mime"] = fixture["mime"]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            recv = pool.submit(b.cmd_ok, "file_recv", 240_000, name_contains=name)
-            time.sleep(2)
-            send = pool.submit(a.cmd_ok, "file_send", 240_000, **send_kwargs)
-            recv_result, send_result = recv.result(), send.result()
-        digest_ok = recv_result["sha256"] == fixture["sha256"]
-        results[name] = {
-            "send": send_result, "recv": recv_result,
-            "expected_sha256": fixture["sha256"], "digest_match": digest_ok,
-        }
-        if not digest_ok:
-            raise MeshLabError(
-                f"file '{name}' digest mismatch: {recv_result['sha256']} != {fixture['sha256']}"
-            )
-    return results
-
-
-def scenario_private_media(a: Device, b: Device) -> dict:
-    """Voice, image, and generic file sends through the private-chat contact ID."""
-    identity = whoami(b)
-    noise_public_key = bytes.fromhex(identity["noise_public_key"])
-    conversation_id = f"contact_{hashlib.sha256(noise_public_key).hexdigest()}"
-    fixtures = make_private_media_fixtures(
-        Path(tempfile.mkdtemp(prefix="meshlab-private-media-"))
-    )
-    return scenario_file(
-        a,
-        b,
-        fixtures,
-        private=True,
-        recipient=conversation_id,
-    )
-
-
 def scenario_raw(a: Device, b: Device) -> dict:
     """Raw packet injection (unsigned announce-type packet) reaches the mesh."""
     payload = b"meshlab-raw-" + uuid.uuid4().hex[:8].encode()
@@ -808,44 +674,12 @@ def scenario_identity_reset(a: Device, b: Device) -> dict:
     }
 
 
-def scenario_file_oversize(a: Device, b: Device, fixtures: dict[str, dict]) -> dict:
-    """Oversized broadcast file must be rejected sender-side (>256 fragments)."""
-    fixture = fixtures["medium_512k.bin"]
-    remote = a.push_fixture(fixture["path"])
-    send = a.cmd("file_send", timeout_ms=60_000, path=remote)
-    rejected = send.get("status") == "error" and "rejected" in send.get("error", "")
-    if not rejected:
-        raise MeshLabError(f"expected sender-side rejection, got: {send}")
-    # Receiver must not see any file appear.
-    recv = b.cmd("file_recv", timeout_ms=15_000, name_contains="medium_512k")
-    if recv.get("status") == "ok":
-        raise MeshLabError(f"receiver unexpectedly saved an oversized file: {recv}")
-    return {"send": send, "receiver_saw_file": False}
-
-
 SCENARIOS = {
     "dm": scenario_dm,
     "favorite_verification": scenario_favorite_verification,
     "broadcast": scenario_broadcast,
     "ptt_dm": scenario_ptt_dm,
     "ptt_broadcast": scenario_ptt_broadcast,
-    # Broadcast transfers are receiver-capped at 256 fragments (~120 KB); only
-    # the small fixture is end-to-end receivable.
-    "file": lambda a, b: scenario_file(
-        a, b,
-        make_fixtures(Path(tempfile.mkdtemp(prefix="meshlab-fixtures-")), names=["small_1k.bin"]),
-    ),
-    "file_oversize": lambda a, b: scenario_file_oversize(
-        a, b, make_fixtures(Path(tempfile.mkdtemp(prefix="meshlab-fixtures-")))
-    ),
-    # Private media is hard-capped at 256 fragments (PrivateMediaTransfer), so only
-    # the small fixture fits; larger sizes are expected to be rejected by the sender.
-    "file_private": lambda a, b: scenario_file(
-        a, b,
-        make_fixtures(Path(tempfile.mkdtemp(prefix="meshlab-fixtures-")), names=["small_1k.bin"]),
-        private=True,
-    ),
-    "media_private": scenario_private_media,
     "raw": scenario_raw,
     "session_recovery": scenario_session_recovery,
     "identity_reset": scenario_identity_reset,
