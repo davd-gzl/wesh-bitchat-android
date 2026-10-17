@@ -1,5 +1,6 @@
 package com.bitchat.android.startup
 
+import com.bitchat.android.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.heading
@@ -33,17 +35,17 @@ internal fun StartupScreen(failed: Boolean, onRetry: () -> Unit, modifier: Modif
     var confirmReset by remember { mutableStateOf(false) }
     if (confirmReset) AlertDialog(
         onDismissRequest = { confirmReset = false },
-        title = { Text("Réinitialiser l’identité ?", Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) },
-        text = { Text("Votre identité ne peut pas être lue sur ce téléphone. Réinitialiser efface toutes les données de Wesh : identité, contacts, messages, brouillons et réglages. Une nouvelle identité sera créée et vos contacts devront être vérifiés à nouveau.", Modifier.verticalScroll(rememberScrollState())) },
-        confirmButton = { TextButton(onClick = { confirmReset = false; onResetIdentity() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Réinitialiser") } },
-        dismissButton = { TextButton(onClick = { confirmReset = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Annuler") } }
+        title = { Text(stringResource(R.string.wesh_startup_reset_title), Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) },
+        text = { Text(stringResource(R.string.wesh_startup_reset_body), Modifier.verticalScroll(rememberScrollState())) },
+        confirmButton = { TextButton(onClick = { confirmReset = false; onResetIdentity() }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.wesh_startup_reset_confirm)) } },
+        dismissButton = { TextButton(onClick = { confirmReset = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.wesh_startup_cancel)) } }
     )
     if (confirmErase) AlertDialog(
         onDismissRequest = { confirmErase = false },
-        title = { Text("Effacer toutes les données de Wesh ?", Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) },
-        text = { Text("Votre identité, vos messages, vos brouillons et vos réglages seront perdus. Vous devrez autoriser à nouveau les permissions après la fermeture de Wesh.", Modifier.verticalScroll(rememberScrollState())) },
-        confirmButton = { TextButton(onClick = { confirmErase = false; onEraseAll() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Tout effacer") } },
-        dismissButton = { TextButton(onClick = { confirmErase = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Annuler") } }
+        title = { Text(stringResource(R.string.wesh_startup_erase_title), Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) },
+        text = { Text(stringResource(R.string.wesh_startup_erase_body), Modifier.verticalScroll(rememberScrollState())) },
+        confirmButton = { TextButton(onClick = { confirmErase = false; onEraseAll() }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.wesh_startup_erase_confirm)) } },
+        dismissButton = { TextButton(onClick = { confirmErase = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.wesh_startup_cancel)) } }
     )
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(32.dp).semantics { liveRegion = LiveRegionMode.Polite },
@@ -52,21 +54,21 @@ internal fun StartupScreen(failed: Boolean, onRetry: () -> Unit, modifier: Modif
     ) {
         Text("Wesh", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.semantics { heading() })
         if (failed) {
-            Text(if (draftWipeRequired) "Un effacement est inachevé ou ne peut pas être vérifié. Wesh reste verrouillé pour protéger vos données. Vous pouvez demander à Android d’effacer toutes les données de Wesh." else "Votre identité est momentanément indisponible. Réessayez sans effacer les données de l’application.")
-            if (recovery == InterruptedPanicRecovery.State.Failed) Text("La demande d’effacement a échoué. Wesh reste verrouillé. Réessayez ou utilisez les réglages Android de l’application.")
-            if (recovery == InterruptedPanicRecovery.State.Requested) Text("Demande transmise à Android. Wesh va se fermer ; l’effacement n’est pas encore confirmé.")
+            Text(if (draftWipeRequired) stringResource(R.string.wesh_startup_erase_locked) else stringResource(R.string.wesh_startup_identity_unavailable))
+            if (recovery == InterruptedPanicRecovery.State.Failed) Text(stringResource(R.string.wesh_startup_erase_failed))
+            if (recovery == InterruptedPanicRecovery.State.Requested) Text(stringResource(R.string.wesh_startup_erase_requested))
             Button(onClick = { if (draftWipeRequired) confirmErase = true else onRetry() }, enabled = recovery != InterruptedPanicRecovery.State.Running && recovery != InterruptedPanicRecovery.State.Requested,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                Text(if (draftWipeRequired) "Effacer toutes les données de Wesh" else "Réessayer")
+                Text(if (draftWipeRequired) stringResource(R.string.wesh_startup_erase_all) else stringResource(R.string.wesh_startup_retry))
             }
             if (offerIdentityReset && !draftWipeRequired) {
-                Text("Plusieurs tentatives ont échoué. Si le problème persiste, vous pouvez réinitialiser votre identité.")
+                Text(stringResource(R.string.wesh_startup_reset_offer))
                 TextButton(onClick = { confirmReset = true }, enabled = recovery != InterruptedPanicRecovery.State.Running && recovery != InterruptedPanicRecovery.State.Requested,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Réinitialiser l’identité") }
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(stringResource(R.string.wesh_startup_reset_action)) }
             }
         } else {
             CircularProgressIndicator()
-            Text("Préparation de votre espace sécurisé…")
+            Text(stringResource(R.string.wesh_startup_preparing))
         }
     }
 }
