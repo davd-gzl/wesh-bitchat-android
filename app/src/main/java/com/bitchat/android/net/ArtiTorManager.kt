@@ -173,7 +173,10 @@ class ArtiTorManager internal constructor(
     fun currentSocksAddress(): InetSocketAddress? = socksAddr
 
     /** A start is between its first native call and its outcome; it may still create Arti files. */
-    fun isStartInFlight(): Boolean = artiProxy?.isStartInFlight() == true
+    fun isStartInFlight(): Boolean = pendingStarts.get() > 0 || artiProxy?.isStartInFlight() == true
+
+    /** startArti() calls not yet finished, counted before they stop the previous client. */
+    private val pendingStarts = java.util.concurrent.atomic.AtomicInteger(0)
 
     /** Bumped by every ON request; a bootstrap watcher from an older start never acts. */
     private var startGeneration = 0L
@@ -249,8 +252,11 @@ class ArtiTorManager internal constructor(
                     }
 
                     TorMode.ON -> {
-                        // Single chokepoint: Arti never starts over state a failed panic left behind.
-                        if (!ArtiTorControl.completePendingWipe(application)) {
+                        // Single chokepoint: Arti never starts over state a failed panic left behind,
+                        // nor while a wipe is deleting it.
+                        if (info.guardianproject.arti.ArtiWipeLatch.isWiping() ||
+                            !ArtiTorControl.completePendingWipe(application)
+                        ) {
                             Log.w(TAG, "applyMode: ON refused, Arti state wipe pending")
                             desiredMode = TorMode.OFF
                             lastMode = TorMode.OFF
@@ -298,7 +304,16 @@ class ArtiTorManager internal constructor(
     }
 
     private suspend fun startArti(application: Application, useDelay: Boolean = false) {
-        if (!ArtiTorControl.completePendingWipe(application)) {
+        pendingStarts.incrementAndGet()
+        try {
+            startArtiCounted(application, useDelay)
+        } finally {
+            pendingStarts.decrementAndGet()
+        }
+    }
+
+    private suspend fun startArtiCounted(application: Application, useDelay: Boolean) {
+        if (info.guardianproject.arti.ArtiWipeLatch.isWiping() || !ArtiTorControl.completePendingWipe(application)) {
             _statusFlow.update { it.copy(running = false, state = TorState.ERROR) }
             TorPreferenceManager.set(application, TorMode.OFF, commit = true)
             return

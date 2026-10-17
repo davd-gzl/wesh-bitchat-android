@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import info.guardianproject.arti.ArtiWipeLatch
 import java.io.File
 
 /** Arti behind [WeshInternetMode]. TorPreferenceManager only ever mirrors the Wesh toggle. */
@@ -52,6 +53,16 @@ internal class ArtiTorControl(
      * when both are confirmed; otherwise a marker makes the next process start delete it again.
      */
     override suspend fun stopAndWipe(): Boolean {
+        // Up for the whole wipe: no start may begin until the directory is gone and verified.
+        ArtiWipeLatch.begin()
+        try {
+            return stopAndWipeLatched()
+        } finally {
+            ArtiWipeLatch.end()
+        }
+    }
+
+    private suspend fun stopAndWipeLatched(): Boolean {
         stop()
         val stopped = withTimeoutOrNull(stopTimeoutMs) {
             applyOff()
@@ -72,7 +83,7 @@ internal class ArtiTorControl(
             }
             val done = stopped && deleted && settled
             when {
-                done -> clearPendingSignals(app)
+                done -> clearPendingSignalsIfGone(app)
                 // No marker: a committed preference is the second durable signal.
                 !marked -> runCatching { pendingPreferences(app).edit().putBoolean(KEY_PENDING, true).commit() }
             }
@@ -103,7 +114,7 @@ internal class ArtiTorControl(
         fun completePendingWipe(context: Context, delete: (File) -> Boolean = ::deleteDirectory): Boolean {
             if (!isWipePending(context)) return true
             val deleted = runCatching { delete(artiDirectory(context)) }.getOrDefault(false)
-            if (deleted) clearPendingSignals(context)
+            if (deleted) clearPendingSignalsIfGone(context)
             return deleted && !isWipePending(context)
         }
 
@@ -119,6 +130,15 @@ internal class ArtiTorControl(
         private fun clearPendingSignals(context: Context) {
             runCatching { pendingMarker(context).delete() }
             runCatching { pendingPreferences(context).edit().remove(KEY_PENDING).commit() }
+        }
+
+        /** Clears the pending wipe only if the directory is really gone; otherwise re-arms it. */
+        private fun clearPendingSignalsIfGone(context: Context) {
+            clearPendingSignals(context)
+            if (runCatching { artiDirectory(context).exists() }.getOrDefault(true)) {
+                runCatching { pendingMarker(context).createNewFile() }
+                runCatching { pendingPreferences(context).edit().putBoolean(KEY_PENDING, true).commit() }
+            }
         }
     }
 }

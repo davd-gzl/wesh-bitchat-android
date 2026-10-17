@@ -62,10 +62,10 @@ class ArtiProxy internal constructor(
     /** Guarded by [lock]. A native stop is running; a new start waits for its teardown. */
     private var stopInProgress = false
 
-    /** Guarded by [lock]. A start is between its first native call and its outcome. */
-    private var startInFlight = false
+    /** Guarded by [lock]. Starts requested and not yet finished, including those still waiting. */
+    private var startsRequested = 0
 
-    fun isStartInFlight(): Boolean = synchronized(lock) { startInFlight }
+    fun isStartInFlight(): Boolean = synchronized(lock) { startsRequested > 0 }
 
     /**
      * Start the Arti Tor proxy.
@@ -81,17 +81,30 @@ class ArtiProxy internal constructor(
      * @throws ArtiException if initialization or startup fails
      */
     fun start() {
-        val stopsAtStart = synchronized(lock) {
-            while (stopInProgress) lock.wait()
-            if (isRunning) {
-                Log.w(TAG, "Arti already running")
-                return
+        // Registered before the wipe check: a wipe either sees this start and waits for it,
+        // or this start sees the wipe and refuses.
+        synchronized(lock) { startsRequested++ }
+        try {
+            val stopsAtStart = synchronized(lock) {
+                while (stopInProgress) lock.wait()
+                if (ArtiWipeLatch.isWiping()) throw ArtiException("Arti state is being wiped")
+                if (isRunning) {
+                    Log.w(TAG, "Arti already running")
+                    return
+                }
+                startAttempted = true
+                stops
             }
-            startAttempted = true
-            startInFlight = true
-            stops
+            startRegistered(stopsAtStart)
+        } finally {
+            synchronized(lock) {
+                startsRequested--
+                lock.notifyAll()
+            }
         }
+    }
 
+    private fun startRegistered(stopsAtStart: Long) {
         try {
             logListener?.let { listener ->
                 Log.d(TAG, "Registering log callback")
@@ -136,11 +149,6 @@ class ArtiProxy internal constructor(
                 throw e
             } else {
                 throw ArtiException("Failed to start Arti: ${e.message}", e)
-            }
-        } finally {
-            synchronized(lock) {
-                startInFlight = false
-                lock.notifyAll()
             }
         }
     }
@@ -189,6 +197,7 @@ class ArtiProxy internal constructor(
      * - {app_data}/arti/state - Tor persistent state
      */
     private fun getDataDirectory(): File {
+        if (ArtiWipeLatch.isWiping()) throw ArtiException("Arti state is being wiped")
         val artiDir = File(application.filesDir, "arti")
         if (!artiDir.exists()) {
             artiDir.mkdirs()
