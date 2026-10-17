@@ -89,25 +89,27 @@ fun Composer(
                 tint = c.inkMuted,
                 modifier = Modifier.padding(start = WeshSpace.s1).size(22.dp),
             )
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                enabled = enabled,
-                textStyle = WeshType.body.copy(color = c.ink),
-                cursorBrush = SolidColor(c.ink),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                maxLines = 6,
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = WeshTouch.min)
-                    .semantics { contentDescription = hint },
-                decorationBox = { inner ->
-                    Box(Modifier.heightIn(min = WeshTouch.min), contentAlignment = Alignment.CenterStart) {
-                        if (value.isEmpty()) Text(hint, style = WeshType.body, color = c.inkMuted, maxLines = 2)
-                        inner()
-                    }
-                },
-            )
+            NoPersonalizedLearning {
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    enabled = enabled,
+                    textStyle = WeshType.body.copy(color = c.ink),
+                    cursorBrush = SolidColor(c.ink),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    maxLines = 6,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = WeshTouch.min)
+                        .semantics { contentDescription = hint },
+                    decorationBox = { inner ->
+                        Box(Modifier.heightIn(min = WeshTouch.min), contentAlignment = Alignment.CenterStart) {
+                            if (value.isEmpty()) Text(hint, style = WeshType.body, color = c.inkMuted, maxLines = 2)
+                            inner()
+                        }
+                    },
+                )
+            }
             val sendFill = when {
                 !canSend -> c.surfaceRaised
                 isPublic -> c.publicColor
