@@ -20,7 +20,6 @@ interface MeshService {
     fun sendFavoriteNotification(peerID: String, isFavorite: Boolean) {}
     fun sendVerifyChallenge(peerID: String, noiseKeyHex: String, nonceA: ByteArray)
     fun sendVerifyResponse(peerID: String, noiseKeyHex: String, nonceA: ByteArray)
-    fun sendVoiceFrame(recipientPeerID: String?, payload: ByteArray)
 
     fun sendBroadcastAnnounce()
     fun sendAnnouncementToPeer(peerID: String)
