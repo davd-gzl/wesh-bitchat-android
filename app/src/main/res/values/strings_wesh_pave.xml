@@ -37,6 +37,8 @@
     <string name="wesh_pave_public_room_readable">Readable by every phone around</string>
     <string name="wesh_pave_no_message_yet">No message yet</string>
     <string name="wesh_pave_verified">Code verified</string>
+    <!-- Reserved bare word: a nickname may not imitate the badge, even without "Code". -->
+    <string name="wesh_pave_verified_short">Verified</string>
     <string name="wesh_pave_unnamed">No nickname</string>
     <string name="wesh_pave_unnamed_reserved">No nickname (reserved)</string>
     <string name="wesh_pave_section_requests">Requests</string>
@@ -44,6 +46,8 @@
     <string name="wesh_pave_fingerprint_label">Key fingerprint</string>
     <string name="wesh_pave_fingerprint_unavailable">Fingerprint unavailable</string>
     <string name="wesh_pave_unverified">Not verified</string>
+    <string name="wesh_pave_contact_state_verified">Identity verified on this phone</string>
+    <string name="wesh_pave_contact_state_blocked">Blocked on this phone</string>
     <plurals name="wesh_pave_request_preview">
         <item quantity="one">%d message · exchange codes to reply</item>
         <item quantity="other">%d messages · exchange codes to reply</item>

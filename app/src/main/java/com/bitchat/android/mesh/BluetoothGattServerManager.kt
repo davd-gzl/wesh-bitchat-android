@@ -25,7 +25,8 @@ class BluetoothGattServerManager(
     private val connectionTracker: BluetoothConnectionTracker,
     private val permissionManager: BluetoothPermissionManager,
     private val powerManager: PowerManager,
-    private val delegate: BluetoothConnectionManagerDelegate?
+    private val delegate: BluetoothConnectionManagerDelegate?,
+    private val inboundLimiter: InboundLinkRateLimiter = InboundLinkRateLimiter()
 ) {
     
     companion object {
@@ -302,7 +303,8 @@ class BluetoothGattServerManager(
                 val linkID = serverLinkIDs[address]
                 val valid = characteristic.uuid == AppConstants.Mesh.Gatt.CHARACTERISTIC_UUID &&
                     !preparedWrite && offset == 0 && linkID != null
-                val packet = if (valid) BitchatPacket.fromBinaryData(value) else null
+                // Rate-limited per link before any decoding or signature work.
+                val packet = if (valid && linkID != null && inboundLimiter.tryAcquire(address, linkID)) BitchatPacket.fromBinaryData(value) else null
                 if (responseNeeded && !sendResponse(generation, device, requestId,
                         if (packet != null) BluetoothGatt.GATT_SUCCESS else BluetoothGatt.GATT_FAILURE)) return
                 if (packet == null || linkID == null || callbackServer(generation) == null ||

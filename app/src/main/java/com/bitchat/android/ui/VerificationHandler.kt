@@ -10,6 +10,7 @@ import com.bitchat.android.noise.NoiseSession
 import com.bitchat.android.nostr.GeohashAliasRegistry
 import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.services.VerificationService
+import com.bitchat.android.ui.pave.RemoteNameRule
 import com.bitchat.android.util.dataFromHexString
 import com.bitchat.android.util.hexEncodedString
 import com.bitchat.android.util.safeDisplayName
@@ -35,7 +36,8 @@ class VerificationHandler(
     private val messageManager: MessageManager,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
     /** Read-only; null while Internet mode is off or fenced, which fails closed. Never creates keys. */
-    private val ownedNpubs: suspend () -> Set<String>? = { com.bitchat.android.services.WeshQrIdentity.ownedNpubs(context) }
+    private val ownedNpubs: suspend () -> Set<String>? = { com.bitchat.android.services.WeshQrIdentity.ownedNpubs(context) },
+    private val remoteName: RemoteNameRule = RemoteNameRule.of(context)
 ) {
     // Helper to get current mesh service (may change after panic clear)
     private val meshService: MeshService
@@ -49,6 +51,7 @@ class VerificationHandler(
     private val pendingQRVerifications = ConcurrentHashMap<String, PendingVerification>()
     private val lastVerifyNonceByPeer = ConcurrentHashMap<String, ByteArray>()
     private val lastInboundVerifyChallengeAt = ConcurrentHashMap<String, Long>()
+    private val inboundChallengeAt = ConcurrentHashMap<String, Long>()
     private val lastMutualToastAt = ConcurrentHashMap<String, Long>()
 
     fun loadVerifiedFingerprints() {
@@ -105,7 +108,7 @@ class VerificationHandler(
             meshService.initiateNoiseHandshake(peerID)
         }
         fingerprintFromNoiseHex(qr.noiseKeyHex)?.let { fp ->
-            identityManager.cacheFingerprintNickname(fp, safeDisplayName(qr.nickname, fp.take(8)))
+            safeDisplayName(qr.nickname, "").takeIf { it.isNotEmpty() }?.let { identityManager.cacheFingerprintNickname(fp, it) }
             identityManager.cacheNoiseFingerprint(qr.noiseKeyHex, fp)
             identityManager.cachePeerNoiseKey(peerID, qr.noiseKeyHex)
         }
@@ -135,7 +138,18 @@ class VerificationHandler(
             lastVerifyNonceByPeer[peerID] = parsed.second
 
             meshService.sendVerifyResponse(peerID, parsed.first, parsed.second)
+            inboundChallengeAt[peerID] = nowMs()
         }
+    }
+
+    /**
+     * Échanger's "they scanned you" check: a challenge for our key arrived since [sinceMs] from the
+     * peer whose session key is [noiseHex], the contact we are scanning. Nothing lights before our
+     * own scan names that key, so a neighbour's unrelated challenge never shows. Display only.
+     */
+    fun weshScannedMeSince(sinceMs: Long, noiseHex: String?): Boolean {
+        if (noiseHex == null) return false
+        return inboundChallengeAt.any { (peerID, at) -> at >= sinceMs && sessionMatches(peerID, noiseHex) }
     }
 
     fun didReceiveVerifyResponse(peerID: String, payload: ByteArray) {
@@ -177,8 +191,9 @@ class VerificationHandler(
             current.add(fp)
             _verifiedFingerprints.value = current
 
-            val name = resolvePeerDisplayName(peerID)
-            identityManager.cacheFingerprintNickname(fp, name)
+            // The announced nickname is remote input: stripped for the cache, the full rule where shown.
+            val announced = try { meshService.getPeerInfo(peerID)?.nickname } catch (_: Exception) { null }
+            safeDisplayName(announced.orEmpty(), "").takeIf { it.isNotEmpty() }?.let { identityManager.cacheFingerprintNickname(fp, it) }
             val noiseKeyHex = try {
                 meshService.getPeerInfo(peerID)?.noisePublicKey?.hexEncodedString()
             } catch (_: Exception) {
@@ -188,8 +203,8 @@ class VerificationHandler(
                 identityManager.cachePeerNoiseKey(peerID, noiseKeyHex)
                 identityManager.cacheNoiseFingerprint(noiseKeyHex, fp)
             }
-            addVerificationSystemMessage(peerID, context.getString(R.string.verify_success_system_message, name))
-            notificationManager.showVerificationSuccessNotification(name, peerID)
+            addVerificationSystemMessage(peerID, context.getString(R.string.verify_success_system_message, remoteName.show(announced)))
+            notificationManager.showVerificationSuccessNotification(announced, peerID)
             // BitChat peers learn my npub only from this notice; it is sent while Internet mode is active.
             com.bitchat.android.services.MessageRouter.tryGetInstance()?.announceWeshInternetKey(peerID)
 
@@ -203,7 +218,7 @@ class VerificationHandler(
     /** Bumped by panic and cancel so a verification resumed after either never writes. */
     @Volatile private var weshGeneration = 0L
 
-    fun clearWeshVerifications() { weshGeneration++; pendingQRVerifications.clear(); completedAttempts.clear() }
+    fun clearWeshVerifications() { weshGeneration++; pendingQRVerifications.clear(); completedAttempts.clear(); inboundChallengeAt.clear() }
 
     fun cancelWeshVerification(conversationID: String) {
         weshGeneration++
@@ -294,11 +309,11 @@ class VerificationHandler(
         }
     }
 
-    /** Every source below can be remote input (announce, QR, favorite): sanitize what is shown. */
+    /** Every source below can be remote input (announce, QR, favorite): the remote rule decides what is shown. */
     fun resolvePeerDisplayNameForFingerprint(peerID: String): String =
-        safeDisplayName(rawPeerDisplayNameForFingerprint(peerID), peerID.take(8))
+        remoteName.show(rawPeerDisplayNameForFingerprint(peerID))
 
-    private fun rawPeerDisplayNameForFingerprint(peerID: String): String {
+    private fun rawPeerDisplayNameForFingerprint(peerID: String): String? {
         val nicknameMap = state.peerNicknames.value
         nicknameMap[peerID]?.let { return it }
         try {
@@ -332,7 +347,8 @@ class VerificationHandler(
             favorite?.peerNickname?.takeIf { it.isNotBlank() }?.let { return it }
         }
 
-        return peerID.take(8)
+        // No name: shown as unnamed, never as a hex prefix that could pass for a fingerprint.
+        return null
     }
 
     fun getMyFingerprint(): String {
@@ -365,12 +381,6 @@ class VerificationHandler(
             senderPeerID = peerID
         )
         messageManager.addPrivateMessageNoUnread(peerID, msg)
-    }
-
-    private fun resolvePeerDisplayName(peerID: String): String {
-        // The announced nickname is remote input: it reaches a system message, a notification and the cache.
-        val nick = try { meshService.getPeerInfo(peerID)?.nickname } catch (_: Exception) { null }
-        return safeDisplayName(nick.orEmpty(), peerID.take(8))
     }
 
 

@@ -23,8 +23,6 @@ navigation-compose = "2.9.8"
 # Accompanist
 accompanist-permissions = "0.37.3"
 
-# Wear OS
-
 # Cryptography
 bouncycastle = "1.85"
 tink-android = "1.23.0"
@@ -89,8 +87,6 @@ androidx-navigation-compose = { module = "androidx.navigation:navigation-compose
 
 # Accompanist
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanist-permissions" }
-
-# Wear OS
 
 # Cryptography
 bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }

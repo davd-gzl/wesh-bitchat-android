@@ -96,4 +96,26 @@ class WeshManifestContractTest {
             assertTrue("$needle still referenced by $offenders", offenders.isEmpty())
         }
     }
+
+    @Test
+    fun `no app data leaves the phone by backup or device transfer`() {
+        val domains = listOf("root", "sharedpref", "database", "file", "external")
+        fun excludesAll(rules: String) = domains.forEach { domain ->
+            assertTrue("$domain must be excluded whole", rules.contains("""<exclude domain="$domain" path="."/>"""))
+        }
+        fun noIncludes(rules: String) = assertFalse("no include may re-add data", rules.contains("<include"))
+        val transfer = File("src/main/res/xml/data_extraction_rules.xml").readText()
+        listOf("cloud-backup", "device-transfer").forEach { section ->
+            val rules = Regex("<$section>(.*?)</$section>", RegexOption.DOT_MATCHES_ALL).find(transfer)?.groupValues?.get(1)
+            assertTrue("$section section missing", rules != null)
+            excludesAll(rules!!)
+            noIncludes(rules)
+        }
+        val legacy = File("src/main/res/xml/backup_rules.xml").readText()
+        excludesAll(legacy)
+        noIncludes(legacy)
+        assertTrue(manifest.contains("""android:allowBackup="false""""))
+        assertTrue(manifest.contains("""android:dataExtractionRules="@xml/data_extraction_rules""""))
+        assertTrue(manifest.contains("""android:fullBackupContent="@xml/backup_rules""""))
+    }
 }

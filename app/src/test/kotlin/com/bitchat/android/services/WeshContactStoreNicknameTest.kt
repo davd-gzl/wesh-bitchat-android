@@ -35,11 +35,10 @@ class WeshContactStoreNicknameTest {
     }
 
     @Test
-    fun `an invisible nickname falls back to the key fingerprint`() {
+    fun `an invisible nickname is kept empty, so it shows unnamed rather than as a fingerprint look-alike`() {
         val store = store()
         store.record(key, "ㅤ​")
-        val fingerprint = ContactIdentityResolver.fingerprintHex(key)
-        assertEquals(fingerprint.take(8), store.contacts.value.single().nickname)
+        assertEquals("", store.contacts.value.single().nickname)
     }
 
     @Test

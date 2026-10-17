@@ -1,5 +1,6 @@
 package com.bitchat.android.ui.pave
 
+import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
@@ -29,6 +30,29 @@ internal fun remoteDisplayName(raw: String?, label: (Int) -> String, reservedWor
         reserved = label(R.string.wesh_pave_unnamed_reserved),
         reservedWords = reservedWords,
     )
+
+/**
+ * [remoteDisplayName] for what Compose does not draw: notifications and system messages. Labels
+ * and reserved words are read at each call, so a language change applies at once.
+ */
+fun interface RemoteNameRule {
+    /** The name to show for [raw], a nickname that comes from someone else. */
+    fun show(raw: String?): String
+
+    companion object {
+        fun of(context: Context): RemoteNameRule = RemoteNameRule { raw ->
+            remoteDisplayName(raw, context::getString, PaveReservedWords.words(context))
+        }
+    }
+}
+
+/**
+ * [raw] without the characters that draw nothing or steer the text (controls, bidi, zero-width:
+ * the invisible set of [PaveDisplayName]), for someone else's text quoted outside a Pavé component.
+ */
+internal fun paveVisibleText(raw: String): String = buildString {
+    raw.codePoints().forEach { if (!PaveDisplayName.isInvisible(it)) appendCodePoint(it) }
+}
 
 /** Short key fingerprint shown after a remote name, so the nickname is never the only identity cue. */
 object PaveFingerprint {
