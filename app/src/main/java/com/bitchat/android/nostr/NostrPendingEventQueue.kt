@@ -4,7 +4,7 @@ package com.bitchat.android.nostr
  * Thread-safe bounded queue of relay deliveries awaiting a usable WebSocket.
  *
  * Queue entries have a local ID rather than using the Nostr event ID: the same signed event may be
- * intentionally published more than once with different relay sets or privacy provenance.
+ * intentionally published more than once with different relay sets.
  */
 internal class NostrPendingEventQueue(
     private val capacity: Int
@@ -15,15 +15,13 @@ internal class NostrPendingEventQueue(
 
     data class Delivery(
         val queueId: Long,
-        val event: NostrEvent,
-        val liveLocationToken: Long?
+        val event: NostrEvent
     )
 
     private data class Entry(
         val queueId: Long,
         val event: NostrEvent,
-        val pendingRelayUrls: MutableSet<String>,
-        val liveLocationToken: Long?
+        val pendingRelayUrls: MutableSet<String>
     )
 
     private val lock = Any()
@@ -32,8 +30,7 @@ internal class NostrPendingEventQueue(
 
     fun enqueue(
         event: NostrEvent,
-        relayUrls: Collection<String>,
-        liveLocationToken: Long?
+        relayUrls: Collection<String>
     ): Long? {
         val pendingRelays = relayUrls.filterTo(linkedSetOf()) { it.isNotBlank() }
         if (pendingRelays.isEmpty()) return null
@@ -45,8 +42,7 @@ internal class NostrPendingEventQueue(
                 Entry(
                     queueId = queueId,
                     event = event,
-                    pendingRelayUrls = pendingRelays,
-                    liveLocationToken = liveLocationToken
+                    pendingRelayUrls = pendingRelays
                 )
             )
             queueId
@@ -57,7 +53,7 @@ internal class NostrPendingEventQueue(
         entries
             .asSequence()
             .filter { relayUrl in it.pendingRelayUrls }
-            .map { Delivery(it.queueId, it.event, it.liveLocationToken) }
+            .map { Delivery(it.queueId, it.event) }
             .toList()
     }
 
@@ -71,12 +67,6 @@ internal class NostrPendingEventQueue(
                 if (entry.pendingRelayUrls.isEmpty()) iterator.remove()
                 return
             }
-        }
-    }
-
-    fun removeLiveLocationEvents() {
-        synchronized(lock) {
-            entries.removeAll { it.liveLocationToken != null }
         }
     }
 

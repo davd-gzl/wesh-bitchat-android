@@ -165,17 +165,6 @@ class MessageRouter internal constructor(
             return if (enqueueWesh(conversationID, queued, epoch)) RouteResult.QUEUED else RouteResult.DROPPED
         }
 
-        if (com.bitchat.android.nostr.GeohashAliasRegistry.contains(toPeerID)) {
-            Log.d(TAG, "Routing PM via Nostr (geohash) to alias ${toPeerID.take(12)}… id=${messageID.take(8)}…")
-            val recipientHex = com.bitchat.android.nostr.GeohashAliasRegistry.get(toPeerID)
-            if (recipientHex != null) {
-                val sourceGeohash = com.bitchat.android.nostr.GeohashConversationRegistry.get(toPeerID)
-                nostr.sendPrivateMessageGeohash(content, recipientHex, messageID, sourceGeohash)
-                return RouteResult.NOSTR
-            }
-            return RouteResult.DROPPED
-        }
-
         val hasMesh = meshTarget?.let { isConnected(mesh, it) } == true
         if (meshTarget != null && isReady(mesh, meshTarget)) {
             Log.d(TAG, "Routing PM via mesh to ${meshTarget} msg_id=${messageID.take(8)}…")

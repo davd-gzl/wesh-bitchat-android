@@ -49,34 +49,19 @@
     <string name="notification_active_peers_title">Weshter gần đó!</string>
     <string name="notification_active_peers_one">1 người gần đó</string>
     <string name="notification_active_peers_many">%1$d người gần đó</string>
-    <string name="notification_new_messages">Tin nhắn mới</string>
     <string name="notification_new_location_messages">Tin nhắn vị trí mới</string>
-    <string name="notification_mentions_in">Được nhắc đến trong %1$s</string>
-    <string name="notification_mentions_in_more">Được nhắc đến trong %1$s (+%2$d khác)</string>
-    <string name="notification_mentions_in_plural">%1$d lần nhắc đến trong %2$s</string>
-    <string name="notification_new_activity_in">Hoạt động mới trong %1$s</string>
-    <string name="notification_messages_in">Tin nhắn trong %1$s</string>
-    <string name="notification_joined_conversation">%1$s đã tham gia cuộc trò chuyện</string>
-    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d lần nhắc đến</string>
-    <string name="notification_geohash_summary_title">Wesh – Trò chuyện vị trí</string>
-    <string name="notification_geohash_summary_text">%1$d tin nhắn từ %2$d vị trí</string>
     <string name="notification_mesh_mention_title_singular">Được nhắc đến trong Mesh Chat</string>
     <string name="notification_mesh_mention_title_plural">%1$d lần nhắc đến trong Mesh Chat</string>
-    <string name="notification_more_locations">và %1$d vị trí khác</string>
     <string name="notification_and_more">và %1$d khác</string>
 
     <!-- Khả năng truy cập yêu thích -->
     <string name="cd_add_favorite">Thêm vào yêu thích</string>
     <string name="cd_remove_favorite">Xóa khỏi yêu thích</string>
-    <string name="cd_add_bookmark">Thêm bookmark</string>
 
     <!-- Header trò chuyện &amp; khả năng truy cập -->
     <string name="cd_nostr_reachable">Có thể tiếp cận qua Nostr</string>
     <string name="cd_unread_private_messages">Tin nhắn riêng chưa đọc</string>
-    <string name="cd_teleported">Đã dịch chuyển</string>
-    <string name="cd_open_location_channels">Mở cài đặt vị trí và kênh</string>
     <string name="cd_connected_peers">Peers đã kết nối</string>
-    <string name="cd_geohash_participants">Người tham gia geohash</string>
     <string name="cd_ready_for_handshake">Sẵn sàng cho handshake</string>
     <string name="cd_handshake_in_progress">Handshake đang tiến hành</string>
     <string name="cd_encrypted">Mã hóa đầu cuối</string>
@@ -94,8 +79,6 @@
     <!-- Sheet giới thiệu -->
     <string name="about_offline_mesh_title">Trò chuyện Mesh ngoại tuyến</string>
     <string name="about_offline_mesh_desc">Liên lạc trực tiếp qua Bluetooth LE mà không cần Internet hoặc máy chủ. Tin nhắn được chuyển tiếp qua các thiết bị gần để mở rộng phạm vi.</string>
-    <string name="about_online_geohash_title">Kênh Geohash trực tuyến</string>
-    <string name="about_online_geohash_desc">Kết nối với những người trong khu vực của bạn qua các kênh dựa trên geohash. Mở rộng mesh qua các relay Internet công cộng.</string>
     <string name="about_e2e_title">Mã hóa đầu cuối</string>
     <string name="about_e2e_desc">Tin nhắn riêng được mã hóa. Tin nhắn kênh là công khai.</string>
     <string name="about_system">Hệ thống</string>
@@ -137,15 +120,9 @@
     <string name="cd_not_supported_battery_optimization">Tối ưu hóa pin không được hỗ trợ</string>
     <string name="cd_bluetooth">Bluetooth</string>
     <string name="cd_unread_message">Tin nhắn chưa đọc</string>
-    <string name="cd_open_map">Mở bản đồ</string>
-    <string name="cd_remove_bookmark">Xóa bookmark</string>
-    <string name="cd_teleport">Dịch chuyển</string>
     <string name="cd_leave_channel">Rời khỏi kênh</string>
     <string name="cd_reachable_via_nostr">Có thể tiếp cận qua Nostr</string>
     <string name="cd_offline_favorite">Yêu thích (ngoại tuyến)</string>
-    <string name="cd_decrease_precision">Giảm độ chính xác</string>
-    <string name="cd_increase_precision">Tăng độ chính xác</string>
-    <string name="cd_select_geohash">Chọn geohash</string>
     <string name="cd_scroll_to_bottom">Cuộn xuống dưới</string>
     <string name="cd_file">File</string>
     <string name="cd_image">Hình ảnh</string>
@@ -159,7 +136,6 @@
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">Ghi tin nhắn thoại</string>
     <string name="cd_offline_mesh_chat">Trò chuyện Mesh ngoại tuyến</string>
-    <string name="cd_online_geohash_channels">Kênh Geohash trực tuyến</string>
     <string name="cd_end_to_end_encryption">Mã hóa đầu cuối</string>
 
     <!-- Hình ảnh &amp; file -->
@@ -186,26 +162,9 @@
     <string name="action_block_subtitle">Chặn tất cả tin nhắn từ người dùng này</string>
 
     <!-- Sheet kênh geohash -->
-    <string name="location_channels_title">#Kênh vị trí</string>
-    <string name="location_channels_desc">Trò chuyện với những người gần bạn qua các kênh geohash. Chỉ geohash thô được chia sẻ, không phải dữ liệu GPS chính xác. Vui lòng không chụp màn hình hoặc chia sẻ chế độ xem này để bảo vệ quyền riêng tư.</string>
-    <string name="grant_location_permission">Cấp quyền vị trí</string>
-    <string name="location_permission_denied">Quyền vị trí bị từ chối. Hãy bật trong Cài đặt để sử dụng kênh vị trí.</string>
     <string name="open_settings">Mở Cài đặt</string>
-    <string name="location_permission_granted">\u2713 Đã cấp quyền vị trí</string>
     <string name="checking_permissions">Đang kiểm tra quyền …</string>
-    <string name="finding_nearby_channels">Đang tìm kênh gần đó …</string>
-    <string name="bookmarked">Đã bookmark</string>
-    <string name="geohash_placeholder">Geohash</string>
-    <string name="invalid_geohash">Geohash không hợp lệ</string>
-    <string name="teleport">dịch chuyển</string>
-    <string name="disable_location_services">Tắt dịch vụ vị trí</string>
-    <string name="enable_location_services">Bật dịch vụ vị trí</string>
     <string name="mesh_label">mesh</string>
-    <string name="location_level_block">Khối</string>
-    <string name="location_level_neighborhood">Khu phố</string>
-    <string name="location_level_city">Thành phố</string>
-    <string name="location_level_province">Tỉnh</string>
-    <string name="location_level_region">Khu vực</string>
     <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
 
     <!-- Debug / Chẩn đoán -->
@@ -370,9 +329,6 @@
   <string name="verify_success_body">You verified %1$s</string>
   <string name="verify_success_system_message">verified %1$s</string>
     <string name="cd_open_about">Mở phần Giới thiệu</string>
-  <string name="nearby_notes_reveal">kiểm tra ghi chú để lại ở đây</string>
-  <string name="nearby_notes_one">có 1 ghi chú để lại ở đây — chạm để đọc</string>
-  <string name="nearby_notes_many">có %d ghi chú để lại ở đây — chạm để đọc</string>
     <string name="about_language">Ngôn ngữ</string>
     <string name="about_app_language">Ngôn ngữ ứng dụng</string>
     <string name="about_system_default">Mặc định hệ thống</string>

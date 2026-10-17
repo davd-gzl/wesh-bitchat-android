@@ -49,34 +49,19 @@
     <string name="notification_active_peers_title">नजिकै Weshter हरू!</string>
     <string name="notification_active_peers_one">१ जना नजिकै</string>
     <string name="notification_active_peers_many">%1$d जना नजिकै</string>
-    <string name="notification_new_messages">नयाँ सन्देश</string>
     <string name="notification_new_location_messages">नयाँ स्थान सन्देश</string>
-    <string name="notification_mentions_in">%1$s मा उल्लेख</string>
-    <string name="notification_mentions_in_more">%1$s मा उल्लेख (+%2$d थप)</string>
-    <string name="notification_mentions_in_plural">%1$d उल्लेख %2$s मा</string>
-    <string name="notification_new_activity_in">%1$s मा नयाँ गतिविधि</string>
-    <string name="notification_messages_in">%1$s मा सन्देश</string>
-    <string name="notification_joined_conversation">%1$s वार्तालापमा सामेल भयो</string>
-    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d उल्लेख</string>
-    <string name="notification_geohash_summary_title">Wesh – स्थान च्याट</string>
-    <string name="notification_geohash_summary_text">%2$d स्थानबाट %1$d सन्देश</string>
     <string name="notification_mesh_mention_title_singular">मेष च्याटमा उल्लेख</string>
     <string name="notification_mesh_mention_title_plural">मेष च्याटमा %1$d उल्लेख</string>
-    <string name="notification_more_locations">र %1$d थप स्थान</string>
     <string name="notification_and_more">र %1$d थप</string>
 
     <!-- मनपर्ने / पहुँचयोग्यता -->
     <string name="cd_add_favorite">मनपर्नेमा थप्नुहोस्</string>
     <string name="cd_remove_favorite">मनपरिबाट हटाउनुहोस्</string>
-    <string name="cd_add_bookmark">बुकमार्क थप्नुहोस्</string>
 
     <!-- च्याट शीर्षक / पहुँचयोग्यता -->
     <string name="cd_nostr_reachable">Nostr मार्फत पुग्न सकिने</string>
     <string name="cd_unread_private_messages">नपढिएका निजी सन्देश</string>
-    <string name="cd_teleported">टेलिपोर्ट भयो</string>
-    <string name="cd_open_location_channels">स्थान र च्यानल सेटिङ खोल्नुहोस्</string>
     <string name="cd_connected_peers">जडान भएका साथीहरू</string>
-    <string name="cd_geohash_participants">Geohash सहभागिहरू</string>
     <string name="cd_ready_for_handshake">ह्यान्डशेकका लागि तयार</string>
     <string name="cd_handshake_in_progress">ह्यान्डशेक भइरहेको</string>
     <string name="cd_encrypted">अन्त्यदेखि अन्त्य एनक्रिप्टेड</string>
@@ -94,8 +79,6 @@
     <!-- अबाउट शीट -->
     <string name="about_offline_mesh_title">अफलाइन मेष च्याट</string>
     <string name="about_offline_mesh_desc">इन्टरनेट वा सर्भर बिना सिधै Bluetooth LE मार्फत सञ्चार गर्नुहोस्। नजिकका यन्त्रहरूबाट सन्देश रिल레이 हुन्छ।</string>
-    <string name="about_online_geohash_title">अनलाइन Geohash च्यानलहरू</string>
-    <string name="about_online_geohash_desc">Geohash आधारित च्यानलमार्फत नजिकका मानिसहरूसँग जोडिनुहोस्। सार्वजनिक इन्टरनेट रिलेलाई प्रयोग गरेर मेष विस्तार गर्नुहोस्।</string>
     <string name="about_e2e_title">एन्ड‑टु‑एन्ड इन्क्रिप्सन</string>
     <string name="about_e2e_desc">निजी सन्देश इन्क्रिप्टेड हुन्छन्। च्यानल सन्देश सार्वजनिक हुन्छन्।</string>
     <string name="about_system">सिस्टम</string>
@@ -137,15 +120,9 @@
     <string name="cd_not_supported_battery_optimization">समर्थन छैन</string>
     <string name="cd_bluetooth">ब्लुटुथ</string>
     <string name="cd_unread_message">नपढिएको सन्देश</string>
-    <string name="cd_open_map">नक्सा खोल्नुहोस्</string>
-    <string name="cd_remove_bookmark">बुकमार्क हटाउनुहोस्</string>
-    <string name="cd_teleport">टेलिपोर्ट</string>
     <string name="cd_leave_channel">च्यानल छोड्नुहोस्</string>
     <string name="cd_reachable_via_nostr">Nostr बाट पहुँचयोग्य</string>
     <string name="cd_offline_favorite">मनपर्ने (अफलाइन)</string>
-    <string name="cd_decrease_precision">शुद्धता घटाउनुहोस्</string>
-    <string name="cd_increase_precision">शुद्धता बढाउनुहोस्</string>
-    <string name="cd_select_geohash">geohash छान्नुहोस्</string>
     <string name="cd_scroll_to_bottom">तल स्क्रोल गर्नुहोस्</string>
     <string name="cd_file">फाइल</string>
     <string name="cd_image">तस्वीर</string>
@@ -154,7 +131,6 @@
     <string name="cd_pick_media">मेडिया छान्नुहोस्</string>
     <string name="cd_record_voice">भ्वाइस नोट रेकर्ड</string>
     <string name="cd_offline_mesh_chat">अफलाइन मेष च्याट</string>
-    <string name="cd_online_geohash_channels">अनलाइन Geohash च्यानल</string>
     <string name="cd_end_to_end_encryption">एन्ड‑टु‑एन्ड इन्क्रिप्सन</string>
 
     <!-- छवि / फाइल -->
@@ -179,27 +155,10 @@
     <string name="action_block_subtitle">यस प्रयोगकर्ताबाट सबै सन्देश ब्लक गर्नुहोस्</string>
 
     <!-- स्थान च्यानल शीट -->
-    <string name="location_channels_title">#स्थान च्यानल</string>
-    <string name="location_channels_desc">तपाईंको वरिपरिका मानिसहरूसँग geohash च्यानल प्रयोग गरी च्याट गर्नुहोस्। केवल सामान्य geohash साझा हुन्छ, कहिल्यै ठ्याक्कै GPS होइन। गोपनीयताका लागि स्क्रिनसट नलिनुहोस् र नबाँड्नुहोस्।</string>
-    <string name="grant_location_permission">स्थान अनुमति दिनुहोस्</string>
-    <string name="location_permission_denied">स्थान अनुमति अस्वीकार। स्थान च्यानल प्रयोग गर्न सेटिङमा सक्षम गर्नुहोस्।</string>
     <string name="open_settings">सेटिङ खोल्नुहोस्</string>
-    <string name="location_permission_granted">\u2713 स्थान अनुमति दिइयो</string>
     <string name="checking_permissions">अनुमति जाँचिँदै…</string>
-    <string name="finding_nearby_channels">नजिकका च्यानल खोजिँदै…</string>
-    <string name="bookmarked">बुकमार्क गरिएको</string>
-    <string name="geohash_placeholder">geohash</string>
-    <string name="invalid_geohash">अवैध geohash</string>
-    <string name="teleport">टेलिपोर्ट</string>
-    <string name="disable_location_services">स्थान सेवाहरू बन्द गर्नुहोस्</string>
-    <string name="enable_location_services">स्थान सेवाहरू सुरु गर्नुहोस्</string>
     <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
     <string name="mesh_label">mesh</string>
-    <string name="location_level_block">ब्लक</string>
-    <string name="location_level_neighborhood">छिमेक</string>
-    <string name="location_level_city">सहर</string>
-    <string name="location_level_province">प्रान्त</string>
-    <string name="location_level_region">क्षेत्र</string>
 
     <!-- डिबग / निदान -->
     <string name="debug_tools">डिबग उपकरण</string>
@@ -367,9 +326,6 @@
   <string name="verify_success_body">You verified %1$s</string>
   <string name="verify_success_system_message">verified %1$s</string>
     <string name="cd_open_about">परिचय खोल्नुहोस्</string>
-  <string name="nearby_notes_reveal">यहाँ छोडिएका नोटहरू छन् कि हेर्नुहोस्</string>
-  <string name="nearby_notes_one">यहाँ 1 नोट छोडिएको छ — पढ्न ट्याप गर्नुहोस्</string>
-  <string name="nearby_notes_many">यहाँ %d नोटहरू छोडिएका छन् — पढ्न ट्याप गर्नुहोस्</string>
     <string name="about_language">भाषा</string>
     <string name="about_app_language">एपको भाषा</string>
     <string name="about_system_default">प्रणालीको पूर्वनिर्धारित</string>

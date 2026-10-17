@@ -184,9 +184,6 @@ dependencies {
     // Arti JNI libraries are vendored in src/main/jniLibs for all four ABIs.
     // tools/arti-build pins their source, dependencies, and native toolchain.
 
-    // Google Play Services Location
-    implementation(libs.gms.location)
-
     // Security preferences
     implementation(libs.androidx.security.crypto)
     

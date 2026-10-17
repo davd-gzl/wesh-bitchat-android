@@ -45,6 +45,23 @@ class WeshManifestContractTest {
     }
 
     @Test
+    fun `no location SDK or location feature ships and background location is never requested`() {
+        assertFalse(File("build.gradle.kts").readText().contains("gms"))
+        assertFalse(File("gradle.lockfile").readText().contains("com.google.android.gms:"))
+        assertFalse(File("src/main/java/com/bitchat/android/geohash").exists())
+        assertFalse(manifest.contains("GeohashPickerActivity"))
+        val sources = File("src/main/java").walkTopDown().filter { it.extension == "kt" }.toList()
+        assertTrue(sources.isNotEmpty())
+        listOf(
+            "com.google.android.gms", "android.location.Geocoder", "requestLocationUpdates",
+            "getLastKnownLocation", "getCurrentLocation", "ACCESS_BACKGROUND_LOCATION"
+        ).forEach { needle ->
+            val offenders = sources.filter { it.readText().contains(needle) }.map { it.name }
+            assertTrue("$needle still referenced by $offenders", offenders.isEmpty())
+        }
+    }
+
+    @Test
     fun `no app data leaves the phone by backup or device transfer`() {
         val domains = listOf("root", "sharedpref", "database", "file", "external")
         fun excludesAll(rules: String) = domains.forEach { domain ->

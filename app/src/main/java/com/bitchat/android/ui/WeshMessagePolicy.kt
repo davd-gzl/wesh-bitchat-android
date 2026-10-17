@@ -189,6 +189,15 @@ internal class WeshPreferences(
     }
 }
 
+/** Preference files of the removed location features, which an older build may have written. */
+internal val LEGACY_FEATURE_PREFERENCES = listOf("geohash_prefs", "geohash_conversation_registry")
+
+/** Deletes every legacy preference file; true only when none is left behind. */
+internal fun deleteLegacyFeaturePreferences(context: Context): Boolean =
+    LEGACY_FEATURE_PREFERENCES
+        .map { name -> runCatching { context.deleteSharedPreferences(name) }.getOrDefault(false) }
+        .all { it }
+
 /** The draft marker must stay pending until every application wipe is confirmed. */
 internal suspend fun resumeAfterWeshPanicWipe(
     draftsCleared: Boolean,
@@ -197,7 +206,9 @@ internal suspend fun resumeAfterWeshPanicWipe(
     clearPreferences: suspend () -> Boolean,
     resume: suspend () -> Boolean,
     /** Internet off, Tor state deleted and Nostr keys erased. */
-    internetCleared: Boolean = true
+    internetCleared: Boolean = true,
+    /** The removed features' preference files are gone. */
+    legacyStoresCleared: Boolean = true
 ): Boolean {
     val preferencesCleared = try {
         clearPreferences()
@@ -206,6 +217,8 @@ internal suspend fun resumeAfterWeshPanicWipe(
     } catch (_: Exception) {
         false
     }
-    if (!draftsCleared || !conversationsCleared || !mediaCleared || !internetCleared || !preferencesCleared) return false
+    if (!draftsCleared || !conversationsCleared || !mediaCleared || !internetCleared || !legacyStoresCleared ||
+        !preferencesCleared
+    ) return false
     return resume()
 }

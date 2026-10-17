@@ -78,12 +78,6 @@ class NostrTestManager(private val context: Context) {
         require(identity.publicKeyHex.length == 64) { "Invalid public key length" }
         require(identity.privateKeyHex.length == 64) { "Invalid private key length" }
         
-        // Test geohash identity derivation
-        val geohashIdentity = NostrIdentityBridge.deriveIdentity("u4pruydq", context)
-        require(geohashIdentity.npub.startsWith("npub1")) { "Invalid geohash identity npub" }
-        require(geohashIdentity.publicKeyHex != identity.publicKeyHex) { "Geohash identity should be different" }
-        
-        Log.d(TAG, "Geohash identity npub: ${geohashIdentity.getShortNpub()}")
         Log.d(TAG, "✅ Identity management test successful")
     }
     
@@ -169,12 +163,6 @@ class NostrTestManager(private val context: Context) {
             messageReceived = true
         }
         
-        // Subscribe to a test geohash
-        nostrClient.subscribeToGeohash("u4pru") { content, senderPubkey, nickname, timestamp ->
-            Log.d(TAG, "📥 Received test geohash message")
-            messageReceived = true
-        }
-        
         // Wait a bit to see if any messages come through
         delay(2000)
         
@@ -206,32 +194,6 @@ class NostrTestManager(private val context: Context) {
                 
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Loopback test failed: ${e.message}", e)
-            }
-        }
-    }
-    
-    /**
-     * Test sending a geohash message
-     */
-    fun testGeohashMessage() {
-        testScope.launch {
-            try {
-                Log.i(TAG, "🌍 Testing geohash message...")
-                
-                nostrClient.sendGeohashMessage(
-                    content = "Test geohash message from Android at ${System.currentTimeMillis()}",
-                    geohash = "u4pru",
-                    nickname = "android-test",
-                    onSuccess = {
-                        Log.i(TAG, "✅ Geohash message sent successfully")
-                    },
-                    onError = { error ->
-                        Log.e(TAG, "❌ Geohash message failed: $error")
-                    }
-                )
-                
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Geohash test failed: ${e.message}", e)
             }
         }
     }

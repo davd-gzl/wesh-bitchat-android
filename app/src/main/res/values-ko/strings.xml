@@ -49,34 +49,19 @@
     <string name="notification_active_peers_title">근처 Weshter!</string>
     <string name="notification_active_peers_one">근처 1명</string>
     <string name="notification_active_peers_many">근처 %1$d명</string>
-    <string name="notification_new_messages">새 메시지</string>
     <string name="notification_new_location_messages">새 위치 메시지</string>
-    <string name="notification_mentions_in">%1$s에서 언급됨</string>
-    <string name="notification_mentions_in_more">%1$s에서 언급됨 (+%2$d)</string>
-    <string name="notification_mentions_in_plural">%2$s에서 %1$d회 언급</string>
-    <string name="notification_new_activity_in">%1$s의 새 활동</string>
-    <string name="notification_messages_in">%1$s의 메시지</string>
-    <string name="notification_joined_conversation">%1$s님이 대화에 참여했습니다</string>
-    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d회 언급</string>
-    <string name="notification_geohash_summary_title">Wesh – 위치 채팅</string>
-    <string name="notification_geohash_summary_text">%2$d개의 장소에서 온 %1$d개의 메시지</string>
     <string name="notification_mesh_mention_title_singular">메쉬 채팅에서 언급됨</string>
     <string name="notification_mesh_mention_title_plural">메쉬 채팅에서 %1$d회 언급</string>
-    <string name="notification_more_locations">그리고 %1$d개의 장소 더</string>
     <string name="notification_and_more">그리고 %1$d개 더</string>
 
     <!-- 즐겨찾기 접근성 -->
     <string name="cd_add_favorite">즐겨찾기에 추가</string>
     <string name="cd_remove_favorite">즐겨찾기에서 제거</string>
-    <string name="cd_add_bookmark">북마크 추가</string>
 
     <!-- 채팅 헤더 &amp; 접근성 -->
     <string name="cd_nostr_reachable">Nostr로 연결 가능</string>
     <string name="cd_unread_private_messages">읽지 않은 개인 메시지</string>
-    <string name="cd_teleported">텔레포트됨</string>
-    <string name="cd_open_location_channels">위치 및 채널 설정 열기</string>
     <string name="cd_connected_peers">연결된 피어</string>
-    <string name="cd_geohash_participants">geohash 참여자</string>
     <string name="cd_ready_for_handshake">핸드셰이크 준비됨</string>
     <string name="cd_handshake_in_progress">핸드셰이크 진행 중</string>
     <string name="cd_encrypted">종단간 암호화</string>
@@ -94,8 +79,6 @@
     <!-- 정보 시트 -->
     <string name="about_offline_mesh_title">오프라인 메쉬 채팅</string>
     <string name="about_offline_mesh_desc">인터넷이나 서버 없이 Bluetooth LE로 직접 소통합니다. 범위를 확장하기 위해 근처 기기를 통해 메시지가 중계됩니다.</string>
-    <string name="about_online_geohash_title">온라인 geohash 채널</string>
-    <string name="about_online_geohash_desc">geohash 기반 채널을 통해 주변 사람들과 연결하세요. 공용 인터넷 릴레이로 메쉬를 확장합니다.</string>
     <string name="about_e2e_title">종단간 암호화</string>
     <string name="about_e2e_desc">개인 메시지는 암호화됩니다. 채널 메시지는 공개입니다.</string>
     <string name="about_system">시스템</string>
@@ -137,15 +120,9 @@
     <string name="cd_not_supported_battery_optimization">배터리 최적화 미지원</string>
     <string name="cd_bluetooth">블루투스</string>
     <string name="cd_unread_message">읽지 않은 메시지</string>
-    <string name="cd_open_map">지도 열기</string>
-    <string name="cd_remove_bookmark">북마크 제거</string>
-    <string name="cd_teleport">텔레포트</string>
     <string name="cd_leave_channel">채널 나가기</string>
     <string name="cd_reachable_via_nostr">Nostr로 연결 가능</string>
     <string name="cd_offline_favorite">즐겨찾기 (오프라인)</string>
-    <string name="cd_decrease_precision">정밀도 낮추기</string>
-    <string name="cd_increase_precision">정밀도 높이기</string>
-    <string name="cd_select_geohash">geohash 선택</string>
     <string name="cd_scroll_to_bottom">아래로 스크롤</string>
     <string name="cd_file">파일</string>
     <string name="cd_image">이미지</string>
@@ -159,7 +136,6 @@
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">음성 메시지 녹음</string>
     <string name="cd_offline_mesh_chat">오프라인 메쉬 채팅</string>
-    <string name="cd_online_geohash_channels">온라인 geohash 채널</string>
     <string name="cd_end_to_end_encryption">종단간 암호화</string>
 
     <!-- 이미지 &amp; 파일 -->
@@ -186,26 +162,9 @@
     <string name="action_block_subtitle">이 사용자의 모든 메시지 차단</string>
 
     <!-- geohash 채널 시트 -->
-    <string name="location_channels_title">#위치 채널</string>
-    <string name="location_channels_desc">geohash 채널을 통해 주변 사람들과 채팅하세요. 정확한 GPS 데이터가 아닌 대략적인 geohash만 공유됩니다. 개인 정보 보호를 위해 이 화면을 스크린샷하거나 공유하지 마세요.</string>
-    <string name="grant_location_permission">위치 권한 허용</string>
-    <string name="location_permission_denied">위치 권한이 거부되었습니다. 위치 채널을 사용하려면 설정에서 활성화하세요.</string>
     <string name="open_settings">설정 열기</string>
-    <string name="location_permission_granted">\u2713 위치 권한 허용됨</string>
     <string name="checking_permissions">권한 확인 중 …</string>
-    <string name="finding_nearby_channels">주변 채널 찾는 중 …</string>
-    <string name="bookmarked">북마크됨</string>
-    <string name="geohash_placeholder">Geohash</string>
-    <string name="invalid_geohash">유효하지 않은 geohash</string>
-    <string name="teleport">텔레포트</string>
-    <string name="disable_location_services">위치 서비스 비활성화</string>
-    <string name="enable_location_services">위치 서비스 활성화</string>
     <string name="mesh_label">mesh</string>
-    <string name="location_level_block">블록</string>
-    <string name="location_level_neighborhood">이웃</string>
-    <string name="location_level_city">도시</string>
-    <string name="location_level_province">주/도</string>
-    <string name="location_level_region">지역</string>
     <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
 
     <!-- 디버그 / 진단 -->
@@ -331,18 +290,7 @@
         <item quantity="other">%d명</item>
     </plurals>
 
-  <plurals name="location_notes_title">
-    <item quantity="other">#%1$s ± 1 • %2$d개의 노트</item>
-  </plurals>
-  <string name="location_notes_description">다른 방문자들이 볼 수 있도록 이 위치에 짧은 영구 노트를 추가하세요.</string>
-  <string name="location_notes_relays_unavailable">지오 릴레이를 사용할 수 없음; 노트 일시 중지됨</string>
-  <string name="location_notes_no_relays_title">주변에 지오 릴레이가 없음</string>
-  <string name="location_notes_no_relays_desc">노트는 지오 릴레이에 의존합니다. 연결을 확인하고 다시 시도하세요.</string>
-  <string name="loading_location_notes">노트 불러오는 중…</string>
-  <string name="location_notes_empty_title">아직 노트가 없습니다</string>
-  <string name="location_notes_empty_desc">이 장소에 첫 번째 노트를 추가해 보세요.</string>
   <string name="dismiss">닫기</string>
-  <string name="location_notes_input_placeholder">이 장소에 노트 추가</string>
     <string name="bluetooth_recommended">블루투스 권장</string>
     <string name="mesh_service_notification_content">메시 실행 중 — %1$d 피어</string>
 
@@ -382,9 +330,6 @@
   <string name="verify_success_body">You verified %1$s</string>
   <string name="verify_success_system_message">verified %1$s</string>
     <string name="cd_open_about">정보 열기</string>
-  <string name="nearby_notes_reveal">여기 남겨진 쪽지 확인</string>
-  <string name="nearby_notes_one">여기 남겨진 쪽지 1개 — 탭하여 읽기</string>
-  <string name="nearby_notes_many">여기 남겨진 쪽지 %d개 — 탭하여 읽기</string>
     <string name="about_language">언어</string>
     <string name="about_app_language">앱 언어</string>
     <string name="about_system_default">시스템 기본값</string>

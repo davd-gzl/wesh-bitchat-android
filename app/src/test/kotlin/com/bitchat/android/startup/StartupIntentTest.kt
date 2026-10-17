@@ -20,8 +20,9 @@ class StartupIntentTest {
             .putExtra(NotificationManager.EXTRA_OPEN_PRIVATE_CHAT, true)
             .putExtra(NotificationManager.EXTRA_PEER_ID, "synthetic-peer")
             .putExtra(NotificationManager.EXTRA_SENDER_NICKNAME, "Synthetic contact")
-            .putExtra(NotificationManager.EXTRA_OPEN_GEOHASH_CHAT, true)
-            .putExtra(NotificationManager.EXTRA_GEOHASH, "synthetic")
+            // Extras of the removed location-channel notification route are dropped.
+            .putExtra("open_geohash_chat", true)
+            .putExtra("geohash", "synthetic")
             .putExtra("ACTION_QUIT_APP", true)
             .putExtra("unrelated_payload", "discard")
         val kept = boundedWeshStartupIntent(input)

@@ -10,16 +10,16 @@ class NostrPendingEventQueueTest {
     fun `empty relay set is not queued`() {
         val queue = NostrPendingEventQueue(capacity = 2)
 
-        assertNull(queue.enqueue(event("empty"), emptyList(), liveLocationToken = null))
+        assertNull(queue.enqueue(event("empty"), emptyList()))
         assertEquals(0, queue.size())
     }
 
     @Test
     fun `capacity evicts the oldest publish`() {
         val queue = NostrPendingEventQueue(capacity = 2)
-        queue.enqueue(event("one"), listOf("relay"), liveLocationToken = null)
-        queue.enqueue(event("two"), listOf("relay"), liveLocationToken = null)
-        queue.enqueue(event("three"), listOf("relay"), liveLocationToken = null)
+        queue.enqueue(event("one"), listOf("relay"))
+        queue.enqueue(event("two"), listOf("relay"))
+        queue.enqueue(event("three"), listOf("relay"))
 
         assertEquals(
             listOf("two", "three"),
@@ -32,10 +32,10 @@ class NostrPendingEventQueueTest {
         val queue = NostrPendingEventQueue(capacity = 4)
         val signedEvent = event("same")
         val firstId = requireNotNull(
-            queue.enqueue(signedEvent, listOf("relay-a", "relay-b"), liveLocationToken = null)
+            queue.enqueue(signedEvent, listOf("relay-a", "relay-b"))
         )
         val secondId = requireNotNull(
-            queue.enqueue(signedEvent, listOf("relay-a"), liveLocationToken = null)
+            queue.enqueue(signedEvent, listOf("relay-a"))
         )
         assertNotEquals(firstId, secondId)
 
@@ -52,20 +52,6 @@ class NostrPendingEventQueueTest {
 
         queue.markDelivered(firstId, "relay-b")
         assertEquals(1, queue.size())
-    }
-
-    @Test
-    fun `privacy purge retains non-live publishes`() {
-        val queue = NostrPendingEventQueue(capacity = 4)
-        queue.enqueue(event("manual"), listOf("relay"), liveLocationToken = null)
-        queue.enqueue(event("live"), listOf("relay"), liveLocationToken = 42L)
-
-        queue.removeLiveLocationEvents()
-
-        assertEquals(
-            listOf("manual"),
-            queue.pendingForRelay("relay").map { it.event.content }
-        )
     }
 
     private fun event(content: String): NostrEvent {

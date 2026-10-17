@@ -112,10 +112,9 @@ class WeshInternetHookupTest {
 
     @Test fun `with the toggle on the product-safety gates stay on`() {
         WeshNetworkPolicy.gate = WeshNetworkGate { true }
-        // No geohash channel, presence or unfiltered account-DM subscription in Wesh.
+        // No unfiltered account-DM subscription in Wesh.
         NostrBackgroundRuntime.initialize(app)
         assertTrue(NostrRelayManager.shared.getActiveSubscriptions().isEmpty())
-        assertTrue(com.bitchat.android.geohash.GeocoderFactory.get(app) === com.bitchat.android.geohash.NoGeocoderProvider)
     }
 
     @Test fun `my QR and owned npubs are read off the calling thread`() = runBlocking {

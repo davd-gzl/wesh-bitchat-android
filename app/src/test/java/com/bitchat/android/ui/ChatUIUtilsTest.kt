@@ -462,7 +462,7 @@ class ChatUIUtilsTest {
     }
 
     @Test
-    fun `geohash chat and people sheet resolve the same full Nostr identity`() {
+    fun `Nostr chat and people sheet resolve the same full Nostr identity`() {
         val pubkey = "ABCDEF0123456789".repeat(4)
         val peopleIdentity = PeerIdentity.nostr(pubkey)
         val chatIdentity = peerIdentityForMessage(
