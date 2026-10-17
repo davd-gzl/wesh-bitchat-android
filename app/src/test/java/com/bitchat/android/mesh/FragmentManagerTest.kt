@@ -705,7 +705,7 @@ class FragmentManagerTest {
 
         assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: 1"))
         assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: ${sizes[0] + sizes[1]}"))
-        // The assembly now counts against LINK_A: closing LINK_A drops it.
+        // LINK_A's fragments still complete it.
         val completed = fragments.drop(2).mapNotNull { fragmentManager.handleFragment(it, LINK_A) }
         assertEquals(1, completed.size)
         assertArrayEquals(packet.payload, completed.single().payload)

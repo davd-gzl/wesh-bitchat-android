@@ -38,16 +38,17 @@ class FragmentManager(
     }
     
     /**
-     * One assembly in progress. [ingressKey] is the link that opened it: slot quotas follow
-     * that link, never the sender ID a fragment claims. [bytesByLink] counts the bytes each
-     * link delivered into it, for the per-link byte share.
+     * One assembly in progress. [ingressKey] is the link that opened it, or the contributor it
+     * was handed to when that link closed: slot quotas follow that link, never the sender ID a
+     * fragment claims. [bytesByLink] counts the bytes each open link delivered into it, for the
+     * per-link byte share.
      */
     private class AssemblyMetadata(
         val originalType: UByte,
         val total: Int,
         val timestamp: Long,
         val senderKey: String,
-        val ingressKey: String,
+        var ingressKey: String,
         val bytesByLink: MutableMap<String, Int> = mutableMapOf()
     )
 
@@ -492,8 +493,12 @@ class FragmentManager(
     }
     
     /**
-     * Drops the assemblies [ingressKey] opened. Each reconnection gets a new link ID, so without
-     * this a radio reconnecting a few times would hold every global slot until they expire.
+     * Releases what [ingressKey] holds. Each reconnection gets a new link ID, so without this a
+     * radio reconnecting a few times would hold every global slot until they expire.
+     * - An assembly only this link fed is dropped.
+     * - One other open links also fed is kept, so their genuine fragments are not lost, and is
+     *   handed to the contributor that delivered most of it: its slot then counts there.
+     * - The closed link's byte share is struck from every assembly it fed.
      * Fragments still queued from the closed link are relayed but not kept.
      */
     fun onIngressLinkClosed(ingressKey: String) {
@@ -501,7 +506,15 @@ class FragmentManager(
             closedLinks.remove(ingressKey)
             closedLinks.add(ingressKey)
             if (closedLinks.size > MAX_CLOSED_LINKS) closedLinks.remove(closedLinks.first())
-            fragmentMetadata.filterValues { it.ingressKey == ingressKey }.keys.forEach { removeFragmentSetLocked(it) }
+            linkBufferedBytes.remove(ingressKey)
+            fragmentMetadata.entries.toList().forEach { (assemblyKey, metadata) ->
+                metadata.bytesByLink.remove(ingressKey)
+                if (metadata.ingressKey != ingressKey) return@forEach
+                val heir = metadata.bytesByLink.entries
+                    .filter { it.key !in closedLinks }
+                    .maxByOrNull { it.value }?.key
+                if (heir == null) removeFragmentSetLocked(assemblyKey) else metadata.ingressKey = heir
+            }
         }
     }
 
