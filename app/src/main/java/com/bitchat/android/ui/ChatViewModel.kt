@@ -1135,6 +1135,9 @@ class ChatViewModel(
         clearNotificationsForSender(conversationID)
     }
     fun weshVerificationProgress(noiseHex: String) = verificationHandler.weshProgress(noiseHex)
+    fun weshScannedMeSince(sinceMs: Long, noiseHex: String?) = verificationHandler.weshScannedMeSince(sinceMs, noiseHex)
+    /** Noise static key proven by this peer's session, never the announced one; null when unproven. */
+    fun weshAuthenticatedKey(peerID: String): ByteArray? = meshService.getAuthenticatedRemoteStaticKey(peerID)
     fun requestWeshQRReview(raw: String) { weshIncomingQR.value = raw; weshContactSheet.value = true }
 
     fun sendWeshPrivate(content: String, peerID: String, onAccepted: (Boolean) -> Unit) {

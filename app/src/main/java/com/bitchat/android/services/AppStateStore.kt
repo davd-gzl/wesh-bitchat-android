@@ -199,10 +199,14 @@ object AppStateStore {
         }
     }
 
-    /** Replace a live media row by ID, or append it if the row was not admitted yet. */
+    /**
+     * Replace a live media row by ID, or append it if the row was not admitted yet. IDs are chosen
+     * by the sender: a row from another sender is never replaced.
+     */
     fun upsertPublicMessage(msg: BitchatMessage) {
         synchronized(this) {
             val index = _publicMessages.value.indexOfFirst { it.id == msg.id }
+            if (index >= 0 && _publicMessages.value[index].senderPeerID != msg.senderPeerID) return
             if (index >= 0) {
                 _publicMessages.value = _publicMessages.value.toMutableList().also { it[index] = msg }
             } else {
@@ -419,6 +423,21 @@ object AppStateStore {
         is DeliveryStatus.Delivered -> 4
         is DeliveryStatus.Read -> 5
         is DeliveryStatus.Failed -> 0
+    }
+
+    /**
+     * Status from a transport that authenticated the sender as this conversation's contact: the
+     * message must belong to [conversationID], so an ack can never touch another conversation.
+     * Returns false (nothing written) when it does not, including when its history is unloaded.
+     */
+    fun updatePrivateMessageStatusIn(conversationID: String, messageID: String, status: DeliveryStatus): Boolean {
+        synchronized(this) {
+            val canonical = ContactDirectory.canonicalConversationId(conversationID)
+            if (_privateMessages.value[canonical].orEmpty().none { it.id == messageID }) return false
+            // Message IDs are unique across conversations (UNIQUE column, seenMessageIds).
+            updatePrivateMessageStatus(messageID, status)
+            return true
+        }
     }
 
     fun updatePrivateMessageStatus(messageID: String, status: DeliveryStatus) {

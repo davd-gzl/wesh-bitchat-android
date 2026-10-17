@@ -46,6 +46,14 @@ fun interface RemoteNameRule {
     }
 }
 
+/**
+ * [raw] without the characters that draw nothing or steer the text (controls, bidi, zero-width:
+ * the invisible set of [PaveDisplayName]), for someone else's text quoted outside a Pavé component.
+ */
+internal fun paveVisibleText(raw: String): String = buildString {
+    raw.codePoints().forEach { if (!PaveDisplayName.isInvisible(it)) appendCodePoint(it) }
+}
+
 /** Short key fingerprint shown after a remote name, so the nickname is never the only identity cue. */
 object PaveFingerprint {
     private const val NOISE_KEY_BYTES = 32
