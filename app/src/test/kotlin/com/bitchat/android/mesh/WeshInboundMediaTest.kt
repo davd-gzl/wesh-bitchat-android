@@ -327,6 +327,8 @@ class WeshInboundMediaTest {
         assertFalse(fresh.acceptDirectedPlaintext || fresh.acceptFavoriteNotices)
         fresh.applyInboundPolicy(weshLocalOnly = false)
         assertTrue(fresh.acceptDirectedPlaintext && fresh.acceptFavoriteNotices)
+        // No build decodes compressed media any more, whatever the product policy.
+        assertFalse(com.bitchat.android.protocol.PacketPayloadLimits.acceptCompressedMedia)
     }
 
     @Test
