@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
@@ -165,8 +166,9 @@ class ArtiTorManager internal constructor(
             }
 
             appScope.launch {
-                // Not behind applyMutex, which a start holds for its whole bootstrap.
-                TorPreferenceManager.modeFlow.collect { mode ->
+                // Not behind applyMutex, which a start holds for its whole bootstrap. The initial
+                // value is skipped: nothing runs yet, and init applies it below.
+                TorPreferenceManager.modeFlow.drop(1).collect { mode ->
                     if (mode == TorMode.OFF) requestOff()
                 }
             }
@@ -275,6 +277,12 @@ class ArtiTorManager internal constructor(
                 }
                 when (mode) {
                     TorMode.OFF -> {
+                        if (lifecycleState == LifecycleState.STOPPED && s.mode == TorMode.OFF &&
+                            s.state == TorState.OFF && !s.running
+                        ) {
+                            // Already fully off; the native stop above has returned. No STOPPING flicker.
+                            return
+                        }
                         Log.i(TAG, "applyMode: OFF -> stopping tor")
                         lifecycleState = LifecycleState.STOPPING
                         _statusFlow.value = _statusFlow.value.copy(
