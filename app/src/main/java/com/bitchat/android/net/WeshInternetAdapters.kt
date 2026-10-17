@@ -29,7 +29,8 @@ internal class ArtiTorControl(
     private val deleteArti: (File) -> Boolean = ::deleteDirectory,
     private val createMarker: (File) -> Boolean = { it.exists() || it.createNewFile() },
     private val startInFlight: () -> Boolean = { ArtiTorManager.getInstance().isStartInFlight() },
-    private val requestOff: () -> Unit = { ArtiTorManager.getInstance().requestOff() }
+    private val requestOff: () -> Unit = { ArtiTorManager.getInstance().requestOff() },
+    private val stopFailed: () -> Boolean = { ArtiTorManager.getInstance().hasNativeStopFailed() }
 ) : WeshTorControl {
     override val progress: Flow<Pair<Int, Boolean>> = status.map { it.bootstrapPercent to it.isReady() }
 
@@ -72,7 +73,7 @@ internal class ArtiTorControl(
             withTimeoutOrNull(stopTimeoutMs) {
                 applyOff()
                 status.first { it.state == ArtiTorManager.TorState.OFF && !it.running }
-            } != null
+            } != null && !runCatching(stopFailed).getOrDefault(true)
         }
         OkHttpProvider.reset()
         return withContext(Dispatchers.IO) {

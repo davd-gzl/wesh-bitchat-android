@@ -116,7 +116,6 @@ object AppConstants {
     }
 
     object Tor {
-        const val DEFAULT_SOCKS_PORT: Int = 9060
         const val RESTART_DELAY_MS: Long = 2_000L
         const val INACTIVITY_TIMEOUT_MS: Long = 5_000L
         const val MAX_RETRY_ATTEMPTS: Int = 5

@@ -95,6 +95,14 @@ class ArtiTorControlWipeTest {
         assertNotSame("the native stop blocks; panic runs on the main thread", caller, stopThread)
     }
 
+    @Test fun `a native stop that did not finish fails the wipe and keeps it pending`() = runBlocking {
+        val status = MutableStateFlow(ArtiTorManager.TorStatus())
+        val control = ArtiTorControl(app, status, applyOff = { }, requestOff = { }, stopFailed = { true })
+        assertFalse(control.stopAndWipe())
+        assertFalse("the directory is still deleted", arti.exists())
+        assertTrue("the next start must finish the wipe", ArtiTorControl.isWipePending(app))
+    }
+
     @Test fun `the wipe latch is up for the whole wipe and down afterwards`() = runBlocking {
         val status = MutableStateFlow(ArtiTorManager.TorStatus())
         val seen = mutableListOf<Boolean>()

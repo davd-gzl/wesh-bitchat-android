@@ -3,6 +3,6 @@
 5acfa334b309aa8f76fffd9fc09a48355caf79a893637f81cdbc8412cb44f3bf  tools/arti-build/Dockerfile
 9956d031810346b73e4bc6c1d66cde6f23695228debdc9fce6ebbe78ea2beaaa  tools/arti-build/TOOLCHAIN.env
 6c84cc9a19e84216ddbd58b5efcf439de838d72b5ebff93ce37788bf571859cb  tools/arti-build/rust-toolchain.toml
-1ff277580bbddae568fadadd2ea3ad6b31651f0a4e3a2e02f0aa75f9b1d7d32c  tools/arti-build/build-arti.sh
+3cb832bab75965b4a5fea7c867b838a6ae76343a1d40097b64b1a9b61ea338a5  tools/arti-build/build-arti.sh
 7be14cc708378c22018277054e8309afee9144a07388c7baf7b4058c07f26397  tools/arti-build/provenance.sh
-5c08872bc608b31669e9c627a5ac712d5583b424ad395bb6ca329862b729b24f  tools/arti-build/src/lib.rs
+2147fec40e639d0eb3b22fc56594710e5f48fbf5ba6b9a1f7a0a1272c52d573c  tools/arti-build/src/lib.rs
