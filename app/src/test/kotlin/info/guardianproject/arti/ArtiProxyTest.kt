@@ -180,4 +180,38 @@ class ArtiProxyTest {
         proxy.start(23456, credentials)
         assertEquals(2, native.calls.count { it == "initialize" })
     }
+
+    @Test fun `no start begins while the Arti directory is being wiped`() {
+        val native = FakeNative()
+        val proxy = ArtiProxy(app, ArtiLogListener { }, native)
+        ArtiWipeLatch.begin()
+        try {
+            assertTrue(runCatching { proxy.start(23456, credentials) }.exceptionOrNull() is ArtiException)
+            assertTrue("nothing native and no directory work while wiping", native.calls.isEmpty())
+            assertFalse(proxy.isStartInFlight())
+        } finally {
+            ArtiWipeLatch.end()
+        }
+        proxy.start(23456, credentials)
+        assertEquals(1, native.calls.count { it == "initialize" })
+    }
+
+    @Test fun `a start still waiting for a stop already counts as in flight`() {
+        val gate = CountDownLatch(1)
+        val native = FakeNative()
+        val proxy = ArtiProxy(app, null, native)
+        proxy.start(23456, credentials)
+        native.stopGate = gate
+        val stopper = thread { proxy.stop() }
+        assertTrue(native.stopping.await(5, TimeUnit.SECONDS))
+        assertFalse(proxy.isStartInFlight())
+        val starter = thread { runCatching { proxy.start(23456, credentials) } }
+        val deadline = System.currentTimeMillis() + 5_000
+        while (!proxy.isStartInFlight() && System.currentTimeMillis() < deadline) Thread.sleep(5)
+        assertTrue(proxy.isStartInFlight())
+        gate.countDown()
+        stopper.join(5_000)
+        starter.join(5_000)
+        assertFalse(proxy.isStartInFlight())
+    }
 }

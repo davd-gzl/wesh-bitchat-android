@@ -93,4 +93,16 @@ class ArtiTorManagerLifecycleTest {
         assertFalse("no SOCKS port for a start that was turned off", native.calls.contains("socks"))
         assertFullyOff()
     }
+
+    @Test fun `Internet on is refused while the Arti directory is being wiped`() = runBlocking {
+        info.guardianproject.arti.ArtiWipeLatch.begin()
+        try {
+            manager.applyMode(app, TorMode.ON)
+        } finally {
+            info.guardianproject.arti.ArtiWipeLatch.end()
+        }
+        assertTrue("no bootstrap during a wipe", native.calls.isEmpty())
+        assertEquals(TorMode.OFF, TorPreferenceManager.get(app))
+        assertFalse(manager.isStartInFlight())
+    }
 }

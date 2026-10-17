@@ -85,6 +85,32 @@ class ArtiTorControlWipeTest {
         assertFalse(ArtiTorControl.pendingMarker(app).exists())
     }
 
+    @Test fun `the wipe latch is up for the whole wipe and down afterwards`() = runBlocking {
+        val status = MutableStateFlow(ArtiTorManager.TorStatus())
+        val seen = mutableListOf<Boolean>()
+        val control = ArtiTorControl(
+            app, status,
+            applyOff = { seen += info.guardianproject.arti.ArtiWipeLatch.isWiping() },
+            deleteArti = { dir -> seen += info.guardianproject.arti.ArtiWipeLatch.isWiping(); dir.deleteRecursively() && !dir.exists() }
+        )
+        assertTrue(control.stopAndWipe())
+        assertTrue(seen.isNotEmpty() && seen.all { it })
+        assertFalse(info.guardianproject.arti.ArtiWipeLatch.isWiping())
+    }
+
+    @Test fun `a directory still present after a reported delete keeps the wipe pending`() = runBlocking {
+        val status = MutableStateFlow(ArtiTorManager.TorStatus())
+        // The delete claims success but the directory is still there.
+        val control = ArtiTorControl(app, status, applyOff = { }, deleteArti = { true })
+        assertFalse(control.stopAndWipe())
+        assertTrue(arti.exists())
+        assertTrue("the next start must finish the wipe", ArtiTorControl.isWipePending(app))
+        assertFalse(ArtiTorControl.completePendingWipe(app) { true })
+        assertTrue(ArtiTorControl.isWipePending(app))
+        assertTrue(ArtiTorControl.completePendingWipe(app))
+        assertFalse(ArtiTorControl.isWipePending(app))
+    }
+
     @Test fun `a stop timeout still deletes the state and leaves a wipe for the next start`() = runBlocking {
         val status = MutableStateFlow(running)
         val control = ArtiTorControl(app, status, applyOff = { }, stopTimeoutMs = 200)
