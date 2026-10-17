@@ -157,19 +157,17 @@ class ArtiTorManager internal constructor(
                 desiredMode = savedMode
             }
             appScope.launch {
-                applyMode(application, savedMode)
-            }
-
-            appScope.launch {
                 // Not behind applyMutex, which a start holds for its whole bootstrap. The initial
-                // value is skipped: nothing runs yet, and init applies it below.
+                // value is skipped: nothing runs yet, and the collector below applies it.
                 TorPreferenceManager.modeFlow.drop(1).collect { mode ->
                     if (mode == TorMode.OFF) requestOff()
                 }
             }
 
             appScope.launch {
-                // An immediate stop re-runs the serialized path, which then settles on the current mode.
+                // Applies the saved mode at start-up too (the first value), so there is a single ON
+                // to cancel. An immediate stop re-runs the serialized path, which then settles on the
+                // current mode.
                 combine(TorPreferenceManager.modeFlow, immediateStops) { mode, _ -> mode }.collect { mode ->
                     applyMode(application, mode)
                 }
@@ -213,7 +211,7 @@ class ArtiTorManager internal constructor(
      * withdrawn now, then the native client and any bootstrap in progress are stopped on IO.
      */
     fun requestOff() {
-        desiredMode = TorMode.OFF
+        noteOff()
         unpublishSocks()
         appScope.launch {
             // An ON applied since then wants Tor again; its own start already replaced the client.
@@ -221,6 +219,14 @@ class ArtiTorManager internal constructor(
             stopNative()
             immediateStops.update { it + 1 }
         }
+    }
+
+    /** Bumped by [requestOff]; an ON that began waiting for applyMutex before it never starts. */
+    private val offRequests = java.util.concurrent.atomic.AtomicLong(0)
+
+    private fun noteOff() {
+        desiredMode = TorMode.OFF
+        offRequests.incrementAndGet()
     }
 
     /** No client may connect to the SOCKS port once its teardown begins. */
@@ -245,7 +251,7 @@ class ArtiTorManager internal constructor(
     private fun resetToOff() {
         lifecycleState = LifecycleState.STOPPED
         unpublishSocks()
-        _statusFlow.update { it.copy(running = false, bootstrapPercent = 0, state = TorState.OFF) }
+        _statusFlow.update { it.copy(mode = TorMode.OFF, running = false, bootstrapPercent = 0, state = TorState.OFF) }
         resetNetworkConnections()
     }
 
@@ -269,14 +275,18 @@ class ArtiTorManager internal constructor(
     }
 
     suspend fun applyMode(application: Application, mode: TorMode) {
+        val offRequestsAtEntry = offRequests.get()
         if (mode == TorMode.OFF) {
-            // A start holds applyMutex for its whole bootstrap: cancel it now, not after.
+            // A start holds applyMutex for its whole bootstrap: cancel it now, not after. Every
+            // user-facing off (toggle, wipe, saved preference) also goes through requestOff().
             desiredMode = TorMode.OFF
             withdrawSocks()
             stopNative()
         }
         applyMutex.withLock {
             try {
+                // Internet went off while this ON waited for the lock: keep it off.
+                if (mode != TorMode.OFF && offRequests.get() != offRequestsAtEntry) return
                 desiredMode = mode
                 lastMode = mode
                 val s = _statusFlow.value
@@ -497,14 +507,10 @@ class ArtiTorManager internal constructor(
         unpublishSocks()
     }
 
+    /** The caller has published STOPPING; the native "Stopped" line then moves the state to OFF. */
     private suspend fun stopArti() {
         withdrawSocks()
         stopNative()
-        _statusFlow.value = _statusFlow.value.copy(
-            running = false,
-            bootstrapPercent = 0,
-            state = TorState.STOPPING
-        )
     }
 
     private suspend fun stopArtiAndWait(timeoutMs: Long = stopTimeoutMs) {

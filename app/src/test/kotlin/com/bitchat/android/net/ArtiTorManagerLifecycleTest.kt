@@ -173,6 +173,57 @@ class ArtiTorManagerLifecycleTest {
         assertFalse(slowNative.snapshot().contains("initialize"))
         assertNeverRan(statuses)
         assertFullyOff(slow)
+        assertEquals("a cancelled start reports the OFF mode", TorMode.OFF, slow.statusFlow.value.mode)
+
+        // Already off: a further OFF (the wipe's, for instance) returns without a STOPPING wait.
+        val later = recordStatuses(slow)
+        runBlocking { slow.applyMode(app, TorMode.OFF) }
+        synchronized(later) { assertTrue(later.none { it.state == ArtiTorManager.TorState.STOPPING }) }
+    }
+
+    @Test fun `Internet off during the bootstrap at start-up is not followed by a second start`() {
+        TorPreferenceManager.set(app, TorMode.ON, commit = true)
+        val coldNative = FakeNative()
+        val release = CountDownLatch(1)
+        coldNative.blockInitialize = release
+        val cold = newManager(coldNative, stopTimeoutMs = 50)
+        val statuses = recordStatuses(cold)
+        try {
+            assertTrue("the saved ON bootstraps", coldNative.initializeEntered.await(5, TimeUnit.SECONDS))
+            val stopsBefore = coldNative.stops.get()
+            TorPreferenceManager.set(app, TorMode.OFF, commit = true)
+            assertTrue(waitUntil(1_000) { coldNative.stops.get() > stopsBefore })
+        } finally {
+            release.countDown()
+        }
+        assertTrue(waitUntil { isFullyOff(cold) })
+        Thread.sleep(600) // past a second start-up ON, if one wrongly began
+        assertEquals("one bootstrap only", 1, coldNative.snapshot().count { it == "initialize" })
+        assertNeverRan(statuses)
+        assertFullyOff(cold)
+    }
+
+    @Test fun `Internet off while an ON waits for applyMutex keeps that ON from starting`() {
+        val statuses = recordStatuses(manager)
+        val release = CountDownLatch(1)
+        native.blockInitialize = release
+        // A first start holds applyMutex in its bootstrap.
+        val first = thread { runBlocking { manager.applyMode(app, TorMode.ON) } }
+        assertTrue(native.initializeEntered.await(5, TimeUnit.SECONDS))
+        // The mode collector now applies ON and waits for applyMutex...
+        TorPreferenceManager.set(app, TorMode.ON)
+        Thread.sleep(100)
+        // ...when Internet is turned off.
+        val stopsBefore = native.stops.get()
+        TorPreferenceManager.set(app, TorMode.OFF, commit = true)
+        assertTrue(waitUntil(1_000) { native.stops.get() > stopsBefore })
+        release.countDown()
+        first.join(5_000)
+        assertTrue(waitUntil { isFullyOff(manager) })
+        Thread.sleep(600) // past the collector's own start, if it wrongly began one
+        assertEquals("no start after Internet off", 1, native.snapshot().count { it == "initialize" })
+        assertNeverRan(statuses)
+        assertFullyOff()
     }
 
     @Test fun `a wipe during the wait before a start leaves no client and no Arti files`() {
