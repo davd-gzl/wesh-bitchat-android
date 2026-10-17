@@ -33,18 +33,22 @@ class FragmentManager(
         private const val CLEANUP_INTERVAL = com.bitchat.android.util.AppConstants.Fragmentation.CLEANUP_INTERVAL_MS     // 10 seconds cleanup check
         /** Ingress key for fragments not received from a link (local callers and tests). */
         const val LOCAL_INGRESS = "local"
+        /** Closed links remembered so fragments still queued from them are never kept. */
+        private const val MAX_CLOSED_LINKS = 256
     }
     
     /**
-     * One assembly in progress. [ingressKey] is the link that opened it: slot quotas and
-     * evictions follow that link, never the sender ID a fragment claims.
+     * One assembly in progress. [ingressKey] is the link that opened it: slot quotas follow
+     * that link, never the sender ID a fragment claims. [bytesByLink] counts the bytes each
+     * link delivered into it, for the per-link byte share.
      */
-    private data class AssemblyMetadata(
+    private class AssemblyMetadata(
         val originalType: UByte,
         val total: Int,
         val timestamp: Long,
         val senderKey: String,
-        val ingressKey: String
+        val ingressKey: String,
+        val bytesByLink: MutableMap<String, Int> = mutableMapOf()
     )
 
     // Assemblies are keyed by "<sender hex>:<fragment ID hex>" (see assemblyKey): a fragment
@@ -58,6 +62,9 @@ class FragmentManager(
 
     private val fragmentStateLock = Any()
     private var globalBufferedBytes: Long = 0L
+    // Guarded by fragmentStateLock.
+    private val linkBufferedBytes = HashMap<String, Long>()
+    private val closedLinks = LinkedHashSet<String>()
 
     private val myPeerIDBytes: ByteArray? = myPeerID?.let { id ->
         ByteArray(id.length / 2) { i -> id.substring(i * 2, i * 2 + 2).toInt(16).toByte() }
@@ -202,10 +209,12 @@ class FragmentManager(
      * be relayed.
      *
      * [ingressKey] identifies the link the fragment arrived on (see PacketProcessor.quotaKey).
-     * Assembly slots are bounded per link and per (link, sender); the first fragment received
-     * for an index or an assembly's metadata wins over any later, different one. The later one
-     * is Skipped rather than Refused: whichever copy arrived first, a forged one cannot stop the
-     * genuine one from being relayed to peers that never saw the forgery.
+     * Assembly slots are bounded per link and per (link, sender), buffered bytes per link; a
+     * full quota never evicts anything, the new fragment is just not kept. The first fragment
+     * received for an index or an assembly's metadata wins over any later, different one. The
+     * later one is Skipped rather than Refused, as is the fragment completing a set that then
+     * fails to decode: whichever copy arrived first, a forged one cannot stop the genuine one
+     * from being relayed to peers that never saw the forgery.
      */
     fun receiveFragment(packet: BitchatPacket, ingressKey: String): FragmentResult {
         // iOS: guard packet.payload.count > 13 else { return }
@@ -260,6 +269,8 @@ class FragmentManager(
             )
 
             synchronized(fragmentStateLock) {
+                // Still queued from a link that is gone: relay it, keep nothing for it.
+                if (ingressKey in closedLinks) return FragmentResult.Skipped
                 val existing = fragmentMetadata[assemblyKey]
                 if (existing != null &&
                     (existing.total != fragmentPayload.total || existing.originalType != fragmentPayload.originalType)
@@ -285,7 +296,7 @@ class FragmentManager(
                     fragmentMetadata[assemblyKey] = AssemblyMetadata(
                         originalType = fragmentPayload.originalType,
                         total = fragmentPayload.total,
-                        timestamp = System.currentTimeMillis(),
+                        timestamp = clock(),
                         senderKey = senderKey,
                         ingressKey = ingressKey
                     )
@@ -314,9 +325,7 @@ class FragmentManager(
                         removeFragmentSetLocked(assemblyKey)
                         return FragmentResult.Refused
                     }
-                    val maxGlobalBytes = com.bitchat.android.util.AppConstants.Fragmentation.MAX_GLOBAL_FRAGMENT_TOTAL_BYTES
-                    if (globalBufferedBytes + fragmentPayload.data.size > maxGlobalBytes) {
-                        Log.w(TAG, "Not buffering fragment for $fragmentIDString: global buffered bytes exceed cap $maxGlobalBytes")
+                    if (!hasByteRoomLocked(fragmentIDString, ingressKey, fragmentPayload.data.size)) {
                         return FragmentResult.Skipped
                     }
                     fragmentMap = map
@@ -326,6 +335,8 @@ class FragmentManager(
                 fragmentMap[fragmentPayload.index] = fragmentPayload.data
                 fragmentCumulativeSize[assemblyKey] = newSize
                 globalBufferedBytes += fragmentPayload.data.size
+                fragmentMetadata[assemblyKey]?.bytesByLink?.merge(ingressKey, fragmentPayload.data.size) { a, b -> a + b }
+                linkBufferedBytes.merge(ingressKey, fragmentPayload.data.size.toLong()) { a, b -> a + b }
 
                 val expectedTotal = fragmentMetadata[assemblyKey]?.total ?: fragmentPayload.total
                 if (fragmentMap.size < expectedTotal) return FragmentResult.Pending
@@ -341,7 +352,9 @@ class FragmentManager(
                     ?.takeIf { it.type == fragmentPayload.originalType }
                 if (originalPacket == null) {
                     Log.e(TAG, "Failed to decode reassembled packet (type=${fragmentPayload.originalType}, total=$expectedTotal)")
-                    return FragmentResult.Refused
+                    // A lone fragment is malformed by itself. In a larger set, another copy may
+                    // have spoiled an index first: this fragment may be genuine, relay it.
+                    return if (expectedTotal == 1) FragmentResult.Refused else FragmentResult.Skipped
                 }
                 return FragmentResult.Complete(originalPacket.copy(ttl = 0u.toUByte()))
             }
@@ -353,35 +366,40 @@ class FragmentManager(
     }
 
     /**
-     * Admits a new assembly opened by [ingressKey] for [senderKey]. Every admission check runs
-     * before any eviction, so a refused assembly evicts nothing. When the (link, sender) pair is
-     * at its quota, its own oldest assembly makes room; the link and global slot caps refuse
-     * instead, and nothing opened by another link is ever evicted.
+     * Admits a new assembly opened by [ingressKey] for [senderKey]. Nothing is ever evicted to
+     * make room: the claimed sender is not authenticated, so evicting would let anyone push out
+     * a real sender's assembly. A full (link, sender), link or global quota just refuses.
      */
     private fun admitNewAssemblyLocked(fragmentIDString: String, senderKey: String, ingressKey: String, bytes: Int): Boolean {
         val limits = com.bitchat.android.util.AppConstants.Fragmentation
-        if (globalBufferedBytes + bytes > limits.MAX_GLOBAL_FRAGMENT_TOTAL_BYTES) {
-            Log.w(TAG, "Not buffering fragment set $fragmentIDString: global buffered bytes exceed cap ${limits.MAX_GLOBAL_FRAGMENT_TOTAL_BYTES}")
+        if (!hasByteRoomLocked(fragmentIDString, ingressKey, bytes)) return false
+        val linkSets = fragmentMetadata.values.filter { it.ingressKey == ingressKey }
+        if (linkSets.count { it.senderKey == senderKey } >= limits.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK_SENDER) {
+            Log.w(TAG, "Not buffering fragment set $fragmentIDString: sender at ${limits.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK_SENDER} active fragment sets on this link")
             return false
         }
-        val linkSets = fragmentMetadata.entries.filter { it.value.ingressKey == ingressKey }
-        val pairSets = linkSets.filter { it.value.senderKey == senderKey }
-        val evictions = if (pairSets.size >= limits.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK_SENDER) {
-            pairSets.sortedBy { it.value.timestamp }
-                .take(pairSets.size - limits.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK_SENDER + 1)
-                .map { it.key }
-        } else {
-            emptyList()
-        }
-        if (linkSets.size - evictions.size >= limits.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK) {
+        if (linkSets.size >= limits.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK) {
             Log.w(TAG, "Not buffering fragment set $fragmentIDString: link at ${limits.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK} active fragment sets")
             return false
         }
-        if (incomingFragments.size - evictions.size >= limits.MAX_ACTIVE_FRAGMENT_SETS) {
+        if (incomingFragments.size >= limits.MAX_ACTIVE_FRAGMENT_SETS) {
             Log.w(TAG, "Not buffering fragment set $fragmentIDString: active fragment sets at ${limits.MAX_ACTIVE_FRAGMENT_SETS}")
             return false
         }
-        evictions.forEach { removeFragmentSetLocked(it) }
+        return true
+    }
+
+    /** True when [bytes] more from [ingressKey] fit both the global and the per-link byte caps. */
+    private fun hasByteRoomLocked(fragmentIDString: String, ingressKey: String, bytes: Int): Boolean {
+        val limits = com.bitchat.android.util.AppConstants.Fragmentation
+        if (globalBufferedBytes + bytes > limits.MAX_GLOBAL_FRAGMENT_TOTAL_BYTES) {
+            Log.w(TAG, "Not buffering fragment for $fragmentIDString: global buffered bytes exceed cap ${limits.MAX_GLOBAL_FRAGMENT_TOTAL_BYTES}")
+            return false
+        }
+        if ((linkBufferedBytes[ingressKey] ?: 0L) + bytes > limits.MAX_FRAGMENT_BYTES_PER_LINK) {
+            Log.w(TAG, "Not buffering fragment for $fragmentIDString: link buffered bytes exceed cap ${limits.MAX_FRAGMENT_BYTES_PER_LINK}")
+            return false
+        }
         return true
     }
 
@@ -393,7 +411,10 @@ class FragmentManager(
 
     private fun removeFragmentSetLocked(assemblyKey: String) {
         incomingFragments.remove(assemblyKey)
-        fragmentMetadata.remove(assemblyKey)
+        fragmentMetadata.remove(assemblyKey)?.bytesByLink?.forEach { (link, bytes) ->
+            val left = (linkBufferedBytes[link] ?: 0L) - bytes
+            if (left > 0L) linkBufferedBytes[link] = left else linkBufferedBytes.remove(link)
+        }
         val bytes = fragmentCumulativeSize.remove(assemblyKey)?.toLong() ?: 0L
         if (bytes != 0L) {
             globalBufferedBytes = (globalBufferedBytes - bytes).coerceAtLeast(0L)
@@ -421,7 +442,7 @@ class FragmentManager(
     @androidx.annotation.VisibleForTesting
     internal fun cleanupOldFragments() {
         synchronized(fragmentStateLock) {
-            val now = System.currentTimeMillis()
+            val now = clock()
             val cutoff = now - FRAGMENT_TIMEOUT
 
             // iOS: let oldFragments = fragmentMetadata.filter { $0.value.timestamp < cutoff }.map { $0.key }
@@ -450,7 +471,7 @@ class FragmentManager(
                     val totalFragments = metadata.total
                     val timestamp = metadata.timestamp
                     val received = incomingFragments[fragmentID]?.size ?: 0
-                    val ageSeconds = (System.currentTimeMillis() - timestamp) / 1000
+                    val ageSeconds = (clock() - timestamp) / 1000
                     val bytes = fragmentCumulativeSize[fragmentID] ?: 0
                     appendLine("  - $fragmentID: $received/$totalFragments fragments, bytes=$bytes, type: $originalType, age: ${ageSeconds}s")
                 }
@@ -470,8 +491,19 @@ class FragmentManager(
         }
     }
     
-    /** Drops the assemblies [ingressKey] opened; the link is gone and its ID is never reused. */
-    fun onIngressLinkClosed(ingressKey: String) = Unit
+    /**
+     * Drops the assemblies [ingressKey] opened. Each reconnection gets a new link ID, so without
+     * this a radio reconnecting a few times would hold every global slot until they expire.
+     * Fragments still queued from the closed link are relayed but not kept.
+     */
+    fun onIngressLinkClosed(ingressKey: String) {
+        synchronized(fragmentStateLock) {
+            closedLinks.remove(ingressKey)
+            closedLinks.add(ingressKey)
+            if (closedLinks.size > MAX_CLOSED_LINKS) closedLinks.remove(closedLinks.first())
+            fragmentMetadata.filterValues { it.ingressKey == ingressKey }.keys.forEach { removeFragmentSetLocked(it) }
+        }
+    }
 
     /**
      * Clear all fragments
@@ -481,6 +513,7 @@ class FragmentManager(
             incomingFragments.clear()
             fragmentMetadata.clear()
             fragmentCumulativeSize.clear()
+            linkBufferedBytes.clear()
             globalBufferedBytes = 0L
         }
     }

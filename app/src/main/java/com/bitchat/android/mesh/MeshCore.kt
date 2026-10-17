@@ -159,6 +159,11 @@ class MeshCore(
         )
     }
 
+    /** Frees the fragment slots opened by an ingress link that is gone. */
+    fun onIngressLinkClosed(ingressLinkID: String) {
+        fragmentManager.onIngressLinkClosed(PacketProcessor.linkQuotaKey(ingressLinkID))
+    }
+
     fun sendFromBridge(packet: RoutedPacket) {
         transport.broadcastPacket(packet)
     }

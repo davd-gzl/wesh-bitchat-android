@@ -76,6 +76,8 @@ class BluetoothConnectionManager(
 
         override fun onDeviceDisconnected(device: BluetoothDevice, linkID: String?, peerID: String?) {
             packetBroadcaster.onLinkDisconnected(device.address, linkID)
+            // A reconnection gets a new link ID: free the fragment slots this link opened.
+            linkID?.let { fragmentManager?.onIngressLinkClosed(PacketProcessor.linkQuotaKey(it)) }
             delegate?.onDeviceDisconnected(device, linkID, peerID)
         }
 
