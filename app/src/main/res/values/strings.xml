@@ -225,7 +225,6 @@
   <string name="cd_scroll_to_bottom">Scroll to bottom</string>
   <string name="cd_cancel">Cancel</string>
   <string name="cd_link">Link</string>
-  <string name="cd_record_voice">Record voice note</string>
   <string name="cd_offline_mesh_chat">Offline Mesh Chat</string>
   <string name="cd_end_to_end_encryption">End-to-End Encryption</string>
   <string name="location_bluetooth_subtitle">Bluetooth • %1$s</string>
@@ -387,8 +386,6 @@
 
   <!-- Notification text helpers -->
 
-  <!-- Voice player accessibility -->
-
   <!-- Permission descriptions -->
   <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
   <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
@@ -402,7 +399,6 @@
   <!-- Permission types -->
   <string name="perm_type_nearby_devices">Nearby Devices</string>
   <string name="perm_type_precise_location">Location (Android 11 and older)</string>
-  <string name="perm_type_microphone">Microphone</string>
   <string name="perm_type_notifications">Notifications</string>
   <string name="perm_type_battery_optimization">Battery Optimization</string>
   <string name="perm_type_other">Other</string>

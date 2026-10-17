@@ -38,9 +38,6 @@ import com.bitchat.android.noise.NoiseSession
 import com.bitchat.android.services.ContactDirectory
 import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.util.hexEncodedString
-import com.bitchat.android.features.voice.LiveVoicePreferences
-import com.bitchat.android.features.voice.LiveVoiceTarget
-import com.bitchat.android.features.voice.VoiceRecorder
 
 private data class ConversationLiveIdentityState(
     val connectedPeerIDs: List<String>,
@@ -69,22 +66,6 @@ class ChatViewModel(
     companion object {
         private const val TAG = "ChatViewModel"
         private const val CONVERSATION_DISCONNECT_GRACE_MS = 3_000L
-    }
-
-    fun createVoiceRecorder(toPeerIDOrNull: String?, channelOrNull: String?): VoiceRecorder {
-        val context = getApplication<Application>().applicationContext
-        if (!LiveVoicePreferences.isEnabled(context)) return VoiceRecorder(context)
-        val recipientPeerID = toPeerIDOrNull?.let {
-            ConversationPeerResolver.resolve(it, mesh)?.meshPeerID
-        }
-        val liveTarget = when {
-            toPeerIDOrNull != null && recipientPeerID != null && mesh.hasEstablishedSession(recipientPeerID) ->
-                LiveVoiceTarget { payload -> mesh.sendVoiceFrame(recipientPeerID, payload) }
-            toPeerIDOrNull == null && channelOrNull == null && mesh.getActivePeerCount() > 0 ->
-                LiveVoiceTarget { payload -> mesh.sendVoiceFrame(null, payload) }
-            else -> null
-        }
-        return VoiceRecorder(context, liveTarget)
     }
 
     fun getCurrentNpub(): String? {
@@ -593,7 +574,7 @@ class ChatViewModel(
 
         // Note: Mesh service is now started by MainActivity
 
-        // BLE receives are inserted by MessageHandler path; no VoiceNoteBus for Tor in this branch.
+        // BLE receives are inserted by MessageHandler path.
     }
     
     override fun onCleared() {

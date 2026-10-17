@@ -155,7 +155,6 @@
   <string name="cd_scroll_to_bottom">கீழே ஸ்க்ரோல் செய்</string>
   <string name="cd_cancel">ரத்து செய்</string>
   <string name="cd_link">இணைப்பு</string>
-  <string name="cd_record_voice">குரல் குறிப்பை பதிவு செய்</string>
   <string name="cd_offline_mesh_chat">ஆஃப்லைன் மெஷ் அரட்டை</string>
   <string name="cd_end_to_end_encryption">எண்ட்-டு-எண்ட் என்க்ரிப்ஷன்</string>
   <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
@@ -262,7 +261,6 @@
   <string name="perm_battery_system">Allow Wesh to run without battery restrictions.</string>
   <string name="perm_type_nearby_devices">அருகிலுள்ள சாதனங்கள்</string>
   <string name="perm_type_precise_location">துல்லியமான இருப்பிடம்</string>
-  <string name="perm_type_microphone">மைக்ரோஃபோன்</string>
   <string name="perm_type_notifications">அறிவிப்புகள்</string>
   <string name="perm_type_battery_optimization">பேட்டரி ஆப்டிமைசேஷன்</string>
   <string name="perm_type_other">மற்றவை</string>

@@ -120,7 +120,6 @@
     <string name="cd_cancel">منسوخ کریں</string>
     <string name="cd_link">لنک</string>
     <string name="cd_privacy_protected">About message privacy</string>
-    <string name="cd_record_voice">وائس نوٹ ریکارڈ کریں</string>
     <string name="cd_offline_mesh_chat">آف لائن میش چیٹ</string>
     <string name="cd_end_to_end_encryption">اینڈ‑ٹو‑اینڈ انکرپشن</string>
 
@@ -239,7 +238,6 @@
     <!-- اجازات کی اقسام -->
     <string name="perm_type_nearby_devices">قریبی آلات</string>
     <string name="perm_type_precise_location">درست مقام</string>
-    <string name="perm_type_microphone">مائیکروفون</string>
     <string name="perm_type_notifications">نوٹیفیکیشنز</string>
     <string name="perm_type_battery_optimization">بیٹری کی اصلاح</string>
     <string name="perm_type_other">دوسرے</string>

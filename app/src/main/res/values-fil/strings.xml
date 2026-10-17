@@ -119,7 +119,6 @@
     <string name="cd_scroll_to_bottom">Mag‑scroll pababa</string>
     <string name="cd_cancel">Kanselahin</string>
     <string name="cd_link">Link</string>
-    <string name="cd_record_voice">Mag‑record ng voice note</string>
     <string name="cd_offline_mesh_chat">Offline Mesh Chat</string>
     <string name="cd_end_to_end_encryption">End‑to‑End Encryption</string>
 
@@ -223,8 +222,6 @@
 
     <!-- Tulong na text sa abiso -->
 
-    <!-- Voice player a11y -->
-
     <!-- Mga paglalarawan ng permiso -->
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
     <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
@@ -238,7 +235,6 @@
     <!-- Mga uri ng permiso -->
     <string name="perm_type_nearby_devices">Kalapit na device</string>
     <string name="perm_type_precise_location">Eksaktong lokasyon</string>
-    <string name="perm_type_microphone">Mikropono</string>
     <string name="perm_type_notifications">Mga abiso</string>
     <string name="perm_type_battery_optimization">Pag‑optimize ng baterya</string>
     <string name="perm_type_other">Iba pa</string>
