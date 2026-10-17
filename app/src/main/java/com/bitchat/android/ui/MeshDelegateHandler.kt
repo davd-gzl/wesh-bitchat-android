@@ -4,6 +4,7 @@ import com.bitchat.android.mesh.BluetoothMeshDelegate
 import com.bitchat.android.ui.NotificationTextUtils
 import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.model.BitchatMessage
+import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.model.DeliveryStatus
 import com.bitchat.android.services.ContactDirectory
 import kotlinx.coroutines.CoroutineScope
@@ -257,7 +258,8 @@ class MeshDelegateHandler(
                     ?: senderPeerID.takeIf {
                         com.bitchat.android.services.ContactIdentityResolver.isMeshPeerId(it)
                     }
-                if (meshPeerID != null &&
+                // A media placeholder stands for something never received: never reported read.
+                if (meshPeerID != null && message.type == BitchatMessageType.Message &&
                     mesh.getPeerInfo(meshPeerID)?.isConnected == true &&
                     mesh.hasEstablishedSession(meshPeerID)
                 ) {

@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import com.bitchat.android.crypto.EncryptionService
 import com.bitchat.android.model.BitchatMessage
-import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.AuthenticatedPeerState
 import com.bitchat.android.model.PeerCapabilities
 import com.bitchat.android.model.IdentityAnnouncement
@@ -75,40 +74,7 @@ class MeshCore(
             },
             applyAuthenticatedState = peerManager::applyAuthenticatedPeerState,
             sendState = ::sendAuthenticatedPeerState,
-            onResolution = { peerID -> delegate?.didResolvePrivateMediaPolicy(peerID) }
-        )
-    }
-    private val privateMediaSecurity by lazy { PrivateMediaSecurityController(
-        authenticatedSessionProvider = encryptionService::getAuthenticatedSession,
-        peerStateStatusProvider = authenticatedPeerState::status,
-        isPrivateMediaPinned = authenticatedPeerState::isPrivateMediaPinned
-    ) }
-    private val privateMediaPreparer by lazy {
-        PrivateMediaTransferPreparer(
-            senderID = MeshPacketUtils.hexStringToByteArray(myPeerID),
-            ttl = maxTtl,
-            policyProvider = privateMediaSecurity::sendPolicy,
-            encrypt = { plaintext, peerID, authenticatedSession ->
-                try {
-                    PrivateMediaEncryptionResult.Success(
-                        encryptionService.encryptForSession(
-                            plaintext,
-                            peerID,
-                            authenticatedSession
-                        )
-                    )
-                } catch (_: com.bitchat.android.noise.NoiseSessionError.SessionGenerationChanged) {
-                    PrivateMediaEncryptionResult.GenerationChanged
-                } catch (_: com.bitchat.android.noise.NoiseSessionError.SessionNotFound) {
-                    PrivateMediaEncryptionResult.GenerationChanged
-                } catch (_: com.bitchat.android.noise.NoiseSessionError.SessionNotEstablished) {
-                    PrivateMediaEncryptionResult.GenerationChanged
-                } catch (_: Exception) {
-                    PrivateMediaEncryptionResult.Failed
-                }
-            },
-            finalizeRoutedAndSigned = ::routeAndSignPrivateMediaStrict,
-            fragment = fragmentManager::createFragments
+            onResolution = {}
         )
     }
     private val securityManager = SecurityManager(encryptionService, myPeerID)
@@ -596,51 +562,6 @@ class MeshCore(
         return true
     }
 
-    fun sendFileBroadcast(file: BitchatFilePacket) {
-        try {
-            val payload = file.encode() ?: return
-            scope.launch {
-                val packet = BitchatPacket(
-                    version = 2u,
-                    type = MessageType.FILE_TRANSFER.value,
-                    senderID = MeshPacketUtils.hexStringToByteArray(myPeerID),
-                    recipientID = SpecialRecipients.BROADCAST,
-                    timestamp = System.currentTimeMillis().toULong(),
-                    payload = payload,
-                    signature = null,
-                    ttl = maxTtl
-                )
-                val signed = signPacketBeforeBroadcast(packet)
-                val transferId = MeshPacketUtils.sha256Hex(payload)
-                dispatchGlobal(RoutedPacket(signed, transferId = transferId))
-                try { gossipSyncManager.onPublicPacketSeen(signed) } catch (_: Exception) { }
-            }
-        } catch (e: Exception) {
-            Log.e("MeshCore", "sendFileBroadcast failed: ${e.message}", e)
-        }
-    }
-
-    fun sendFilePrivate(recipientPeerID: String, file: BitchatFilePacket) {
-        val payload = file.encode() ?: return
-        when (val prepared = prepareFilePrivate(
-            recipientPeerID,
-            file,
-            MeshPacketUtils.sha256Hex(payload),
-            allowLegacyFallback = false
-        )) {
-            is PrivateMediaPreparation.Ready -> prepared.transfer.commit()
-            is PrivateMediaPreparation.RequiresLegacyConsent ->
-                Log.w("MeshCore", "Private media requires explicit one-shot legacy consent")
-            PrivateMediaPreparation.NeedsHandshake -> {
-                Log.i("MeshCore", "Private media needs a Noise handshake; initiating without sending")
-                initiateNoiseHandshake(recipientPeerID)
-            }
-            PrivateMediaPreparation.AwaitingPeerState -> Unit
-            is PrivateMediaPreparation.Rejected ->
-                Log.w("MeshCore", "Private media blocked: ${prepared.reason}")
-        }
-    }
-
     fun sendVoiceFrame(recipientPeerID: String?, payload: ByteArray) {
         if (payload.isEmpty()) return
         voiceFrameQueue.trySend(VoiceFrameRequest(recipientPeerID, payload.copyOf()))
@@ -677,51 +598,6 @@ class MeshCore(
         } catch (e: Exception) {
             Log.w("MeshCore", "Live voice frame send failed: ${e.message}")
         }
-    }
-
-    fun prepareFilePrivate(
-        recipientPeerID: String,
-        file: BitchatFilePacket,
-        transferId: String,
-        allowLegacyFallback: Boolean
-    ): PrivateMediaPreparation {
-        return when (val outcome = privateMediaPreparer.prepare(
-            recipientPeerID = recipientPeerID,
-            recipientID = MeshPacketUtils.hexStringToByteArray(recipientPeerID),
-            file = file,
-            allowLegacyFallback = allowLegacyFallback
-        )) {
-            is PrivateMediaBuildOutcome.RequiresLegacyConsent ->
-                PrivateMediaPreparation.RequiresLegacyConsent(outcome.warning)
-            PrivateMediaBuildOutcome.NeedsHandshake ->
-                PrivateMediaPreparation.NeedsHandshake
-            PrivateMediaBuildOutcome.AwaitingPeerState ->
-                PrivateMediaPreparation.AwaitingPeerState
-            is PrivateMediaBuildOutcome.Rejected ->
-                PrivateMediaPreparation.Rejected(outcome.reason)
-            is PrivateMediaBuildOutcome.Ready -> {
-                val built = outcome.built
-                val routed = RoutedPacket(
-                    packet = built.packet,
-                    transferId = transferId,
-                    preparedPackets = built.fragments
-                )
-                PrivateMediaPreparation.Ready(
-                    PreparedPrivateMediaTransfer(transferId, built.wireMode) {
-                        if (!isActive) {
-                            false
-                        } else {
-                            dispatchGlobal(routed)
-                            true
-                        }
-                    }
-                )
-            }
-        }
-    }
-
-    fun cancelFileTransfer(transferId: String): Boolean {
-        return transport.cancelTransfer(transferId)
     }
 
     fun sendPrivateMessage(content: String, recipientPeerID: String, recipientNickname: String, messageID: String? = null) {
@@ -1086,13 +962,6 @@ class MeshCore(
         } catch (_: Exception) {
             packet
         }
-    }
-
-    private fun routeAndSignPrivateMediaStrict(packet: BitchatPacket): BitchatPacket? {
-        val routed = applyRouteIfAvailable(packet)
-        val signingBytes = routed.toBinaryDataForSigning() ?: return null
-        val signature = encryptionService.signData(signingBytes) ?: return null
-        return routed.copy(signature = signature)
     }
 
     private fun signPacketBeforeBroadcast(packet: BitchatPacket): BitchatPacket {

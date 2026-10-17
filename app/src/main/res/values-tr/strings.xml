@@ -59,13 +59,6 @@
     <string name="cd_encrypted">Uçtan uca şifreli</string>
     <string name="cd_handshake_failed">El sıkışma başarısız</string>
 
-    <string name="file_viewer_title">📎 Dosya alındı</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 Boyut: %1$s</string>
-    <string name="file_viewer_type">🏷️ Tür: %1$s</string>
-    <string name="file_viewer_open_save">📂 Aç / Kaydet</string>
-    <string name="close_with_emoji">❌ Kapat</string>
-    <string name="pick_image">Görsel seç</string>
 
     <string name="about_offline_mesh_title">Çevrimdışı Mesh Sohbeti</string>
     <string name="about_offline_mesh_desc">İnternet/ sunucu olmadan doğrudan Bluetooth LE ile iletişim kur. Mesajlar yakındaki cihazlarca aktarılır.</string>
@@ -113,21 +106,12 @@
     <string name="cd_reachable_via_nostr">Nostr üzerinden erişilebilir</string>
     <string name="cd_offline_favorite">Favori (çevrimdışı)</string>
     <string name="cd_scroll_to_bottom">Alta kaydır</string>
-    <string name="cd_file">Dosya</string>
-    <string name="cd_image">Görsel</string>
     <string name="cd_cancel">İptal</string>
     <string name="cd_link">Bağlantı</string>
-    <string name="cd_pick_media">Medya seç</string>
     <string name="cd_record_voice">Ses notu kaydet</string>
     <string name="cd_offline_mesh_chat">Çevrimdışı Mesh Sohbeti</string>
     <string name="cd_end_to_end_encryption">Uçtan uca şifreleme</string>
 
-    <string name="image_page_of">Görsel %1$d / %2$d</string>
-    <string name="image_unavailable">Görsel kullanılamıyor</string>
-    <string name="image_saved_to_downloads">Görsel "İndirilenler"e kaydedildi</string>
-    <string name="image_save_failed">Görsel kaydedilemedi</string>
-    <string name="pick_file">Dosya seç</string>
-    <string name="file_unavailable">[dosya kullanılamıyor]</string>
     <string name="unknown">bilinmiyor</string>
 
     <string name="choose_action_message_or_user">bu mesaj veya kullanıcı için bir işlem seç</string>
@@ -218,18 +202,9 @@
     <string name="select">seç</string>
     <string name="type_a_message_placeholder">mesaj yaz…</string>
     <string name="mention">bahset</string>
-    <string name="image_counter">%1$d / %2$d</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">Görsel</string>
-    <string name="media_type_file">Dosya</string>
 
-    <string name="notification_sent_image">📷 görsel gönderdi</string>
-    <string name="notification_sent_voice">🎤 sesli mesaj gönderdi</string>
-    <string name="notification_sent_file">📎 dosya gönderdi</string>
 
-    <string name="cd_play_voice">Oynat</string>
-    <string name="cd_pause_voice">Duraklat</string>
 
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
     <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>

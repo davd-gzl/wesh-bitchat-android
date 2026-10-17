@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.bitchat.android.favorites.FavoritesPersistenceService
-import com.bitchat.android.features.file.FileUtils
 import com.bitchat.android.features.voice.LiveVoiceEvent
 import com.bitchat.android.features.voice.LiveVoiceManager
 import com.bitchat.android.features.voice.LiveVoicePreferences
@@ -13,9 +12,6 @@ import com.bitchat.android.features.voice.LiveVoiceTarget
 import com.bitchat.android.features.voice.LiveVoiceCapture
 import com.bitchat.android.identity.SecureIdentityStateManager
 import com.bitchat.android.mesh.MeshService
-import com.bitchat.android.mesh.PrivateMediaPreparation
-import com.bitchat.android.mesh.TransferProgressManager
-import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.RoutedPacket
 import com.bitchat.android.noise.NoiseSession
 import com.bitchat.android.protocol.BitchatPacket
@@ -24,11 +20,8 @@ import com.bitchat.android.service.MeshServiceHolder
 import com.bitchat.android.service.TransportBridgeService
 import com.bitchat.android.services.AppStateStore
 import com.bitchat.android.ui.DataManager
-import com.bitchat.android.ui.PrivateMediaRecipientResolver
-import com.bitchat.android.util.AppConstants
+import com.bitchat.android.ui.ConversationPeerResolver
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -37,7 +30,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.security.MessageDigest
 
 /**
  * Headless engine behind [TestHookReceiver]. Drives the public [MeshService] API and
@@ -51,7 +43,7 @@ object TestHookDriver {
     private const val DEFAULT_CONNECT_TIMEOUT_MS = 30_000L
     private const val DEFAULT_HANDSHAKE_TIMEOUT_MS = 30_000L
     private const val DEFAULT_RECV_TIMEOUT_MS = 60_000L
-    private const val DEFAULT_FILE_TIMEOUT_MS = 180_000L
+    private const val DEFAULT_PTT_TIMEOUT_MS = 180_000L
 
     suspend fun execute(context: Context, cmd: String, intent: Intent): JSONObject {
         Log.d(TAG, "execute cmd=$cmd")
@@ -83,9 +75,6 @@ object TestHookDriver {
                 intent.getBooleanExtra("enabled", true)
             )
             "verification_status" -> verificationStatus(context, intent.requiredString("peer"))
-            "file_send" -> fileSend(context, intent)
-            "file_recv" -> fileRecv(context, intent)
-            "file_cancel" -> fileCancel(context, intent.requiredString("transfer_id"))
             "ptt_send" -> pttSend(context, intent)
             "ptt_recv" -> pttRecv(context, intent)
             "raw_send" -> rawSend(context, intent)
@@ -362,153 +351,15 @@ object TestHookDriver {
             .put("verified", verified)
     }
 
-    // MARK: - File transfer
-
-    private suspend fun fileSend(context: Context, intent: Intent): JSONObject {
-        val path = intent.requiredString("path")
-        val peerID = intent.getStringExtra("peer")
-        val timeoutMs = intent.getLongExtra("timeout_ms", DEFAULT_FILE_TIMEOUT_MS)
-        val mesh = mesh(context)
-
-        val file = File(path)
-        if (!file.isFile) return err("file_send", "file not found: $path")
-        val content = withContext(Dispatchers.IO) { file.readBytes() }
-        if (content.size.toLong() > AppConstants.Media.MAX_FILE_SIZE_BYTES) {
-            return err("file_send", "file too large: ${content.size} > ${AppConstants.Media.MAX_FILE_SIZE_BYTES}")
-        }
-        val packet = BitchatFilePacket(
-            fileName = file.name,
-            fileSize = content.size.toLong(),
-            mimeType = intent.getStringExtra("mime") ?: FileUtils.getMimeTypeFromExtension(file.name),
-            content = content
-        )
-        val encoded = packet.encode() ?: return err("file_send", "failed to TLV-encode packet")
-        val transferId = sha256Hex(encoded)
-        val recipient = peerID?.let {
-            PrivateMediaRecipientResolver.resolve(it, mesh)
-                ?: return err("file_send", "no active mesh route for private conversation: $it")
-        }
-
-        return coroutineScope {
-            // Subscribe on a background dispatcher before sending so synchronous
-            // failure events are not missed (SharedFlow has replay=0).
-            val completion = async(Dispatchers.Default) {
-                TransferProgressManager.events.first { it.transferId == transferId && it.completed }
-            }
-            delay(50)
-            val sendError = dispatchFileSend(
-                context,
-                intent,
-                mesh,
-                recipient?.meshPeerID,
-                packet,
-                transferId
-            )
-            if (sendError != null) {
-                completion.cancel()
-                return@coroutineScope sendError.put("cmd", "file_send")
-            }
-            val event = withTimeoutOrNull(timeoutMs) { completion.await() }
-                ?: return@coroutineScope err("file_send", "timeout waiting for transfer completion ($transferId)")
-            if (event.failed) {
-                return@coroutineScope err("file_send", "transfer rejected/failed before send ($transferId)")
-                    .put("transfer_id", transferId)
-            }
-            ok("file_send")
-                .put("transfer_id", transferId)
-                .put("sent", event.sent)
-                .put("total", event.total)
-                .put("bytes", content.size)
-                .put("peer", recipient?.meshPeerID)
-                .put("conversation", peerID)
-        }
-    }
-
-    private suspend fun dispatchFileSend(
-        context: Context,
-        intent: Intent,
-        mesh: MeshService,
-        peerID: String?,
-        packet: BitchatFilePacket,
-        transferId: String
-    ): JSONObject? {
-        if (peerID == null) {
-            mesh.sendFileBroadcast(packet)
-            return null
-        }
-        if (!mesh.hasEstablishedSession(peerID)) {
-            val hs = handshake(context, peerID, intent)
-            if (hs.optString("status") != "ok") return hs
-        }
-        // Peer state (capabilities/identity) can lag session establishment;
-        // retry transient preparation states before giving up.
-        val prepDeadline = System.currentTimeMillis() + 30_000
-        while (true) {
-            when (val prep = mesh.prepareFilePrivate(peerID, packet, transferId, allowLegacyFallback = false)) {
-                is PrivateMediaPreparation.Ready -> {
-                    return if (prep.transfer.commit()) null else err("file_send", "private transfer commit failed")
-                }
-                PrivateMediaPreparation.AwaitingPeerState,
-                PrivateMediaPreparation.NeedsHandshake -> {
-                    if (System.currentTimeMillis() >= prepDeadline) {
-                        return err("file_send", "private media preparation stuck at: $prep")
-                    }
-                    if (prep == PrivateMediaPreparation.NeedsHandshake) {
-                        mesh.initiateNoiseHandshake(peerID)
-                    }
-                    delay(500)
-                }
-                else -> return err("file_send", "private media preparation: $prep")
-            }
-        }
-    }
-
-    private suspend fun fileRecv(context: Context, intent: Intent): JSONObject {
-        val timeoutMs = intent.getLongExtra("timeout_ms", DEFAULT_FILE_TIMEOUT_MS)
-        val nameContains = intent.getStringExtra("name_contains")
-        val startTime = System.currentTimeMillis()
-        val dirs = listOf(
-            File(context.cacheDir, "files/incoming"),
-            File(context.cacheDir, "images/incoming")
-        )
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
-            val candidate = dirs
-                .flatMap { it.listFiles()?.toList() ?: emptyList() }
-                .filter { it.lastModified() >= startTime - 5_000 }
-                .filter { nameContains == null || it.name.contains(nameContains) }
-                .maxByOrNull { it.lastModified() }
-            if (candidate != null) {
-                val size1 = candidate.length()
-                delay(500)
-                if (candidate.length() == size1 && size1 > 0) {
-                    return ok("file_recv")
-                        .put("path", candidate.absolutePath)
-                        .put("name", candidate.name)
-                        .put("bytes", size1)
-                        .put("sha256", withContext(Dispatchers.IO) { sha256Hex(candidate.readBytes()) })
-                }
-            }
-            delay(250)
-        }
-        return err("file_recv", "timeout after ${timeoutMs}ms")
-    }
-
-    private fun fileCancel(context: Context, transferId: String): JSONObject {
-        val cancelled = mesh(context).cancelFileTransfer(transferId)
-        return ok("file_cancel").put("transfer_id", transferId).put("cancelled", cancelled)
-    }
-
     // MARK: - Live push-to-talk
 
     private suspend fun pttSend(context: Context, intent: Intent): JSONObject {
         val requestedPeer = intent.getStringExtra("peer")
         val durationMs = intent.getIntExtra("duration_ms", 1_500).toLong().coerceIn(700L, 10_000L)
-        val timeoutMs = intent.getLongExtra("timeout_ms", DEFAULT_FILE_TIMEOUT_MS)
         val mesh = mesh(context)
         LiveVoicePreferences.setEnabled(context, true)
         val recipient = requestedPeer?.let {
-            PrivateMediaRecipientResolver.resolve(it, mesh)
+            ConversationPeerResolver.resolve(it, mesh)
                 ?: return err("ptt_send", "no active mesh route for private conversation")
         }
         if (recipient != null && !mesh.hasEstablishedSession(recipient.meshPeerID)) {
@@ -529,52 +380,23 @@ object TestHookDriver {
         if (finalFile != pendingFile || !finalFile.isFile) {
             return err("ptt_send", "finalized note is unavailable")
         }
-        val content = withContext(Dispatchers.IO) { finalFile.readBytes() }
-        val packet = BitchatFilePacket(
-            fileName = finalFile.name,
-            fileSize = content.size.toLong(),
-            mimeType = "audio/mp4",
-            content = content
-        )
-        val encoded = packet.encode() ?: return err("ptt_send", "failed to encode finalized note")
-        val transferId = sha256Hex(encoded)
-        return coroutineScope {
-            val completion = async(Dispatchers.Default) {
-                TransferProgressManager.events.first { it.transferId == transferId && it.completed }
-            }
-            delay(50)
-            val sendError = dispatchFileSend(
-                context,
-                intent,
-                mesh,
-                recipient?.meshPeerID,
-                packet,
-                transferId
-            )
-            if (sendError != null) {
-                completion.cancel()
-                return@coroutineScope sendError.put("cmd", "ptt_send")
-            }
-            val event = withTimeoutOrNull(timeoutMs) { completion.await() }
-                ?: return@coroutineScope err("ptt_send", "timeout waiting for finalized note transfer")
-            if (event.failed) return@coroutineScope err("ptt_send", "finalized note transfer failed")
-            ok("ptt_send")
-                .put("live", true)
-                .put("scope", if (recipient == null) "public" else "dm")
-                .put("duration_ms", durationMs)
-                .put("burst_id", LiveVoiceManager.burstIDFromVoiceFileName(finalFile.name))
-                .put("bytes", content.size)
-                .put("queued_pcm_frames", captureStats.queuedPcmFrames)
-                .put("encoded_frames", captureStats.encodedFrames)
-                .put("data_packets", captureStats.dataPackets)
-                .put("dropped_oversize_frames", captureStats.droppedOversizeFrames)
-                .put("outbound_packets", captureStats.outboundPackets)
-                .put("delivered_packets", captureStats.deliveredPackets)
-        }
+        // Live frames only: the finalized note is a file, and Wesh sends no files.
+        return ok("ptt_send")
+            .put("live", true)
+            .put("scope", if (recipient == null) "public" else "dm")
+            .put("duration_ms", durationMs)
+            .put("burst_id", LiveVoiceManager.burstIDFromVoiceFileName(finalFile.name))
+            .put("bytes", finalFile.length())
+            .put("queued_pcm_frames", captureStats.queuedPcmFrames)
+            .put("encoded_frames", captureStats.encodedFrames)
+            .put("data_packets", captureStats.dataPackets)
+            .put("dropped_oversize_frames", captureStats.droppedOversizeFrames)
+            .put("outbound_packets", captureStats.outboundPackets)
+            .put("delivered_packets", captureStats.deliveredPackets)
     }
 
     private suspend fun pttRecv(context: Context, intent: Intent): JSONObject {
-        val timeoutMs = intent.getLongExtra("timeout_ms", DEFAULT_FILE_TIMEOUT_MS)
+        val timeoutMs = intent.getLongExtra("timeout_ms", DEFAULT_PTT_TIMEOUT_MS)
         val fromPeer = intent.getStringExtra("peer")
         val expectedScope = if (intent.getStringExtra("scope") == "public") {
             LiveVoiceScope.PUBLIC_MESH
@@ -713,9 +535,6 @@ object TestHookDriver {
 
     private fun Intent.requiredString(name: String): String =
         getStringExtra(name) ?: throw IllegalArgumentException("missing required extra: $name")
-
-    private fun sha256Hex(data: ByteArray): String =
-        MessageDigest.getInstance("SHA-256").digest(data).toHex()
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 

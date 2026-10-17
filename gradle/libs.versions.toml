@@ -51,9 +51,6 @@ security-crypto = "1.1.0"
 # QR
 zxing-core = "3.5.4"
 
-# EXIF
-exifinterface = "1.4.2"
-
 # CameraX / ML Kit
 camerax = "1.6.1"
 
@@ -120,9 +117,6 @@ androidx-security-crypto = { module = "androidx.security:security-crypto", versi
 
 # QR
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing-core" }
-
-# EXIF
-androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
 
 # CameraX / ML Kit
 androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }

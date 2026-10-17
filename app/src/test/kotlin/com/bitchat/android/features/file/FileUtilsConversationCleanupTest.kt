@@ -2,32 +2,26 @@ package com.bitchat.android.features.file
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.bitchat.android.model.BitchatMessage
-import com.bitchat.android.model.BitchatMessageType
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.io.File
-import java.util.Date
 import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
 class FileUtilsConversationCleanupTest {
 
     @Test
-    fun `deleting conversation removes only unreferenced app-owned media`() {
+    fun `unreferenced media cleanup removes only app-owned files`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val testDirectory = File(
             context.cacheDir,
             "conversation-cleanup-${UUID.randomUUID()}"
         ).apply { mkdirs() }
-        val deletedOnly = File(testDirectory, "deleted.jpg").apply {
+        val appOwned = File(testDirectory, "legacy.jpg").apply {
             writeBytes(byteArrayOf(1))
-        }
-        val shared = File(testDirectory, "shared.jpg").apply {
-            writeBytes(byteArrayOf(2))
         }
         val outsideAppStorage = File.createTempFile(
             "conversation-cleanup-",
@@ -37,31 +31,18 @@ class FileUtilsConversationCleanupTest {
         }
 
         try {
-            FileUtils.deleteConversationMedia(
-                context = context,
-                deletedMessages = listOf(
-                    mediaMessage("deleted", deletedOnly),
-                    mediaMessage("shared-deleted", shared),
-                    mediaMessage("outside", outsideAppStorage)
-                ),
-                retainedMessages = listOf(mediaMessage("shared-retained", shared))
+            FileUtils.deleteStoredMediaPaths(
+                context,
+                // An empty path is what a Wesh media placeholder carries: it must delete nothing.
+                listOf(appOwned.absolutePath, outsideAppStorage.absolutePath, "", testDirectory.absolutePath)
             )
 
-            assertFalse(deletedOnly.exists())
-            assertTrue(shared.exists())
+            assertFalse(appOwned.exists())
             assertTrue(outsideAppStorage.exists())
+            assertTrue(testDirectory.isDirectory)
         } finally {
             testDirectory.deleteRecursively()
             outsideAppStorage.delete()
         }
     }
-
-    private fun mediaMessage(id: String, file: File) = BitchatMessage(
-        id = id,
-        sender = "alice",
-        content = file.absolutePath,
-        type = BitchatMessageType.Image,
-        timestamp = Date(1L),
-        isPrivate = true
-    )
 }

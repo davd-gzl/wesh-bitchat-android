@@ -203,7 +203,6 @@ and never crash or allocate unreasonable memory for attacker-controlled data.
 - [ ] Fuzz `AuthenticatedPeerState.decode`.
 - [ ] Fuzz `PrivateMessagePacket.decode`.
 - [ ] Fuzz `NoisePayload.decode`.
-- [ ] Fuzz `BitchatFilePacket.decode`.
 - [ ] Fuzz `FragmentPayload.decode`.
 - [ ] Fuzz `RequestSyncPacket.decode`.
 - [ ] Test missing, duplicated, reordered, unknown, and zero-length TLVs.

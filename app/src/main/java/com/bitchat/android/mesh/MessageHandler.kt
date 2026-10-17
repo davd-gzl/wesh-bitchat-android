@@ -40,8 +40,8 @@ class MessageHandler(
     var delegate: MessageHandlerDelegate? = null
 
     /**
-     * When false, incoming files are never written to storage; the conversation only receives a
-     * typed placeholder with empty content.
+     * When false, live voice frames are dropped before any assembly or state. Media files are
+     * never accepted whatever this says: Wesh keeps no file, see [unsupportedMediaPlaceholder].
      */
     var acceptIncomingMedia: Boolean = true
 
@@ -51,7 +51,7 @@ class MessageHandler(
     /** When false, favorite control notices are ignored and never acknowledged. */
     var acceptFavoriteNotices: Boolean = true
 
-    /** Wesh accepts no incoming media, plaintext private text or favorite notices, on any transport. */
+    /** Wesh accepts no incoming voice, plaintext private text or favorite notices, on any transport. */
     fun applyInboundPolicy(weshLocalOnly: Boolean) {
         acceptIncomingMedia = !weshLocalOnly
         com.bitchat.android.protocol.PacketPayloadLimits.acceptCompressedMedia = !weshLocalOnly
@@ -59,11 +59,27 @@ class MessageHandler(
         acceptFavoriteNotices = !weshLocalOnly
     }
 
-    private fun storeIncomingFile(file: com.bitchat.android.model.BitchatFilePacket): String =
-        if (acceptIncomingMedia) com.bitchat.android.features.file.FileUtils.saveIncomingFile(appContext, file) else ""
+    /** The QR enrollment gate private messages use, read before any side effect of a media drop. */
+    private fun isEnrolledContactKey(noisePublicKey: ByteArray?): Boolean =
+        noisePublicKey != null && noisePublicKey.size == 32 &&
+            runCatching { delegate?.isEnrolledContactKey(noisePublicKey) == true }.getOrDefault(false)
 
-    private fun absorbVoiceNote(message: BitchatMessage): Boolean =
-        acceptIncomingMedia && LiveVoiceManager.getInstance(appContext).absorbFinalizedVoiceNote(message)
+    /**
+     * Wesh has no media. A private file from a QR-enrolled contact becomes this empty, non-text
+     * message so the conversation can say media is unsupported; its bytes are never decoded or
+     * stored. Every other inbound file is dropped silently.
+     */
+    private fun unsupportedMediaPlaceholder(peerID: String, packet: BitchatPacket) = BitchatMessage(
+        id = UUID.randomUUID().toString().uppercase(),
+        sender = delegate?.getPeerNickname(peerID) ?: "Unknown",
+        content = "",
+        type = BitchatMessageType.File,
+        timestamp = Date(packet.timestamp.toLong()),
+        isRelay = false,
+        isPrivate = true,
+        recipientNickname = delegate?.getMyNickname(),
+        senderPeerID = peerID
+    )
 
     // Reference to PacketProcessor for recursive packet handling
     var packetProcessor: PacketProcessor? = null
@@ -155,32 +171,10 @@ class MessageHandler(
                 }
                 
                 com.bitchat.android.model.NoisePayloadType.FILE_TRANSFER -> {
-                    // Handle encrypted file transfer; generate unique message ID
-                    val file = com.bitchat.android.model.BitchatFilePacket.decode(noisePayload.data)
-                    if (file != null) {
-                        Log.d(TAG, "Encrypted file from $peerID: ${file.fileSize} bytes")
-                        val uniqueMsgId = java.util.UUID.randomUUID().toString().uppercase()
-                        val savedPath = storeIncomingFile(file)
-                        val message = BitchatMessage(
-                            id = uniqueMsgId,
-                            sender = delegate?.getPeerNickname(peerID).orEmpty(),
-                            content = savedPath,
-                            type = com.bitchat.android.features.file.FileUtils.messageTypeForMime(file.mimeType),
-                            timestamp = java.util.Date(packet.timestamp.toLong()),
-                            isRelay = false,
-                            isPrivate = true,
-                            recipientNickname = delegate?.getMyNickname(),
-                            senderPeerID = peerID
-                        )
-
-                        // A note absorbed into its live row skips admission, so it is never acknowledged:
-                        // only admission of an enrolled sender may vouch for delivery.
-                        val admitted = !absorbVoiceNote(message) && delegate?.onPrivateMessageReceived(message) == true
-                        // Send delivery ACK with generated message ID, only once admitted
-                        if (admitted) sendDeliveryAck(uniqueMsgId, peerID)
-                    } else {
-                        Log.w(TAG, "Failed to decode encrypted file transfer from $peerID")
-                    }
+                    // Strangers get silence: no message, no request, no ACK.
+                    if (!isEnrolledContactKey(decryption.authenticatedSession.remoteStaticKey)) return true
+                    // No DELIVERED: the media itself was not received.
+                    delegate?.onPrivateMessageReceived(unsupportedMediaPlaceholder(peerID, packet))
                 }
 
                 com.bitchat.android.model.NoisePayloadType.VOICE_FRAME -> {
@@ -489,6 +483,9 @@ class MessageHandler(
     private suspend fun handleBroadcastMessage(routed: RoutedPacket): Boolean {
         val packet = routed.packet
         val peerID = routed.peerID ?: "unknown"
+
+        // Public media is never shown, whatever the sender, and costs no inbound budget.
+        if (MessageType.fromValue(packet.type) == MessageType.FILE_TRANSFER) return true
         
         // Enforce: only accept public messages from verified peers we know
         val peerInfo = delegate?.getPeerInfo(peerID)
@@ -503,30 +500,8 @@ class MessageHandler(
         if (!publicBudget.tryAdmit(budgetSource, routed.ingressLinkID ?: routed.relayAddress, peerID, enrolledContact)) return false
         
         try {
-            // Try file packet first (voice, image, etc.) and log outcome for FILE_TRANSFER
-            val isFileTransfer = com.bitchat.android.protocol.MessageType.fromValue(packet.type) == com.bitchat.android.protocol.MessageType.FILE_TRANSFER
-            val file = com.bitchat.android.model.BitchatFilePacket.decode(packet.payload)
-            if (file != null) {
-
-                val savedPath = storeIncomingFile(file)
-                val message = BitchatMessage(
-                    id = PacketIdUtil.computeIdHex(packet).uppercase(),
-                    sender = delegate?.getPeerNickname(peerID) ?: "unknown",
-                    content = savedPath,
-                    type = com.bitchat.android.features.file.FileUtils.messageTypeForMime(file.mimeType),
-                    senderPeerID = peerID,
-                    timestamp = Date(packet.timestamp.toLong())
-                )
-                if (!absorbVoiceNote(message)) {
-                    delegate?.onMessageReceived(message)
-                }
-                return true
-            } else if (isFileTransfer) {
-                Log.w(TAG, "FILE_TRANSFER decode failed (broadcast) from ${peerID.take(8)}")
-            }
-
-            // Fallback: plain text, bounded like outgoing Wesh public text. Refused, so it is
-            // neither shown nor kept for gossip sync.
+            // Plain text, bounded like outgoing Wesh public text. Refused, so it is neither shown
+            // nor kept for gossip sync.
             if (packet.payload.size > PublicInboundBudget.MAX_PUBLIC_TEXT_BYTES) {
                 publicBudget.recordDrop()
                 return false
@@ -547,49 +522,28 @@ class MessageHandler(
     
     private suspend fun handlePrivateMessage(packet: BitchatPacket, peerID: String) {
         try {
-            val isFileTransfer = com.bitchat.android.protocol.MessageType.fromValue(packet.type) ==
-                com.bitchat.android.protocol.MessageType.FILE_TRANSFER
-            val signatureIsValid = packet.signature != null &&
-                delegate?.verifySignature(packet, peerID) == true
-
-            // Migration fallback is visible to relays, so sender authenticity
-            // is mandatory. Never accept an unsigned directed raw file.
-            if (isFileTransfer && !signatureIsValid) {
-                Log.w(TAG, "Unsigned or invalid signed private file from $peerID")
+            if (MessageType.fromValue(packet.type) == MessageType.FILE_TRANSFER) {
+                // A directed raw file is visible to relays: only a signed one from a QR-enrolled
+                // contact becomes the empty placeholder, admitted like any private message.
+                // A stranger or an unsigned file gets silence.
+                if (isEnrolledContactKey(delegate?.getAuthenticatedRemoteStaticKey(peerID)) &&
+                    packet.signature != null && delegate?.verifySignature(packet, peerID) == true
+                ) {
+                    delegate?.onMessageReceived(unsupportedMediaPlaceholder(peerID, packet))
+                }
                 return
             }
 
-            // Preserve prior behavior for other directed packet types: verify
-            // a signature whenever one is present.
-            if (!isFileTransfer && packet.signature != null && !signatureIsValid) {
+            val signatureIsValid = packet.signature != null &&
+                delegate?.verifySignature(packet, peerID) == true
+
+            // Verify a signature whenever one is present.
+            if (packet.signature != null && !signatureIsValid) {
                 Log.w(TAG, "Invalid signature for private message from $peerID")
                 return
             }
 
-            // Try file packet first (voice, image, etc.) and log outcome for FILE_TRANSFER
-            val file = com.bitchat.android.model.BitchatFilePacket.decode(packet.payload)
-            if (file != null) {
-
-                val savedPath = storeIncomingFile(file)
-                val message = BitchatMessage(
-                    id = java.util.UUID.randomUUID().toString().uppercase(),
-                    sender = delegate?.getPeerNickname(peerID) ?: "unknown",
-                    content = savedPath,
-                    type = com.bitchat.android.features.file.FileUtils.messageTypeForMime(file.mimeType),
-                    senderPeerID = peerID,
-                    timestamp = Date(packet.timestamp.toLong()),
-                    isPrivate = true,
-                    recipientNickname = delegate?.getMyNickname()
-                )
-                if (!absorbVoiceNote(message)) {
-                    delegate?.onMessageReceived(message)
-                }
-                return
-            } else if (isFileTransfer) {
-                Log.w(TAG, "⚠️ FILE_TRANSFER decode failed (private) from ${peerID.take(8)} payloadSize=${packet.payload.size}")
-            }
-
-            // Fallback: directed plain text. It was addressed to us, so it is private by
+            // Directed plain text. It was addressed to us, so it is private by
             // transport and must pass private admission; relays see it, so require a signature.
             if (!acceptDirectedPlaintext) {
                 publicBudget.recordDrop()

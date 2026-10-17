@@ -37,8 +37,7 @@ Other optional extension:
   advertised capabilities. For this announcement TLV, unknown bits and bytes
   beyond the low 64 bits must be tolerated for forward compatibility. This
   tolerance does not apply to the Noise-authenticated peer-state payload
-  `0x21`, whose capability field must be canonical and 1...8 bytes; see
-  `PRIVATE_MEDIA_V1.md`.
+  `0x21`, whose capability field must be canonical and 1...8 bytes.
 
 New TLV (optional):
 
@@ -60,8 +59,9 @@ This matches the on‑wire 8‑byte `senderID`/`recipientID` encoding used in th
 - Optionally append TLV `0x04` with up to 10 unique, directly connected peer IDs.
   - Remove duplicates before encoding.
   - Order is arbitrary and not semantically significant.
-- Current capable senders also include TLV `0x05` with private-media bit 8 set
-  in every broadcast and peer-directed announcement.
+- Wesh includes TLV `0x05` with no bit set (`05 01 00`) in every broadcast and
+  peer-directed announcement: it ships no media, so it never advertises bit 8
+  or 9.
 - Sign the ANNOUNCE packet so all extension TLVs are covered:
   - Signature algorithm: Ed25519 using the key in TLV `0x03`.
   - Signature input: the binary packet encoding with the signature field omitted and the TTL normalized to `0`. This allows TTL to change during relays without invalidating the signature.
@@ -74,8 +74,7 @@ This matches the on‑wire 8‑byte `senderID`/`recipientID` encoding used in th
 - Parse TLV `0x05`, when present, as a little-endian bitfield. Absence and an
   explicitly empty value remain valid legacy capability states. A
   security-sensitive bit is trusted only after the signed announcement key is
-  bound to the matching remote static key from a live Noise handshake; see
-  `PRIVATE_MEDIA_V1.md`.
+  bound to the matching remote static key from a live Noise handshake.
 - Capability bits are independent discovery hints. Implementations advertise
   only wire features they implement and must not infer support from platform,
   app version, or unrelated transports with similar names.
@@ -105,7 +104,7 @@ ANNOUNCE payload TLVs (concatenated):
 - `02 [len=32] [32 bytes X25519 pubkey]`
 - `03 [len=32] [32 bytes Ed25519 pubkey]`
 - `04 [len=8*M] [peerID1(8) || peerID2(8) || ... || peerIDM(8)]` (optional)
-- `05 02 00 01` (optional private-media-v1 capability)
+- `05 01 00` (capability bitfield; Wesh sets no bit. BitChat's private-media bit 8 would be `05 02 00 01`)
 
 Where each `peerIDk(8)` is the 8‑byte binary form of the peer ID as specified above.
 

@@ -59,13 +59,6 @@
     <string name="cd_encrypted">Ända‑till‑ända‑krypterat</string>
     <string name="cd_handshake_failed">Handshake misslyckades</string>
 
-    <string name="file_viewer_title">📎 Fil mottagen</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 Storlek: %1$s</string>
-    <string name="file_viewer_type">🏷️ Typ: %1$s</string>
-    <string name="file_viewer_open_save">📂 Öppna / Spara</string>
-    <string name="close_with_emoji">❌ Stäng</string>
-    <string name="pick_image">Välj bild</string>
 
     <string name="about_offline_mesh_title">Offline Mesh‑chatt</string>
     <string name="about_offline_mesh_desc">Kommunicera direkt via Bluetooth LE utan internet eller servrar. Meddelanden reläas av enheter i närheten.</string>
@@ -113,21 +106,12 @@
     <string name="cd_reachable_via_nostr">Nås via Nostr</string>
     <string name="cd_offline_favorite">Favorit (offline)</string>
     <string name="cd_scroll_to_bottom">Rulla längst ned</string>
-    <string name="cd_file">Fil</string>
-    <string name="cd_image">Bild</string>
     <string name="cd_cancel">Avbryt</string>
     <string name="cd_link">Länk</string>
-    <string name="cd_pick_media">Välj media</string>
     <string name="cd_record_voice">Spela in röstanteckning</string>
     <string name="cd_offline_mesh_chat">Offline Mesh‑chatt</string>
     <string name="cd_end_to_end_encryption">Ända‑till‑ända‑kryptering</string>
 
-    <string name="image_page_of">Bild %1$d / %2$d</string>
-    <string name="image_unavailable">Bild ej tillgänglig</string>
-    <string name="image_saved_to_downloads">Bild sparad i "Hämtade filer"</string>
-    <string name="image_save_failed">Kunde inte spara bild</string>
-    <string name="pick_file">Välj fil</string>
-    <string name="file_unavailable">[fil ej tillgänglig]</string>
     <string name="unknown">okänd</string>
 
     <string name="choose_action_message_or_user">välj en åtgärd för meddelandet eller användaren</string>
@@ -218,18 +202,9 @@
     <string name="select">välj</string>
     <string name="type_a_message_placeholder">skriv ett meddelande…</string>
     <string name="mention">nämn</string>
-    <string name="image_counter">%1$d / %2$d</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">Bild</string>
-    <string name="media_type_file">Fil</string>
 
-    <string name="notification_sent_image">📷 skickade en bild</string>
-    <string name="notification_sent_voice">🎤 skickade ett röstmeddelande</string>
-    <string name="notification_sent_file">📎 skickade en fil</string>
 
-    <string name="cd_play_voice">Spela</string>
-    <string name="cd_pause_voice">Pausa</string>
 
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
     <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
