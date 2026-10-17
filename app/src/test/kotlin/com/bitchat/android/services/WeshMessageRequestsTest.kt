@@ -98,4 +98,10 @@ class WeshMessageRequestsTest {
         WeshMessageRequests.record("peer-a", "‮evil​name", fp(1), time)
         assertEquals("evilname", WeshMessageRequests.requests.value.single().nickname)
     }
+
+    @Test
+    fun `an invisible nickname is kept empty, never replaced by the peer ID`() {
+        WeshMessageRequests.record("aaaabbbbcccc1234", "\u3164\u200B", fp(1), time)
+        assertEquals("", WeshMessageRequests.requests.value.single().nickname)
+    }
 }

@@ -60,8 +60,8 @@ class MeshDelegateHandler(
 
                     // Show notification with enhanced information - now includes senderPeerID
                     message.senderPeerID?.let { senderPeerID ->
-                        // Use nickname if available, fall back to sender or senderPeerID
-                        val senderNickname = message.sender.takeIf { it != senderPeerID } ?: senderPeerID
+                        // No nickname: null, so the notification shows the unnamed label, never the peer ID.
+                        val senderNickname = message.sender.takeIf { it.isNotBlank() && it != senderPeerID }
                         val preview = NotificationTextUtils.buildPrivateMessagePreview(message)
                         notificationManager.showPrivateMessageNotification(
                             senderPeerID = senderPeerID,

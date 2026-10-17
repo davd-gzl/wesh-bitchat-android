@@ -39,10 +39,6 @@ TEST_HOOK_ACTION = "com.bitchat.droid.TEST_HOOK"
 TEST_HOOK_COMPONENT = f"{APPLICATION_ID}/com.bitchat.android.testhook.TestHookReceiver"
 RESULTS_DIR = "cache/testhook/results"
 
-WATCH_APPLICATION_ID = "com.bitchat.watch"
-WATCH_TEST_HOOK_ACTION = "com.bitchat.watch.TEST_HOOK"
-WATCH_TEST_HOOK_COMPONENT = f"{WATCH_APPLICATION_ID}/com.bitchat.watch.testhook.WearTestHookReceiver"
-
 PERMISSIONS = [
     "android.permission.BLUETOOTH_SCAN",
     "android.permission.BLUETOOTH_CONNECT",
@@ -53,15 +49,6 @@ PERMISSIONS = [
     "android.permission.NEARBY_WIFI_DEVICES",
     "android.permission.RECORD_AUDIO",
 ]
-
-WATCH_PERMISSIONS = [
-    "android.permission.BLUETOOTH_SCAN",
-    "android.permission.BLUETOOTH_CONNECT",
-    "android.permission.BLUETOOTH_ADVERTISE",
-    "android.permission.POST_NOTIFICATIONS",
-    "android.permission.RECORD_AUDIO",
-]
-
 
 class MeshLabError(Exception):
     pass
@@ -121,7 +108,7 @@ class Device:
     def launch(self) -> None:
         """Launch the app and verify it is actually top-resumed.
 
-        A background/cached process can be frozen by the system (observed on Wear OS),
+        A background/cached process can be frozen by the system,
         which silently hangs test-hook commands; the foreground activity (and the FGS it
         starts) keeps the process unfrozen.
         """
@@ -226,33 +213,6 @@ class Device:
         return _shell(self.serial, f"logcat -d -t {lines}")
 
 
-class WatchDevice(Device):
-    """Pixel Watch running the com.bitchat.watch debug build.
-
-    Same test-hook protocol as the phone; different package/hook, a smaller permission
-    set (Bluetooth + notifications only), and wake tweaks that skip phone-only keyguard
-    commands.
-    """
-
-    def __init__(self, serial: str, alias: str = "watch"):
-        super().__init__(
-            serial,
-            alias,
-            package=WATCH_APPLICATION_ID,
-            hook_action=WATCH_TEST_HOOK_ACTION,
-            hook_component=WATCH_TEST_HOOK_COMPONENT,
-            permissions=WATCH_PERMISSIONS,
-            activity_component=f"{WATCH_APPLICATION_ID}/.MainActivity",
-        )
-
-    def wake(self) -> None:
-        # Keep the screen on while on the charging puck; otherwise Wear shows the
-        # charging activity on top, our app loses foreground, and the OS freezes the
-        # process (cached-app freezer), silently hanging test-hook commands.
-        _shell(self.serial, "settings put global stay_on_while_plugged_in 3")
-        _shell(self.serial, "svc power stayon true")
-        _shell(self.serial, "settings put system screen_off_timeout 600000")
-        _shell(self.serial, "input keyevent KEYCODE_WAKEUP")
 
 
 # MARK: - setup
@@ -725,24 +685,11 @@ SCENARIOS = {
     "identity_reset": scenario_identity_reset,
 }
 
-# Scenarios supported when device B is a watch.
-WATCH_SCENARIOS = [
-    "dm",
-    "favorite_verification",
-    "broadcast",
-    "ptt_dm",
-    "ptt_broadcast",
-    "raw",
-    "session_recovery",
-    "identity_reset",
-]
-
-
 def run_scenario(name: str, a: Device, b: Device, out: Path | None) -> dict:
     started = time.time()
     evidence: dict[str, object] = {"scenario": name, "devices": [a.alias, b.alias]}
     try:
-        supported = WATCH_SCENARIOS if isinstance(b, WatchDevice) else list(SCENARIOS)
+        supported = list(SCENARIOS)
         if name == "all":
             results = {}
             failures = []
@@ -778,18 +725,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     setup = commands.add_parser("setup", help="install, grant, launch, nickname, discover")
     setup.add_argument("--serial-a", required=True)
-    setup.add_argument("--serial-b")
-    setup.add_argument("--serial-watch", help="watch serial; used as device B (overrides --serial-b)")
+    setup.add_argument("--serial-b", required=True)
     setup.add_argument("--apk", type=Path, default=None)
-    setup.add_argument("--watch-apk", type=Path, default=None)
     setup.add_argument("--nickname-a", default="alice")
     setup.add_argument("--nickname-b", default="bob")
 
     scenario = commands.add_parser("scenario", help="run a test scenario on two devices")
     scenario.add_argument("name", choices=[*SCENARIOS.keys(), "all"])
     scenario.add_argument("--serial-a", required=True)
-    scenario.add_argument("--serial-b")
-    scenario.add_argument("--serial-watch", help="watch serial; used as device B (overrides --serial-b)")
+    scenario.add_argument("--serial-b", required=True)
     scenario.add_argument("--out", type=Path, default=None, help="evidence output directory")
 
     raw = commands.add_parser("cmd", help="send a raw test-hook command to one device")
@@ -802,13 +746,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _resolve_devices(args: argparse.Namespace) -> tuple[Device, Device]:
-    """Device A is always the phone; device B is a watch when --serial-watch is given."""
-    a = Device(args.serial_a, "alpha")
-    if getattr(args, "serial_watch", None):
-        return a, WatchDevice(args.serial_watch)
-    if not getattr(args, "serial_b", None):
-        raise MeshLabError("either --serial-b or --serial-watch is required")
-    return a, Device(args.serial_b, "beta")
+    return Device(args.serial_a, "alpha"), Device(args.serial_b, "beta")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -816,11 +754,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "setup":
             a, b = _resolve_devices(args)
-            nickname_b = "watch" if isinstance(b, WatchDevice) and args.nickname_b == "bob" else args.nickname_b
-            setup_pair(
-                a, b, args.apk, args.nickname_a, nickname_b,
-                apk_b=args.watch_apk if isinstance(b, WatchDevice) else None,
-            )
+            setup_pair(a, b, args.apk, args.nickname_a, args.nickname_b)
             print(json.dumps({"status": "ok", "step": "setup"}))
         elif args.command == "scenario":
             a, b = _resolve_devices(args)

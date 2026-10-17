@@ -55,7 +55,7 @@ class BluetoothMeshService(
     // My peer identification - derived from persisted Noise identity fingerprint (first 16 hex chars)
     val myPeerID: String = encryptionService.getIdentityFingerprint().take(16)
     private val peerManager = PeerManager()
-    private val fragmentManager = FragmentManager()
+    private val fragmentManager = FragmentManager(myPeerID)
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val readReceiptRetrySender = RetryingControlPacketSender(serviceScope)
     private val authenticatedPeerStateStore = SecureAuthenticatedPeerStateStore(context)
@@ -127,6 +127,7 @@ class BluetoothMeshService(
         messageHandler.packetProcessor = packetProcessor
         com.bitchat.android.services.IncomingMessageAdmission.install(context)
         messageHandler.applyInboundPolicy(com.bitchat.android.BuildConfig.WESH_POLICY)
+        fragmentManager.acceptMediaFragments = messageHandler.acceptIncomingMedia
         if (com.bitchat.android.BuildConfig.WESH_POLICY) com.bitchat.android.features.voice.LiveVoicePreferences.forceDisabled = true
         //startPeriodicDebugLogging()
 
@@ -508,7 +509,7 @@ class BluetoothMeshService(
                     try {
                         val senderPeerID = message.senderPeerID
                         if (senderPeerID != null) {
-                            val nick = try { peerManager.getPeerNickname(senderPeerID) } catch (_: Exception) { null } ?: senderPeerID
+                            val nick = try { peerManager.getPeerNickname(senderPeerID) } catch (_: Exception) { null }
                             val preview = com.bitchat.android.ui.NotificationTextUtils.buildPrivateMessagePreview(message)
                             serviceNotificationManager.setAppBackgroundState(true)
                             serviceNotificationManager.showPrivateMessageNotification(senderPeerID, nick, preview)
@@ -640,15 +641,17 @@ class BluetoothMeshService(
                 serviceScope.launch { messageHandler.handleLeave(routed) }
             }
             
-            override fun handleFragment(packet: BitchatPacket): BitchatPacket? {
-                // Track broadcast fragments for gossip sync
-                try {
-                    val isBroadcast = (packet.recipientID == null || packet.recipientID.contentEquals(SpecialRecipients.BROADCAST))
-                    if (isBroadcast && packet.type == MessageType.FRAGMENT.value) {
-                        gossipSyncManager.onPublicPacketSeen(packet)
-                    }
-                } catch (_: Exception) { }
-                return fragmentManager.handleFragment(packet)
+            override fun handleFragment(packet: BitchatPacket): FragmentResult {
+                val result = fragmentManager.receiveFragment(packet)
+                if (result.keptForSync) {
+                    try {
+                        val isBroadcast = (packet.recipientID == null || packet.recipientID.contentEquals(SpecialRecipients.BROADCAST))
+                        if (isBroadcast && packet.type == MessageType.FRAGMENT.value) {
+                            gossipSyncManager.onPublicPacketSeen(packet)
+                        }
+                    } catch (_: Exception) { }
+                }
+                return result
             }
             
             override fun sendAnnouncementToPeer(peerID: String) {

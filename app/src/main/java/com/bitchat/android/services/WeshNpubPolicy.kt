@@ -29,7 +29,7 @@ object WeshNpubPolicy {
         hrp == "npub" && data.size == 32 && Bech32.encode(hrp, data) == npub && isXOnlyPoint(data)
     }.getOrDefault(false)
 
-    /** BIP-340 lift_x: x below the field prime and x^3 + 7 a square. Wear shares this file. */
+    /** BIP-340 lift_x: x below the field prime and x^3 + 7 a square. */
     private fun isXOnlyPoint(x: ByteArray): Boolean = runCatching {
         CustomNamedCurves.getByName("secp256k1").curve.decodePoint(byteArrayOf(0x02) + x).isValid
     }.getOrDefault(false)

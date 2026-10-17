@@ -38,4 +38,11 @@ class MessageInteractionUtilsTest {
             timestamp = Date(0),
             senderPeerID = senderPeerId,
         )
+
+    @Test
+    fun `an unnamed remote sender is never mine when my nickname is empty`() {
+        assertFalse(message(sender = "", senderPeerId = "peer-b").isFromSelf("", "peer-a"))
+        assertFalse(message(sender = "#1a2b", senderPeerId = "peer-b").isFromSelf("", "peer-a"))
+        assertTrue(message(sender = "", senderPeerId = "peer-a").isFromSelf("", "peer-a"))
+    }
 }

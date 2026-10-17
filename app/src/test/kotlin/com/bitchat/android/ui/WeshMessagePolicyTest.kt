@@ -109,4 +109,19 @@ class WeshMessagePolicyTest {
         assertEquals("Réception partielle", WeshMessagePolicy.deliveryLabel(DeliveryStatus.PartiallyDelivered(1, 2)))
         assertEquals("Échec de l’envoi", WeshMessagePolicy.deliveryLabel(DeliveryStatus.Failed("synthetic")))
     }
+
+    @Test fun `the public room shows no system notice unless it is our own message`() {
+        fun public(sender: String, peer: String?) = com.bitchat.android.model.BitchatMessage(
+            sender = sender, content = "synthetic", timestamp = java.util.Date(1), isRelay = false, senderPeerID = peer)
+        val shows = { message: com.bitchat.android.model.BitchatMessage ->
+            WeshMessagePolicy.showsInPublicRoom(message, myPeerID = "peer-local", isBlocked = { it == "peer-blocked" })
+        }
+        assertTrue(shows(public("Nora", "peer-remote")))
+        assertTrue(shows(public("system", "peer-local")))
+        assertFalse(shows(public("system", null)))
+        assertFalse(shows(public("system", "peer-remote")))
+        assertFalse(shows(public("Nora", "peer-blocked")))
+        assertFalse(shows(public("Nora", "peer-remote").copy(isPrivate = true)))
+        assertFalse(shows(public("Nora", "peer-remote").copy(channel = "#synthetic")))
+    }
 }
