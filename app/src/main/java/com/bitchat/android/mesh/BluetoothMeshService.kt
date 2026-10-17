@@ -73,40 +73,7 @@ class BluetoothMeshService(
             },
             applyAuthenticatedState = peerManager::applyAuthenticatedPeerState,
             sendState = ::sendAuthenticatedPeerState,
-            onResolution = { peerID -> delegate?.didResolvePrivateMediaPolicy(peerID) }
-        )
-    }
-    private val privateMediaSecurity by lazy { PrivateMediaSecurityController(
-        authenticatedSessionProvider = encryptionService::getAuthenticatedSession,
-        peerStateStatusProvider = authenticatedPeerState::status,
-        isPrivateMediaPinned = authenticatedPeerState::isPrivateMediaPinned
-    ) }
-    private val privateMediaPreparer by lazy {
-        PrivateMediaTransferPreparer(
-            senderID = hexStringToByteArray(myPeerID),
-            ttl = MAX_TTL,
-            policyProvider = privateMediaSecurity::sendPolicy,
-            encrypt = { plaintext, peerID, authenticatedSession ->
-                try {
-                    PrivateMediaEncryptionResult.Success(
-                        encryptionService.encryptForSession(
-                            plaintext,
-                            peerID,
-                            authenticatedSession
-                        )
-                    )
-                } catch (_: com.bitchat.android.noise.NoiseSessionError.SessionGenerationChanged) {
-                    PrivateMediaEncryptionResult.GenerationChanged
-                } catch (_: com.bitchat.android.noise.NoiseSessionError.SessionNotFound) {
-                    PrivateMediaEncryptionResult.GenerationChanged
-                } catch (_: com.bitchat.android.noise.NoiseSessionError.SessionNotEstablished) {
-                    PrivateMediaEncryptionResult.GenerationChanged
-                } catch (_: Exception) {
-                    PrivateMediaEncryptionResult.Failed
-                }
-            },
-            finalizeRoutedAndSigned = ::routeAndSignPrivateMediaStrict,
-            fragment = fragmentManager::createFragments
+            onResolution = {}
         )
     }
     private val securityManager = SecurityManager(encryptionService, myPeerID)
@@ -1002,57 +969,6 @@ class BluetoothMeshService(
         return true
     }
 
-    fun sendFileBroadcast(file: com.bitchat.android.model.BitchatFilePacket) {
-        try {
-            val payload = file.encode()
-            if (payload == null) {
-                Log.e(TAG, "Failed to encode file packet in sendFileBroadcast")
-                return
-            }
-        serviceScope.launch {
-            val packet = BitchatPacket(
-                version = 2u,  // FILE_TRANSFER uses v2 for 4-byte payload length to support large files
-                type = MessageType.FILE_TRANSFER.value,
-                senderID = hexStringToByteArray(myPeerID),
-                recipientID = SpecialRecipients.BROADCAST,
-                timestamp = System.currentTimeMillis().toULong(),
-                payload = payload,
-                signature = null,
-                ttl = MAX_TTL
-            )
-            val signed = signPacketBeforeBroadcast(packet)
-            // Use a stable transferId based on the file TLV payload for progress tracking
-            val transferId = sha256Hex(payload)
-            broadcastRoutedPacket(RoutedPacket(signed, transferId = transferId))
-            try { gossipSyncManager.onPublicPacketSeen(signed) } catch (_: Exception) { }
-        }
-            } catch (e: Exception) {
-            Log.e(TAG, "sendFileBroadcast failed (size=${file.fileSize}): ${e.message}", e)
-        }
-    }
-
-    /** Safe non-interactive entry point: encrypted sends commit; legacy sends require UI consent. */
-    fun sendFilePrivate(recipientPeerID: String, file: com.bitchat.android.model.BitchatFilePacket) {
-        val payload = file.encode() ?: return
-        when (val prepared = prepareFilePrivate(
-            recipientPeerID,
-            file,
-            sha256Hex(payload),
-            allowLegacyFallback = false
-        )) {
-            is PrivateMediaPreparation.Ready -> prepared.transfer.commit()
-            is PrivateMediaPreparation.RequiresLegacyConsent ->
-                Log.w(TAG, "Private media requires explicit one-shot legacy consent")
-            PrivateMediaPreparation.NeedsHandshake -> {
-                Log.d(TAG, "Private media needs a Noise handshake; initiating without sending")
-                initiateNoiseHandshake(recipientPeerID)
-            }
-            PrivateMediaPreparation.AwaitingPeerState -> Unit
-            is PrivateMediaPreparation.Rejected ->
-                Log.w(TAG, "Private media blocked: ${prepared.reason}")
-        }
-    }
-
     fun sendVoiceFrame(recipientPeerID: String?, payload: ByteArray) {
         if (payload.isEmpty()) return
         voiceFrameQueue.trySend(VoiceFrameRequest(recipientPeerID, payload.copyOf()))
@@ -1091,56 +1007,6 @@ class BluetoothMeshService(
         }
     }
 
-    fun prepareFilePrivate(
-        recipientPeerID: String,
-        file: com.bitchat.android.model.BitchatFilePacket,
-        transferId: String,
-        allowLegacyFallback: Boolean
-    ): PrivateMediaPreparation {
-        return when (val outcome = privateMediaPreparer.prepare(
-            recipientPeerID = recipientPeerID,
-            recipientID = hexStringToByteArray(recipientPeerID),
-            file = file,
-            allowLegacyFallback = allowLegacyFallback
-        )) {
-            is PrivateMediaBuildOutcome.RequiresLegacyConsent ->
-                PrivateMediaPreparation.RequiresLegacyConsent(outcome.warning)
-            PrivateMediaBuildOutcome.NeedsHandshake ->
-                PrivateMediaPreparation.NeedsHandshake
-            PrivateMediaBuildOutcome.AwaitingPeerState ->
-                PrivateMediaPreparation.AwaitingPeerState
-            is PrivateMediaBuildOutcome.Rejected ->
-                PrivateMediaPreparation.Rejected(outcome.reason)
-            is PrivateMediaBuildOutcome.Ready -> {
-                val built = outcome.built
-                val routed = RoutedPacket(
-                    packet = built.packet,
-                    transferId = transferId,
-                    preparedPackets = built.fragments
-                )
-                PrivateMediaPreparation.Ready(
-                    PreparedPrivateMediaTransfer(transferId, built.wireMode) {
-                        if (!isActive || terminated || !isBleTransportEnabled()) {
-                            false
-                        } else {
-                            broadcastRoutedPacket(routed)
-                        }
-                    }
-                )
-            }
-        }
-    }
-
-    fun cancelFileTransfer(transferId: String): Boolean {
-        return connectionManager.cancelTransfer(transferId)
-    }
-
-    // Local helper to hash payloads to a stable hex ID for progress mapping
-    private fun sha256Hex(bytes: ByteArray): String = try {
-        val md = java.security.MessageDigest.getInstance("SHA-256")
-        md.update(bytes)
-        md.digest().joinToString("") { "%02x".format(it) }
-    } catch (_: Exception) { bytes.size.toString(16) }
     
     /**
      * Send private message - SIMPLIFIED iOS-compatible version 
@@ -1696,14 +1562,6 @@ class BluetoothMeshService(
         } catch (_: Exception) {
             packet
         }
-    }
-
-    /** Private media must never fall back to an unsigned packet. */
-    private fun routeAndSignPrivateMediaStrict(packet: BitchatPacket): BitchatPacket? {
-        val routed = applyRouteIfAvailable(packet)
-        val signingBytes = routed.toBinaryDataForSigning() ?: return null
-        val signature = encryptionService.signData(signingBytes) ?: return null
-        return routed.copy(signature = signature)
     }
 
     private fun signPacketBeforeBroadcast(packet: BitchatPacket): BitchatPacket {

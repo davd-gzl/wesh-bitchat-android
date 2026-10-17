@@ -187,9 +187,6 @@ dependencies {
     // Security preferences
     implementation(libs.androidx.security.crypto)
     
-    // EXIF orientation handling for images
-    implementation(libs.androidx.exifinterface)
-    
     // Testing
     testImplementation(libs.bundles.testing)
     androidTestImplementation(platform(libs.androidx.compose.bom))

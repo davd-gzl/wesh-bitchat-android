@@ -68,13 +68,6 @@
     <string name="cd_handshake_failed">Handshake thất bại</string>
 
     <!-- Dialog xem file -->
-    <string name="file_viewer_title">📎 File đã nhận</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 Kích thước: %1$s</string>
-    <string name="file_viewer_type">🏷️ Loại: %1$s</string>
-    <string name="file_viewer_open_save">📂 Mở / Lưu</string>
-    <string name="close_with_emoji">❌ Đóng</string>
-    <string name="pick_image">Chọn hình ảnh</string>
 
     <!-- Sheet giới thiệu -->
     <string name="about_offline_mesh_title">Trò chuyện Mesh ngoại tuyến</string>
@@ -124,29 +117,14 @@
     <string name="cd_reachable_via_nostr">Có thể tiếp cận qua Nostr</string>
     <string name="cd_offline_favorite">Yêu thích (ngoại tuyến)</string>
     <string name="cd_scroll_to_bottom">Cuộn xuống dưới</string>
-    <string name="cd_file">File</string>
-    <string name="cd_image">Hình ảnh</string>
     <string name="cd_cancel">Hủy</string>
     <string name="cd_link">Liên kết</string>
-    <string name="cd_pick_media">Chọn media</string>
-    <string name="cd_pick_file">Chọn file</string>
-    <string name="cd_save_current_image">Lưu hình ảnh hiện tại</string>
-    <string name="cd_close">Đóng</string>
-    <string name="cd_image_index_of">Hình ảnh %1$d trong %2$d</string>
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">Ghi tin nhắn thoại</string>
     <string name="cd_offline_mesh_chat">Trò chuyện Mesh ngoại tuyến</string>
     <string name="cd_end_to_end_encryption">Mã hóa đầu cuối</string>
 
     <!-- Hình ảnh &amp; file -->
-    <string name="image_page_of">Hình ảnh %1$d trong %2$d</string>
-    <string name="image_unavailable">Hình ảnh không có sẵn</string>
-    <string name="image_saved_to_downloads">Hình ảnh đã lưu vào \"Downloads\"</string>
-    <string name="image_save_failed">Không thể lưu hình ảnh</string>
-    <string name="toast_image_saved">Hình ảnh đã lưu vào \"Downloads\"</string>
-    <string name="toast_failed_to_save_image">Không thể lưu hình ảnh</string>
-    <string name="pick_file">Chọn file</string>
-    <string name="file_unavailable">[File không có sẵn]</string>
     <string name="unknown">không rõ</string>
 
     <!-- Sheet hành động người dùng -->
@@ -243,18 +221,10 @@
     <string name="type_a_message_placeholder">Nhập tin nhắn …</string>
     <string name="mention">nhắc đến</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">Hình ảnh</string>
-    <string name="media_type_file">File</string>
 
     <!-- Trợ giúp văn bản thông báo -->
-    <string name="notification_sent_image">📷 đã gửi hình ảnh</string>
-    <string name="notification_sent_voice">🎤 đã gửi tin nhắn thoại</string>
-    <string name="notification_sent_file">📎 đã gửi file</string>
 
     <!-- Khả năng truy cập trình phát thoại -->
-    <string name="cd_play_voice">Phát</string>
-    <string name="cd_pause_voice">Tạm dừng</string>
 
     <!-- Mô tả quyền -->
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>

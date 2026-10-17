@@ -4,7 +4,6 @@ import android.app.Application
 import android.util.Log
 import com.bitchat.android.favorites.FavoriteControlMessage
 import com.bitchat.android.favorites.FavoritesPersistenceService
-import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.DeliveryStatus
 import com.bitchat.android.model.NoisePayload
@@ -183,42 +182,8 @@ class NostrDirectMessageHandler(
                     )
                 }
             }
-            NoisePayloadType.FILE_TRANSFER -> {
-                // Properly handle encrypted file transfer
-                val file = BitchatFilePacket.decode(payload.data)
-                if (file != null) {
-                    val uniqueMsgId = java.util.UUID.randomUUID().toString().uppercase()
-                    val savedPath = com.bitchat.android.features.file.FileUtils.saveIncomingFile(application, file)
-                    val message = BitchatMessage(
-                        id = uniqueMsgId,
-                        sender = senderNickname,
-                        content = savedPath,
-                        type = com.bitchat.android.features.file.FileUtils.messageTypeForMime(file.mimeType),
-                        timestamp = timestamp,
-                        isRelay = false,
-                        isPrivate = true,
-                        recipientNickname = state.getNicknameValue(),
-                        senderPeerID = conversationID,
-                        senderNostrPubkey = senderPubkey
-                    )
-                    Log.d(TAG, "📄 Saved Nostr encrypted incoming file to $savedPath (msgId=$uniqueMsgId)")
-                    val admitted = withContext(Dispatchers.Main) {
-                        privateChatManager.handleIncomingPrivateMessageDurably(
-                            message = message,
-                            suppressUnread = false,
-                            origin = PrivateMessageOrigin.NOSTR
-                        )
-                    }
-                    if (!admitted) {
-                        com.bitchat.android.features.file.FileUtils.deleteStoredMediaPaths(
-                            application,
-                            listOf(savedPath)
-                        )
-                    }
-                } else {
-                    Log.w(TAG, "Failed to decode Nostr file transfer from $conversationID")
-                }
-            }
+            // Wesh has no media: a file is dropped before decoding, with no message, file or ACK.
+            NoisePayloadType.FILE_TRANSFER,
             NoisePayloadType.VERIFY_CHALLENGE,
             NoisePayloadType.VERIFY_RESPONSE,
             NoisePayloadType.VOICE_FRAME,

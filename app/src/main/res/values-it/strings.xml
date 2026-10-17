@@ -68,13 +68,6 @@
     <string name="cd_handshake_failed">Handshake fallito</string>
 
     <!-- Finestra di visualizzazione file -->
-    <string name="file_viewer_title">📎 File ricevuto</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 Dimensione: %1$s</string>
-    <string name="file_viewer_type">🏷️ Tipo: %1$s</string>
-    <string name="file_viewer_open_save">📂 Apri / Salva</string>
-    <string name="close_with_emoji">❌ Chiudi</string>
-    <string name="pick_image">Scegli immagine</string>
 
     <!-- Schermata informazioni -->
     <string name="about_offline_mesh_title">Chat mesh offline</string>
@@ -124,29 +117,14 @@
     <string name="cd_reachable_via_nostr">Raggiungibile via Nostr</string>
     <string name="cd_offline_favorite">Preferito offline</string>
     <string name="cd_scroll_to_bottom">Scorri in fondo</string>
-    <string name="cd_file">File</string>
-    <string name="cd_image">Immagine</string>
     <string name="cd_cancel">Annulla</string>
     <string name="cd_link">Link</string>
-    <string name="cd_pick_media">Scegli media</string>
-    <string name="cd_pick_file">Scegli file</string>
-    <string name="cd_save_current_image">Salva immagine corrente</string>
-    <string name="cd_close">Chiudi</string>
-    <string name="cd_image_index_of">Immagine %1$d di %2$d</string>
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">Registra nota vocale</string>
     <string name="cd_offline_mesh_chat">Chat mesh offline</string>
     <string name="cd_end_to_end_encryption">Crittografia end-to-end</string>
 
     <!-- Immagini e file -->
-    <string name="image_page_of">Immagine %1$d di %2$d</string>
-    <string name="image_unavailable">Immagine non disponibile</string>
-    <string name="image_saved_to_downloads">Immagine salvata in Download</string>
-    <string name="image_save_failed">Impossibile salvare l\'immagine</string>
-    <string name="toast_image_saved">Immagine salvata in Download</string>
-    <string name="toast_failed_to_save_image">Impossibile salvare l\'immagine</string>
-    <string name="pick_file">Scegli file</string>
-    <string name="file_unavailable">[file non disponibile]</string>
     <string name="unknown">sconosciuto</string>
 
     <!-- Azioni utente schermata -->
@@ -243,18 +221,10 @@
     <string name="type_a_message_placeholder">scrivi un messaggio…</string>
     <string name="mention">menzione</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">Immagine</string>
-    <string name="media_type_file">File</string>
 
     <!-- Helper testo notifiche -->
-    <string name="notification_sent_image">📷 ha inviato un\'immagine</string>
-    <string name="notification_sent_voice">🎤 ha inviato un messaggio vocale</string>
-    <string name="notification_sent_file">📎 ha inviato un file</string>
 
     <!-- Accessibilità lettore vocale -->
-    <string name="cd_play_voice">Riproduci</string>
-    <string name="cd_pause_voice">Pausa</string>
 
     <!-- Descrizioni permessi -->
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
@@ -282,7 +252,6 @@
     <string name="cancel">Annulla</string>
 
     <!-- Simboli e stringhe speciali -->
-    <string name="image_counter">%1$d / %2$d</string>
     <string name="dot">.</string>
 
     <!-- Icone stato messaggio -->

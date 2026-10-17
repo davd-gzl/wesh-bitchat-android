@@ -2,6 +2,7 @@ package com.bitchat.android.ui
 
 import com.bitchat.android.favorites.FavoritesPersistenceService
 import com.bitchat.android.model.BitchatMessage
+import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.model.DeliveryStatus
 import com.bitchat.android.mesh.PeerFingerprintManager
 import com.bitchat.android.mesh.MeshService
@@ -508,7 +509,8 @@ class PrivateChatManager(
                     Log.w(TAG, "Failed to persist local read for message ${msg.id}: ${e.message}")
                 }
             }
-            if (isFromTarget && meshPeerID != null && !hasReadReceiptBeenSent(msg.id)) {
+            // A media placeholder stands for something never received: it is never reported read.
+            if (isFromTarget && msg.type == BitchatMessageType.Message && meshPeerID != null && !hasReadReceiptBeenSent(msg.id)) {
                 try {
                     if (hasMesh) {
                         meshService.sendReadReceipt(msg.id, meshPeerID, myNickname)

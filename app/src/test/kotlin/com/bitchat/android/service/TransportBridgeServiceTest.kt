@@ -27,7 +27,7 @@ class TransportBridgeServiceTest {
     }
 
     @Test
-    fun `bridged prepared plan retains exact payloads with decremented TTL`() {
+    fun `bridged packet keeps its payload with a decremented TTL`() {
         var captured: RoutedPacket? = null
         TransportBridgeService.register(
             targetId,
@@ -52,25 +52,16 @@ class TransportBridgeServiceTest {
             signature = ByteArray(64) { 6 },
             ttl = 7u
         )
-        val prepared = listOf(
-            packet.copy(type = MessageType.FRAGMENT.value, payload = byteArrayOf(10)),
-            packet.copy(type = MessageType.FRAGMENT.value, payload = byteArrayOf(11))
-        )
-
         TransportBridgeService.broadcast(
             sourceId = "source-${UUID.randomUUID()}",
-            packet = RoutedPacket(packet, preparedPackets = prepared)
+            packet = RoutedPacket(packet)
         )
 
         val forwarded = captured
         assertNotNull(forwarded)
         assertEquals(6u.toUByte(), forwarded!!.packet.ttl)
-        assertEquals(2, forwarded.preparedPackets?.size)
-        forwarded.preparedPackets!!.zip(prepared).forEach { (actual, original) ->
-            assertEquals(6u.toUByte(), actual.ttl)
-            assertTrue(actual.payload.contentEquals(original.payload))
-            assertEquals(original.type, actual.type)
-        }
+        assertTrue(forwarded.packet.payload.contentEquals(packet.payload))
+        assertEquals(packet.type, forwarded.packet.type)
     }
 
     @Test

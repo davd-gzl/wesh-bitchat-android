@@ -35,15 +35,16 @@ class SecureIdentityStateManager {
         private const val KEY_CACHED_PEER_NOISE_KEYS = "cached_peer_noise_keys"
         private const val KEY_CACHED_NOISE_FINGERPRINTS = "cached_noise_fingerprints"
         private const val KEY_CACHED_FINGERPRINT_NICKNAMES = "cached_fingerprint_nicknames"
-        private const val KEY_PRIVATE_MEDIA_CAPABILITY_PINS = "private_media_capability_pins_v1"
+        /** Written by builds that sent media; now only erased, here and by the panic wipe. */
+        private const val KEY_LEGACY_PRIVATE_MEDIA_CAPABILITY_PINS = "private_media_capability_pins_v1"
         private const val KEY_AUTHENTICATED_PEER_STATES = "authenticated_peer_states_v1"
 
         // BLE, Wi-Fi Aware, and Noise services each hold their own manager
-        // instance over the same encrypted preferences. Serialize pin updates
-        // process-wide so concurrent promotions cannot lose one another or
+        // instance over the same encrypted preferences. Serialize peer-state updates
+        // process-wide so concurrent proofs cannot lose one another or
         // race a panic wipe.
-        private val privateMediaPinsLock = Any()
-        private var privateMediaPinsEpoch = 0L
+        private val peerStateLock = Any()
+        private var peerStateEpoch = 0L
         @Volatile private var encryptedPreferences: SharedPreferences? = null
 
         private fun openPreferences(context: Context): SharedPreferences =
@@ -63,11 +64,11 @@ class SecureIdentityStateManager {
     
     private val prefs: SharedPreferences
     private val lock = Any()
-    private var privateMediaPinsEpochAtCreation: Long
+    private var peerStateEpochAtCreation: Long
 
     constructor(context: Context) {
-        privateMediaPinsEpochAtCreation = synchronized(privateMediaPinsLock) {
-            privateMediaPinsEpoch
+        peerStateEpochAtCreation = synchronized(peerStateLock) {
+            peerStateEpoch
         }
         prefs = openPreferences(context)
     }
@@ -75,8 +76,8 @@ class SecureIdentityStateManager {
     /** Test-only storage injection; production always uses encrypted prefs. */
     internal constructor(prefs: SharedPreferences, testOnly: Boolean) {
         require(testOnly) { "Plain SharedPreferences are test-only" }
-        privateMediaPinsEpochAtCreation = synchronized(privateMediaPinsLock) {
-            privateMediaPinsEpoch
+        peerStateEpochAtCreation = synchronized(peerStateLock) {
+            peerStateEpoch
         }
         this.prefs = prefs
     }
@@ -282,18 +283,7 @@ class SecureIdentityStateManager {
         }
     }
 
-    // MARK: - Authenticated private-media capability pins
-
-    fun isPrivateMediaCapable(fingerprint: String): Boolean {
-        if (!isValidFingerprint(fingerprint)) return false
-        return synchronized(privateMediaPinsLock) {
-            if (privateMediaPinsEpochAtCreation != privateMediaPinsEpoch) {
-                return@synchronized false
-            }
-            prefs.getStringSet(KEY_PRIVATE_MEDIA_CAPABILITY_PINS, emptySet())
-                ?.any { it.equals(fingerprint, ignoreCase = true) } == true
-        }
-    }
+    // MARK: - Authenticated peer state
 
     /** Persist capabilities and Ed25519 key from a decoded Noise 0x21 proof in one edit. */
     @SuppressLint("UseKtx")
@@ -304,9 +294,9 @@ class SecureIdentityStateManager {
     ): Boolean {
         if (!isValidFingerprint(fingerprint) || state.signingPublicKey.size != 32) return false
         val normalizedFingerprint = fingerprint.lowercase()
-        return synchronized(privateMediaPinsLock) {
+        return synchronized(peerStateLock) {
             // A controller that survived panic must not republish pre-wipe proof state.
-            if (privateMediaPinsEpochAtCreation != privateMediaPinsEpoch) return@synchronized false
+            if (peerStateEpochAtCreation != peerStateEpoch) return@synchronized false
             val records = prefs.getStringSet(KEY_AUTHENTICATED_PEER_STATES, emptySet())
                 ?.toMutableSet() ?: mutableSetOf()
             records.removeAll { it.startsWith("$normalizedFingerprint:") }
@@ -315,15 +305,11 @@ class SecureIdentityStateManager {
                 "$normalizedFingerprint:$capabilitiesHex:${state.signingPublicKey.hexEncodedString()}"
             )
 
-            val editor = prefs.edit().putStringSet(KEY_AUTHENTICATED_PEER_STATES, records)
-            if (state.capabilities.contains(PeerCapabilities.PRIVATE_MEDIA)) {
-                val pins = prefs.getStringSet(KEY_PRIVATE_MEDIA_CAPABILITY_PINS, emptySet())
-                    ?.mapTo(mutableSetOf()) { it.lowercase() } ?: mutableSetOf()
-                pins.add(normalizedFingerprint)
-                editor.putStringSet(KEY_PRIVATE_MEDIA_CAPABILITY_PINS, pins)
-            }
+            val editor = prefs.edit()
+                .putStringSet(KEY_AUTHENTICATED_PEER_STATES, records)
+                .remove(KEY_LEGACY_PRIVATE_MEDIA_CAPABILITY_PINS)
             // This result is a security boundary: do not publish the Ed key in memory unless the
-            // encrypted identity record and its HSTS pin were durably committed together.
+            // encrypted identity record was durably committed.
             editor.commit().also { committed ->
                 if (committed) onCommitted()
             }
@@ -332,8 +318,8 @@ class SecureIdentityStateManager {
 
     fun getAuthenticatedPeerState(fingerprint: String): AuthenticatedPeerState? {
         if (!isValidFingerprint(fingerprint)) return null
-        return synchronized(privateMediaPinsLock) {
-            if (privateMediaPinsEpochAtCreation != privateMediaPinsEpoch) return@synchronized null
+        return synchronized(peerStateLock) {
+            if (peerStateEpochAtCreation != peerStateEpoch) return@synchronized null
             val prefix = "${fingerprint.lowercase()}:"
             val record = prefs.getStringSet(KEY_AUTHENTICATED_PEER_STATES, emptySet())
                 ?.firstOrNull { it.startsWith(prefix) } ?: return@synchronized null
@@ -431,9 +417,9 @@ class SecureIdentityStateManager {
     @SuppressLint("UseKtx")
     fun clearIdentityData() {
         try {
-            synchronized(privateMediaPinsLock) {
-                privateMediaPinsEpoch += 1
-                privateMediaPinsEpochAtCreation = privateMediaPinsEpoch
+            synchronized(peerStateLock) {
+                peerStateEpoch += 1
+                peerStateEpochAtCreation = peerStateEpoch
                 DurableIdentityPreferences.clear(prefs)
             }
             Log.w(TAG, "All identity data cleared")

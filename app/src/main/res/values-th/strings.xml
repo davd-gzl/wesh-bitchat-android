@@ -68,13 +68,6 @@
     <string name="cd_handshake_failed">การจับมือล้มเหลว</string>
 
     <!-- กล่องโต้ตอบตัวดูไฟล์ -->
-    <string name="file_viewer_title">📎 รับไฟล์แล้ว</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 ขนาด: %1$s</string>
-    <string name="file_viewer_type">🏷️ ประเภท: %1$s</string>
-    <string name="file_viewer_open_save">📂 เปิด / บันทึก</string>
-    <string name="close_with_emoji">❌ ปิด</string>
-    <string name="pick_image">เลือกภาพ</string>
 
     <!-- แผ่นข้อมูลเกี่ยวกับ -->
     <string name="about_offline_mesh_title">แชทเมชออฟไลน์</string>
@@ -124,29 +117,14 @@
     <string name="cd_reachable_via_nostr">ติดต่อได้ผ่าน Nostr</string>
     <string name="cd_offline_favorite">รายการโปรด (ออฟไลน์)</string>
     <string name="cd_scroll_to_bottom">เลื่อนไปด้านล่างสุด</string>
-    <string name="cd_file">ไฟล์</string>
-    <string name="cd_image">รูปภาพ</string>
     <string name="cd_cancel">ยกเลิก</string>
     <string name="cd_link">ลิงก์</string>
-    <string name="cd_pick_media">เลือกมีเดีย</string>
-    <string name="cd_pick_file">เลือกไฟล์</string>
-    <string name="cd_save_current_image">บันทึกรูปภาพปัจจุบัน</string>
-    <string name="cd_close">ปิด</string>
-    <string name="cd_image_index_of">รูปภาพ %1$d จาก %2$d</string>
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">บันทึกบันทึกเสียง</string>
     <string name="cd_offline_mesh_chat">แชทเมชออฟไลน์</string>
     <string name="cd_end_to_end_encryption">การเข้ารหัสแบบปลายทางถึงปลายทาง</string>
 
     <!-- รูปภาพ &amp; ไฟล์ -->
-    <string name="image_page_of">รูปภาพ %1$d จาก %2$d</string>
-    <string name="image_unavailable">ไม่สามารถใช้รูปภาพได้</string>
-    <string name="image_saved_to_downloads">บันทึกรูปภาพไว้ใน "ดาวน์โหลด" แล้ว</string>
-    <string name="image_save_failed">ไม่สามารถบันทึกรูปภาพได้</string>
-    <string name="toast_image_saved">บันทึกรูปภาพไว้ใน "ดาวน์โหลด" แล้ว</string>
-    <string name="toast_failed_to_save_image">ไม่สามารถบันทึกรูปภาพได้</string>
-    <string name="pick_file">เลือกไฟล์</string>
-    <string name="file_unavailable">[ไม่สามารถใช้ไฟล์ได้]</string>
     <string name="unknown">ไม่ทราบ</string>
 
     <!-- แผ่นการทำงานของผู้ใช้ -->
@@ -243,18 +221,10 @@
     <string name="type_a_message_placeholder">พิมพ์ข้อความ…</string>
     <string name="mention">กล่าวถึง</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">รูปภาพ</string>
-    <string name="media_type_file">ไฟล์</string>
 
     <!-- ตัวช่วยข้อความการแจ้งเตือน -->
-    <string name="notification_sent_image">📷 ส่งรูปภาพแล้ว</string>
-    <string name="notification_sent_voice">🎤 ส่งบันทึกเสียงแล้ว</string>
-    <string name="notification_sent_file">📎 ส่งไฟล์แล้ว</string>
 
     <!-- การช่วยสำหรับการเข้าถึงของเครื่องเล่นเสียง -->
-    <string name="cd_play_voice">เล่น</string>
-    <string name="cd_pause_voice">หยุดชั่วคราว</string>
 
     <!-- คำอธิบายสิทธิ์ -->
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
