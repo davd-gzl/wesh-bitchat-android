@@ -33,6 +33,9 @@ class PacketProcessor(
         private const val TAG = "PacketProcessor"
         // Header, IDs and signature counted against the byte bound for every queued packet.
         private const val PACKET_OVERHEAD_BYTES = 128L
+
+        /** Quota key of a packet received over the transport link [linkID]. */
+        fun linkQuotaKey(linkID: String): String = "link:$linkID"
     }
     
     // Delegate for callbacks
@@ -107,7 +110,7 @@ class PacketProcessor(
 
     /** Quotas follow the link a packet arrived on, never the sender ID it claims. */
     private fun quotaKey(routed: RoutedPacket, peerID: String): String =
-        routed.ingressLinkID?.let { "link:$it" } ?: routed.relayAddress?.let { "addr:$it" } ?: "peer:$peerID"
+        routed.ingressLinkID?.let(::linkQuotaKey) ?: routed.relayAddress?.let { "addr:$it" } ?: "peer:$peerID"
 
     /** Starts a queue for a new peer, forgetting an idle one when the table is full. */
     private fun newQueueLocked(peerID: String): PeerQueue? {
@@ -215,10 +218,15 @@ class PacketProcessor(
                 isDirectedToAnotherPeer(packet) -> Unit
                 else -> validPacket = false
             }
-            MessageType.VOICE_FRAME -> validPacket = delegate?.handleVoiceFrame(routed) ?: false
+            // Wesh has no voice: a BitChat live voice frame is never handled, never relayed and
+            // never refreshes liveness, whoever sent it and whoever it is addressed to.
+            MessageType.VOICE_FRAME -> validPacket = false
             MessageType.LEAVE -> handleLeave(routed)
             MessageType.FRAGMENT -> {
-                if (isFileTransferFragment(packet)) {
+                if (isVoiceFrameFragment(packet)) {
+                    // Same for a voice frame split into fragments: neither reassembled nor relayed.
+                    validPacket = false
+                } else if (isFileTransferFragment(packet)) {
                     // No media is reassembled here. Fragments of a file for another peer are relayed
                     // as before; those addressed to us or broadcast are dropped.
                     validPacket = isDirectedToAnotherPeer(packet)
@@ -296,7 +304,8 @@ class PacketProcessor(
      * Handle message fragments. Returns false for a refused fragment, which is then not relayed.
      */
     private suspend fun handleFragment(routed: RoutedPacket): Boolean {
-        val result = delegate?.handleFragment(routed.packet) ?: return false
+        // Assembly slots follow the ingress link, like the queue quotas above.
+        val result = delegate?.handleFragment(routed.packet, quotaKey(routed, routed.peerID ?: "")) ?: return false
         if (result is FragmentResult.Refused) return false
         if (result !is FragmentResult.Complete) return true
         val reassembledPacket = result.packet
@@ -331,9 +340,15 @@ class PacketProcessor(
     }
 
     private fun isFileTransferFragment(packet: BitchatPacket): Boolean =
-        packet.payload.size >= com.bitchat.android.model.FragmentPayload.HEADER_SIZE &&
-            packet.payload[com.bitchat.android.model.FragmentPayload.HEADER_SIZE - 1].toUByte() ==
-            MessageType.FILE_TRANSFER.value
+        fragmentOriginalType(packet) == MessageType.FILE_TRANSFER.value
+
+    private fun isVoiceFrameFragment(packet: BitchatPacket): Boolean =
+        fragmentOriginalType(packet) == MessageType.VOICE_FRAME.value
+
+    private fun fragmentOriginalType(packet: BitchatPacket): UByte? =
+        if (packet.payload.size >= com.bitchat.android.model.FragmentPayload.HEADER_SIZE) {
+            packet.payload[com.bitchat.android.model.FragmentPayload.HEADER_SIZE - 1].toUByte()
+        } else null
 
     /**
      * Handle REQUEST_SYNC packets (public, TTL=1)
@@ -408,10 +423,10 @@ interface PacketProcessorDelegate {
     fun handleNoiseEncrypted(routed: RoutedPacket): Boolean
     suspend fun handleAnnounce(routed: RoutedPacket): Boolean
     fun handleMessage(routed: RoutedPacket)
-    fun handleVoiceFrame(routed: RoutedPacket): Boolean = false
     fun isRelaySuppressed(packet: BitchatPacket, peerID: String): Boolean = false
     fun handleLeave(routed: RoutedPacket)
-    fun handleFragment(packet: BitchatPacket): FragmentResult
+    /** [ingressKey] is the quota key of the link the fragment arrived on. */
+    fun handleFragment(packet: BitchatPacket, ingressKey: String): FragmentResult
     fun handleRequestSync(routed: RoutedPacket)
     
     // Communication

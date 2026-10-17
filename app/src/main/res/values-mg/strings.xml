@@ -120,7 +120,6 @@
     <string name="cd_cancel">Hanafoana</string>
     <string name="cd_link">Rohy</string>
     <string name="cd_privacy_protected">About message privacy</string>
-    <string name="cd_record_voice">Handrakitra feo</string>
     <string name="cd_offline_mesh_chat">Mesh Chat tsy an-tserasera</string>
     <string name="cd_end_to_end_encryption">Fandokoana Farany amin\'ny Farany</string>
 
@@ -242,7 +241,6 @@
     <!-- Karazana alalana -->
     <string name="perm_type_nearby_devices">Fitaovana Akaiky</string>
     <string name="perm_type_precise_location">Toerana Marina</string>
-    <string name="perm_type_microphone">Mikraofona</string>
     <string name="perm_type_notifications">Fampandrenesana</string>
     <string name="perm_type_battery_optimization">Fanamafisana Bateria</string>
     <string name="perm_type_other">Hafa</string>

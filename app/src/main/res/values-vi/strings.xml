@@ -120,7 +120,6 @@
     <string name="cd_cancel">Hủy</string>
     <string name="cd_link">Liên kết</string>
     <string name="cd_privacy_protected">About message privacy</string>
-    <string name="cd_record_voice">Ghi tin nhắn thoại</string>
     <string name="cd_offline_mesh_chat">Trò chuyện Mesh ngoại tuyến</string>
     <string name="cd_end_to_end_encryption">Mã hóa đầu cuối</string>
 
@@ -239,7 +238,6 @@
     <!-- Loại quyền -->
     <string name="perm_type_nearby_devices">Thiết bị gần đó</string>
     <string name="perm_type_precise_location">Vị trí chính xác</string>
-    <string name="perm_type_microphone">Microphone</string>
     <string name="perm_type_notifications">Thông báo</string>
     <string name="perm_type_battery_optimization">Tối ưu hóa pin</string>
     <string name="perm_type_other">Khác</string>

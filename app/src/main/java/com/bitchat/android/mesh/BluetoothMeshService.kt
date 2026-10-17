@@ -20,7 +20,6 @@ import com.bitchat.android.util.toHexString
 import com.bitchat.android.services.VerificationService
 import com.bitchat.android.service.TransportBridgeService
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
 import java.util.*
 import kotlin.math.sign
 import kotlin.random.Random
@@ -97,8 +96,6 @@ class BluetoothMeshService(
     } else null
     internal val connectionManager = BluetoothConnectionManager(context, myPeerID, fragmentManager) // Made internal for access
     private val packetProcessor = PacketProcessor(myPeerID)
-    private data class VoiceFrameRequest(val recipientPeerID: String?, val payload: ByteArray)
-    private val voiceFrameQueue = Channel<VoiceFrameRequest>(capacity = 128)
     private lateinit var gossipSyncManager: GossipSyncManager
     // Service-level notification manager for background (no-UI) DMs
     private val serviceNotificationManager = com.bitchat.android.ui.NotificationManager(
@@ -118,17 +115,14 @@ class BluetoothMeshService(
     private val publicSendGeneration = java.util.concurrent.atomic.AtomicLong()
     
     init {
-        serviceScope.launch {
-            for (request in voiceFrameQueue) dispatchVoiceFrame(request)
-        }
         Log.i(TAG, "Initializing BluetoothMeshService for peer=$myPeerID")
         VerificationService.configure(encryptionService)
         setupDelegates()
         messageHandler.packetProcessor = packetProcessor
         com.bitchat.android.services.IncomingMessageAdmission.install(context)
         messageHandler.applyInboundPolicy(com.bitchat.android.BuildConfig.WESH_POLICY)
-        fragmentManager.acceptMediaFragments = messageHandler.acceptIncomingMedia
-        if (com.bitchat.android.BuildConfig.WESH_POLICY) com.bitchat.android.features.voice.LiveVoicePreferences.forceDisabled = true
+        // Wesh ships no media: file fragments are never buffered.
+        fragmentManager.acceptMediaFragments = false
         //startPeriodicDebugLogging()
 
         // Flush queued private messages as soon as a BLE Noise session authenticates,
@@ -633,16 +627,13 @@ class BluetoothMeshService(
                     } catch (_: Exception) { }
                 }
             }
-
-            override fun handleVoiceFrame(routed: RoutedPacket): Boolean =
-                messageHandler.handlePublicVoiceFrame(routed)
             
             override fun handleLeave(routed: RoutedPacket) {
                 serviceScope.launch { messageHandler.handleLeave(routed) }
             }
             
-            override fun handleFragment(packet: BitchatPacket): FragmentResult {
-                val result = fragmentManager.receiveFragment(packet)
+            override fun handleFragment(packet: BitchatPacket, ingressKey: String): FragmentResult {
+                val result = fragmentManager.receiveFragment(packet, ingressKey)
                 if (result.keptForSync) {
                     try {
                         val isBroadcast = (packet.recipientID == null || packet.recipientID.contentEquals(SpecialRecipients.BROADCAST))
@@ -967,44 +958,6 @@ class BluetoothMeshService(
         if (signed.signature?.size != 64) return false
         broadcastRoutedPacket(RoutedPacket(signed))
         return true
-    }
-
-    fun sendVoiceFrame(recipientPeerID: String?, payload: ByteArray) {
-        if (payload.isEmpty()) return
-        voiceFrameQueue.trySend(VoiceFrameRequest(recipientPeerID, payload.copyOf()))
-    }
-
-    private fun dispatchVoiceFrame(request: VoiceFrameRequest) {
-        try {
-            val recipientPeerID = request.recipientPeerID
-            val packet = if (recipientPeerID == null) {
-                BitchatPacket(
-                    version = 1u,
-                    type = MessageType.VOICE_FRAME.value,
-                    senderID = hexStringToByteArray(myPeerID),
-                    recipientID = SpecialRecipients.BROADCAST,
-                    timestamp = System.currentTimeMillis().toULong(),
-                    payload = request.payload,
-                    ttl = MAX_TTL
-                )
-            } else {
-                if (!encryptionService.hasEstablishedSession(recipientPeerID)) return
-                val plaintext = NoisePayload(NoisePayloadType.VOICE_FRAME, request.payload).encode()
-                val ciphertext = encryptionService.encrypt(plaintext, recipientPeerID)
-                BitchatPacket(
-                    version = 1u,
-                    type = MessageType.NOISE_ENCRYPTED.value,
-                    senderID = hexStringToByteArray(myPeerID),
-                    recipientID = hexStringToByteArray(recipientPeerID),
-                    timestamp = System.currentTimeMillis().toULong(),
-                    payload = ciphertext,
-                    ttl = MAX_TTL
-                )
-            }
-            broadcastRoutedPacket(RoutedPacket(signPacketBeforeBroadcast(packet)))
-        } catch (e: Exception) {
-            Log.w(TAG, "Live voice frame send failed: ${e.message}")
-        }
     }
 
     

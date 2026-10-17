@@ -125,7 +125,6 @@
   <string name="cd_scroll_to_bottom">Tatal ke bawah</string>
   <string name="cd_cancel">Batal</string>
   <string name="cd_link">Pautan</string>
-  <string name="cd_record_voice">Rakam nota suara</string>
   <string name="cd_offline_mesh_chat">Sembang Mesh Luar Talian</string>
   <string name="cd_end_to_end_encryption">Penyulitan Hujung-ke-Hujung</string>
   <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
@@ -275,8 +274,6 @@
 
   <!-- Notification text helpers -->
 
-  <!-- Voice player accessibility -->
-
   <!-- Permission descriptions -->
   <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
   <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>
@@ -290,7 +287,6 @@
   <!-- Permission types -->
   <string name="perm_type_nearby_devices">Peranti Berdekatan</string>
   <string name="perm_type_precise_location">Lokasi Tepat</string>
-  <string name="perm_type_microphone">Mikrofon</string>
   <string name="perm_type_notifications">Pemberitahuan</string>
   <string name="perm_type_battery_optimization">Pengoptimuman Bateri</string>
   <string name="perm_type_other">Lain-lain</string>

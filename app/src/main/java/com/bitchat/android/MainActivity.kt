@@ -605,7 +605,7 @@ class MainActivity : OrientationAwareActivity() {
                 mainViewModel.updateOnboardingState(OnboardingState.LOCATION_CHECK)
                 mainViewModel.updateLocationLoading(false)
             }
-            currentBatteryOptimizationStatus == BatteryOptimizationStatus.ENABLED -> {
+            !BuildConfig.WESH_POLICY && currentBatteryOptimizationStatus == BatteryOptimizationStatus.ENABLED -> {
                 // Battery optimization still enabled, show battery optimization screen
                 mainViewModel.updateBatteryOptimizationStatus(currentBatteryOptimizationStatus)
                 mainViewModel.updateOnboardingState(OnboardingState.BATTERY_OPTIMIZATION_CHECK)
@@ -650,6 +650,11 @@ class MainActivity : OrientationAwareActivity() {
      * Check Battery Optimization status and proceed with onboarding flow
      */
     private fun checkBatteryOptimizationAndProceed() {
+        // Wesh never shows BitChat's battery optimization screen: the Pavé welcome is the onboarding.
+        if (BuildConfig.WESH_POLICY) {
+            proceedWithPermissionCheck()
+            return
+        }
         // For first-time users, skip battery optimization check and go straight to permissions
         // We'll check battery optimization after permissions are granted
         if (permissionManager.isFirstTimeLaunch()) {

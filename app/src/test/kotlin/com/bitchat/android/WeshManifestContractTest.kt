@@ -19,6 +19,7 @@ class WeshManifestContractTest {
             "ACCESS_BACKGROUND_LOCATION", "READ_MEDIA_IMAGES", "READ_MEDIA_VIDEO", "READ_MEDIA_AUDIO",
             "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE",
             "RECORD_AUDIO", "NEARBY_WIFI_DEVICES", "ACCESS_LOCAL_NETWORK",
+            "ACCESS_WIFI_STATE", "CHANGE_WIFI_STATE", "CHANGE_NETWORK_STATE",
             "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "FOREGROUND_SERVICE_LOCATION", "FOREGROUND_SERVICE_DATA_SYNC"
         ).forEach { permission ->
             val found = declarations(permission)
@@ -53,12 +54,51 @@ class WeshManifestContractTest {
     }
 
     @Test
+    fun `wifi aware stays off under the Wesh policy and declares no manifest surface`() {
+        // The Wi-Fi permissions above are removed because nothing can switch Wi-Fi Aware on in Wesh.
+        val application = File("src/main/java/com/bitchat/android/BitchatApplication.kt").readText()
+        assertTrue(Regex("""val enabled = !BuildConfig\.WESH_POLICY &&\s+com\.bitchat\.android\.ui\.debug\.DebugPreferenceManager\.getWifiAwareEnabled""").containsMatchIn(application))
+        assertFalse(manifest.contains("android.hardware.wifi.aware"))
+        assertFalse(manifest.contains("wifiaware"))
+        // The Internet mode watches the default network: ACCESS_NETWORK_STATE stays, once, not removed.
+        assertFalse(declarations("ACCESS_NETWORK_STATE").single().contains("tools:node"))
+    }
+
+    @Test
+    fun `only the wesh URL scheme is registered with the OS`() {
+        listOf(manifest, File("src/debug/AndroidManifest.xml").readText()).forEach { source ->
+            val schemes = Regex("""android:scheme="([^"]*)"""").findAll(source).map { it.groupValues[1] }.toList()
+            assertTrue("unexpected URL schemes $schemes", schemes.all { it == "wesh" })
+            assertFalse(source.contains("""android:scheme="bitchat""""))
+        }
+    }
+
+    @Test
     fun `mesh service is a connected device service only and no APK sharing surface ships`() {
         assertTrue(manifest.contains("""android:foregroundServiceType="connectedDevice""""))
         assertFalse(manifest.contains("dataSync"))
         assertFalse(manifest.contains("HotspotActivity"))
         assertFalse(manifest.contains("SystemForegroundService"))
         assertFalse(manifest.contains("BitChat"))
+    }
+
+    @Test
+    fun `the microphone can never be requested and no audio capture code ships`() {
+        // RECORD_AUDIO and MODIFY_AUDIO_SETTINGS may appear only as tools:node="remove" guards.
+        val audio = Regex("""<uses-permission(?:-sdk-23)?[^>]*android:name="android\.permission\.(RECORD_AUDIO|MODIFY_AUDIO_SETTINGS)"[^>]*/>""")
+            .findAll(manifest).map { it.value }.toList()
+        assertEquals(1, declarations("RECORD_AUDIO").size)
+        audio.forEach { assertTrue("$it must use tools:node=remove", it.contains("""tools:node="remove"""")) }
+        val debugManifest = File("src/debug/AndroidManifest.xml").readText()
+        assertFalse(debugManifest.contains("RECORD_AUDIO") || debugManifest.contains("MODIFY_AUDIO_SETTINGS"))
+        assertFalse(File("src/main/java/com/bitchat/android/features/voice").exists())
+        val sources = listOf("src/main/java", "src/debug/java")
+            .flatMap { root -> File(root).walkTopDown().filter { it.extension == "kt" || it.extension == "java" }.toList() }
+        assertTrue(sources.isNotEmpty())
+        listOf("permission.RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS", "MediaRecorder", "AudioRecord").forEach { needle ->
+            val offenders = sources.filter { it.readText().contains(needle) }.map { it.name }
+            assertTrue("$needle still referenced by $offenders", offenders.isEmpty())
+        }
     }
 
     @Test

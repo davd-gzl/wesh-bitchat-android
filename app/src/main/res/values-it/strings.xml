@@ -120,7 +120,6 @@
     <string name="cd_cancel">Annulla</string>
     <string name="cd_link">Link</string>
     <string name="cd_privacy_protected">About message privacy</string>
-    <string name="cd_record_voice">Registra nota vocale</string>
     <string name="cd_offline_mesh_chat">Chat mesh offline</string>
     <string name="cd_end_to_end_encryption">Crittografia end-to-end</string>
 
@@ -239,7 +238,6 @@
     <!-- Tipi di permessi -->
     <string name="perm_type_nearby_devices">Dispositivi vicini</string>
     <string name="perm_type_precise_location">Posizione precisa</string>
-    <string name="perm_type_microphone">Microfono</string>
     <string name="perm_type_notifications">Notifiche</string>
     <string name="perm_type_battery_optimization">Ottimizzazione batteria</string>
     <string name="perm_type_other">Altro</string>

@@ -273,22 +273,24 @@ private fun NicknameField(nickname: String, onChange: (String) -> Unit, onShuffl
     Column(verticalArrangement = Arrangement.spacedBy(WeshSpace.s2)) {
         Text(label, style = WeshType.label, color = c.ink)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(WeshSpace.s2)) {
-            BasicTextField(
-                value = nickname,
-                onValueChange = onChange,
-                singleLine = true,
-                textStyle = WeshType.body.copy(color = c.ink),
-                cursorBrush = SolidColor(c.ink),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = WeshTouch.primary)
-                    .background(c.surface, shape)
-                    .border(WeshStroke.s2, c.lineStrong, shape)
-                    .padding(horizontal = WeshSpace.s4)
-                    .semantics { contentDescription = label },
-                decorationBox = { inner -> Box(Modifier.heightIn(min = WeshTouch.primary), contentAlignment = Alignment.CenterStart) { inner() } },
-            )
+            NoPersonalizedLearning {
+                BasicTextField(
+                    value = nickname,
+                    onValueChange = onChange,
+                    singleLine = true,
+                    textStyle = WeshType.body.copy(color = c.ink),
+                    cursorBrush = SolidColor(c.ink),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = WeshTouch.primary)
+                        .background(c.surface, shape)
+                        .border(WeshStroke.s2, c.lineStrong, shape)
+                        .padding(horizontal = WeshSpace.s4)
+                        .semantics { contentDescription = label },
+                    decorationBox = { inner -> Box(Modifier.heightIn(min = WeshTouch.primary), contentAlignment = Alignment.CenterStart) { inner() } },
+                )
+            }
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
