@@ -135,7 +135,7 @@ internal data class PaveReportMail(val address: String, val subject: String, val
         internal fun quote(text: String): String {
             val unified = text.replace("\r\n", "\n").replace('\r', '\n').replace('\u2028', '\n').replace('\u2029', '\n')
             val cleaned = buildString {
-                unified.codePoints().forEach { cp -> if (cp == '\n'.code || !PaveDisplayName.isInvisible(cp)) appendCodePoint(cp) }
+                unified.split('\n').forEachIndexed { i, line -> if (i > 0) append('\n'); append(paveVisibleText(line)) }
             }
             val capped = if (cleaned.codePointCount(0, cleaned.length) > MAX_PUBLIC_TEXT) {
                 cleaned.substring(0, cleaned.offsetByCodePoints(0, MAX_PUBLIC_TEXT)) + "…"
