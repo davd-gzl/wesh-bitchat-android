@@ -109,7 +109,7 @@ class WeshChannelTrafficTest {
             runBlocking { handler.handleLeave(routed) }
             leaveHandled.complete(Unit)
         }
-        override fun handleFragment(packet: BitchatPacket): BitchatPacket? = null
+        override fun handleFragment(packet: BitchatPacket): FragmentResult = FragmentResult.Skipped
         override fun handleRequestSync(routed: RoutedPacket) = Unit
         override fun sendAnnouncementToPeer(peerID: String) = Unit
         override fun sendCachedMessages(peerID: String) = Unit

@@ -179,7 +179,7 @@ class WeshAckAndVoiceTest {
         override suspend fun handleAnnounce(routed: RoutedPacket): Boolean { handled += routed; return true }
         override fun handleMessage(routed: RoutedPacket) { handled += routed }
         override fun handleLeave(routed: RoutedPacket) { handled += routed }
-        override fun handleFragment(packet: BitchatPacket): BitchatPacket? { fragmentsHandled += 1; return null }
+        override fun handleFragment(packet: BitchatPacket): FragmentResult { fragmentsHandled += 1; return FragmentResult.Pending }
         override fun handleRequestSync(routed: RoutedPacket) { handled += routed }
         override fun sendAnnouncementToPeer(peerID: String) = Unit
         override fun sendCachedMessages(peerID: String) = Unit
