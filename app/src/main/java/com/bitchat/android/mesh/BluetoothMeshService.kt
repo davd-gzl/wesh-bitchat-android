@@ -632,8 +632,8 @@ class BluetoothMeshService(
                 serviceScope.launch { messageHandler.handleLeave(routed) }
             }
             
-            override fun handleFragment(packet: BitchatPacket): FragmentResult {
-                val result = fragmentManager.receiveFragment(packet)
+            override fun handleFragment(packet: BitchatPacket, ingressKey: String): FragmentResult {
+                val result = fragmentManager.receiveFragment(packet, ingressKey)
                 if (result.keptForSync) {
                     try {
                         val isBroadcast = (packet.recipientID == null || packet.recipientID.contentEquals(SpecialRecipients.BROADCAST))
