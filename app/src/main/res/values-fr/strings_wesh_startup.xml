@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- Wesh startup, recovery and verification copy: English by default, French in values-fr. -->
+    <string name="wesh_startup_reset_title">Réinitialiser l’identité ?</string>
+    <string name="wesh_startup_reset_body">Votre identité ne peut pas être lue sur ce téléphone. Réinitialiser efface toutes les données de Wesh : identité, contacts, messages, brouillons et réglages. Une nouvelle identité sera créée et vos contacts devront être vérifiés à nouveau.</string>
+    <string name="wesh_startup_reset_confirm">Réinitialiser</string>
+    <string name="wesh_startup_cancel">Annuler</string>
+    <string name="wesh_startup_erase_title">Effacer toutes les données de Wesh ?</string>
+    <string name="wesh_startup_erase_body">Votre identité, vos messages, vos brouillons et vos réglages seront perdus. Vous devrez autoriser à nouveau les permissions après la fermeture de Wesh.</string>
+    <string name="wesh_startup_erase_confirm">Tout effacer</string>
+    <string name="wesh_startup_erase_locked">Un effacement est inachevé ou ne peut pas être vérifié. Wesh reste verrouillé pour protéger vos données. Vous pouvez demander à Android d’effacer toutes les données de Wesh.</string>
+    <string name="wesh_startup_identity_unavailable">Votre identité est momentanément indisponible. Réessayez sans effacer les données de l’application.</string>
+    <string name="wesh_startup_erase_failed">La demande d’effacement a échoué. Wesh reste verrouillé. Réessayez ou utilisez les réglages Android de l’application.</string>
+    <string name="wesh_startup_erase_requested">Demande transmise à Android. Wesh va se fermer ; l’effacement n’est pas encore confirmé.</string>
+    <string name="wesh_startup_erase_all">Effacer toutes les données de Wesh</string>
+    <string name="wesh_startup_retry">Réessayer</string>
+    <string name="wesh_startup_reset_offer">Plusieurs tentatives ont échoué. Si le problème persiste, vous pouvez réinitialiser votre identité.</string>
+    <string name="wesh_startup_reset_action">Réinitialiser l’identité</string>
+    <string name="wesh_startup_preparing">Préparation de Wesh…</string>
+    <string name="wesh_verify_app_settings">Réglages de l’app</string>
+    <string name="wesh_verify_qr_description">Code QR de vérification d’identité</string>
+</resources>

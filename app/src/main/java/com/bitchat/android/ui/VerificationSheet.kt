@@ -399,7 +399,7 @@ internal fun ScanTabContent(
                 androidx.compose.material3.TextButton(onClick = {
                     context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                         android.net.Uri.parse("package:" + context.packageName)))
-                }) { Text("Réglages de l’app") }
+                }) { Text(stringResource(R.string.wesh_verify_app_settings)) }
             }
         }
     }
@@ -483,7 +483,7 @@ internal fun QRCodeImage(data: String, size: Dp) {
     if (bitmap != null) {
         Image(
             bitmap = bitmap.asImageBitmap(),
-            contentDescription = "Code QR de vérification d’identité",
+            contentDescription = stringResource(R.string.wesh_verify_qr_description),
             modifier = Modifier.size(size)
         )
     }

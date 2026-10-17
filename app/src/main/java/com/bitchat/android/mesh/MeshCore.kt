@@ -19,7 +19,6 @@ import com.bitchat.android.service.TransportBridgeService
 import com.bitchat.android.sync.GossipSyncManager
 import com.bitchat.android.util.toHexString
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -84,8 +83,6 @@ class MeshCore(
         applyInboundPolicy(weshLocalOnly)
     }
     private val packetProcessor = PacketProcessor(myPeerID)
-    private data class VoiceFrameRequest(val recipientPeerID: String?, val payload: ByteArray)
-    private val voiceFrameQueue = Channel<VoiceFrameRequest>(capacity = 128)
     private val directPeers = ConcurrentHashMap.newKeySet<String>()
 
     val gossipSyncManager: GossipSyncManager =
@@ -97,9 +94,6 @@ class MeshCore(
     private var isActive = false
 
     init {
-        scope.launch {
-            for (request in voiceFrameQueue) dispatchVoiceFrame(request)
-        }
         messageHandler.packetProcessor = packetProcessor
         peerManager.isPeerDirectlyConnected = { peerID -> directPeers.contains(peerID) }
         setupDelegates()
@@ -163,6 +157,11 @@ class MeshCore(
                 ingressLinkID = ingressLinkID
             )
         )
+    }
+
+    /** Frees the fragment slots opened by an ingress link that is gone. */
+    fun onIngressLinkClosed(ingressLinkID: String) {
+        fragmentManager.onIngressLinkClosed(PacketProcessor.linkQuotaKey(ingressLinkID))
     }
 
     fun sendFromBridge(packet: RoutedPacket) {
@@ -471,15 +470,12 @@ class MeshCore(
                 } catch (_: Exception) { }
             }
 
-            override fun handleVoiceFrame(routed: RoutedPacket): Boolean =
-                messageHandler.handlePublicVoiceFrame(routed)
-
             override fun handleLeave(routed: RoutedPacket) {
                 scope.launch { messageHandler.handleLeave(routed) }
             }
 
-            override fun handleFragment(packet: BitchatPacket): FragmentResult {
-                val result = fragmentManager.receiveFragment(packet)
+            override fun handleFragment(packet: BitchatPacket, ingressKey: String): FragmentResult {
+                val result = fragmentManager.receiveFragment(packet, ingressKey)
                 if (result.keptForSync) {
                     try {
                         val isBroadcast = (packet.recipientID == null || packet.recipientID.contentEquals(SpecialRecipients.BROADCAST))
@@ -560,44 +556,6 @@ class MeshCore(
         if (signed.signature?.size != 64) return false
         dispatchGlobal(RoutedPacket(signed))
         return true
-    }
-
-    fun sendVoiceFrame(recipientPeerID: String?, payload: ByteArray) {
-        if (payload.isEmpty()) return
-        voiceFrameQueue.trySend(VoiceFrameRequest(recipientPeerID, payload.copyOf()))
-    }
-
-    private fun dispatchVoiceFrame(request: VoiceFrameRequest) {
-        try {
-            val recipientPeerID = request.recipientPeerID
-            val packet = if (recipientPeerID == null) {
-                BitchatPacket(
-                    version = 1u,
-                    type = MessageType.VOICE_FRAME.value,
-                    senderID = MeshPacketUtils.hexStringToByteArray(myPeerID),
-                    recipientID = SpecialRecipients.BROADCAST,
-                    timestamp = System.currentTimeMillis().toULong(),
-                    payload = request.payload,
-                    ttl = maxTtl
-                )
-            } else {
-                if (!encryptionService.hasEstablishedSession(recipientPeerID)) return
-                val plaintext = NoisePayload(NoisePayloadType.VOICE_FRAME, request.payload).encode()
-                val ciphertext = encryptionService.encrypt(plaintext, recipientPeerID)
-                BitchatPacket(
-                    version = 1u,
-                    type = MessageType.NOISE_ENCRYPTED.value,
-                    senderID = MeshPacketUtils.hexStringToByteArray(myPeerID),
-                    recipientID = MeshPacketUtils.hexStringToByteArray(recipientPeerID),
-                    timestamp = System.currentTimeMillis().toULong(),
-                    payload = ciphertext,
-                    ttl = maxTtl
-                )
-            }
-            dispatchGlobal(RoutedPacket(signPacketBeforeBroadcast(packet)))
-        } catch (e: Exception) {
-            Log.w("MeshCore", "Live voice frame send failed: ${e.message}")
-        }
     }
 
     fun sendPrivateMessage(content: String, recipientPeerID: String, recipientNickname: String, messageID: String? = null) {

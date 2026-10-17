@@ -41,7 +41,8 @@ class BluetoothConnectionManager(
     private val packetBroadcaster = BluetoothPacketBroadcaster(connectionScope, connectionTracker, fragmentManager, myPeerID)
     
     // Delegate for component managers to call back to main manager
-    private val componentDelegate = object : BluetoothConnectionManagerDelegate {
+    @androidx.annotation.VisibleForTesting
+    internal val componentDelegate = object : BluetoothConnectionManagerDelegate {
         override fun onPacketReceived(
             packet: BitchatPacket,
             peerID: String,
@@ -75,6 +76,8 @@ class BluetoothConnectionManager(
 
         override fun onDeviceDisconnected(device: BluetoothDevice, linkID: String?, peerID: String?) {
             packetBroadcaster.onLinkDisconnected(device.address, linkID)
+            // A reconnection gets a new link ID: free the fragment slots this link opened.
+            linkID?.let { fragmentManager?.onIngressLinkClosed(PacketProcessor.linkQuotaKey(it)) }
             delegate?.onDeviceDisconnected(device, linkID, peerID)
         }
 
