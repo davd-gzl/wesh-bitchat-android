@@ -463,12 +463,12 @@ class FragmentManagerTest {
         assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments.first(), LINK_A))
 
         // Reusing the victim's sender and fragment ID: conflicting metadata and a different
-        // payload for a received index are both refused.
+        // payload for a received index are both left out of the assembly.
         val conflicting = FragmentPayload(victimID, 1, fragments.size + 1, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 9 }).encode()
-        assertEquals(FragmentResult.Refused, fragmentManager.receiveFromLink(fragmentPacket(conflicting, sender = victim), LINK_B))
+        assertEquals(FragmentResult.Skipped, fragmentManager.receiveFromLink(fragmentPacket(conflicting, sender = victim), LINK_B))
         val first = requireNotNull(FragmentPayload.decode(fragments.first().payload))
         val overwrite = FragmentPayload(victimID, 0, first.total, first.originalType, ByteArray(first.data.size) { 9 }).encode()
-        assertEquals(FragmentResult.Refused, fragmentManager.receiveFromLink(fragmentPacket(overwrite, sender = victim), LINK_B))
+        assertEquals(FragmentResult.Skipped, fragmentManager.receiveFromLink(fragmentPacket(overwrite, sender = victim), LINK_B))
 
         // Floods on link B with the victim's sender ID, then with invented sender IDs.
         val invented = (1..8).map { "0e0e0e0e0e0e0e0$it" }
@@ -530,7 +530,7 @@ class FragmentManagerTest {
         assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments.first()))
 
         val conflicting = FragmentPayload(id, 1, fragments.size + 3, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 9 }).encode()
-        assertEquals(FragmentResult.Refused, fragmentManager.receiveFromLink(fragmentPacket(conflicting)))
+        assertEquals(FragmentResult.Skipped, fragmentManager.receiveFromLink(fragmentPacket(conflicting)))
         assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: 1"))
 
         val completed = fragments.drop(1).mapNotNull { fragmentManager.handleFragment(it) }
@@ -548,13 +548,65 @@ class FragmentManagerTest {
         val replaced = fragments.first().copy(
             payload = FragmentPayload(first.fragmentID, first.index, first.total, first.originalType, ByteArray(first.data.size) { 9 }).encode()
         )
-        assertEquals(FragmentResult.Refused, fragmentManager.receiveFromLink(replaced))
+        assertEquals(FragmentResult.Skipped, fragmentManager.receiveFromLink(replaced))
         // An identical duplicate changes nothing.
         assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments.first()))
 
         val completed = fragments.drop(1).mapNotNull { fragmentManager.handleFragment(it) }
         assertEquals(1, completed.size)
         assertArrayEquals(packet.payload, completed.single().payload)
+    }
+
+    @Test
+    fun `a genuine fragment that loses the race to a forged copy is still relayed`() {
+        val victim = "b1b2b3b4b5b6b7b8"
+        val packet = privatePacket(victim, seed = 9)
+        val id = ByteArray(8) { 0x0A }
+        val fragments = fragmentsWithID(packet, id)
+        assertTrue(fragments.size > 2)
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments[0], LINK_A))
+
+        // A neighbor forges index 1 before the genuine copy: the genuine copy is not kept,
+        // but it must stay relayable (Skipped, not Refused) so the forgery cannot censor it.
+        val genuine = requireNotNull(FragmentPayload.decode(fragments[1].payload))
+        val forged = fragments[1].copy(
+            payload = FragmentPayload(id, 1, genuine.total, genuine.originalType, ByteArray(genuine.data.size) { 9 }).encode()
+        )
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(forged, LINK_B))
+        val bytes = "Global Buffered Bytes: ${FragmentPayload.decode(fragments[0].payload)!!.data.size + genuine.data.size}"
+        assertTrue(fragmentManager.getDebugInfo().contains(bytes))
+        assertEquals(FragmentResult.Skipped, fragmentManager.receiveFromLink(fragments[1], LINK_A))
+        // A relay forwarding both copies over a single link must not censor it either.
+        assertEquals(FragmentResult.Skipped, fragmentManager.receiveFromLink(fragments[1], LINK_B))
+        assertTrue(fragmentManager.getDebugInfo().contains(bytes))
+
+        // The same holds when the forgery opened the assembly with other metadata.
+        val otherID = ByteArray(8) { 0x0B }
+        val other = fragmentsWithID(privatePacket(victim, seed = 10), otherID)
+        val opener = FragmentPayload(otherID, 0, other.size + 1, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 9 }).encode()
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragmentPacket(opener, sender = victim), LINK_B))
+        assertEquals(FragmentResult.Skipped, fragmentManager.receiveFromLink(other[1], LINK_A))
+    }
+
+    @Test
+    fun `a fragment that overflows an assembly opened by another link is relayed and does not clear it`() {
+        val broadcast = com.bitchat.android.protocol.SpecialRecipients.BROADCAST
+        val chunk = 400
+        val fill = com.bitchat.android.protocol.PacketPayloadLimits.PUBLIC_TEXT_FRAME_BYTES / chunk
+        val total = fill + 2
+        (0 until fill).forEach { index ->
+            assertEquals(
+                FragmentResult.Pending,
+                fragmentManager.receiveFromLink(fragmentPacket(fragment(MessageType.MESSAGE, index, total, chunk), recipient = broadcast), LINK_A)
+            )
+        }
+        val overflow = fragmentPacket(fragment(MessageType.MESSAGE, fill, total, chunk), recipient = broadcast)
+
+        assertEquals(FragmentResult.Skipped, fragmentManager.receiveFromLink(overflow, LINK_B))
+        assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: ${fill * chunk}"))
+        // The opening link overflowing its own assembly still drops it.
+        assertEquals(FragmentResult.Refused, fragmentManager.receiveFromLink(overflow, LINK_A))
+        assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: 0"))
     }
 
     private fun FragmentManager.receiveFromLink(packet: BitchatPacket, link: String = LINK_A) =

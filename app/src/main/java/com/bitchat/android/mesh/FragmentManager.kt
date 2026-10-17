@@ -197,11 +197,14 @@ class FragmentManager(
      * [FragmentResult.Refused] marks a fragment no BitChat client sends (malformed, nested, or
      * beyond what its claimed type can carry): it is neither kept, synced nor relayed.
      * [FragmentResult.Skipped] fragments are not buffered here (addressed to another peer, media
-     * refused by policy, or buffers full) but may still be relayed.
+     * refused by policy, buffers full, or in conflict with what is already held) but may still
+     * be relayed.
      *
      * [ingressKey] identifies the link the fragment arrived on (see PacketProcessor.quotaKey).
      * Assembly slots are bounded per link and per (link, sender); the first fragment received
-     * for an index or an assembly's metadata wins over any later, different one.
+     * for an index or an assembly's metadata wins over any later, different one. The later one
+     * is Skipped rather than Refused: whichever copy arrived first, a forged one cannot stop the
+     * genuine one from being relayed to peers that never saw the forgery.
      */
     fun receiveFragment(packet: BitchatPacket, ingressKey: String): FragmentResult {
         // iOS: guard packet.payload.count > 13 else { return }
@@ -260,9 +263,10 @@ class FragmentManager(
                 if (existing != null &&
                     (existing.total != fragmentPayload.total || existing.originalType != fragmentPayload.originalType)
                 ) {
-                    // First arrival wins: a conflicting fragment never clears the assembly.
-                    Log.w(TAG, "Rejecting fragment for $fragmentIDString: inconsistent metadata")
-                    return FragmentResult.Refused
+                    // First arrival wins: a conflicting fragment never clears the assembly, and
+                    // is not kept, but stays relayable.
+                    Log.w(TAG, "Not buffering fragment for $fragmentIDString: inconsistent metadata")
+                    return FragmentResult.Skipped
                 }
 
                 val fragmentMap: MutableMap<Int, ByteArray>
@@ -295,16 +299,18 @@ class FragmentManager(
                     }
                     map[fragmentPayload.index]?.let { stored ->
                         // First arrival wins: an identical duplicate changes nothing, a
-                        // different payload for a received index is refused.
+                        // different payload for a received index is not kept but stays relayable.
                         if (stored.contentEquals(fragmentPayload.data)) return FragmentResult.Pending
-                        Log.w(TAG, "Rejecting fragment for $fragmentIDString: index ${fragmentPayload.index} already received")
-                        return FragmentResult.Refused
+                        Log.w(TAG, "Not buffering fragment for $fragmentIDString: index ${fragmentPayload.index} already received")
+                        return FragmentResult.Skipped
                     }
                     val grown = currentSize + fragmentPayload.data.size
                     if (grown > maxTotalBytes) {
                         Log.w(TAG, "Rejecting fragment for $fragmentIDString: cumulative size $grown exceeds cap $maxTotalBytes")
-                        // Only the link that opened the assembly can overflow it away.
-                        if (existing.ingressKey == ingressKey) removeFragmentSetLocked(assemblyKey)
+                        // Only the link that opened the assembly can overflow it away. Another
+                        // link may be overflowing it with the genuine copy: relay that one.
+                        if (existing.ingressKey != ingressKey) return FragmentResult.Skipped
+                        removeFragmentSetLocked(assemblyKey)
                         return FragmentResult.Refused
                     }
                     val maxGlobalBytes = com.bitchat.android.util.AppConstants.Fragmentation.MAX_GLOBAL_FRAGMENT_TOTAL_BYTES
