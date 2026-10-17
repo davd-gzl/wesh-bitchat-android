@@ -724,6 +724,78 @@ class FragmentManagerTest {
         assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: 0"))
     }
 
+    private fun sendChunk(link: String, id: Int, index: Int, sender: String = senderID, size: Int = 64 * 1024, total: Int = 17) =
+        fragmentManager.receiveFromLink(
+            fragmentPacket(FragmentPayload(ByteArray(8) { id.toByte() }, index, total, MessageType.NOISE_ENCRYPTED.value, ByteArray(size) { 1 }).encode(), sender = sender),
+            link
+        )
+
+    @Test
+    fun `a handed-over assembly carries the closed link's byte share to its heir`() {
+        val chunk = 64 * 1024
+        assertEquals(32L, com.bitchat.android.util.AppConstants.Fragmentation.MAX_FRAGMENT_BYTES_PER_LINK / chunk)
+        repeat(10) { assertEquals(FragmentResult.Pending, sendChunk(LINK_B, 0x31, it)) }
+        assertEquals(FragmentResult.Pending, sendChunk(LINK_A, 0x31, 10))
+        repeat(15) { assertEquals(FragmentResult.Pending, sendChunk(LINK_A, 0x32, it)) }
+
+        fragmentManager.onIngressLinkClosed(LINK_B)
+
+        assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: ${26 * chunk}"))
+        // LINK_A now answers for 26 chunks: 6 more fit, the 7th does not.
+        repeat(6) { assertEquals(FragmentResult.Pending, sendChunk(LINK_A, 0x33, it)) }
+        assertEquals(FragmentResult.Skipped, sendChunk(LINK_A, 0x33, 6))
+    }
+
+    @Test
+    fun `an assembly whose heir has no byte room left goes away with the closed link`() {
+        val chunk = 64 * 1024
+        repeat(10) { assertEquals(FragmentResult.Pending, sendChunk(LINK_B, 0x41, it)) }
+        assertEquals(FragmentResult.Pending, sendChunk(LINK_A, 0x41, 10))
+        repeat(16) { assertEquals(FragmentResult.Pending, sendChunk(LINK_A, 0x42, it)) }
+        repeat(13) { assertEquals(FragmentResult.Pending, sendChunk(LINK_A, 0x43, it)) }
+
+        fragmentManager.onIngressLinkClosed(LINK_B)
+
+        assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: 2"))
+        assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: ${29 * chunk}"))
+        // LINK_A's own chunk in the dropped assembly was freed with it.
+        repeat(3) { assertEquals(FragmentResult.Pending, sendChunk(LINK_A, 0x43, 13 + it)) }
+        assertEquals(FragmentResult.Skipped, sendChunk(LINK_A, 0x44, 0))
+    }
+
+    @Test
+    fun `the heir is a contributor with slot room left`() {
+        val linkC = "link:c"
+        val perLink = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK
+        // LINK_A delivered more of the assembly than linkC, but has no slot left.
+        assertEquals(FragmentResult.Pending, sendChunk(LINK_B, 0x51, 0, size = 32, total = 5))
+        assertEquals(FragmentResult.Pending, sendChunk(LINK_A, 0x51, 1, size = 32, total = 5))
+        assertEquals(FragmentResult.Pending, sendChunk(LINK_A, 0x51, 2, size = 32, total = 5))
+        assertEquals(FragmentResult.Pending, sendChunk(linkC, 0x51, 3, size = 32, total = 5))
+        repeat(perLink) { n -> assertEquals(FragmentResult.Pending, sendChunk(LINK_A, 0x52, 0, sender = "a0a0a0a0a0a0%04x".format(n), size = 32, total = 2)) }
+        repeat(perLink - 1) { n -> assertEquals(FragmentResult.Pending, sendChunk(linkC, 0x53, 0, sender = "c0c0c0c0c0c0%04x".format(n), size = 32, total = 2)) }
+
+        fragmentManager.onIngressLinkClosed(LINK_B)
+
+        assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: ${2 * perLink}"))
+        // The assembly took linkC's last slot.
+        assertEquals(FragmentResult.Skipped, sendChunk(linkC, 0x54, 0, sender = "c1c1c1c1c1c1c1c1", size = 32, total = 2))
+    }
+
+    @Test
+    fun `an assembly no contributor has room for goes away with the closed link`() {
+        val perSender = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK_SENDER
+        assertEquals(FragmentResult.Pending, sendChunk(LINK_B, 0x61, 0, size = 32, total = 3))
+        assertEquals(FragmentResult.Pending, sendChunk(LINK_A, 0x61, 1, size = 32, total = 3))
+        // LINK_A already holds its full share of assemblies for this sender.
+        repeat(perSender) { n -> assertEquals(FragmentResult.Pending, sendChunk(LINK_A, 0x70 + n, 0, size = 32, total = 2)) }
+
+        fragmentManager.onIngressLinkClosed(LINK_B)
+
+        assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: $perSender"))
+        assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: ${perSender * 32}"))
+    }
+
     @Test
     fun `one link cannot buffer more than its byte share but still fits one assembly of the largest size`() {
         val limits = com.bitchat.android.util.AppConstants.Fragmentation
