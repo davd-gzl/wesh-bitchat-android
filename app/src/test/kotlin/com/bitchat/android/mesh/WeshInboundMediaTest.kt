@@ -89,7 +89,8 @@ class WeshInboundMediaTest {
 
     @Test
     fun `public text above the V1 limit is dropped silently`() = runBlocking {
-        handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, ByteArray(2_001) { 'a'.code.toByte() }), peerID, "link"))
+        // Refused (false): the caller neither stores it for gossip sync nor treats it as delivered.
+        assertFalse(handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, ByteArray(2_001) { 'a'.code.toByte() }), peerID, "link")))
         verify(delegate, never()).onMessageReceived(any())
         assertEquals(1L, handler.publicBudget.dropped)
 
