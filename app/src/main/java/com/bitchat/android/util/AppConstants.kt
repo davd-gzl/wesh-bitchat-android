@@ -42,8 +42,10 @@ object AppConstants {
         const val MAX_FRAGMENTS_PER_ID: Int = 256
         const val MAX_FRAGMENT_TOTAL_BYTES: Int = 1_048_576
         const val MAX_ACTIVE_FRAGMENT_SETS: Int = 64
-        /** One sender never holds more than this many of the global assembly slots. */
-        const val MAX_ACTIVE_FRAGMENT_SETS_PER_SENDER: Int = 8
+        /** Assembly slots one ingress link may open, within [MAX_ACTIVE_FRAGMENT_SETS]. */
+        const val MAX_ACTIVE_FRAGMENT_SETS_PER_LINK: Int = 24
+        /** Assembly slots one ingress link may open for a single claimed sender. */
+        const val MAX_ACTIVE_FRAGMENT_SETS_PER_LINK_SENDER: Int = 8
         const val MAX_GLOBAL_FRAGMENT_TOTAL_BYTES: Long = 4L * 1_048_576L
     }
 

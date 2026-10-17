@@ -170,7 +170,7 @@ class PacketProcessorInboundBoundsTest {
             messages.incrementAndGet()
         }
         override fun handleLeave(routed: RoutedPacket) = Unit
-        override fun handleFragment(packet: BitchatPacket): FragmentResult {
+        override fun handleFragment(packet: BitchatPacket, ingressKey: String): FragmentResult {
             fragments.incrementAndGet()
             return fragmentResult
         }

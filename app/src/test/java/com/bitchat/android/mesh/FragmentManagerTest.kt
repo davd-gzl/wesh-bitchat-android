@@ -22,6 +22,8 @@ import java.util.Random
 class FragmentManagerTest {
 
     private lateinit var fragmentManager: FragmentManager
+    private val LINK_A = "link:a"
+    private val LINK_B = "link:b"
     private val senderID = "1122334455667788"
     private val recipientID = "8877665544332211"
 
@@ -325,7 +327,7 @@ class FragmentManagerTest {
     fun `directed fragments for another peer are relayed without being buffered`() {
         val manager = FragmentManager(myPeerID = "0102030405060708")
         try {
-            val result = manager.receiveFragment(fragmentPacket(fragment(MessageType.NOISE_ENCRYPTED, index = 0, total = 2)))
+            val result = manager.receiveFromLink(fragmentPacket(fragment(MessageType.NOISE_ENCRYPTED, index = 0, total = 2)))
 
             assertEquals(FragmentResult.Skipped, result)
             assertTrue(manager.getDebugInfo().contains("Active Fragment Sets: 0"))
@@ -338,7 +340,7 @@ class FragmentManagerTest {
     fun `directed fragments for this peer are buffered`() {
         val manager = FragmentManager(myPeerID = recipientID)
         try {
-            val result = manager.receiveFragment(fragmentPacket(fragment(MessageType.NOISE_ENCRYPTED, index = 0, total = 2)))
+            val result = manager.receiveFromLink(fragmentPacket(fragment(MessageType.NOISE_ENCRYPTED, index = 0, total = 2)))
 
             assertEquals(FragmentResult.Pending, result)
         } finally {
@@ -350,7 +352,7 @@ class FragmentManagerTest {
     fun `file fragments are not buffered when media is refused`() {
         fragmentManager.acceptMediaFragments = false
 
-        val result = fragmentManager.receiveFragment(
+        val result = fragmentManager.receiveFromLink(
             fragmentPacket(fragment(MessageType.FILE_TRANSFER, index = 0, total = 2), recipient = com.bitchat.android.protocol.SpecialRecipients.BROADCAST)
         )
 
@@ -364,7 +366,7 @@ class FragmentManagerTest {
         val chunk = 400
         val total = com.bitchat.android.protocol.PacketPayloadLimits.PUBLIC_TEXT_FRAME_BYTES / chunk + 2
         val results = (0..com.bitchat.android.protocol.PacketPayloadLimits.PUBLIC_TEXT_FRAME_BYTES / chunk).map { index ->
-            fragmentManager.receiveFragment(fragmentPacket(fragment(MessageType.MESSAGE, index, total, chunk), recipient = broadcast))
+            fragmentManager.receiveFromLink(fragmentPacket(fragment(MessageType.MESSAGE, index, total, chunk), recipient = broadcast))
         }
 
         assertTrue(results.dropLast(1).all { it == FragmentResult.Pending })
@@ -380,7 +382,7 @@ class FragmentManagerTest {
         ).toBinaryData(padding = false)!!
         val payload = FragmentPayload(ByteArray(8) { 6 }, 0, 1, MessageType.ANNOUNCE.value, inner).encode()
 
-        assertEquals(FragmentResult.Refused, fragmentManager.receiveFragment(fragmentPacket(payload)))
+        assertEquals(FragmentResult.Refused, fragmentManager.receiveFromLink(fragmentPacket(payload)))
     }
 
     @Test
@@ -410,7 +412,7 @@ class FragmentManagerTest {
         for (i in fragmentsA.indices) {
             fragmentManager.handleFragment(fragmentsA[i])?.let(completed::add)
             if (i == 0) {
-                assertEquals(FragmentResult.Pending, fragmentManager.receiveFragment(fragmentPacket(intruder, sender = "c1c2c3c4c5c6c7c8")))
+                assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragmentPacket(intruder, sender = "c1c2c3c4c5c6c7c8")))
             }
             fragmentManager.handleFragment(fragmentsB[i])?.let(completed::add)
         }
@@ -429,14 +431,14 @@ class FragmentManagerTest {
         val fragments = fragmentsWithID(packet, ByteArray(8) { 0x11 })
         assertTrue(fragments.size > 1)
 
-        assertEquals(FragmentResult.Pending, fragmentManager.receiveFragment(fragments.first()))
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments.first()))
 
         val maxActive = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS
-        val perSender = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS_PER_SENDER
+        val perSender = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK_SENDER
         repeat(maxActive + 16) { n ->
             val id = ByteArray(8) { i -> if (i < 4) (n shr (8 * i)).toByte() else 0x7F }
             val flood = FragmentPayload(id, 0, 2, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 1 }).encode()
-            assertEquals(FragmentResult.Pending, fragmentManager.receiveFragment(fragmentPacket(flood, sender = flooder)))
+            assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragmentPacket(flood, sender = flooder)))
         }
         assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: ${perSender + 1}"))
 
@@ -451,6 +453,112 @@ class FragmentManagerTest {
         assertEquals(1, lateCompleted.size)
         assertArrayEquals(late.payload, lateCompleted.single().payload)
     }
+
+    @Test
+    fun `an attacker on another link cannot evict the victim's assembly or exceed the link quota`() {
+        val victim = "b1b2b3b4b5b6b7b8"
+        val packet = privatePacket(victim, seed = 5)
+        val victimID = ByteArray(8) { 0x33 }
+        val fragments = fragmentsWithID(packet, victimID)
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments.first(), LINK_A))
+
+        // Reusing the victim's sender and fragment ID: conflicting metadata and a different
+        // payload for a received index are both refused.
+        val conflicting = FragmentPayload(victimID, 1, fragments.size + 1, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 9 }).encode()
+        assertEquals(FragmentResult.Refused, fragmentManager.receiveFromLink(fragmentPacket(conflicting, sender = victim), LINK_B))
+        val first = requireNotNull(FragmentPayload.decode(fragments.first().payload))
+        val overwrite = FragmentPayload(victimID, 0, first.total, first.originalType, ByteArray(first.data.size) { 9 }).encode()
+        assertEquals(FragmentResult.Refused, fragmentManager.receiveFromLink(fragmentPacket(overwrite, sender = victim), LINK_B))
+
+        // Floods on link B with the victim's sender ID, then with invented sender IDs.
+        val invented = (1..8).map { "0e0e0e0e0e0e0e0$it" }
+        var n = 0
+        (listOf(victim) + invented).forEach { sender ->
+            repeat(80) {
+                n++
+                val id = ByteArray(8) { i -> if (i < 4) (n shr (8 * i)).toByte() else 0x6E }
+                fragmentManager.receiveFromLink(
+                    fragmentPacket(FragmentPayload(id, 0, 2, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 1 }).encode(), sender = sender),
+                    LINK_B
+                )
+            }
+        }
+        val perLink = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK
+        assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: ${perLink + 1}"))
+
+        val completed = fragments.drop(1).mapNotNull { fragmentManager.handleFragment(it, LINK_A) }
+        assertEquals(1, completed.size)
+        assertArrayEquals(packet.payload, completed.single().payload)
+    }
+
+    @Test
+    fun `a relay link carrying many senders still assembles up to the link quota`() {
+        val perLink = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK
+        val messages = (0 until perLink).map { i ->
+            val packet = privatePacket("5e5e5e5e5e5e%04x".format(i), seed = 100L + i)
+            packet to fragmentsWithID(packet, ByteArray(8) { 0x44 })
+        }
+        messages.forEach { (_, fragments) ->
+            assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments.first(), LINK_A))
+        }
+        val extra = fragmentsWithID(privatePacket("5e5e5e5e5e5effff", seed = 99), ByteArray(8) { 0x44 })
+        assertEquals(FragmentResult.Skipped, fragmentManager.receiveFromLink(extra.first(), LINK_A))
+
+        messages.forEach { (packet, fragments) ->
+            val completed = fragments.drop(1).mapNotNull { fragmentManager.handleFragment(it, LINK_A) }
+            assertEquals(1, completed.size)
+            assertArrayEquals(packet.payload, completed.single().payload)
+        }
+    }
+
+    @Test
+    fun `fragments of one assembly arriving over several links complete it`() {
+        val packet = privatePacket(senderID, seed = 6)
+        val fragments = fragmentsWithID(packet, ByteArray(8) { 0x55 })
+        val completed = fragments.mapIndexedNotNull { i, fragment ->
+            fragmentManager.handleFragment(fragment, if (i % 2 == 0) LINK_A else LINK_B)
+        }
+        assertEquals(1, completed.size)
+        assertArrayEquals(packet.payload, completed.single().payload)
+    }
+
+    @Test
+    fun `inconsistent metadata no longer clears the assembly`() {
+        val packet = privatePacket(senderID, seed = 7)
+        val id = ByteArray(8) { 0x66 }
+        val fragments = fragmentsWithID(packet, id)
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments.first()))
+
+        val conflicting = FragmentPayload(id, 1, fragments.size + 3, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 9 }).encode()
+        assertEquals(FragmentResult.Refused, fragmentManager.receiveFromLink(fragmentPacket(conflicting)))
+        assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: 1"))
+
+        val completed = fragments.drop(1).mapNotNull { fragmentManager.handleFragment(it) }
+        assertEquals(1, completed.size)
+        assertArrayEquals(packet.payload, completed.single().payload)
+    }
+
+    @Test
+    fun `a received index is never overwritten`() {
+        val packet = privatePacket(senderID, seed = 8)
+        val fragments = fragmentsWithID(packet, ByteArray(8) { 0x77 })
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments.first()))
+
+        val first = requireNotNull(FragmentPayload.decode(fragments.first().payload))
+        val replaced = fragments.first().copy(
+            payload = FragmentPayload(first.fragmentID, first.index, first.total, first.originalType, ByteArray(first.data.size) { 9 }).encode()
+        )
+        assertEquals(FragmentResult.Refused, fragmentManager.receiveFromLink(replaced))
+        // An identical duplicate changes nothing.
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments.first()))
+
+        val completed = fragments.drop(1).mapNotNull { fragmentManager.handleFragment(it) }
+        assertEquals(1, completed.size)
+        assertArrayEquals(packet.payload, completed.single().payload)
+    }
+
+    private fun FragmentManager.receiveFromLink(packet: BitchatPacket, link: String = LINK_A) =
+        receiveFragment(packet, link)
 
     private fun privatePacket(sender: String, seed: Long) = BitchatPacket(
         version = 1u,

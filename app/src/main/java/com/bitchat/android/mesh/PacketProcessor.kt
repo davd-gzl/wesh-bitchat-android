@@ -279,7 +279,8 @@ class PacketProcessor(
      * Handle message fragments. Returns false for a refused fragment, which is then not relayed.
      */
     private suspend fun handleFragment(routed: RoutedPacket): Boolean {
-        val result = delegate?.handleFragment(routed.packet) ?: return false
+        // Assembly slots follow the ingress link, like the queue quotas above.
+        val result = delegate?.handleFragment(routed.packet, quotaKey(routed, routed.peerID ?: "")) ?: return false
         if (result is FragmentResult.Refused) return false
         if (result !is FragmentResult.Complete) return true
         val reassembledPacket = result.packet
@@ -382,7 +383,8 @@ interface PacketProcessorDelegate {
     fun handleVoiceFrame(routed: RoutedPacket): Boolean = false
     fun isRelaySuppressed(packet: BitchatPacket, peerID: String): Boolean = false
     fun handleLeave(routed: RoutedPacket)
-    fun handleFragment(packet: BitchatPacket): FragmentResult
+    /** [ingressKey] is the quota key of the link the fragment arrived on. */
+    fun handleFragment(packet: BitchatPacket, ingressKey: String): FragmentResult
     fun handleRequestSync(routed: RoutedPacket)
     
     // Communication
