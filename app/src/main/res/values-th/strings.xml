@@ -120,7 +120,6 @@
     <string name="cd_cancel">ยกเลิก</string>
     <string name="cd_link">ลิงก์</string>
     <string name="cd_privacy_protected">About message privacy</string>
-    <string name="cd_record_voice">บันทึกบันทึกเสียง</string>
     <string name="cd_offline_mesh_chat">แชทเมชออฟไลน์</string>
     <string name="cd_end_to_end_encryption">การเข้ารหัสแบบปลายทางถึงปลายทาง</string>
 
@@ -239,7 +238,6 @@
     <!-- ประเภทสิทธิ์ -->
     <string name="perm_type_nearby_devices">อุปกรณ์ใกล้เคียง</string>
     <string name="perm_type_precise_location">ตำแหน่งที่แม่นยำ</string>
-    <string name="perm_type_microphone">ไมโครโฟน</string>
     <string name="perm_type_notifications">การแจ้งเตือน</string>
     <string name="perm_type_battery_optimization">การเพิ่มประสิทธิภาพแบตเตอรี่</string>
     <string name="perm_type_other">อื่น ๆ</string>

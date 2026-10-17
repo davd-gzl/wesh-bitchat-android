@@ -120,7 +120,6 @@
     <string name="cd_cancel">বাতিল</string>
     <string name="cd_link">লিঙ্ক</string>
     <string name="cd_privacy_protected">About message privacy</string>
-    <string name="cd_record_voice">ভয়েস বার্তা রেকর্ড করুন</string>
     <string name="cd_offline_mesh_chat">অফলাইন মেশ চ্যাট</string>
     <string name="cd_end_to_end_encryption">এন্ড-টু-এন্ড এনক্রিপশন</string>
 
@@ -239,7 +238,6 @@
     <!-- অনুমতির ধরণ -->
     <string name="perm_type_nearby_devices">কাছাকাছি ডিভাইস</string>
     <string name="perm_type_precise_location">সঠিক অবস্থান</string>
-    <string name="perm_type_microphone">মাইক্রোফোন</string>
     <string name="perm_type_notifications">বিজ্ঞপ্তি</string>
     <string name="perm_type_battery_optimization">ব্যাটারি অপ্টিমাইজেশন</string>
     <string name="perm_type_other">অন্যান্য</string>
