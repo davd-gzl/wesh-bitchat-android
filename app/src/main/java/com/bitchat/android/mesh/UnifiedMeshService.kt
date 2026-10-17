@@ -3,7 +3,6 @@ package com.bitchat.android.mesh
 import android.content.Context
 import android.util.Log
 import com.bitchat.android.favorites.FavoriteControlMessage
-import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.noise.NoiseSession
 import com.bitchat.android.wifiaware.WifiAwareController
@@ -154,23 +153,6 @@ class UnifiedMeshService(
         }
     }
 
-    override fun sendFileBroadcast(file: BitchatFilePacket) {
-        when {
-            isBleEnabled() -> bluetooth.sendFileBroadcast(file)
-            else -> wifiService()?.sendFileBroadcast(file)
-        }
-    }
-
-    override fun sendFilePrivate(recipientPeerID: String, file: BitchatFilePacket) {
-        when {
-            isBleReady(recipientPeerID) -> bluetooth.sendFilePrivate(recipientPeerID, file)
-            isWifiReady(recipientPeerID) -> wifiService()?.sendFilePrivate(recipientPeerID, file)
-            isBleConnected(recipientPeerID) || (isBleEnabled() && !isWifiConnected(recipientPeerID)) ->
-                bluetooth.sendFilePrivate(recipientPeerID, file)
-            else -> wifiService()?.sendFilePrivate(recipientPeerID, file)
-        }
-    }
-
     override fun sendVoiceFrame(recipientPeerID: String?, payload: ByteArray) {
         if (recipientPeerID == null) {
             when {
@@ -186,47 +168,6 @@ class UnifiedMeshService(
                 bluetooth.sendVoiceFrame(recipientPeerID, payload)
             else -> wifiService()?.sendVoiceFrame(recipientPeerID, payload)
         }
-    }
-
-    override fun prepareFilePrivate(
-        recipientPeerID: String,
-        file: BitchatFilePacket,
-        transferId: String,
-        allowLegacyFallback: Boolean
-    ): PrivateMediaPreparation {
-        return when {
-            isBleReady(recipientPeerID) -> bluetooth.prepareFilePrivate(
-                recipientPeerID,
-                file,
-                transferId,
-                allowLegacyFallback
-            )
-            isWifiReady(recipientPeerID) -> wifiService()?.prepareFilePrivate(
-                recipientPeerID,
-                file,
-                transferId,
-                allowLegacyFallback
-            ) ?: PrivateMediaPreparation.Rejected("Wi-Fi Aware transport is unavailable")
-            isBleConnected(recipientPeerID) || (isBleEnabled() && !isWifiConnected(recipientPeerID)) ->
-                bluetooth.prepareFilePrivate(
-                    recipientPeerID,
-                    file,
-                    transferId,
-                    allowLegacyFallback
-                )
-            else -> wifiService()?.prepareFilePrivate(
-                recipientPeerID,
-                file,
-                transferId,
-                allowLegacyFallback
-            ) ?: PrivateMediaPreparation.Rejected("No local transport is available for this peer")
-        }
-    }
-
-    override fun cancelFileTransfer(transferId: String): Boolean {
-        val bleCancelled = try { bluetooth.cancelFileTransfer(transferId) } catch (_: Exception) { false }
-        val wifiCancelled = try { wifiService()?.cancelFileTransfer(transferId) == true } catch (_: Exception) { false }
-        return bleCancelled || wifiCancelled
     }
 
     override fun sendBroadcastAnnounce() {
@@ -418,10 +359,6 @@ class UnifiedMeshService(
 
     override fun didReceiveVerifyResponse(peerID: String, payload: ByteArray, timestampMs: Long) {
         delegate?.didReceiveVerifyResponse(peerID, payload, timestampMs)
-    }
-
-    override fun didResolvePrivateMediaPolicy(peerID: String) {
-        delegate?.didResolvePrivateMediaPolicy(peerID)
     }
 
     override fun decryptChannelMessage(encryptedContent: ByteArray, channel: String): String? {

@@ -68,13 +68,6 @@
     <string name="cd_handshake_failed">হ্যান্ডশেক ব্যর্থ</string>
 
     <!-- ফাইল ভিউয়ার ডায়ালগ -->
-    <string name="file_viewer_title">📎 ফাইল প্রাপ্ত</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 আকার: %1$s</string>
-    <string name="file_viewer_type">🏷️ ধরণ: %1$s</string>
-    <string name="file_viewer_open_save">📂 খুলুন / সংরক্ষণ করুন</string>
-    <string name="close_with_emoji">❌ বন্ধ করুন</string>
-    <string name="pick_image">ছবি নির্বাচন করুন</string>
 
     <!-- সম্পর্কে শিট -->
     <string name="about_offline_mesh_title">অফলাইন মেশ চ্যাট</string>
@@ -124,29 +117,14 @@
     <string name="cd_reachable_via_nostr">Nostr এর মাধ্যমে পৌঁছানো যায়</string>
     <string name="cd_offline_favorite">প্রিয় (অফলাইন)</string>
     <string name="cd_scroll_to_bottom">নিচে স্ক্রল করুন</string>
-    <string name="cd_file">ফাইল</string>
-    <string name="cd_image">ছবি</string>
     <string name="cd_cancel">বাতিল</string>
     <string name="cd_link">লিঙ্ক</string>
-    <string name="cd_pick_media">মিডিয়া নির্বাচন করুন</string>
-    <string name="cd_pick_file">ফাইল নির্বাচন করুন</string>
-    <string name="cd_save_current_image">বর্তমান ছবি সংরক্ষণ করুন</string>
-    <string name="cd_close">বন্ধ করুন</string>
-    <string name="cd_image_index_of">ছবি %1$d এর %2$d</string>
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">ভয়েস বার্তা রেকর্ড করুন</string>
     <string name="cd_offline_mesh_chat">অফলাইন মেশ চ্যাট</string>
     <string name="cd_end_to_end_encryption">এন্ড-টু-এন্ড এনক্রিপশন</string>
 
     <!-- ছবি ও ফাইল -->
-    <string name="image_page_of">ছবি %1$d এর %2$d</string>
-    <string name="image_unavailable">ছবি অনুপলব্ধ</string>
-    <string name="image_saved_to_downloads">ছবি \"Downloads\" এ সংরক্ষিত</string>
-    <string name="image_save_failed">ছবি সংরক্ষণ করতে ব্যর্থ</string>
-    <string name="toast_image_saved">ছবি \"Downloads\" এ সংরক্ষিত</string>
-    <string name="toast_failed_to_save_image">ছবি সংরক্ষণ করতে ব্যর্থ</string>
-    <string name="pick_file">ফাইল নির্বাচন করুন</string>
-    <string name="file_unavailable">[ফাইল অনুপলব্ধ]</string>
     <string name="unknown">অজানা</string>
 
     <!-- ব্যবহারকারী অ্যাকশন শিট -->
@@ -243,18 +221,10 @@
     <string name="type_a_message_placeholder">বার্তা টাইপ করুন …</string>
     <string name="mention">উল্লেখ</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">ছবি</string>
-    <string name="media_type_file">ফাইল</string>
 
     <!-- বিজ্ঞপ্তি টেক্সট সহায়ক -->
-    <string name="notification_sent_image">📷 একটি ছবি পাঠিয়েছে</string>
-    <string name="notification_sent_voice">🎤 একটি ভয়েস বার্তা পাঠিয়েছে</string>
-    <string name="notification_sent_file">📎 একটি ফাইল পাঠিয়েছে</string>
 
     <!-- ভয়েস প্লেয়ার অ্যাক্সেসিবিলিটি -->
-    <string name="cd_play_voice">প্লে করুন</string>
-    <string name="cd_pause_voice">বিরাম</string>
 
     <!-- অনুমতি বিবরণ -->
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
