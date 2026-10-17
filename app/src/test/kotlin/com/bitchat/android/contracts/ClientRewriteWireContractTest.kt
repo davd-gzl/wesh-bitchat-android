@@ -1,6 +1,5 @@
 package com.bitchat.android.contracts
 
-import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.FragmentPayload
 import com.bitchat.android.model.IdentityAnnouncement
@@ -237,26 +236,6 @@ class ClientRewriteWireContractTest {
     }
 
     @Test
-    fun `file transfer matches deployed mixed-width TLV vector`() {
-        val packet = BitchatFilePacket(
-            fileName = "a",
-            fileSize = 2,
-            mimeType = "m",
-            content = hex("dead")
-        )
-        val wire = hex("01000161020004000000020300016d0400000002dead")
-
-        assertArrayEquals(wire, packet.encode())
-
-        val decoded = BitchatFilePacket.decode(wire)
-        assertNotNull(decoded)
-        assertEquals(packet.fileName, decoded!!.fileName)
-        assertEquals(packet.fileSize, decoded.fileSize)
-        assertEquals(packet.mimeType, decoded.mimeType)
-        assertArrayEquals(packet.content, decoded.content)
-    }
-
-    @Test
     fun `required message prefixes reject every truncation`() {
         val wire = BitchatMessage(
             id = "id",
@@ -280,7 +259,6 @@ class ClientRewriteWireContractTest {
         assertNull(PrivateMessagePacket.decode(hex("00026d3101036869")))
         assertNull(RequestSyncPacket.decode(hex("0100011302000401020304")))
         assertNull(IdentityAnnouncement.decode(hex("0103626f62022011")))
-        assertNull(BitchatFilePacket.decode(hex("010001610400000002de")))
         assertNull(FragmentPayload.decode(ByteArray(FragmentPayload.HEADER_SIZE - 1)))
     }
 

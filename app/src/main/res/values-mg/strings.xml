@@ -68,13 +68,6 @@
     <string name="cd_handshake_failed">Tsy nahomby ny fifampiraharahana</string>
 
     <!-- Fifanakalozan-dresaka momba ny rakitra -->
-    <string name="file_viewer_title">📎 Rakitra Voaray</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 Habeny: %1$s</string>
-    <string name="file_viewer_type">🏷️ Karazana: %1$s</string>
-    <string name="file_viewer_open_save">📂 Hanokatra / Hitahiry</string>
-    <string name="close_with_emoji">❌ Hanakatona</string>
-    <string name="pick_image">Hifidy sary</string>
 
     <!-- Momba ny takelaka -->
     <string name="about_offline_mesh_title">Mesh Chat tsy an-tserasera</string>
@@ -124,29 +117,14 @@
     <string name="cd_reachable_via_nostr">Azo tratrarina amin\'ny alalan\'ny Nostr</string>
     <string name="cd_offline_favorite">Ankafizina tsy an-tserasera</string>
     <string name="cd_scroll_to_bottom">Hidina any ambany</string>
-    <string name="cd_file">Rakitra</string>
-    <string name="cd_image">Sary</string>
     <string name="cd_cancel">Hanafoana</string>
     <string name="cd_link">Rohy</string>
-    <string name="cd_pick_media">Hifidy media</string>
-    <string name="cd_pick_file">Hifidy rakitra</string>
-    <string name="cd_save_current_image">Hitahiry ny sary ankehitriny</string>
-    <string name="cd_close">Hanakatona</string>
-    <string name="cd_image_index_of">Sary %1$d amin\'ny %2$d</string>
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">Handrakitra feo</string>
     <string name="cd_offline_mesh_chat">Mesh Chat tsy an-tserasera</string>
     <string name="cd_end_to_end_encryption">Fandokoana Farany amin\'ny Farany</string>
 
     <!-- Sary &amp; rakitra -->
-    <string name="image_page_of">Sary %1$d amin\'ny %2$d</string>
-    <string name="image_unavailable">Tsy misy sary</string>
-    <string name="image_saved_to_downloads">Sary voatahiry ao amin\'ny Downloads</string>
-    <string name="image_save_failed">Tsy afaka mitahiry sary</string>
-    <string name="toast_image_saved">Sary voatahiry ao amin\'ny Downloads</string>
-    <string name="toast_failed_to_save_image">Tsy afaka mitahiry sary</string>
-    <string name="pick_file">Hifidy rakitra</string>
-    <string name="file_unavailable">[rakitra tsy misy]</string>
     <string name="unknown">tsy fantatra</string>
 
     <!-- Takelaka hetsika mpampiasa -->
@@ -243,22 +221,13 @@
     <string name="select">hifidy</string>
     <string name="type_a_message_placeholder">soraty hafatra…</string>
     <string name="mention">hanonona</string>
-    <string name="image_counter">%1$d / %2$d</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">Sary</string>
-    <string name="media_type_file">Rakitra</string>
 
     <!-- Famantarana toe-javatra hafatra -->
 
     <!-- Mpanampy lahatsoratra fampandrenesana -->
-    <string name="notification_sent_image">📷 nandefasa sary</string>
-    <string name="notification_sent_voice">🎤 nandefasa hafatra feo</string>
-    <string name="notification_sent_file">📎 nandefasa rakitra</string>
 
     <!-- Fahafaha-miditra mpilalao feo -->
-    <string name="cd_play_voice">Hilalao</string>
-    <string name="cd_pause_voice">Hijanona</string>
 
     <!-- Famaritana alalana -->
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>

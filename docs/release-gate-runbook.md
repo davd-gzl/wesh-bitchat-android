@@ -248,7 +248,7 @@ command and stop the local relay/Tor fixture.
 For day-to-day development there is a lighter-weight harness that drives a
 debug-only broadcast receiver (`app/src/debug/`, never shipped in release)
 exposing mesh operations over ADB: scan, connect, Noise handshake, DMs,
-public broadcast, live push-to-talk, announce, file send/receive, BLE toggle, state dumps, and
+public broadcast, live push-to-talk, announce, BLE toggle, state dumps, and
 raw packet injection. Results are JSON files in the app sandbox polled by the
 host (`cache/testhook/results/<id>.json`, also logged under tag `TestHook`).
 
@@ -300,10 +300,6 @@ python3 tools/release_gate/mesh_lab.py scenario all \
 | `broadcast` | public mesh message A→B |
 | `ptt_dm` | Noise-encrypted 440 Hz PTT in both directions; asserts real-time capture, zero sequence gaps, decoded PCM duration/energy/continuity, and finalized-note absorption |
 | `ptt_broadcast` | signed public 440 Hz PTT with the same bidirectional packet and decoded-audio quality assertions |
-| `file` | 1 KB broadcast file, receiver SHA-256 matches fixture |
-| `file_oversize` | >256-fragment broadcast file is rejected sender-side, receiver sees nothing |
-| `file_private` | Noise-encrypted private file, digest match |
-| `media_private` | private-chat contact ID resolves to the live mesh peer; voice, image, and generic-file digests match |
 | `raw` | raw packet injection is accepted by the mesh |
 | `session_recovery` | force-stop B mid-session: identity persists, re-handshake, DMs flow again |
 | `identity_reset` | pm clear B mid-session: new identity, rediscovery, handshake, DMs |
@@ -327,9 +323,9 @@ python3 tools/release_gate/mesh_lab.py cmd --serial <serial> state   # full mesh
 See `TestHookDriver.kt` for the full command set (`ping`, `start`, `stop`,
 `whoami`, `set_nickname`, `scan`, `peers`, `connect`, `handshake`, `session`,
 `announce`, `broadcast_msg`, `dm_send`, `dm_recv`, `msg_recv`, `favorite_set`,
-`favorite_status`, `verification_set`, `verification_status`, `file_send`,
-`file_recv`, `file_cancel`, `ptt_send`, `ptt_recv`, `raw_send`, `ble`, `state`,
-`clear_results`).
+`favorite_status`, `verification_set`, `verification_status`, `ptt_send`,
+`ptt_recv`, `raw_send`, `ble`, `state`, `clear_results`). Wesh ships no media,
+so there are no file commands or file scenarios.
 
 ### Troubleshooting
 
@@ -339,8 +335,8 @@ See `TestHookDriver.kt` for the full command set (`ping`, `start`, `stop`,
 - **Stale app state after many churn runs**: `svc bluetooth disable/enable`
   on both devices (done automatically by `setup`) clears zombie GATT links.
 - **Watch the wire**: `adb -s <serial> logcat -s TestHook MessageHandler
-  FragmentManager BitchatFilePacket` shows commands, results, decrypt
-  failures, fragment rejects, and saved incoming files in real time.
+  FragmentManager` shows commands, results, decrypt failures, and fragment
+  rejects in real time.
 - Results also persist on-device at
   `run-as com.bitchat.droid cat cache/testhook/results/<id>.json`.
 

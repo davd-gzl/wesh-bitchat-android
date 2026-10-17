@@ -114,24 +114,8 @@
   <string name="cd_handshake_failed">Handshake failed</string>
 
   <!-- One-shot private-media downgrade consent -->
-  <string name="private_media_legacy_title" tools:ignore="MissingTranslation">Send without end-to-end encryption?</string>
-  <string name="private_media_legacy_body" tools:ignore="MissingTranslation">%1$s cannot be sent encrypted to %2$s because their client is older. %3$s</string>
-  <string name="private_media_legacy_send_once" tools:ignore="MissingTranslation">Send this file once</string>
 
   <!-- File viewer dialog -->
-  <string name="file_viewer_title">📎 File Received</string>
-  <string name="file_viewer_name">📄 %1$s</string>
-  <string name="file_viewer_size">📏 Size: %1$s</string>
-  <string name="file_viewer_type">🏷️ Type: %1$s</string>
-  <string name="file_viewer_open_save">📂 Open / Save</string>
-  <string name="close_with_emoji">❌ Close</string>
-  <string name="pick_image">Pick image</string>
-  <string name="cd_save_current_image">Save current image</string>
-  <string name="cd_close">Close</string>
-  <string name="toast_image_saved">Image saved to Downloads</string>
-  <string name="toast_failed_to_save_image">Failed to save image</string>
-  <string name="cd_image_index_of">Image %1$d of %2$d</string>
-  <string name="cd_pick_file">Pick file</string>
 
   <!-- About sheet -->
   <string name="about_tagline">Stay together, even offline</string>
@@ -239,23 +223,14 @@
   <string name="cd_reachable_via_nostr">Reachable via Nostr</string>
   <string name="cd_offline_favorite">Offline favorite</string>
   <string name="cd_scroll_to_bottom">Scroll to bottom</string>
-  <string name="cd_file">File</string>
-  <string name="cd_image">Image</string>
   <string name="cd_cancel">Cancel</string>
   <string name="cd_link">Link</string>
   <string name="cd_record_voice">Record voice note</string>
-  <string name="cd_pick_media">Pick media</string>
   <string name="cd_offline_mesh_chat">Offline Mesh Chat</string>
   <string name="cd_end_to_end_encryption">End-to-End Encryption</string>
   <string name="location_bluetooth_subtitle">Bluetooth • %1$s</string>
   <string name="location_bluetooth_wifi_subtitle">Bluetooth • Wifi • %1$s</string>
 
-  <string name="image_page_of">Image %1$d of %2$d</string>
-  <string name="image_unavailable">Image unavailable</string>
-  <string name="image_saved_to_downloads">Image saved to Downloads</string>
-  <string name="image_save_failed">Failed to save image</string>
-  <string name="pick_file">Pick file</string>
-  <string name="file_unavailable">[file unavailable]</string>
   <string name="unknown">Unknown</string>
 
   <!-- Chat user sheet actions -->
@@ -406,32 +381,13 @@
   <string name="type_a_message_placeholder">Type a message…</string>
   <string name="mention_suggestion_at" translatable="false">@%1$s</string>
   <string name="mention">Mention</string>
-  <string name="image_counter">%1$d / %2$d</string>
   <string name="at_nickname" translatable="false">@%1$s</string>
   <string name="version_prefix">v%1$s</string>
   <string name="hash_symbol" translatable="false">#</string>
-  <string name="underscore" translatable="false">_</string>
-  <string name="progress_bar_brackets" translatable="false">[%1$s] %2$d%%</string>
-  <string name="progress_filled" translatable="false">█</string>
-  <string name="progress_empty" translatable="false">░</string>
-  <string name="image_star">image/*</string>
-  <string name="media_type_image">Image</string>
-  <string name="media_type_file">File</string>
 
   <!-- Notification text helpers -->
-  <string name="notification_sent_image">📷 sent an image</string>
-  <string name="notification_sent_voice">🎤 sent a voice message</string>
-  <string name="notification_sent_file">📎 sent a file</string>
-  <string name="notification_file_pdf" translatable="false">📄</string>
-  <string name="notification_file_zip" translatable="false">🗜️</string>
-  <string name="notification_file_doc" translatable="false">📄</string>
-  <string name="notification_file_xls" translatable="false">📊</string>
-  <string name="notification_file_ppt" translatable="false">📈</string>
-  <string name="notification_file_generic" translatable="false">📎</string>
 
   <!-- Voice player accessibility -->
-  <string name="cd_play_voice">Play</string>
-  <string name="cd_pause_voice">Pause</string>
 
   <!-- Permission descriptions -->
   <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>

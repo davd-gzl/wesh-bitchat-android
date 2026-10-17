@@ -1,6 +1,5 @@
 package com.bitchat.android.protocol
 
-import com.bitchat.android.model.BitchatFilePacket
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertFalse
@@ -1330,15 +1329,8 @@ class BinaryProtocolTest {
     }
 
     @Test
-    fun `new sender refuses legacy 11 MiB public file transfer before transmission`() {
-        val content = ByteArray(11 * 1024 * 1024) { 0x41 }
-        val filePayload = BitchatFilePacket(
-            fileName = "legacy-11m.bin",
-            fileSize = content.size.toLong(),
-            mimeType = "application/octet-stream",
-            content = content
-        ).encode()
-        assertNotNull(filePayload)
+    fun `new sender refuses an 11 MiB v2 payload before transmission`() {
+        val payload = ByteArray(11 * 1024 * 1024) { 0x41 }
 
         val encoded = BinaryProtocol.encode(
             BitchatPacket(
@@ -1347,7 +1339,7 @@ class BinaryProtocolTest {
                 senderID = hexToBytes(senderHex),
                 recipientID = SpecialRecipients.BROADCAST,
                 timestamp = fixedTimestamp,
-                payload = filePayload!!,
+                payload = payload,
                 ttl = 5u
             ),
             padding = false

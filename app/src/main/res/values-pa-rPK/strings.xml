@@ -68,13 +68,6 @@
     <string name="cd_handshake_failed">ہینڈشیک فیل ہویا</string>
 
     <!-- فائل ویؤر ڈائیلاگ -->
-    <string name="file_viewer_title">📎 فائل ملی</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 سائز: %1$s</string>
-    <string name="file_viewer_type">🏷️ قسم: %1$s</string>
-    <string name="file_viewer_open_save">📂 کھولو / سیو کرو</string>
-    <string name="close_with_emoji">❌ بند کرو</string>
-    <string name="pick_image">تصویر چُنو</string>
 
     <!-- بارے شیٹ -->
     <string name="about_offline_mesh_title">آف لائن میش چیٹ</string>
@@ -124,29 +117,14 @@
     <string name="cd_reachable_via_nostr">Nostr راہین پہنچ ممکن اے</string>
     <string name="cd_offline_favorite">پسندیدہ (آف لائن)</string>
     <string name="cd_scroll_to_bottom">تھلے سکرول کرو</string>
-    <string name="cd_file">فائل</string>
-    <string name="cd_image">تصویر</string>
     <string name="cd_cancel">منسوخ</string>
     <string name="cd_link">لنک</string>
-    <string name="cd_pick_media">میڈیا چُنو</string>
-    <string name="cd_pick_file">فائل چُنو</string>
-    <string name="cd_save_current_image">موجودہ تصویر سیو کرو</string>
-    <string name="cd_close">بند کرو</string>
-    <string name="cd_image_index_of">تصویر %1$d توں %2$d</string>
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">وائس پیغام ریکارڈ کرو</string>
     <string name="cd_offline_mesh_chat">آف لائن میش چیٹ</string>
     <string name="cd_end_to_end_encryption">اینڈ ٹو اینڈ انکرپشن</string>
 
     <!-- تصویراں &amp; فائلز -->
-    <string name="image_page_of">تصویر %1$d وچوں %2$d</string>
-    <string name="image_unavailable">تصویر دستیاب نئیں</string>
-    <string name="image_saved_to_downloads">تصویر \"Downloads\" وچ سیو ہو گئی</string>
-    <string name="image_save_failed">تصویر سیو نئیں ہو سکدی</string>
-    <string name="toast_image_saved">تصویر \"Downloads\" وچ سیو ہو گئی</string>
-    <string name="toast_failed_to_save_image">تصویر سیو نئیں ہو سکدی</string>
-    <string name="pick_file">فائل چُنو</string>
-    <string name="file_unavailable">[فائل دستیاب نئیں]</string>
     <string name="unknown">نامعلوم</string>
 
     <!-- یوزر ایکشن شیٹ -->
@@ -243,18 +221,10 @@
     <string name="type_a_message_placeholder">پیغام لکھو …</string>
     <string name="mention">ذکر</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">تصویر</string>
-    <string name="media_type_file">فائل</string>
 
     <!-- نوٹیفکیشن متن مددگار -->
-    <string name="notification_sent_image">📷 تصویر بھیجی</string>
-    <string name="notification_sent_voice">🎤 وائس پیغام بھیجیا</string>
-    <string name="notification_sent_file">📎 فائل بھیجی</string>
 
     <!-- وائس پلیئر رسائی پذیری -->
-    <string name="cd_play_voice">چلاؤ</string>
-    <string name="cd_pause_voice">روکੋ</string>
 
     <!-- اجازت دیاں وضاحتاں -->
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>

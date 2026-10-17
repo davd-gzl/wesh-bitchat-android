@@ -20,7 +20,6 @@ import org.junit.Test
 class AuthenticatedPeerStateCoordinatorTest {
     private class MemoryStore : AuthenticatedPeerStateStore {
         val states = mutableMapOf<String, AuthenticatedPeerState>()
-        val pins = mutableSetOf<String>()
 
         override fun load(fingerprint: String): AuthenticatedPeerState? = states[fingerprint]
         override fun persist(
@@ -29,11 +28,9 @@ class AuthenticatedPeerStateCoordinatorTest {
             onCommitted: () -> Unit
         ): Boolean {
             states[fingerprint] = state
-            if (state.capabilities.contains(PeerCapabilities.PRIVATE_MEDIA)) pins += fingerprint
             onCommitted()
             return true
         }
-        override fun isPrivateMediaPinned(fingerprint: String): Boolean = fingerprint in pins
     }
 
     private val remoteStatic = ByteArray(32) { 0x33 }
@@ -46,7 +43,7 @@ class AuthenticatedPeerStateCoordinatorTest {
         remoteStatic,
         ByteArray(32) { 0x72 }
     )
-    private val localState = AuthenticatedPeerState(PeerCapabilities.PRIVATE_MEDIA, ByteArray(32) { 0x44 })
+    private val localState = AuthenticatedPeerState(PeerCapabilities.LOCAL_SUPPORTED, ByteArray(32) { 0x44 })
     private val remoteState = AuthenticatedPeerState(PeerCapabilities.PRIVATE_MEDIA, ByteArray(32) { 0x55 })
 
     @Test
@@ -233,7 +230,6 @@ class AuthenticatedPeerStateCoordinatorTest {
                 state: AuthenticatedPeerState,
                 onCommitted: () -> Unit
             ): Boolean = false
-            override fun isPrivateMediaPinned(fingerprint: String): Boolean = false
         }
         val coordinator = AuthenticatedPeerStateCoordinator(
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
@@ -271,7 +267,6 @@ class AuthenticatedPeerStateCoordinatorTest {
                 onCommitted()
                 return true
             }
-            override fun isPrivateMediaPinned(fingerprint: String): Boolean = false
         }
         val coordinator = AuthenticatedPeerStateCoordinator(
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),

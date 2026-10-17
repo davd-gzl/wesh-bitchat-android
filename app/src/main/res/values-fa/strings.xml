@@ -68,13 +68,6 @@
     <string name="cd_handshake_failed">دست‌دهی ناموفق بود</string>
 
     <!-- گفت‌وگوگر نمایش فایل -->
-    <string name="file_viewer_title">📎 فایل دریافت شد</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 اندازه: %1$s</string>
-    <string name="file_viewer_type">🏷️ نوع: %1$s</string>
-    <string name="file_viewer_open_save">📂 باز کردن / ذخیره</string>
-    <string name="close_with_emoji">❌ بستن</string>
-    <string name="pick_image">انتخاب تصویر</string>
 
     <!-- برگهٔ درباره -->
     <string name="about_offline_mesh_title">گفت‌وگوی مِش آفلاین</string>
@@ -124,29 +117,14 @@
     <string name="cd_reachable_via_nostr">قابل دسترس از طریق Nostr</string>
     <string name="cd_offline_favorite">دلخواه (آفلاین)</string>
     <string name="cd_scroll_to_bottom">اسکرول به پایین</string>
-    <string name="cd_file">فایل</string>
-    <string name="cd_image">تصویر</string>
     <string name="cd_cancel">لغو</string>
     <string name="cd_link">پیوند</string>
-    <string name="cd_pick_media">انتخاب رسانه</string>
-    <string name="cd_pick_file">انتخاب فایل</string>
-    <string name="cd_save_current_image">ذخیرهٔ تصویر فعلی</string>
-    <string name="cd_close">بستن</string>
-    <string name="cd_image_index_of">تصویر %1$d از %2$d</string>
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">ضبط پیام صوتی</string>
     <string name="cd_offline_mesh_chat">گفت‌وگوی مِش آفلاین</string>
     <string name="cd_end_to_end_encryption">رمزگذاری سرتاسری</string>
 
     <!-- تصاویر و فایل‌ها -->
-    <string name="image_page_of">تصویر %1$d از %2$d</string>
-    <string name="image_unavailable">تصویر در دسترس نیست</string>
-    <string name="image_saved_to_downloads">تصویر در \"Downloads\" ذخیره شد</string>
-    <string name="image_save_failed">ذخیرهٔ تصویر ناموفق بود</string>
-    <string name="toast_image_saved">تصویر در \"Downloads\" ذخیره شد</string>
-    <string name="toast_failed_to_save_image">ذخیرهٔ تصویر ناموفق بود</string>
-    <string name="pick_file">انتخاب فایل</string>
-    <string name="file_unavailable">[فایل در دسترس نیست]</string>
     <string name="unknown">نامشخص</string>
 
     <!-- برگهٔ اقدامات کاربر -->
@@ -243,18 +221,10 @@
     <string name="type_a_message_placeholder">نوشتن پیام …</string>
     <string name="mention">ذکر</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">تصویر</string>
-    <string name="media_type_file">فایل</string>
 
     <!-- راهنمای متن اعلان -->
-    <string name="notification_sent_image">📷 یک تصویر ارسال کرد</string>
-    <string name="notification_sent_voice">🎤 یک پیام صوتی ارسال کرد</string>
-    <string name="notification_sent_file">📎 یک فایل ارسال کرد</string>
 
     <!-- دسترسی‌پذیری پخش‌کنندهٔ صوت -->
-    <string name="cd_play_voice">پخش</string>
-    <string name="cd_pause_voice">توقف</string>
 
     <!-- توضیحات مجوز -->
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
