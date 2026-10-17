@@ -59,13 +59,6 @@
     <string name="cd_encrypted">Сквозное шифрование</string>
     <string name="cd_handshake_failed">Не удалось договориться</string>
 
-    <string name="file_viewer_title">📎 Получен файл</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 Размер: %1$s</string>
-    <string name="file_viewer_type">🏷️ Тип: %1$s</string>
-    <string name="file_viewer_open_save">📂 Открыть / Сохранить</string>
-    <string name="close_with_emoji">❌ Закрыть</string>
-    <string name="pick_image">Выбрать изображение</string>
 
     <string name="about_offline_mesh_title">Оффлайн Mesh‑чат</string>
     <string name="about_offline_mesh_desc">Общение напрямую по Bluetooth LE без интернета и серверов. Сообщения ретранслируются близлежащими устройствами.</string>
@@ -113,21 +106,12 @@
     <string name="cd_reachable_via_nostr">Доступен через Nostr</string>
     <string name="cd_offline_favorite">Избранное (оффлайн)</string>
     <string name="cd_scroll_to_bottom">Прокрутить вниз</string>
-    <string name="cd_file">Файл</string>
-    <string name="cd_image">Изображение</string>
     <string name="cd_cancel">Отмена</string>
     <string name="cd_link">Ссылка</string>
-    <string name="cd_pick_media">Выбрать медиа</string>
     <string name="cd_record_voice">Записать голос</string>
     <string name="cd_offline_mesh_chat">Оффлайн Mesh‑чат</string>
     <string name="cd_end_to_end_encryption">Сквозное шифрование</string>
 
-    <string name="image_page_of">Изображение %1$d / %2$d</string>
-    <string name="image_unavailable">Изображение недоступно</string>
-    <string name="image_saved_to_downloads">Изображение сохранено в «Загрузки»</string>
-    <string name="image_save_failed">Не удалось сохранить изображение</string>
-    <string name="pick_file">Выбрать файл</string>
-    <string name="file_unavailable">[файл недоступен]</string>
     <string name="unknown">неизвестно</string>
 
     <string name="choose_action_message_or_user">выберите действие для сообщения или пользователя</string>
@@ -218,18 +202,9 @@
     <string name="select">выбрать</string>
     <string name="type_a_message_placeholder">введите сообщение…</string>
     <string name="mention">упоминание</string>
-    <string name="image_counter">%1$d / %2$d</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">Изображение</string>
-    <string name="media_type_file">Файл</string>
 
-    <string name="notification_sent_image">📷 отправил изображение</string>
-    <string name="notification_sent_voice">🎤 отправил голосовое</string>
-    <string name="notification_sent_file">📎 отправил файл</string>
 
-    <string name="cd_play_voice">Воспроизвести</string>
-    <string name="cd_pause_voice">Пауза</string>
 
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>
     <string name="perm_nearby_devices_system">Allow Wesh to connect to nearby devices.</string>

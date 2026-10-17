@@ -1,17 +1,24 @@
 package com.bitchat.android.mesh
 
 import android.os.Build
-import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.BitchatMessageType
+import com.bitchat.android.model.FragmentPayload
+import com.bitchat.android.model.NoisePayload
+import com.bitchat.android.model.NoisePayloadType
 import com.bitchat.android.model.RoutedPacket
+import com.bitchat.android.noise.AuthenticatedNoiseSession
+import com.bitchat.android.noise.NoiseDecryptionResult
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.protocol.MessageType
 import com.bitchat.android.protocol.SpecialRecipients
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,6 +30,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.util.concurrent.CopyOnWriteArrayList
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -57,7 +65,16 @@ class WeshInboundMediaTest {
             isVerifiedNickname = true, lastSeen = System.currentTimeMillis()))
     }
 
-    private fun file() = BitchatFilePacket(fileName = "synthetic.jpg", fileSize = 3, mimeType = "image/jpeg", content = byteArrayOf(1, 2, 3))
+    private val processors = mutableListOf<PacketProcessor>()
+
+    @After
+    fun tearDown() {
+        processors.forEach(PacketProcessor::shutdown)
+    }
+
+    /** A well-formed BitChat file TLV (name "a", 2 bytes, MIME "m"): Wesh must never decode it. */
+    private val fileTlv = "01000161020004000000020300016d0400000002dead".hexToBytes()
+    private val senderKey = ByteArray(32) { 9 }
 
     private fun packet(type: MessageType, recipient: ByteArray, payload: ByteArray) = BitchatPacket(
         version = 2u, type = type.value, senderID = peerID.hexToBytes(), recipientID = recipient,
@@ -66,25 +83,177 @@ class WeshInboundMediaTest {
     private fun incomingFiles(): List<File> = listOf("images/incoming", "files/incoming")
         .flatMap { File(cache, it).listFiles()?.toList().orEmpty() }
 
-    @Test
-    fun `private media is not written to storage and arrives as a placeholder`() = runBlocking {
-        handler.handleMessage(RoutedPacket(packet(MessageType.FILE_TRANSFER, myPeerID.hexToBytes(), file().encode()!!), peerID, "link"))
+    /** A Noise transport message addressed to us whose plaintext is a 0x20 file payload. */
+    private fun encryptedMedia(
+        plaintext: ByteArray = NoisePayload(NoisePayloadType.FILE_TRANSFER, fileTlv).encode()
+    ): RoutedPacket {
+        val ciphertext = byteArrayOf(0x41, 0x42)
+        whenever(delegate.decryptFromPeer(eq(ciphertext), eq(peerID))).thenReturn(NoiseDecryptionResult(
+            plaintext,
+            AuthenticatedNoiseSession(senderKey, ByteArray(32) { 5 })))
+        whenever(delegate.encryptForPeer(any(), eq(peerID))).thenReturn(byteArrayOf(0x55))
+        return RoutedPacket(packet(MessageType.NOISE_ENCRYPTED, myPeerID.hexToBytes(), ciphertext), peerID, "link")
+    }
 
-        val captor = argumentCaptor<BitchatMessage>()
-        verify(delegate).onMessageReceived(captor.capture())
-        assertEquals("", captor.firstValue.content)
-        assertEquals(BitchatMessageType.Image, captor.firstValue.type)
+    private fun enroll() {
+        whenever(delegate.getAuthenticatedRemoteStaticKey(peerID)).thenReturn(senderKey)
+        whenever(delegate.isEnrolledContactKey(any())).thenReturn(true)
+    }
+
+    @Test
+    fun `public media is dropped before delivery, storage or budget`() = runBlocking {
+        handler.handleMessage(RoutedPacket(packet(MessageType.FILE_TRANSFER, SpecialRecipients.BROADCAST, fileTlv), peerID, "link"))
+
+        verify(delegate, never()).onMessageReceived(any())
+        verify(delegate, never()).onPrivateMessageReceived(any())
+        assertEquals(0L, handler.publicBudget.dropped)
         assertTrue(incomingFiles().isEmpty())
     }
 
     @Test
-    fun `public media is not written to storage`() = runBlocking {
-        handler.handleMessage(RoutedPacket(packet(MessageType.FILE_TRANSFER, SpecialRecipients.BROADCAST, file().encode()!!), peerID, "link"))
+    fun `a public text carrying a file TLV stays text`() = runBlocking {
+        handler.handleMessage(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, fileTlv), peerID, "link"))
 
         val captor = argumentCaptor<BitchatMessage>()
         verify(delegate).onMessageReceived(captor.capture())
-        assertEquals("", captor.firstValue.content)
+        assertEquals(BitchatMessageType.Message, captor.firstValue.type)
         assertTrue(incomingFiles().isEmpty())
+    }
+
+    @Test
+    fun `a file for another peer is relayed as before, a public or local one never is`() = runBlocking {
+        val recorder = RelayRecorder()
+        val processor = PacketProcessor(myPeerID).also { it.delegate = recorder; processors += it }
+        val otherPeer = "9999888877776666".hexToBytes()
+        fun fragment(id: Byte) = FragmentPayload(
+            fragmentID = ByteArray(8) { id }, index = 0, total = 2,
+            originalType = MessageType.FILE_TRANSFER.value, data = fileTlv
+        ).encode()
+
+        // Relayed for the other peer, as main did, and never processed here.
+        processor.processPacket(RoutedPacket(packet(MessageType.FILE_TRANSFER, otherPeer, fileTlv), peerID, "link"))
+        processor.processPacket(RoutedPacket(packet(MessageType.FRAGMENT, otherPeer, fragment(3)), peerID, "link"))
+        // Product decision for the V1: a broadcast file, whole or fragmented, is never spread.
+        processor.processPacket(RoutedPacket(packet(MessageType.FILE_TRANSFER, SpecialRecipients.BROADCAST, fileTlv), peerID, "link"))
+        processor.processPacket(RoutedPacket(packet(MessageType.FRAGMENT, SpecialRecipients.BROADCAST, fragment(4)), peerID, "link"))
+        // Addressed to us: a whole file reaches the handler (which keeps nothing); a fragment is not reassembled.
+        processor.processPacket(RoutedPacket(packet(MessageType.FILE_TRANSFER, myPeerID.hexToBytes(), fileTlv), peerID, "link"))
+        processor.processPacket(RoutedPacket(packet(MessageType.FRAGMENT, myPeerID.hexToBytes(), fragment(5)), peerID, "link"))
+        // One actor per peer handles packets in order: once this text is relayed, the media was handled.
+        processor.processPacket(RoutedPacket(packet(MessageType.MESSAGE, SpecialRecipients.BROADCAST, "after".toByteArray()), peerID, "link"))
+        withTimeout(5_000) { recorder.textRelayed.await() }
+
+        assertEquals(
+            listOf(MessageType.FILE_TRANSFER.value, MessageType.FRAGMENT.value, MessageType.MESSAGE.value),
+            recorder.relayed.map { it.packet.type }
+        )
+        assertTrue(recorder.relayed.take(2).all { it.packet.recipientID!!.contentEquals(otherPeer) })
+        assertEquals(listOf(MessageType.FILE_TRANSFER.value, MessageType.MESSAGE.value), recorder.handled.map { it.packet.type })
+        assertTrue(recorder.handled.first().packet.recipientID!!.contentEquals(myPeerID.hexToBytes()))
+        assertEquals(0, recorder.fragmentsHandled)
+    }
+
+    @Test
+    fun `private media from a sender who is not an enrolled contact gets silence`() = runBlocking {
+        handler.handleNoiseEncrypted(encryptedMedia())
+        handler.handleMessage(RoutedPacket(packet(MessageType.FILE_TRANSFER, myPeerID.hexToBytes(), fileTlv), peerID, "link"))
+
+        verify(delegate, never()).onPrivateMessageReceived(any())
+        verify(delegate, never()).onMessageReceived(any())
+        verify(delegate, never()).sendPacket(any())
+        verify(delegate, never()).verifySignature(any(), any())
+        assertTrue(incomingFiles().isEmpty())
+    }
+
+    @Test
+    fun `private media from an enrolled contact is one empty placeholder and nothing on disk`() = runBlocking {
+        enroll()
+        whenever(delegate.onPrivateMessageReceived(any())).thenReturn(true)
+
+        handler.handleNoiseEncrypted(encryptedMedia())
+
+        val captor = argumentCaptor<BitchatMessage>()
+        verify(delegate, times(1)).onPrivateMessageReceived(captor.capture())
+        val placeholder = captor.firstValue
+        assertEquals("", placeholder.content)
+        assertTrue(placeholder.type != BitchatMessageType.Message)
+        assertTrue(placeholder.isPrivate)
+        assertEquals(peerID, placeholder.senderPeerID)
+        verify(delegate, never()).onMessageReceived(any())
+        // No DELIVERED: the media itself never arrived.
+        verify(delegate, never()).sendPacket(any())
+        verify(delegate, never()).encryptForPeer(any(), any())
+        assertTrue(incomingFiles().isEmpty())
+    }
+
+    @Test
+    fun `a private file under the prerelease 0x09 alias is the same placeholder`() = runBlocking {
+        enroll()
+        whenever(delegate.onPrivateMessageReceived(any())).thenReturn(true)
+
+        handler.handleNoiseEncrypted(encryptedMedia(byteArrayOf(0x09) + fileTlv))
+
+        val captor = argumentCaptor<BitchatMessage>()
+        verify(delegate, times(1)).onPrivateMessageReceived(captor.capture())
+        assertEquals("", captor.firstValue.content)
+        assertTrue(captor.firstValue.type != BitchatMessageType.Message)
+        verify(delegate, never()).sendPacket(any())
+        assertTrue(incomingFiles().isEmpty())
+    }
+
+    @Test
+    fun `a directed raw file from an enrolled contact is one placeholder without acknowledgement`() = runBlocking {
+        enroll()
+
+        handler.handleMessage(RoutedPacket(packet(MessageType.FILE_TRANSFER, myPeerID.hexToBytes(), fileTlv), peerID, "link"))
+
+        val captor = argumentCaptor<BitchatMessage>()
+        verify(delegate, times(1)).onMessageReceived(captor.capture())
+        assertEquals("", captor.firstValue.content)
+        assertTrue(captor.firstValue.type != BitchatMessageType.Message)
+        assertTrue(captor.firstValue.isPrivate)
+        verify(delegate, never()).onPrivateMessageReceived(any())
+        verify(delegate, never()).sendPacket(any())
+        assertTrue(incomingFiles().isEmpty())
+    }
+
+    @Test
+    fun `a placeholder that admission rejects is not acknowledged`() = runBlocking {
+        enroll()
+        whenever(delegate.onPrivateMessageReceived(any())).thenReturn(false)
+
+        handler.handleNoiseEncrypted(encryptedMedia())
+
+        verify(delegate, times(1)).onPrivateMessageReceived(any())
+        verify(delegate, never()).sendPacket(any())
+    }
+
+    private class RelayRecorder : PacketProcessorDelegate {
+        val relayed = CopyOnWriteArrayList<RoutedPacket>()
+        val handled = CopyOnWriteArrayList<RoutedPacket>()
+        val textRelayed = CompletableDeferred<Unit>()
+        @Volatile var fragmentsHandled = 0
+        @Volatile var lastSeenUpdates = 0
+
+        override fun validatePacketSecurity(packet: BitchatPacket, peerID: String) = true
+        override fun updatePeerLastSeen(peerID: String) { lastSeenUpdates += 1 }
+        override fun getPeerNickname(peerID: String): String? = null
+        override fun getNetworkSize() = 1
+        override fun getBroadcastRecipient(): ByteArray = SpecialRecipients.BROADCAST
+        override fun handleNoiseHandshake(routed: RoutedPacket) = true
+        override fun handleNoiseEncrypted(routed: RoutedPacket) = true
+        override suspend fun handleAnnounce(routed: RoutedPacket) = true
+        override fun handleMessage(routed: RoutedPacket) { handled += routed }
+        override fun handleLeave(routed: RoutedPacket) = Unit
+        override fun handleFragment(packet: BitchatPacket, ingressKey: String): FragmentResult { fragmentsHandled += 1; return FragmentResult.Pending }
+        override fun handleRequestSync(routed: RoutedPacket) = Unit
+        override fun sendAnnouncementToPeer(peerID: String) = Unit
+        override fun sendCachedMessages(peerID: String) = Unit
+        override fun relayPacket(routed: RoutedPacket) {
+            relayed += routed
+            if (routed.packet.type == MessageType.MESSAGE.value) textRelayed.complete(Unit)
+        }
+        override fun sendToPeer(peerID: String, routed: RoutedPacket) = false
     }
 
     @Test
@@ -153,7 +322,7 @@ class WeshInboundMediaTest {
     }
 
     @Test
-    fun `the Wesh inbound policy closes media, plaintext private text and favorite notices`() {
+    fun `the Wesh inbound policy closes voice, plaintext private text and favorite notices`() {
         val fresh = MessageHandler(myPeerID, RuntimeEnvironment.getApplication())
         fresh.applyInboundPolicy(weshLocalOnly = true)
         assertFalse(fresh.acceptIncomingMedia || fresh.acceptDirectedPlaintext || fresh.acceptFavoriteNotices)

@@ -68,13 +68,6 @@
     <string name="cd_handshake_failed">ხელის ჩამორთმევა წარუმატებლად დასრულდა</string>
 
     <!-- ფაილის დამთვალიერებელი დიალოგი -->
-    <string name="file_viewer_title">📎 ფაილი მიღებულია</string>
-    <string name="file_viewer_name">📄 %1$s</string>
-    <string name="file_viewer_size">📏 ზომა: %1$s</string>
-    <string name="file_viewer_type">🏷️ ტიპი: %1$s</string>
-    <string name="file_viewer_open_save">📂 გახსნა / შენახვა</string>
-    <string name="close_with_emoji">❌ დახურვა</string>
-    <string name="pick_image">სურათის არჩევა</string>
 
     <!-- შიტი "შესახებ" -->
     <string name="about_offline_mesh_title">ოფლაინ mesh-ჩათი</string>
@@ -124,29 +117,14 @@
     <string name="cd_reachable_via_nostr">მისაწვდომია Nostr-ით</string>
     <string name="cd_offline_favorite">რჩეული (ოფლაინ)</string>
     <string name="cd_scroll_to_bottom">ქვემოთ გადახვევა</string>
-    <string name="cd_file">ფაილი</string>
-    <string name="cd_image">სურათი</string>
     <string name="cd_cancel">გაუქმება</string>
     <string name="cd_link">ბმული</string>
-    <string name="cd_pick_media">მედიის არჩევა</string>
-    <string name="cd_pick_file">ფაილის არჩევა</string>
-    <string name="cd_save_current_image">მიმდინარე სურათის შენახვა</string>
-    <string name="cd_close">დახურვა</string>
-    <string name="cd_image_index_of">სურათი %1$d %2$d-დან</string>
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">ხმოვანი ჩანაწერის ჩაწერა</string>
     <string name="cd_offline_mesh_chat">ოფლაინ mesh-ჩათი</string>
     <string name="cd_end_to_end_encryption">ბოლო-მდე დაშიფვრა</string>
 
     <!-- სურათები &amp; ფაილები -->
-    <string name="image_page_of">სურათი %1$d %2$d-დან</string>
-    <string name="image_unavailable">სურათი მიუწვდომელია</string>
-    <string name="image_saved_to_downloads">სურათი შენახულია "ჩამოტვირთვებში"</string>
-    <string name="image_save_failed">სურათის შენახვა ვერ მოხერხდა</string>
-    <string name="toast_image_saved">სურათი შენახულია "ჩამოტვირთვებში"</string>
-    <string name="toast_failed_to_save_image">სურათის შენახვა ვერ მოხერხდა</string>
-    <string name="pick_file">ფაილის არჩევა</string>
-    <string name="file_unavailable">[ფაილი მიუწვდომელია]</string>
     <string name="unknown">უცნობი</string>
 
     <!-- მომხმარებლის ქმედებების შიტი -->
@@ -243,18 +221,10 @@
     <string name="type_a_message_placeholder">შეიყვანეთ შეტყობინება…</string>
     <string name="mention">ხსენება</string>
     <string name="version_prefix">v%1$s</string>
-    <string name="image_star">image/*</string>
-    <string name="media_type_image">სურათი</string>
-    <string name="media_type_file">ფაილი</string>
 
     <!-- შეტყობინებების ტექსტის დამხმარეები -->
-    <string name="notification_sent_image">📷 გაგზავნა სურათი</string>
-    <string name="notification_sent_voice">🎤 გაგზავნა ხმოვანი შენიშვნა</string>
-    <string name="notification_sent_file">📎 გაგზავნა ფაილი</string>
 
     <!-- ხმოვანი დამკვრელის ხელმისაწვდომობა -->
-    <string name="cd_play_voice">დაკვრა</string>
-    <string name="cd_pause_voice">პაუზა</string>
 
     <!-- ნებართვების აღწერები -->
     <string name="perm_nearby_devices_desc">Connect to people on the Wesh Bluetooth mesh.</string>

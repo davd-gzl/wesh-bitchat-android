@@ -19,7 +19,6 @@ internal interface AuthenticatedPeerStateStore {
         state: AuthenticatedPeerState,
         onCommitted: () -> Unit
     ): Boolean
-    fun isPrivateMediaPinned(fingerprint: String): Boolean
 }
 
 internal class SecureAuthenticatedPeerStateStore(context: Context) : AuthenticatedPeerStateStore {
@@ -33,9 +32,6 @@ internal class SecureAuthenticatedPeerStateStore(context: Context) : Authenticat
         state: AuthenticatedPeerState,
         onCommitted: () -> Unit
     ): Boolean = identityState.storeAuthenticatedPeerState(fingerprint, state, onCommitted)
-
-    override fun isPrivateMediaPinned(fingerprint: String): Boolean =
-        identityState.isPrivateMediaCapable(fingerprint)
 }
 
 internal sealed interface AuthenticatedPeerStateStatus {
@@ -217,11 +213,6 @@ internal class AuthenticatedPeerStateCoordinator(
     fun persistedSigningKeyFor(noisePublicKey: ByteArray): ByteArray? {
         if (noisePublicKey.size != 32) return null
         return store.load(fingerprint(noisePublicKey))?.signingPublicKey?.copyOf()
-    }
-
-    fun isPrivateMediaPinned(peerID: String): Boolean {
-        val authenticatedSession = authenticatedSessionProvider(peerID) ?: return false
-        return store.isPrivateMediaPinned(fingerprint(authenticatedSession.remoteStaticKey))
     }
 
     fun clear(peerID: String) {

@@ -39,9 +39,9 @@ cross-cutting, or release-sensitive changes.
 | Discovery, connection management, routing, foreground-service lifecycle | `broadcast`, `dm`, `session_recovery` |
 | Background, doze, or power-duty-cycle behavior | Existing setup keeps devices awake and foregrounded; add a focused workflow or use the full release gate |
 | Wi-Fi Aware or transport-selection behavior | Existing setup enables BLE and does not pin Wi-Fi; add a transport-specific control/assertion or use the full release gate |
-| Noise, crypto, authenticated peer state, identity persistence | `dm`, `file_private`, `session_recovery`, `identity_reset` |
+| Noise, crypto, authenticated peer state, identity persistence | `dm`, `session_recovery`, `identity_reset` |
 | Public messaging or message delivery | `broadcast`, then `dm` if shared routing changed |
-| File/media encoding, transfer, fragmentation, admission limits | `file`, `file_private`, `file_oversize` |
+| Fragmentation or inbound admission limits | `broadcast`, `dm` (Wesh ships no media, so there is no file scenario) |
 | Packet parsing, bridge/routing, TTL, or protocol changes | `raw`, plus a receiving scenario such as `broadcast` or `dm` |
 | Broad mesh or transport refactor | `all` |
 | UI-only work with no service, state, or delivery effect | Usually no Mesh Lab run; explain why |
@@ -139,11 +139,7 @@ needed, remove it or move it to an explicitly approved protected location.
 
 ## Interpret results precisely
 
-- `dm`, `broadcast`, `file`, and `file_private` include receiver-side assertions.
-- `file` and `file_private` currently validate a 1 KB deterministic fixture and
-  SHA-256 integrity, not sustained or boundary-sized transfer performance.
-- `file_oversize` validates sender rejection and receiver absence for a 512 KB
-  broadcast, not the exact 256/257-fragment boundary.
+- `dm` and `broadcast` include receiver-side assertions.
 - `raw` proves that the local transport bridge accepted the injected packet. It
   does not prove that another device received or accepted it.
 - `session_recovery` proves recoverability after process death, but may fall

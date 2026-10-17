@@ -204,10 +204,28 @@ class PacketProcessor(
                 // Public text above the local bound is refused outright: not shown, kept or relayed.
                 if (isOversizedPublicText(packet)) validPacket = false else handleMessage(routed)
             }
-            MessageType.FILE_TRANSFER -> handleMessage(routed) // treat same routing path; parsing happens in handler
+            // Wesh ships no media. A file addressed to us reaches the handler, which keeps nothing
+            // (see handleMessage) and is never relayed. A file for another peer is relayed as before
+            // and not processed here. A broadcast file is dropped: the V1 never spreads public files.
+            MessageType.FILE_TRANSFER -> when {
+                packetRelayManager.isPacketAddressedToMe(packet) -> {
+                    validPacket = false
+                    handleMessage(routed)
+                }
+                isDirectedToAnotherPeer(packet) -> Unit
+                else -> validPacket = false
+            }
             MessageType.VOICE_FRAME -> validPacket = delegate?.handleVoiceFrame(routed) ?: false
             MessageType.LEAVE -> handleLeave(routed)
-            MessageType.FRAGMENT -> validPacket = handleFragment(routed)
+            MessageType.FRAGMENT -> {
+                if (isFileTransferFragment(packet)) {
+                    // No media is reassembled here. Fragments of a file for another peer are relayed
+                    // as before; those addressed to us or broadcast are dropped.
+                    validPacket = isDirectedToAnotherPeer(packet)
+                } else {
+                    validPacket = handleFragment(routed)
+                }
+            }
             MessageType.REQUEST_SYNC -> handleRequestSync(routed)
             else -> {
                 // Handle private packet types (address check required)
@@ -215,7 +233,6 @@ class PacketProcessor(
                     when (messageType) {
                         MessageType.NOISE_HANDSHAKE -> validPacket = handleNoiseHandshake(routed)
                         MessageType.NOISE_ENCRYPTED -> validPacket = handleNoiseEncrypted(routed)
-                        MessageType.FILE_TRANSFER -> handleMessage(routed)
                         else -> {
                             validPacket = false
                             Log.w(TAG, "Unknown message type: ${packet.type}")
@@ -306,6 +323,18 @@ class PacketProcessor(
         val isBroadcast = recipient == null || recipient.contentEquals(SpecialRecipients.BROADCAST)
         return isBroadcast && packet.payload.size > PublicInboundBudget.MAX_PUBLIC_TEXT_BYTES
     }
+
+    /** Reads the original-type byte of the fragment header without copying the fragment data. */
+    private fun isDirectedToAnotherPeer(packet: BitchatPacket): Boolean {
+        val recipient = packet.recipientID ?: return false
+        return !recipient.contentEquals(SpecialRecipients.BROADCAST) &&
+            !packetRelayManager.isPacketAddressedToMe(packet)
+    }
+
+    private fun isFileTransferFragment(packet: BitchatPacket): Boolean =
+        packet.payload.size >= com.bitchat.android.model.FragmentPayload.HEADER_SIZE &&
+            packet.payload[com.bitchat.android.model.FragmentPayload.HEADER_SIZE - 1].toUByte() ==
+            MessageType.FILE_TRANSFER.value
 
     /**
      * Handle REQUEST_SYNC packets (public, TTL=1)
