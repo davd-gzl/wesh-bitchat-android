@@ -391,13 +391,95 @@ class FragmentManagerTest {
         assertFalse(FragmentResult.Skipped.keptForSync)
     }
 
+    @Test
+    fun `same fragment ID from two senders assembles both messages`() {
+        val senderA = "a1a2a3a4a5a6a7a8"
+        val senderB = "b1b2b3b4b5b6b7b8"
+        val sharedID = ByteArray(8) { 0x42 }
+        val packetA = privatePacket(senderA, seed = 1)
+        val packetB = privatePacket(senderB, seed = 2)
+        val fragmentsA = fragmentsWithID(packetA, sharedID)
+        val fragmentsB = fragmentsWithID(packetB, sharedID)
+        assertEquals(fragmentsA.size, fragmentsB.size)
+        assertTrue(fragmentsA.size > 1)
+
+        // A third sender reusing the ID with different metadata only affects its own assembly.
+        val intruder = FragmentPayload(sharedID, 0, fragmentsA.size + 1, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 9 }).encode()
+
+        val completed = mutableListOf<BitchatPacket>()
+        for (i in fragmentsA.indices) {
+            fragmentManager.handleFragment(fragmentsA[i])?.let(completed::add)
+            if (i == 0) {
+                assertEquals(FragmentResult.Pending, fragmentManager.receiveFragment(fragmentPacket(intruder, sender = "c1c2c3c4c5c6c7c8")))
+            }
+            fragmentManager.handleFragment(fragmentsB[i])?.let(completed::add)
+        }
+
+        assertEquals(2, completed.size)
+        val bySender = completed.associateBy { it.senderID.joinToString("") { b -> "%02x".format(b) } }
+        assertArrayEquals(packetA.payload, bySender.getValue(senderA).payload)
+        assertArrayEquals(packetB.payload, bySender.getValue(senderB).payload)
+    }
+
+    @Test
+    fun `one sender opening many assemblies cannot evict another sender's assembly`() {
+        val victim = "b1b2b3b4b5b6b7b8"
+        val flooder = "f1f2f3f4f5f6f7f8"
+        val packet = privatePacket(victim, seed = 3)
+        val fragments = fragmentsWithID(packet, ByteArray(8) { 0x11 })
+        assertTrue(fragments.size > 1)
+
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFragment(fragments.first()))
+
+        val maxActive = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS
+        val perSender = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS_PER_SENDER
+        repeat(maxActive + 16) { n ->
+            val id = ByteArray(8) { i -> if (i < 4) (n shr (8 * i)).toByte() else 0x7F }
+            val flood = FragmentPayload(id, 0, 2, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 1 }).encode()
+            assertEquals(FragmentResult.Pending, fragmentManager.receiveFragment(fragmentPacket(flood, sender = flooder)))
+        }
+        assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: ${perSender + 1}"))
+
+        val completed = fragments.drop(1).mapNotNull { fragmentManager.handleFragment(it) }
+        assertEquals(1, completed.size)
+        assertArrayEquals(packet.senderID, completed.single().senderID)
+        assertArrayEquals(packet.payload, completed.single().payload)
+
+        // A sender that starts after the flood still gets a slot.
+        val late = privatePacket("c1c2c3c4c5c6c7c8", seed = 4)
+        val lateCompleted = fragmentsWithID(late, ByteArray(8) { 0x22 }).mapNotNull { fragmentManager.handleFragment(it) }
+        assertEquals(1, lateCompleted.size)
+        assertArrayEquals(late.payload, lateCompleted.single().payload)
+    }
+
+    private fun privatePacket(sender: String, seed: Long) = BitchatPacket(
+        version = 1u,
+        type = MessageType.NOISE_ENCRYPTED.value,
+        senderID = hexStringToByteArray(sender),
+        recipientID = hexStringToByteArray(recipientID),
+        timestamp = 1u,
+        payload = ByteArray(1500).also { Random(seed).nextBytes(it) },
+        ttl = 7u
+    )
+
+    /** Fragments [packet] and rewrites every fragment to carry [fragmentID]. */
+    private fun fragmentsWithID(packet: BitchatPacket, fragmentID: ByteArray): List<BitchatPacket> =
+        fragmentManager.createFragments(packet).map { fragment ->
+            val decoded = requireNotNull(FragmentPayload.decode(fragment.payload))
+            fragment.copy(payload = FragmentPayload(fragmentID, decoded.index, decoded.total, decoded.originalType, decoded.data).encode())
+        }
+
     private fun fragment(type: MessageType, index: Int, total: Int, size: Int = 32) =
         FragmentPayload(ByteArray(8) { 5 }, index, total, type.value, ByteArray(size) { 1 }).encode()
 
-    private fun fragmentPacket(payload: ByteArray, recipient: ByteArray = hexStringToByteArray(recipientID)) = BitchatPacket(
+    private fun fragmentPacket(
+        payload: ByteArray,
+        recipient: ByteArray = hexStringToByteArray(recipientID),
+        sender: String = senderID
+    ) = BitchatPacket(
         version = 1u,
         type = MessageType.FRAGMENT.value,
-        senderID = hexStringToByteArray(senderID),
+        senderID = hexStringToByteArray(sender),
         recipientID = recipient,
         timestamp = 1u,
         payload = payload,

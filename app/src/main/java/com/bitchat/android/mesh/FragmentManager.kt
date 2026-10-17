@@ -32,6 +32,8 @@ class FragmentManager(
         private const val CLEANUP_INTERVAL = com.bitchat.android.util.AppConstants.Fragmentation.CLEANUP_INTERVAL_MS     // 10 seconds cleanup check
     }
     
+    // Assemblies are keyed by "<sender hex>:<fragment ID hex>" (see assemblyKey): a fragment
+    // ID is only unique per sender, so a fragment never touches another sender's assembly.
     // Fragment storage - iOS equivalent: incomingFragments: [String: [Int: Data]]
     private val incomingFragments = ConcurrentHashMap<String, MutableMap<Int, ByteArray>>()
     // iOS equivalent: fragmentMetadata: [String: (type: UInt8, total: Int, timestamp: Date)]
@@ -197,6 +199,8 @@ class FragmentManager(
             }
 
             val fragmentIDString = fragmentPayload.getFragmentIDString()
+            val senderKey = senderKey(packet.senderID)
+            val assemblyKey = assemblyKey(senderKey, fragmentIDString)
 
             // A fragment never carries another fragment: no BitChat client nests them.
             if (fragmentPayload.originalType == MessageType.FRAGMENT.value) {
@@ -233,36 +237,46 @@ class FragmentManager(
             )
 
             synchronized(fragmentStateLock) {
-                fragmentMetadata[fragmentIDString]?.let { (expectedType, expectedTotal, _) ->
+                fragmentMetadata[assemblyKey]?.let { (expectedType, expectedTotal, _) ->
                     if (expectedTotal != fragmentPayload.total || expectedType != fragmentPayload.originalType) {
                         Log.w(TAG, "Rejecting fragment for $fragmentIDString: inconsistent metadata")
-                        removeFragmentSetLocked(fragmentIDString)
+                        removeFragmentSetLocked(assemblyKey)
                         return FragmentResult.Refused
                     }
                 }
 
-                val isNewSet = !incomingFragments.containsKey(fragmentIDString)
+                val isNewSet = !incomingFragments.containsKey(assemblyKey)
                 if (isNewSet) {
+                    // A sender over its quota gives up its own oldest assembly; another sender's
+                    // assembly is never evicted to make room.
+                    val maxPerSender = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS_PER_SENDER
+                    val senderSets = fragmentMetadata.entries.filter { it.key.startsWith("$senderKey:") }
+                    if (senderSets.size >= maxPerSender) {
+                        senderSets.sortedBy { it.value.third }
+                            .take(senderSets.size - maxPerSender + 1)
+                            .forEach { removeFragmentSetLocked(it.key) }
+                    }
+
                     val maxActive = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS
                     if (incomingFragments.size >= maxActive) {
                         Log.w(TAG, "Not buffering fragment set $fragmentIDString: active fragment sets ${incomingFragments.size} >= $maxActive")
                         return FragmentResult.Skipped
                     }
 
-                    incomingFragments[fragmentIDString] = mutableMapOf()
-                    fragmentMetadata[fragmentIDString] = Triple(
+                    incomingFragments[assemblyKey] = mutableMapOf()
+                    fragmentMetadata[assemblyKey] = Triple(
                         fragmentPayload.originalType,
                         fragmentPayload.total,
                         System.currentTimeMillis()
                     )
-                    fragmentCumulativeSize[fragmentIDString] = 0
+                    fragmentCumulativeSize[assemblyKey] = 0
                 }
 
-                val fragmentMap = incomingFragments[fragmentIDString]
-                val currentSize = fragmentCumulativeSize[fragmentIDString]
+                val fragmentMap = incomingFragments[assemblyKey]
+                val currentSize = fragmentCumulativeSize[assemblyKey]
                 if (fragmentMap == null || currentSize == null) {
                     Log.w(TAG, "Dropping fragment set $fragmentIDString due to missing state")
-                    removeFragmentSetLocked(fragmentIDString)
+                    removeFragmentSetLocked(assemblyKey)
                     return FragmentResult.Skipped
                 }
 
@@ -270,7 +284,7 @@ class FragmentManager(
                 val newSize = currentSize - oldEntrySize + fragmentPayload.data.size
                 if (newSize > maxTotalBytes) {
                     Log.w(TAG, "Rejecting fragment for $fragmentIDString: cumulative size $newSize exceeds cap $maxTotalBytes")
-                    removeFragmentSetLocked(fragmentIDString)
+                    removeFragmentSetLocked(assemblyKey)
                     return FragmentResult.Refused
                 }
 
@@ -279,23 +293,23 @@ class FragmentManager(
                 if (globalBufferedBytes + delta > maxGlobalBytes) {
                     Log.w(TAG, "Not buffering fragment for $fragmentIDString: global buffered bytes exceed cap $maxGlobalBytes")
                     if (isNewSet) {
-                        removeFragmentSetLocked(fragmentIDString)
+                        removeFragmentSetLocked(assemblyKey)
                     }
                     return FragmentResult.Skipped
                 }
 
                 fragmentMap[fragmentPayload.index] = fragmentPayload.data
-                fragmentCumulativeSize[fragmentIDString] = newSize
+                fragmentCumulativeSize[assemblyKey] = newSize
                 globalBufferedBytes += delta
 
-                val expectedTotal = fragmentMetadata[fragmentIDString]?.second ?: fragmentPayload.total
+                val expectedTotal = fragmentMetadata[assemblyKey]?.second ?: fragmentPayload.total
                 if (fragmentMap.size < expectedTotal) return FragmentResult.Pending
 
                 val reassembledData = java.io.ByteArrayOutputStream(newSize)
                 for (i in 0 until expectedTotal) {
                     fragmentMap[i]?.let { data -> reassembledData.write(data) }
                 }
-                removeFragmentSetLocked(fragmentIDString)
+                removeFragmentSetLocked(assemblyKey)
 
                 // The reassembled packet must be the type its fragments announced.
                 val originalPacket = BitchatPacket.fromBinaryData(reassembledData.toByteArray())
@@ -313,10 +327,16 @@ class FragmentManager(
         return FragmentResult.Refused
     }
 
-    private fun removeFragmentSetLocked(fragmentIDString: String) {
-        incomingFragments.remove(fragmentIDString)
-        fragmentMetadata.remove(fragmentIDString)
-        val bytes = fragmentCumulativeSize.remove(fragmentIDString)?.toLong() ?: 0L
+    private fun senderKey(senderID: ByteArray): String =
+        senderID.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+
+    private fun assemblyKey(senderKey: String, fragmentIDString: String): String =
+        "$senderKey:$fragmentIDString"
+
+    private fun removeFragmentSetLocked(assemblyKey: String) {
+        incomingFragments.remove(assemblyKey)
+        fragmentMetadata.remove(assemblyKey)
+        val bytes = fragmentCumulativeSize.remove(assemblyKey)?.toLong() ?: 0L
         if (bytes != 0L) {
             globalBufferedBytes = (globalBufferedBytes - bytes).coerceAtLeast(0L)
         }
