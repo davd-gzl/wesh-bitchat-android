@@ -3,7 +3,9 @@ package com.bitchat.android.net
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import java.io.IOException
+import java.net.Authenticator
 import java.net.InetSocketAddress
+import java.net.PasswordAuthentication
 import java.net.Proxy
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
@@ -32,6 +34,7 @@ object OkHttpProvider {
     private val clientLock = Any()
 
     internal var socksAddressProvider: () -> InetSocketAddress? = { ArtiTorManager.getInstance().currentSocksAddress() }
+    internal var socksAuthProvider: () -> SocksAuth? = { ArtiTorManager.getInstance().currentSocksAuth() }
     /** The Wesh Internet opt-in: closed means no client at all, even with a SOCKS port. */
     internal var networkAllowed: () -> Boolean = { WeshNetworkPolicy.allowsNetwork() }
 
@@ -89,9 +92,38 @@ object OkHttpProvider {
         // Tor publishes the SOCKS address as soon as Tor mode is ON, even before bootstrap, so
         // early calls fail on the local port instead of leaking. No address means no client.
         val socks: InetSocketAddress = socksAddressProvider() ?: throw TorRequiredException()
+        TorSocksAuthenticator.install()
         val builder = OkHttpClient.Builder()
             .proxy(Proxy(Proxy.Type.SOCKS, socks))
             .dns(noLocalDns)
         return builder to Route.TOR
+    }
+}
+
+/**
+ * Answers the JDK's SOCKS5 username/password request for the local Tor port only (OkHttp has no
+ * SOCKS credentials API). Every other request gets nothing.
+ */
+internal object TorSocksAuthenticator : Authenticator() {
+    @Volatile private var installed = false
+
+    fun install() {
+        if (installed) return
+        synchronized(this) {
+            if (!installed) {
+                setDefault(this)
+                installed = true
+            }
+        }
+    }
+
+    override fun getPasswordAuthentication(): PasswordAuthentication? {
+        if (requestingProtocol != "SOCKS5") return null
+        // Only the exact address our proxy bound, and only while clients are routed to it.
+        val auth = OkHttpProvider.socksAuthProvider() ?: return null
+        val bound = auth.address
+        if (requestingPort != bound.port || requestingSite == null || requestingSite != bound.address) return null
+        if (OkHttpProvider.socksAddressProvider() != bound) return null
+        return PasswordAuthentication(auth.credentials.username, auth.credentials.password.toCharArray())
     }
 }

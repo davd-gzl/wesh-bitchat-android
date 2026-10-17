@@ -47,14 +47,17 @@ class ArtiTorManagerLifecycleTest {
         val stops = AtomicInteger(0)
         fun snapshot() = synchronized(calls) { calls.toList() }
         override fun setLogCallback(callback: ArtiLogListener) { listener = callback }
-        override fun initialize(dataDir: String): Int {
+        override fun generation() = 0L
+        override fun initialize(dataDir: String, generation: Long): Int {
             synchronized(calls) { calls += "initialize" }
             initializeEntered.countDown()
             blockInitialize?.await(10, TimeUnit.SECONDS)
             onInitialize?.invoke()
             return 0
         }
-        override fun startSocksProxy(port: Int): Int { synchronized(calls) { calls += "socks" }; return 0 }
+        override fun startSocksProxyWithAuth(port: Int, username: String, password: String): Int {
+            synchronized(calls) { calls += "socks" }; return 0
+        }
         override fun stop(): Int {
             onStop?.invoke()
             synchronized(calls) { calls += "stop" }
@@ -69,7 +72,7 @@ class ArtiTorManagerLifecycleTest {
     private val recorders = CoroutineScope(Dispatchers.Unconfined)
 
     private fun newManager(native: FakeNative, stopTimeoutMs: Long) = ArtiTorManager(
-        newProxy = { app, port, listener -> ArtiProxy(app, port, port + 1, listener, native) },
+        newProxy = { app, listener -> ArtiProxy(app, listener, native) },
         stopTimeoutMs = stopTimeoutMs
     ).also { it.init(app) }
 
@@ -91,6 +94,7 @@ class ArtiTorManagerLifecycleTest {
         assertFalse(status.running)
         assertEquals(0, status.bootstrapPercent)
         assertNull(manager.currentSocksAddress())
+        assertNull(manager.currentSocksAuth())
         assertFalse(manager.isProxyEnabled())
     }
 
@@ -254,7 +258,10 @@ class ArtiTorManagerLifecycleTest {
     @Test fun `the SOCKS address is withdrawn before the native stop, off the caller thread`() = runBlocking {
         val caller = Thread.currentThread()
         val atStop = Collections.synchronizedList(mutableListOf<Pair<InetSocketAddress?, Thread>>())
-        native.onStop = { atStop += manager.currentSocksAddress() to Thread.currentThread() }
+        native.onStop = {
+            val published = manager.currentSocksAddress() ?: manager.currentSocksAuth()?.address
+            atStop += published to Thread.currentThread()
+        }
         manager.applyMode(app, TorMode.ON)
         assertNotNull(manager.currentSocksAddress())
         manager.applyMode(app, TorMode.OFF)
