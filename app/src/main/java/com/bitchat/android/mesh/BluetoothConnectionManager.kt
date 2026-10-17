@@ -41,7 +41,8 @@ class BluetoothConnectionManager(
     private val packetBroadcaster = BluetoothPacketBroadcaster(connectionScope, connectionTracker, fragmentManager, myPeerID)
     
     // Delegate for component managers to call back to main manager
-    private val componentDelegate = object : BluetoothConnectionManagerDelegate {
+    @androidx.annotation.VisibleForTesting
+    internal val componentDelegate = object : BluetoothConnectionManagerDelegate {
         override fun onPacketReceived(
             packet: BitchatPacket,
             peerID: String,

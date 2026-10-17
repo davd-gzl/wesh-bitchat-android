@@ -20,7 +20,8 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class FragmentManager(
     /** When set, directed fragments for other peers are relayed without being reassembled. */
-    private val myPeerID: String? = null
+    private val myPeerID: String? = null,
+    private val clock: () -> Long = System::currentTimeMillis
 ) {
     
     companion object {
@@ -417,7 +418,8 @@ class FragmentManager(
      * iOS cleanup - exactly matching performCleanup() implementation
      * Clean old fragments (> 30 seconds old)
      */
-    private fun cleanupOldFragments() {
+    @androidx.annotation.VisibleForTesting
+    internal fun cleanupOldFragments() {
         synchronized(fragmentStateLock) {
             val now = System.currentTimeMillis()
             val cutoff = now - FRAGMENT_TIMEOUT
@@ -468,6 +470,9 @@ class FragmentManager(
         }
     }
     
+    /** Drops the assemblies [ingressKey] opened; the link is gone and its ID is never reused. */
+    fun onIngressLinkClosed(ingressKey: String) = Unit
+
     /**
      * Clear all fragments
      */

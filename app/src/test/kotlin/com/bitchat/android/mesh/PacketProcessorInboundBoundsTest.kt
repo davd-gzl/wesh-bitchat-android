@@ -66,6 +66,19 @@ class PacketProcessorInboundBoundsTest {
     }
 
     @Test
+    fun `fragments reach the fragment manager under the quota key of their ingress link`() = runBlocking {
+        val delegate = Delegate()
+        val processor = processor(delegate)
+
+        processor.processPacket(RoutedPacket(packet(PEER_A, MessageType.FRAGMENT, ByteArray(32)), PEER_A, "AA:BB", ingressLinkID = "link-1"))
+        processor.processPacket(RoutedPacket(packet(PEER_B, MessageType.FRAGMENT, ByteArray(32)), PEER_B, "CC:DD"))
+        withTimeout(1_000) { while (delegate.fragments.get() < 2) delay(10) }
+
+        assertEquals(setOf(PacketProcessor.linkQuotaKey("link-1"), "addr:CC:DD"), delegate.ingressKeys.toSet())
+        assertEquals("link:link-1", PacketProcessor.linkQuotaKey("link-1"))
+    }
+
+    @Test
     fun `one link cannot queue more than its share`() = runBlocking {
         val delegate = Delegate(blockMessages = true)
         val processor = processor(delegate, perLink = 4)
@@ -154,6 +167,7 @@ class PacketProcessorInboundBoundsTest {
         val fragments = AtomicInteger()
         val relayed = AtomicInteger()
         val lastSeen = AtomicInteger()
+        val ingressKeys = java.util.concurrent.CopyOnWriteArrayList<String>()
 
         fun release() = gate.countDown()
 
@@ -171,6 +185,7 @@ class PacketProcessorInboundBoundsTest {
         }
         override fun handleLeave(routed: RoutedPacket) = Unit
         override fun handleFragment(packet: BitchatPacket, ingressKey: String): FragmentResult {
+            ingressKeys += ingressKey
             fragments.incrementAndGet()
             return fragmentResult
         }

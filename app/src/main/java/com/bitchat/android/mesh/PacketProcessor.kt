@@ -33,6 +33,9 @@ class PacketProcessor(
         private const val TAG = "PacketProcessor"
         // Header, IDs and signature counted against the byte bound for every queued packet.
         private const val PACKET_OVERHEAD_BYTES = 128L
+
+        /** Quota key of a packet received over the transport link [linkID]. */
+        fun linkQuotaKey(linkID: String): String = "link:$linkID"
     }
     
     // Delegate for callbacks
@@ -107,7 +110,7 @@ class PacketProcessor(
 
     /** Quotas follow the link a packet arrived on, never the sender ID it claims. */
     private fun quotaKey(routed: RoutedPacket, peerID: String): String =
-        routed.ingressLinkID?.let { "link:$it" } ?: routed.relayAddress?.let { "addr:$it" } ?: "peer:$peerID"
+        routed.ingressLinkID?.let(::linkQuotaKey) ?: routed.relayAddress?.let { "addr:$it" } ?: "peer:$peerID"
 
     /** Starts a queue for a new peer, forgetting an idle one when the table is full. */
     private fun newQueueLocked(peerID: String): PeerQueue? {

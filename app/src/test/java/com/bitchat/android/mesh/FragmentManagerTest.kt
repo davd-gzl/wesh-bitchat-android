@@ -435,11 +435,14 @@ class FragmentManagerTest {
 
         val maxActive = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS
         val perSender = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK_SENDER
-        repeat(maxActive + 16) { n ->
+        val results = (0 until maxActive + 16).map { n ->
             val id = ByteArray(8) { i -> if (i < 4) (n shr (8 * i)).toByte() else 0x7F }
             val flood = FragmentPayload(id, 0, 2, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 1 }).encode()
-            assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragmentPacket(flood, sender = flooder)))
+            fragmentManager.receiveFromLink(fragmentPacket(flood, sender = flooder))
         }
+        // The pair quota never evicts: assemblies beyond it are relayed but not kept.
+        assertTrue(results.take(perSender).all { it == FragmentResult.Pending })
+        assertTrue(results.drop(perSender).all { it == FragmentResult.Skipped })
         assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: ${perSender + 1}"))
 
         val completed = fragments.drop(1).mapNotNull { fragmentManager.handleFragment(it) }
@@ -607,6 +610,153 @@ class FragmentManagerTest {
         // The opening link overflowing its own assembly still drops it.
         assertEquals(FragmentResult.Refused, fragmentManager.receiveFromLink(overflow, LINK_A))
         assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: 0"))
+    }
+
+    @Test
+    fun `the genuine fragment completing an assembly a forgery spoiled is still relayed`() {
+        val packet = privatePacket(senderID, seed = 11)
+        val id = ByteArray(8) { 0x0C }
+        val fragments = fragmentsWithID(packet, id)
+        assertTrue(fragments.size > 2)
+        // A forged first index (bad header) arrives before the genuine one.
+        val genuine = requireNotNull(FragmentPayload.decode(fragments[0].payload))
+        val forged = fragments[0].copy(
+            payload = FragmentPayload(id, 0, genuine.total, genuine.originalType, ByteArray(genuine.data.size) { 9 }).encode()
+        )
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(forged, LINK_B))
+        val results = fragments.map { fragmentManager.receiveFromLink(it, LINK_A) }
+
+        // The set completes with the forged index and cannot decode: nothing is delivered,
+        // and the genuine fragment that completed it is relayed rather than refused.
+        assertTrue(results.none { it is FragmentResult.Complete || it == FragmentResult.Refused })
+        assertEquals(FragmentResult.Skipped, results.last())
+        assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: 0"))
+    }
+
+    @Test
+    fun `a sender ID claimed through an honest relay cannot evict the real sender's assembly`() {
+        val victim = "b1b2b3b4b5b6b7b8"
+        val packet = privatePacket(victim, seed = 12)
+        val fragments = fragmentsWithID(packet, ByteArray(8) { 0x0D })
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(fragments.first(), LINK_A))
+
+        // Same relay link, same claimed sender, many new fragment IDs.
+        val perSender = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK_SENDER
+        val results = (0 until perSender * 2).map { n ->
+            val id = ByteArray(8) { i -> if (i < 4) (n shr (8 * i)).toByte() else 0x5D }
+            fragmentManager.receiveFromLink(
+                fragmentPacket(FragmentPayload(id, 0, 2, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 1 }).encode(), sender = victim),
+                LINK_A
+            )
+        }
+        assertEquals(perSender - 1, results.count { it == FragmentResult.Pending })
+        assertTrue(results.drop(perSender - 1).all { it == FragmentResult.Skipped })
+
+        val completed = fragments.drop(1).mapNotNull { fragmentManager.handleFragment(it, LINK_A) }
+        assertEquals(1, completed.size)
+        assertArrayEquals(packet.payload, completed.single().payload)
+    }
+
+    @Test
+    fun `closing a link frees the assemblies it opened and keeps it from opening more`() {
+        val victim = privatePacket(senderID, seed = 13)
+        val victimFragments = fragmentsWithID(victim, ByteArray(8) { 0x0E })
+        assertEquals(FragmentResult.Pending, fragmentManager.receiveFromLink(victimFragments.first(), LINK_A))
+
+        val perLink = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK
+        fun flood(link: String, tag: Int) = (0 until perLink).map { n ->
+            val id = ByteArray(8) { i -> if (i < 4) (n shr (8 * i)).toByte() else tag.toByte() }
+            fragmentManager.receiveFromLink(
+                fragmentPacket(FragmentPayload(id, 0, 2, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 1 }).encode(), sender = "0e0e0e0e0e0e%04x".format(n)),
+                link
+            )
+        }
+        // One radio reconnecting gets a fresh link each time: each closed link gives its slots back.
+        repeat(5) { round ->
+            val link = "link:reconnect-$round"
+            assertTrue(flood(link, 0x40 + round).all { it == FragmentResult.Pending })
+            fragmentManager.onIngressLinkClosed(link)
+            assertTrue(fragmentManager.getDebugInfo().contains("Active Fragment Sets: 1"))
+            // Fragments still queued from the closed link are relayed but never kept.
+            assertTrue(flood(link, 0x60 + round).all { it == FragmentResult.Skipped })
+        }
+        assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: ${FragmentPayload.decode(victimFragments.first().payload)!!.data.size}"))
+
+        val completed = victimFragments.drop(1).mapNotNull { fragmentManager.handleFragment(it, LINK_A) }
+        assertEquals(1, completed.size)
+        assertArrayEquals(victim.payload, completed.single().payload)
+    }
+
+    @Test
+    fun `one link cannot buffer more than its byte share but still fits one assembly of the largest size`() {
+        val limits = com.bitchat.android.util.AppConstants.Fragmentation
+        val type = MessageType.NOISE_ENCRYPTED.value
+        val assemblyCap = minOf(limits.MAX_FRAGMENT_TOTAL_BYTES, com.bitchat.android.protocol.PacketPayloadLimits.maxFrameBytes(type))
+        assertTrue(limits.MAX_FRAGMENT_BYTES_PER_LINK >= assemblyCap)
+        assertTrue(limits.MAX_FRAGMENT_BYTES_PER_LINK < limits.MAX_GLOBAL_FRAGMENT_TOTAL_BYTES)
+        val chunk = 64 * 1024
+        val perAssembly = assemblyCap / chunk
+        val total = perAssembly + 1
+        fun send(link: String, idTag: Int, index: Int) = fragmentManager.receiveFromLink(
+            fragmentPacket(FragmentPayload(ByteArray(8) { idTag.toByte() }, index, total, type, ByteArray(chunk) { 1 }).encode()),
+            link
+        )
+
+        // One assembly of the largest size fits on a link...
+        var buffered = 0L
+        for (index in 0 until perAssembly) {
+            assertEquals(FragmentResult.Pending, send(LINK_A, 0x10, index))
+            buffered += chunk
+        }
+        // ...then LINK_A fills its byte share with assemblies kept just under their own bound.
+        var tag = 0x11
+        var index = 0
+        while (buffered + chunk <= limits.MAX_FRAGMENT_BYTES_PER_LINK) {
+            assertEquals(FragmentResult.Pending, send(LINK_A, tag, index))
+            buffered += chunk
+            index++
+            if (index == perAssembly - 1) { tag++; index = 0 }
+        }
+        // Nothing more from LINK_A, whether it opens or grows an assembly...
+        assertEquals(FragmentResult.Skipped, send(LINK_A, 0x7A, 0))
+        if (index == 0) {
+            assertEquals(FragmentResult.Skipped, send(LINK_A, tag - 1, perAssembly - 1))
+        } else {
+            assertEquals(FragmentResult.Skipped, send(LINK_A, tag, index))
+        }
+        assertTrue(fragmentManager.getDebugInfo().contains("Global Buffered Bytes: $buffered"))
+        // ...while another link still has room.
+        assertEquals(FragmentResult.Pending, send(LINK_B, 0x7B, 0))
+    }
+
+    @Test
+    fun `an expired assembly gives its link quota back`() {
+        var now = 1_000_000L
+        val manager = FragmentManager(clock = { now })
+        try {
+            val perLink = com.bitchat.android.util.AppConstants.Fragmentation.MAX_ACTIVE_FRAGMENT_SETS_PER_LINK
+            fun open(n: Int) = manager.receiveFromLink(
+                fragmentPacket(
+                    FragmentPayload(ByteArray(8) { 0x2F }, 0, 2, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 1 }).encode(),
+                    sender = "2f2f2f2f2f2f%04x".format(n)
+                ),
+                LINK_A
+            )
+            assertTrue((0 until perLink).all { open(it) == FragmentResult.Pending })
+            assertEquals(FragmentResult.Skipped, open(perLink))
+
+            now += com.bitchat.android.util.AppConstants.Fragmentation.FRAGMENT_TIMEOUT_MS - 1
+            manager.cleanupOldFragments()
+            assertEquals(FragmentResult.Skipped, open(perLink))
+
+            now += 2
+            manager.cleanupOldFragments()
+            assertTrue(manager.getDebugInfo().contains("Active Fragment Sets: 0"))
+            assertTrue(manager.getDebugInfo().contains("Global Buffered Bytes: 0"))
+            assertEquals(FragmentResult.Pending, open(perLink))
+        } finally {
+            manager.shutdown()
+        }
     }
 
     private fun FragmentManager.receiveFromLink(packet: BitchatPacket, link: String = LINK_A) =

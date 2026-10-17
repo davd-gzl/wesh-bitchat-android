@@ -47,6 +47,8 @@ object AppConstants {
         /** Assembly slots one ingress link may open for a single claimed sender. */
         const val MAX_ACTIVE_FRAGMENT_SETS_PER_LINK_SENDER: Int = 8
         const val MAX_GLOBAL_FRAGMENT_TOTAL_BYTES: Long = 4L * 1_048_576L
+        /** Bytes one ingress link may hold buffered: one largest assembly fits, half the global cap. */
+        const val MAX_FRAGMENT_BYTES_PER_LINK: Long = 2L * 1_048_576L
     }
 
     object Security {
