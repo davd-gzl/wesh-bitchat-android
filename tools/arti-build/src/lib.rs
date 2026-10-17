@@ -7,19 +7,24 @@ use arti_client::TorClient;
 use arti_client::config::TorClientConfigBuilder;
 use tor_rtcompat::PreferredRuntime;
 
-use std::sync::{Arc, Mutex, Once};
+use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
+use std::time::Duration;
 use anyhow::Result;
 
 // ============================================================================
 // Global State
 // ============================================================================
 
-/// Global Arti client instance
-static ARTI_CLIENT: Mutex<Option<Arc<TorClient<PreferredRuntime>>>> = Mutex::new(None);
+/// Everything one start owns. Stopping drops all of it: no client, no runtime, no task.
+struct Session {
+    runtime: tokio::runtime::Runtime,
+    client: Arc<TorClient<PreferredRuntime>>,
+    socks_task: Option<tokio::task::JoinHandle<()>>,
+}
 
-/// Global Tokio runtime (must persist for Arti to work)
-static TOKIO_RUNTIME: Mutex<Option<tokio::runtime::Runtime>> = Mutex::new(None);
+/// The current session, if any. A new start or a stop always replaces it.
+static SESSION: lifecycle::Lifecycle<Session> = lifecycle::Lifecycle::new();
 
 /// Global JavaVM reference (cached on first JNI call)
 static JAVA_VM: Mutex<Option<JavaVM>> = Mutex::new(None);
@@ -27,11 +32,25 @@ static JAVA_VM: Mutex<Option<JavaVM>> = Mutex::new(None);
 /// Global log callback reference
 static LOG_CALLBACK: Mutex<Option<GlobalRef>> = Mutex::new(None);
 
-/// Handle to SOCKS server task (for graceful shutdown)
-static SOCKS_TASK: Mutex<Option<tokio::task::JoinHandle<()>>> = Mutex::new(None);
+/// How long a stop waits for the runtime's worker and blocking threads.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// Initialization flag
-static INIT_ONCE: Once = Once::new();
+/// How often an in-progress bootstrap checks whether a stop cancelled it.
+const CANCEL_POLL: Duration = Duration::from_millis(50);
+
+/// Aborts the SOCKS task, drops the client inside its runtime, then shuts the runtime down,
+/// which ends every Arti background task (circuits, guards, directory fetches).
+fn teardown(session: Session) {
+    let Session { runtime, client, socks_task } = session;
+    if let Some(task) = socks_task {
+        task.abort();
+    }
+    {
+        let _context = runtime.enter();
+        drop(client);
+    }
+    runtime.shutdown_timeout(SHUTDOWN_TIMEOUT);
+}
 
 // ============================================================================
 // Logging Integration
@@ -116,7 +135,9 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_setLogCallback(
     }
 }
 
-/// Initialize Arti runtime
+/// Initialize Arti: a fresh runtime and a freshly bootstrapped client on every call.
+///
+/// Returns 0 on success, -4 when a concurrent stop() cancelled the bootstrap.
 #[no_mangle]
 pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
     mut env: JNIEnv,
@@ -141,28 +162,21 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
     log_info!("AMEx: state changed to Initialized");
     log_info!("Initializing Arti with data directory: {}", data_dir_str);
 
-    // Initialize Tokio runtime (once)
-    INIT_ONCE.call_once(|| {
-        match tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(rt) => {
-                log_info!("Tokio runtime created successfully");
-                *TOKIO_RUNTIME.lock().unwrap() = Some(rt);
-            }
-            Err(e) => {
-                log_error!("Failed to create Tokio runtime: {:?}", e);
-            }
-        }
-    });
+    // Waits out a stop in progress. A client left by an earlier start is released first:
+    // a start never reuses guards or circuits from before.
+    let (start, previous) = SESSION.begin_start();
+    if let Some(session) = previous {
+        log_info!("Releasing the previous Tor client");
+        teardown(session);
+    }
 
-    // Check if runtime exists
-    let runtime_guard = TOKIO_RUNTIME.lock().unwrap();
-    let runtime = match runtime_guard.as_ref() {
-        Some(rt) => rt,
-        None => {
-            log_error!("Tokio runtime not initialized");
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            log_error!("Failed to create Tokio runtime: {:?}", e);
             return -2;
         }
     };
@@ -176,7 +190,7 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
     std::fs::create_dir_all(&cache_dir).ok();
     std::fs::create_dir_all(&state_dir).ok();
 
-    let result: Result<()> = runtime.block_on(async {
+    let bootstrap = async {
         log_info!("Creating Arti client...");
         log_info!("Cache dir: {:?}", cache_dir);
         log_info!("State dir: {:?}", state_dir);
@@ -187,24 +201,51 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
 
         // Create client with Android-specific config
         let client = TorClient::create_bootstrapped(config).await?;
+        Ok::<_, anyhow::Error>(client)
+    };
 
-        log_info!("Arti client created successfully");
-
-        // Store client globally
-        *ARTI_CLIENT.lock().unwrap() = Some(Arc::new(client));
-
-        Ok(())
+    // A stop() during bootstrap wins: the bootstrap future is dropped within CANCEL_POLL.
+    let outcome = runtime.block_on(async {
+        tokio::select! {
+            result = bootstrap => Some(result),
+            _ = wait_until_cancelled(&start) => None,
+        }
     });
 
-    match result {
-        Ok(_) => {
-            log_info!("Arti initialized successfully");
-            0
+    // `start` stays held until the end of this function, so a waiting stop() returns only
+    // once the runtime below is gone.
+    match outcome {
+        Some(Ok(client)) => {
+            let session = Session { runtime, client: Arc::new(client), socks_task: None };
+            match start.install(session) {
+                Ok(()) => {
+                    log_info!("Arti client created successfully");
+                    log_info!("Arti initialized successfully");
+                    0
+                }
+                Err(session) => {
+                    log_info!("Arti stopped during bootstrap; client released");
+                    teardown(session);
+                    -4
+                }
+            }
         }
-        Err(e) => {
+        Some(Err(e)) => {
             log_error!("Failed to initialize Arti: {:?}", e);
+            runtime.shutdown_timeout(SHUTDOWN_TIMEOUT);
             -3
         }
+        None => {
+            log_info!("Arti bootstrap cancelled by stop");
+            runtime.shutdown_timeout(SHUTDOWN_TIMEOUT);
+            -4
+        }
+    }
+}
+
+async fn wait_until_cancelled(start: &lifecycle::Start<'_, Session>) {
+    while !start.is_cancelled() {
+        tokio::time::sleep(CANCEL_POLL).await;
     }
 }
 
@@ -218,88 +259,78 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_startSocksProxy(
     log_info!("AMEx: state changed to Starting");
     log_info!("Starting SOCKS proxy on port {}", port);
 
-    // Stop any existing SOCKS server first
-    if let Some(handle) = SOCKS_TASK.lock().unwrap().take() {
-        log_info!("Aborting previous SOCKS server task");
-        handle.abort();
-    }
-
-    let client_guard = ARTI_CLIENT.lock().unwrap();
-    let client = match client_guard.as_ref() {
-        Some(c) => Arc::clone(c),
-        None => {
-            log_error!("Arti client not initialized - call initialize() first");
-            return -1;
-        }
-    };
-    drop(client_guard);
-
-    let runtime_guard = TOKIO_RUNTIME.lock().unwrap();
-    let runtime = match runtime_guard.as_ref() {
-        Some(rt) => rt,
-        None => {
-            log_error!("Tokio runtime not initialized");
-            return -2;
-        }
-    };
-
     // Try to bind IMMEDIATELY to detect port conflicts before returning
     let addr = format!("127.0.0.1:{}", port);
 
-    // Use block_on to synchronously attempt binding
-    let bind_result = runtime.block_on(async {
-        tokio::net::TcpListener::bind(&addr).await
-    });
-
-    let listener = match bind_result {
-        Ok(l) => {
-            log_info!("SOCKS proxy bound to {}", addr);
-            l
+    let started = SESSION.with_current(|session| {
+        // Stop any existing SOCKS server first
+        if let Some(handle) = session.socks_task.take() {
+            log_info!("Aborting previous SOCKS server task");
+            handle.abort();
         }
-        Err(e) => {
-            log_error!("Failed to bind SOCKS proxy to {}: {:?}", addr, e);
-            return -3;
-        }
-    };
 
-    // Now spawn the background task with the already-bound listener
-    let handle = runtime.spawn(async move {
-        log_info!("SOCKS proxy listening on {}", addr);
-        log_info!("Sufficiently bootstrapped; system SOCKS now functional");
+        let listener = match session.runtime.block_on(tokio::net::TcpListener::bind(&addr)) {
+            Ok(l) => {
+                log_info!("SOCKS proxy bound to {}", addr);
+                l
+            }
+            Err(e) => {
+                log_error!("Failed to bind SOCKS proxy to {}: {:?}", addr, e);
+                return -3;
+            }
+        };
 
-        // Signal bootstrap completion to bitchat-android (expected by ArtiTorManager)
-        // This sets bootstrapPercent to 100% and stops inactivity restarts
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-        log_info!("We have found that guard [scrubbed] is usable.");
+        let client = Arc::clone(&session.client);
+        let addr = addr.clone();
+        // Now spawn the background task with the already-bound listener
+        let handle = session.runtime.spawn(async move {
+            log_info!("SOCKS proxy listening on {}", addr);
+            log_info!("Sufficiently bootstrapped; system SOCKS now functional");
 
-        // Accept connections
-        loop {
-            match listener.accept().await {
-                Ok((stream, peer_addr)) => {
-                    log_info!("SOCKS connection from: {}", peer_addr);
-                    let client_clone = Arc::clone(&client);
+            // Signal bootstrap completion to bitchat-android (expected by ArtiTorManager)
+            // This sets bootstrapPercent to 100% and stops inactivity restarts
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            log_info!("We have found that guard [scrubbed] is usable.");
 
-                    tokio::spawn(async move {
-                        if let Err(e) = handle_socks_connection(stream, client_clone).await {
-                            log_error!("SOCKS connection error: {:?}", e);
-                        }
-                    });
-                }
-                Err(e) => {
-                    log_error!("Failed to accept SOCKS connection: {:?}", e);
-                    break; // Exit loop on error
+            // Accept connections
+            loop {
+                match listener.accept().await {
+                    Ok((stream, peer_addr)) => {
+                        log_info!("SOCKS connection from: {}", peer_addr);
+                        let client_clone = Arc::clone(&client);
+
+                        tokio::spawn(async move {
+                            if let Err(e) = handle_socks_connection(stream, client_clone).await {
+                                log_error!("SOCKS connection error: {:?}", e);
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        log_error!("Failed to accept SOCKS connection: {:?}", e);
+                        break; // Exit loop on error
+                    }
                 }
             }
-        }
 
-        log_info!("SOCKS proxy task exiting");
+            log_info!("SOCKS proxy task exiting");
+        });
+
+        // Store handle for cleanup
+        session.socks_task = Some(handle);
+        0
     });
 
-    // Store handle for cleanup
-    *SOCKS_TASK.lock().unwrap() = Some(handle);
-
-    log_info!("SOCKS proxy started on port {}", port);
-    0
+    match started {
+        Some(0) => {
+            log_info!("SOCKS proxy started on port {}", port);
+            0
+        }
+        Some(code) => code,
+        None => {
+            log_error!("Arti client not initialized - call initialize() first");
+            -1
+        }
+    }
 }
 
 /// Handle a single SOCKS connection
@@ -429,7 +460,9 @@ async fn handle_socks_connection(
     Ok(())
 }
 
-/// Stop Arti and cleanup
+/// Stop Arti: cancels a bootstrap in progress, then drops the client and shuts its runtime
+/// down. When this returns no Tor task is left, so the data directory can be deleted and the
+/// next initialize() builds a new client with new guards.
 #[no_mangle]
 pub extern "C" fn Java_org_torproject_arti_ArtiNative_stop(
     _env: JNIEnv,
@@ -438,25 +471,12 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_stop(
     log_info!("AMEx: state changed to Stopping");
     log_info!("Stopping Arti...");
 
-    // Abort SOCKS proxy task (releases the port)
-    if let Some(handle) = SOCKS_TASK.lock().unwrap().take() {
-        log_info!("Aborting SOCKS server task");
-        handle.abort();
+    let mut stop = SESSION.begin_stop();
+    if let Some(session) = stop.take() {
+        log_info!("Releasing the Tor client");
+        teardown(session);
     }
-
-    // Give the abort a moment to complete and release the port
-    if let Some(rt) = TOKIO_RUNTIME.lock().unwrap().as_ref() {
-        rt.block_on(async {
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        });
-    }
-
-    // NOTE: We do NOT clear ARTI_CLIENT here!
-    // The TorClient can be reused for multiple SOCKS proxy start/stop cycles.
-    // Only clear it if you want to force full reinitialization.
-
-    // Uncomment this line only if you want to force reinitialization on every start:
-    // *ARTI_CLIENT.lock().unwrap() = None;
+    drop(stop);
 
     log_info!("AMEx: state changed to Stopped");
     log_info!("Arti stopped successfully");
@@ -488,6 +508,228 @@ mod android_logger {
             let tag = CString::new("ArtiNative").unwrap();
             let text = CString::new(message).unwrap();
             __android_log_write(ANDROID_LOG_INFO, tag.as_ptr() as *const c_char, text.as_ptr() as *const c_char);
+        }
+    }
+}
+
+// ============================================================================
+// Start/stop bookkeeping (std only: no Arti, Tokio or JNI, so it is testable alone)
+// ============================================================================
+
+mod lifecycle {
+    use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
+
+    struct Inner<R> {
+        /// Bumped by every stop; a start that sees it change has been cancelled.
+        generation: u64,
+        /// A start or stop is in progress; the other side waits.
+        busy: bool,
+        current: Option<R>,
+    }
+
+    /// Holds at most one session. Starts and stops never overlap, and a stop cancels a start
+    /// in progress instead of waiting for it to finish.
+    pub struct Lifecycle<R> {
+        inner: Mutex<Inner<R>>,
+        changed: Condvar,
+    }
+
+    impl<R> Lifecycle<R> {
+        pub const fn new() -> Self {
+            Self {
+                inner: Mutex::new(Inner { generation: 0, busy: false, current: None }),
+                changed: Condvar::new(),
+            }
+        }
+
+        fn lock(&self) -> MutexGuard<'_, Inner<R>> {
+            self.inner.lock().unwrap_or_else(PoisonError::into_inner)
+        }
+
+        fn wait_idle<'a>(&'a self, mut inner: MutexGuard<'a, Inner<R>>) -> MutexGuard<'a, Inner<R>> {
+            while inner.busy {
+                inner = self.changed.wait(inner).unwrap_or_else(PoisonError::into_inner);
+            }
+            inner
+        }
+
+        fn release(&self) {
+            self.lock().busy = false;
+            self.changed.notify_all();
+        }
+
+        /// Waits out any other start or stop, then returns the previous session for teardown:
+        /// every start builds a fresh one.
+        pub fn begin_start(&self) -> (Start<'_, R>, Option<R>) {
+            let mut inner = self.wait_idle(self.lock());
+            inner.busy = true;
+            let previous = inner.current.take();
+            (Start { owner: self, generation: inner.generation }, previous)
+        }
+
+        /// Cancels a start in progress, waits for it to return, and takes the current session.
+        pub fn begin_stop(&self) -> Stop<'_, R> {
+            let mut inner = self.lock();
+            inner.generation = inner.generation.wrapping_add(1);
+            let mut inner = self.wait_idle(inner);
+            inner.busy = true;
+            let current = inner.current.take();
+            Stop { owner: self, current }
+        }
+
+        /// Runs `f` on the current session; None when there is none.
+        pub fn with_current<T>(&self, f: impl FnOnce(&mut R) -> T) -> Option<T> {
+            self.lock().current.as_mut().map(f)
+        }
+    }
+
+    /// A start in progress. Dropping it lets a waiting stop proceed.
+    pub struct Start<'a, R> {
+        owner: &'a Lifecycle<R>,
+        generation: u64,
+    }
+
+    impl<R> Start<'_, R> {
+        pub fn is_cancelled(&self) -> bool {
+            self.owner.lock().generation != self.generation
+        }
+
+        /// Publishes the session unless a stop came in meanwhile; then it is handed back.
+        pub fn install(&self, session: R) -> Result<(), R> {
+            let mut inner = self.owner.lock();
+            if inner.generation != self.generation {
+                return Err(session);
+            }
+            inner.current = Some(session);
+            Ok(())
+        }
+    }
+
+    impl<R> Drop for Start<'_, R> {
+        fn drop(&mut self) {
+            self.owner.release();
+        }
+    }
+
+    /// A stop in progress: holds the session it took until torn down.
+    pub struct Stop<'a, R> {
+        owner: &'a Lifecycle<R>,
+        current: Option<R>,
+    }
+
+    impl<R> Stop<'_, R> {
+        pub fn take(&mut self) -> Option<R> {
+            self.current.take()
+        }
+    }
+
+    impl<R> Drop for Stop<'_, R> {
+        fn drop(&mut self) {
+            self.owner.release();
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::Lifecycle;
+        use std::sync::mpsc;
+        use std::sync::Arc;
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        #[test]
+        fn start_stop_start_builds_a_new_session() {
+            let life = Lifecycle::new();
+            let (start, previous) = life.begin_start();
+            assert!(previous.is_none());
+            assert!(start.install(1).is_ok());
+            drop(start);
+
+            let mut stop = life.begin_stop();
+            assert_eq!(stop.take(), Some(1));
+            drop(stop);
+            assert_eq!(life.with_current(|s| *s), None);
+
+            let (start, previous) = life.begin_start();
+            assert!(previous.is_none(), "the stopped session is never handed to the next start");
+            assert!(!start.is_cancelled());
+            assert!(start.install(2).is_ok());
+            drop(start);
+            assert_eq!(life.with_current(|s| *s), Some(2));
+        }
+
+        #[test]
+        fn a_start_without_stop_still_releases_the_previous_session() {
+            let life = Lifecycle::new();
+            let (start, _) = life.begin_start();
+            start.install(1).unwrap();
+            drop(start);
+            let (start, previous) = life.begin_start();
+            assert_eq!(previous, Some(1));
+            start.install(2).unwrap();
+            drop(start);
+            assert_eq!(life.with_current(|s| *s), Some(2));
+        }
+
+        #[test]
+        fn stop_during_start_returns_promptly_and_the_start_is_refused() {
+            let life = Arc::new(Lifecycle::new());
+            let (started_tx, started_rx) = mpsc::channel();
+            let worker = {
+                let life = Arc::clone(&life);
+                thread::spawn(move || {
+                    let (start, _) = life.begin_start();
+                    started_tx.send(()).unwrap();
+                    // A bootstrap that would take a minute unless cancelled.
+                    let deadline = Instant::now() + Duration::from_secs(60);
+                    while !start.is_cancelled() && Instant::now() < deadline {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    start.install(7)
+                })
+            };
+            started_rx.recv().unwrap();
+            let began = Instant::now();
+            let mut stop = life.begin_stop();
+            assert!(began.elapsed() < Duration::from_secs(2), "stop waited for the whole bootstrap");
+            assert_eq!(stop.take(), None);
+            drop(stop);
+            assert_eq!(worker.join().unwrap(), Err(7), "a cancelled start must hand its session back");
+            assert_eq!(life.with_current(|s| *s), None);
+        }
+
+        #[test]
+        fn stop_waits_for_a_cancelled_start_to_finish_its_teardown() {
+            let life = Arc::new(Lifecycle::<u32>::new());
+            let (started_tx, started_rx) = mpsc::channel();
+            let (torn_down_tx, torn_down_rx) = mpsc::channel();
+            let worker = {
+                let life = Arc::clone(&life);
+                thread::spawn(move || {
+                    let (start, _) = life.begin_start();
+                    started_tx.send(()).unwrap();
+                    while !start.is_cancelled() {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    thread::sleep(Duration::from_millis(50));
+                    torn_down_tx.send(()).unwrap();
+                })
+            };
+            started_rx.recv().unwrap();
+            let stop = life.begin_stop();
+            assert!(torn_down_rx.try_recv().is_ok(), "stop returned before the start released its runtime");
+            drop(stop);
+            worker.join().unwrap();
+        }
+
+        #[test]
+        fn a_start_after_a_stop_is_not_cancelled() {
+            let life = Lifecycle::new();
+            drop(life.begin_stop());
+            drop(life.begin_stop());
+            let (start, _) = life.begin_start();
+            assert!(!start.is_cancelled());
+            assert!(start.install(3).is_ok());
         }
     }
 }

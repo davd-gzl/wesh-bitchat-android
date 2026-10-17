@@ -2,6 +2,7 @@ package com.bitchat.android.net
 
 import android.app.Application
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
@@ -38,6 +39,86 @@ class ArtiTorControlWipeTest {
         assertEquals(TorMode.OFF, TorPreferenceManager.get(app))
         assertEquals(TorMode.OFF, TorPreferenceManager.modeFlow.value)
         assertFalse(ArtiTorControl.pendingMarker(app).exists())
+    }
+
+    @Test fun `the state directory is deleted only after Arti confirms it stopped`() = runBlocking {
+        val status = MutableStateFlow(running)
+        val events = mutableListOf<String>()
+        val control = ArtiTorControl(
+            app, status,
+            applyOff = {
+                events += "stop requested"
+                // The native stop returns later, once the client and its runtime are gone.
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+                    kotlinx.coroutines.delay(100)
+                    events += "stopped"
+                    status.value = ArtiTorManager.TorStatus()
+                }
+            },
+            deleteArti = { dir ->
+                events += "delete while ${status.value.state}"
+                dir.deleteRecursively() && !dir.exists()
+            }
+        )
+        assertTrue(control.stopAndWipe())
+        assertEquals(listOf("stop requested", "stopped", "delete while OFF"), events)
+        assertFalse(arti.exists())
+    }
+
+    @Test fun `a start still in flight cannot leave the wiped directory behind`() = runBlocking {
+        val status = MutableStateFlow(ArtiTorManager.TorStatus())
+        var stops = 0
+        var inFlightChecks = 0
+        val control = ArtiTorControl(
+            app, status,
+            applyOff = { stops++; status.value = ArtiTorManager.TorStatus() },
+            startInFlight = {
+                // A late bootstrap recreates the directory after the first delete, then ends.
+                if (++inFlightChecks == 1) File(arti, "state").apply { mkdirs() }.resolve("late").writeText("x")
+                inFlightChecks < 3
+            }
+        )
+        assertTrue(control.stopAndWipe())
+        assertTrue(inFlightChecks >= 3)
+        assertEquals("stopped again once the start settled", 2, stops)
+        assertFalse(arti.exists())
+        assertFalse(ArtiTorControl.pendingMarker(app).exists())
+    }
+
+    @Test fun `the wipe never stops Arti on the caller thread`() = runBlocking {
+        val caller = Thread.currentThread()
+        val status = MutableStateFlow(ArtiTorManager.TorStatus())
+        var stopThread: Thread? = null
+        val control = ArtiTorControl(app, status, applyOff = { stopThread = Thread.currentThread() }, requestOff = { })
+        assertTrue(control.stopAndWipe())
+        assertNotNull(stopThread)
+        assertNotSame("the native stop blocks; panic runs on the main thread", caller, stopThread)
+    }
+
+    @Test fun `the wipe latch is up for the whole wipe and down afterwards`() = runBlocking {
+        val status = MutableStateFlow(ArtiTorManager.TorStatus())
+        val seen = mutableListOf<Boolean>()
+        val control = ArtiTorControl(
+            app, status,
+            applyOff = { seen += info.guardianproject.arti.ArtiWipeLatch.isWiping() },
+            deleteArti = { dir -> seen += info.guardianproject.arti.ArtiWipeLatch.isWiping(); dir.deleteRecursively() && !dir.exists() }
+        )
+        assertTrue(control.stopAndWipe())
+        assertTrue(seen.isNotEmpty() && seen.all { it })
+        assertFalse(info.guardianproject.arti.ArtiWipeLatch.isWiping())
+    }
+
+    @Test fun `a directory still present after a reported delete keeps the wipe pending`() = runBlocking {
+        val status = MutableStateFlow(ArtiTorManager.TorStatus())
+        // The delete claims success but the directory is still there.
+        val control = ArtiTorControl(app, status, applyOff = { }, deleteArti = { true })
+        assertFalse(control.stopAndWipe())
+        assertTrue(arti.exists())
+        assertTrue("the next start must finish the wipe", ArtiTorControl.isWipePending(app))
+        assertFalse(ArtiTorControl.completePendingWipe(app) { true })
+        assertTrue(ArtiTorControl.isWipePending(app))
+        assertTrue(ArtiTorControl.completePendingWipe(app))
+        assertFalse(ArtiTorControl.isWipePending(app))
     }
 
     @Test fun `a stop timeout still deletes the state and leaves a wipe for the next start`() = runBlocking {

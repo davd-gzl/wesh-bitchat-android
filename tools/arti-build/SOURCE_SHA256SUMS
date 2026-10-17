@@ -5,4 +5,4 @@
 6c84cc9a19e84216ddbd58b5efcf439de838d72b5ebff93ce37788bf571859cb  tools/arti-build/rust-toolchain.toml
 1ff277580bbddae568fadadd2ea3ad6b31651f0a4e3a2e02f0aa75f9b1d7d32c  tools/arti-build/build-arti.sh
 7be14cc708378c22018277054e8309afee9144a07388c7baf7b4058c07f26397  tools/arti-build/provenance.sh
-a8cc10140d27ec4313eeddb3c7ab80e99dcde7b3e461e8f81bed4f2beaa26f09  tools/arti-build/src/lib.rs
+5c08872bc608b31669e9c627a5ac712d5583b424ad395bb6ca329862b729b24f  tools/arti-build/src/lib.rs

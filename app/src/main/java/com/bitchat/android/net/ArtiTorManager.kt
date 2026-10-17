@@ -11,6 +11,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
@@ -20,6 +22,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withContext
 
 import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicReference
@@ -33,7 +36,13 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Based on the original TorManager implementation.
  */
-class ArtiTorManager private constructor() {
+class ArtiTorManager internal constructor(
+    /** Tests pass a proxy over a fake native library. */
+    private val newProxy: (Application, Int, ArtiLogListener) -> ArtiProxy = { app, port, listener ->
+        ArtiProxy.Builder(app).setSocksPort(port).setDnsPort(port + 1).setLogListener(listener).build()
+    },
+    private val stopTimeoutMs: Long = STOP_TIMEOUT_MS
+) {
     enum class TorState {
         OFF,
         STARTING,
@@ -138,11 +147,7 @@ class ArtiTorManager private constructor() {
                 }
             }
 
-            artiProxy = ArtiProxy.Builder(application)
-                .setSocksPort(currentSocksPort)
-                .setDnsPort(currentSocksPort + 1)
-                .setLogListener(logListener)
-                .build()
+            artiProxy = newProxy(application, currentSocksPort, logListener)
 
             val savedMode = TorPreferenceManager.get(application)
             if (savedMode == TorMode.ON) {
@@ -157,11 +162,18 @@ class ArtiTorManager private constructor() {
                 }  // Only reset OkHttp during init
             }
             appScope.launch {
-                applyMode(application, savedMode)
+                // Not behind applyMutex, which a start holds for its whole bootstrap. The initial
+                // value is skipped: nothing runs yet, and the collector below applies it.
+                TorPreferenceManager.modeFlow.drop(1).collect { mode ->
+                    if (mode == TorMode.OFF) requestOff()
+                }
             }
 
             appScope.launch {
-                TorPreferenceManager.modeFlow.collect { mode ->
+                // Applies the saved mode at start-up too (the first value), so there is a single ON
+                // to cancel. An immediate stop re-runs the serialized path, which then settles on the
+                // current mode.
+                combine(TorPreferenceManager.modeFlow, immediateStops) { mode, _ -> mode }.collect { mode ->
                     applyMode(application, mode)
                 }
             }
@@ -169,6 +181,66 @@ class ArtiTorManager private constructor() {
     }
 
     fun currentSocksAddress(): InetSocketAddress? = socksAddr
+
+    /** Bumped after each stop made outside applyMutex; the serialized path re-applies the mode then. */
+    private val immediateStops = MutableStateFlow(0L)
+
+    /** [immediateStops] when the current ON was applied: a later immediate stop makes ON start again. */
+    @Volatile
+    private var immediateStopsAtStart = -1L
+
+    /**
+     * Internet off, effective at once and without waiting for applyMutex: the SOCKS route is
+     * withdrawn now, then the native client and any bootstrap in progress are stopped on IO.
+     */
+    fun requestOff() {
+        noteOff()
+        socksAddr = null
+        try {
+            OkHttpProvider.reset()
+        } catch (_: Throwable) {
+        }
+        appScope.launch {
+            // An ON applied since then wants Tor again; its own start already replaced the client.
+            if (desiredMode != TorMode.OFF) return@launch
+            stopNative()
+            immediateStops.update { it + 1 }
+        }
+    }
+
+    /** Bumped by [requestOff]; an ON that began waiting for applyMutex before it never starts. */
+    private val offRequests = java.util.concurrent.atomic.AtomicLong(0)
+
+    private fun noteOff() {
+        desiredMode = TorMode.OFF
+        offRequests.incrementAndGet()
+    }
+
+    /** No client may connect to the SOCKS port once its teardown begins. */
+    private fun withdrawSocks() {
+        socksAddr = null
+        resetNetworkConnections()
+    }
+
+    /** The native stop blocks until the client is gone: never on the caller's (possibly main) thread. */
+    private suspend fun stopNative() = withContext(Dispatchers.IO) { stopArtiInternal() }
+
+    /** A start is between its first native call and its outcome; it may still create Arti files. */
+    fun isStartInFlight(): Boolean = pendingStarts.get() > 0 || artiProxy?.isStartInFlight() == true
+
+    /** startArti() calls not yet finished, counted before they stop the previous client. */
+    private val pendingStarts = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** Bumped by every ON request; a bootstrap watcher from an older start never acts. */
+    private var startGeneration = 0L
+
+    /** Fully OFF: late Arti log lines are ignored once lifecycleState is STOPPED. */
+    private fun resetToOff() {
+        lifecycleState = LifecycleState.STOPPED
+        socksAddr = null
+        _statusFlow.update { it.copy(mode = TorMode.OFF, running = false, bootstrapPercent = 0, state = TorState.OFF) }
+        resetNetworkConnections()
+    }
 
     /**
      * Wait until the currently selected HTTP route can be used.
@@ -192,18 +264,35 @@ class ArtiTorManager private constructor() {
     }
 
     suspend fun applyMode(application: Application, mode: TorMode) {
+        val offRequestsAtEntry = offRequests.get()
+        if (mode == TorMode.OFF) {
+            // A start holds applyMutex for its whole bootstrap: cancel it now, not after. Every
+            // user-facing off (toggle, wipe, saved preference) also goes through requestOff().
+            desiredMode = TorMode.OFF
+            withdrawSocks()
+            stopNative()
+        }
         applyMutex.withLock {
             try {
+                // Internet went off while this ON waited for the lock: keep it off.
+                if (mode != TorMode.OFF && offRequests.get() != offRequestsAtEntry) return
                 desiredMode = mode
                 lastMode = mode
                 val s = _statusFlow.value
                 if (mode == s.mode && mode != TorMode.OFF &&
-                    (lifecycleState == LifecycleState.STARTING || lifecycleState == LifecycleState.RUNNING)
+                    (lifecycleState == LifecycleState.STARTING || lifecycleState == LifecycleState.RUNNING) &&
+                    immediateStopsAtStart == immediateStops.value
                 ) {
                     return
                 }
                 when (mode) {
                     TorMode.OFF -> {
+                        if (lifecycleState == LifecycleState.STOPPED && s.mode == TorMode.OFF &&
+                            s.state == TorState.OFF && !s.running
+                        ) {
+                            // Already fully off; the native stop above has returned. No STOPPING flicker.
+                            return
+                        }
                         Log.i(TAG, "applyMode: OFF -> stopping tor")
                         lifecycleState = LifecycleState.STOPPING
                         _statusFlow.value = _statusFlow.value.copy(
@@ -213,7 +302,7 @@ class ArtiTorManager private constructor() {
                             state = TorState.STOPPING
                         )
                         stopArti()
-                        waitForStateTransition(target = TorState.OFF, timeoutMs = STOP_TIMEOUT_MS)
+                        waitForStateTransition(target = TorState.OFF, timeoutMs = stopTimeoutMs)
                         socksAddr = null
                         _statusFlow.value = _statusFlow.value.copy(
                             mode = TorMode.OFF,
@@ -228,8 +317,11 @@ class ArtiTorManager private constructor() {
                     }
 
                     TorMode.ON -> {
-                        // Single chokepoint: Arti never starts over state a failed panic left behind.
-                        if (!ArtiTorControl.completePendingWipe(application)) {
+                        // Single chokepoint: Arti never starts over state a failed panic left behind,
+                        // nor while a wipe is deleting it.
+                        if (info.guardianproject.arti.ArtiWipeLatch.isWiping() ||
+                            !ArtiTorControl.completePendingWipe(application)
+                        ) {
                             Log.w(TAG, "applyMode: ON refused, Arti state wipe pending")
                             desiredMode = TorMode.OFF
                             lastMode = TorMode.OFF
@@ -250,13 +342,24 @@ class ArtiTorManager private constructor() {
                         )
                         socksAddr = InetSocketAddress("127.0.0.1", currentSocksPort)
                         resetNetworkConnections()
+                        val generation = ++startGeneration
+                        immediateStopsAtStart = immediateStops.value
                         startArti(application, useDelay = false)
                         appScope.launch {
                             waitUntilBootstrapped()
-                            if (_statusFlow.value.running && desiredMode == TorMode.ON) {
-                                socksAddr = InetSocketAddress("127.0.0.1", currentSocksPort)
-                                Log.i(TAG, "Tor ON: proxy set to ${socksAddr}")
-                                resetNetworkConnections()
+                            // Decided under applyMutex, and only for this start: a newer start is
+                            // never stopped by an older watcher.
+                            applyMutex.withLock {
+                                if (generation != startGeneration) return@withLock
+                                if (desiredMode != TorMode.ON) {
+                                    withdrawSocks()
+                                    stopNative()
+                                    resetToOff()
+                                } else if (_statusFlow.value.running) {
+                                    socksAddr = InetSocketAddress("127.0.0.1", currentSocksPort)
+                                    Log.i(TAG, "Tor ON: proxy set to ${socksAddr}")
+                                    resetNetworkConnections()
+                                }
                             }
                         }
                     }
@@ -268,7 +371,16 @@ class ArtiTorManager private constructor() {
     }
 
     private suspend fun startArti(application: Application, useDelay: Boolean = false) {
-        if (!ArtiTorControl.completePendingWipe(application)) {
+        pendingStarts.incrementAndGet()
+        try {
+            startArtiCounted(application, useDelay)
+        } finally {
+            pendingStarts.decrementAndGet()
+        }
+    }
+
+    private suspend fun startArtiCounted(application: Application, useDelay: Boolean) {
+        if (info.guardianproject.arti.ArtiWipeLatch.isWiping() || !ArtiTorControl.completePendingWipe(application)) {
             _statusFlow.update { it.copy(running = false, state = TorState.ERROR) }
             TorPreferenceManager.set(application, TorMode.OFF, commit = true)
             return
@@ -285,7 +397,20 @@ class ArtiTorManager private constructor() {
                 return
             }
 
-            proxy.start()
+            // Internet turned off during the wait above: never reach the native side. Checked again
+            // inside start() under its lock, so a stop that lands in between still wins.
+            if (desiredMode != TorMode.ON) {
+                resetToOff()
+                return
+            }
+            proxy.start { desiredMode == TorMode.ON }
+            if (desiredMode != TorMode.ON) {
+                // Internet was turned off while this start ran: stop now, never mark RUNNING.
+                withdrawSocks()
+                stopNative()
+                resetToOff()
+                return
+            }
             lastLogTime.set(System.currentTimeMillis())
 
             _statusFlow.update {
@@ -301,6 +426,11 @@ class ArtiTorManager private constructor() {
         } catch (e: Exception) {
             Log.e(TAG, "Error starting Arti on port $currentSocksPort: ${e.message}")
             _statusFlow.update { it.copy(state = TorState.ERROR) }
+            if (desiredMode != TorMode.ON) {
+                // A stop cancelled this start: no retry.
+                lifecycleState = LifecycleState.STOPPED
+                return
+            }
 
             val isBindError = isBindError(e)
             if (isBindError && bindRetryAttempts < MAX_RETRY_ATTEMPTS) {
@@ -366,18 +496,14 @@ class ArtiTorManager private constructor() {
         }
     }
 
-    private fun stopArti() {
-        stopArtiInternal()
-        socksAddr = null
-        _statusFlow.value = _statusFlow.value.copy(
-            running = false,
-            bootstrapPercent = 0,
-            state = TorState.STOPPING
-        )
+    /** The caller has published STOPPING; the native "Stopped" line then moves the state to OFF. */
+    private suspend fun stopArti() {
+        withdrawSocks()
+        stopNative()
     }
 
-    private suspend fun stopArtiAndWait(timeoutMs: Long = STOP_TIMEOUT_MS) {
-        stopArtiInternal()
+    private suspend fun stopArtiAndWait(timeoutMs: Long = stopTimeoutMs) {
+        stopNative()
         waitForStateTransition(target = TorState.OFF, timeoutMs = timeoutMs)
         delay(200)
     }
