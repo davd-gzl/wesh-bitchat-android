@@ -44,7 +44,7 @@
     <string name="wesh_pave_fluo_block_request_body">Le blocage reste sur ce téléphone. Ses prochaines demandes seront ignorées.</string>
     <string name="wesh_pave_fluo_block_unknown">Identité inconnue : blocage indisponible.</string>
     <string name="wesh_pave_fluo_message_actions_title">Signaler cette personne ?</string>
-    <string name="wesh_pave_fluo_report_body">Le signalement reste sur ce téléphone : la personne est bloquée et ses messages sont masqués. Rien n’est envoyé à Wesh ni aux autres.</string>
+    <string name="wesh_pave_fluo_report_body">Le blocage est immédiat et reste sur ce téléphone : ses messages sont masqués. Vous pourrez ensuite, si vous le souhaitez, envoyer le signalement à l’équipe Wesh par e-mail ; l’équipe verra l’adresse e-mail utilisée.</string>
     <string name="wesh_pave_fluo_report_action">Signaler et masquer</string>
     <string name="wesh_pave_fluo_reported">Personne signalée et masquée sur ce téléphone.</string>
     <string name="wesh_pave_fluo_hidden_session">Identité non authentifiée : ses messages sont masqués jusqu’à la fermeture de Wesh.</string>
@@ -77,4 +77,27 @@
     <string name="wesh_pave_fluo_notif_later">Plus tard</string>
     <string name="wesh_pave_fluo_bt_required">Wesh a besoin du Bluetooth pour fonctionner.</string>
     <string name="wesh_pave_fluo_init_failed">Wesh n’a pas pu démarrer. Réessayez.</string>
+    <!-- Signalement envoyé à l’équipe Wesh : facultatif, par un e-mail que la personne relit et envoie -->
+    <string name="wesh_report_send_title">Envoyer le signalement ?</string>
+    <string name="wesh_report_send_body">Facultatif. Votre application mail ouvre un brouillon avec le surnom affiché, l’empreinte et le motif, plus le message s’il s’agit du salon public. Aucun message privé n’est ajouté. Vous pouvez le modifier avant l’envoi ; rien ne part sans vous. L’équipe verra votre adresse e-mail.</string>
+    <string name="wesh_report_reason_label">Motif</string>
+    <string name="wesh_report_reason_harassment">Harcèlement ou menaces</string>
+    <string name="wesh_report_reason_illegal">Contenu illégal ou violent</string>
+    <string name="wesh_report_reason_spam">Spam ou arnaque</string>
+    <string name="wesh_report_reason_impersonation">Usurpation d’identité</string>
+    <string name="wesh_report_reason_other">Autre</string>
+    <string name="wesh_report_send_action">Envoyer le signalement à l’équipe Wesh</string>
+    <string name="wesh_report_no_mail_title">Aucune application mail</string>
+    <string name="wesh_report_no_mail_body">Écrivez à %1$s avec le surnom affiché, l’empreinte et le motif.</string>
+    <string name="wesh_report_copy_address">Copier l’adresse</string>
+    <string name="wesh_report_address_copied">Adresse copiée.</string>
+    <string name="wesh_report_mail_intro">Je signale une personne rencontrée sur Wesh.</string>
+    <string name="wesh_report_mail_nickname">Surnom affiché : %1$s</string>
+    <string name="wesh_report_mail_fingerprint">Empreinte : %1$s</string>
+    <string name="wesh_report_mail_reason">Motif : %1$s</string>
+    <string name="wesh_report_mail_where">Où : %1$s</string>
+    <string name="wesh_report_where_public">Salon public</string>
+    <string name="wesh_report_where_request">Demande de message privé</string>
+    <string name="wesh_report_where_contact">Contact vérifié par QR</string>
+    <string name="wesh_report_mail_public_message">Message public signalé, cité tel quel :</string>
 </resources>

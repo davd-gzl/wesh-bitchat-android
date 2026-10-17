@@ -44,7 +44,7 @@
     <string name="wesh_pave_fluo_block_request_body">Blocking stays on this phone. Their next requests will be ignored.</string>
     <string name="wesh_pave_fluo_block_unknown">Unknown identity: blocking unavailable.</string>
     <string name="wesh_pave_fluo_message_actions_title">Report this person?</string>
-    <string name="wesh_pave_fluo_report_body">The report stays on this phone: the person is blocked and their messages hidden. Nothing is sent to Wesh or to others.</string>
+    <string name="wesh_pave_fluo_report_body">Blocking is immediate and stays on this phone: their messages are hidden. You can then send the report to the Wesh team by e-mail, if you wish; the team will see the e-mail address you use.</string>
     <string name="wesh_pave_fluo_report_action">Report and hide</string>
     <string name="wesh_pave_fluo_reported">Person reported and hidden on this phone.</string>
     <string name="wesh_pave_fluo_hidden_session">Unauthenticated identity: their messages are hidden until Wesh closes.</string>
@@ -77,4 +77,27 @@
     <string name="wesh_pave_fluo_notif_later">Later</string>
     <string name="wesh_pave_fluo_bt_required">Wesh needs Bluetooth to work.</string>
     <string name="wesh_pave_fluo_init_failed">Wesh could not start. Try again.</string>
+    <!-- Report sent to the Wesh team: optional, by an e-mail the user reads and sends -->
+    <string name="wesh_report_send_title">Send the report?</string>
+    <string name="wesh_report_send_body">Optional. Your mail app opens a draft with the nickname shown, the fingerprint and the reason, plus the message for a public room message. No private message is added. You can edit it before sending; nothing leaves without you. The team will see your e-mail address.</string>
+    <string name="wesh_report_reason_label">Reason</string>
+    <string name="wesh_report_reason_harassment">Harassment or threats</string>
+    <string name="wesh_report_reason_illegal">Illegal or violent content</string>
+    <string name="wesh_report_reason_spam">Spam or scam</string>
+    <string name="wesh_report_reason_impersonation">Impersonation</string>
+    <string name="wesh_report_reason_other">Other</string>
+    <string name="wesh_report_send_action">Send the report to the Wesh team</string>
+    <string name="wesh_report_no_mail_title">No mail app</string>
+    <string name="wesh_report_no_mail_body">Write to %1$s with the nickname shown, the fingerprint and the reason.</string>
+    <string name="wesh_report_copy_address">Copy the address</string>
+    <string name="wesh_report_address_copied">Address copied.</string>
+    <string name="wesh_report_mail_intro">I am reporting a person I met on Wesh.</string>
+    <string name="wesh_report_mail_nickname">Nickname shown: %1$s</string>
+    <string name="wesh_report_mail_fingerprint">Fingerprint: %1$s</string>
+    <string name="wesh_report_mail_reason">Reason: %1$s</string>
+    <string name="wesh_report_mail_where">Where: %1$s</string>
+    <string name="wesh_report_where_public">Public room</string>
+    <string name="wesh_report_where_request">Private message request</string>
+    <string name="wesh_report_where_contact">Contact verified by QR</string>
+    <string name="wesh_report_mail_public_message">Reported public message, quoted as received:</string>
 </resources>

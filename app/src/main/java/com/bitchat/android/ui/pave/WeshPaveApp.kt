@@ -159,7 +159,8 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
     var feedback by remember { mutableStateOf<String?>(null) }
     var publicRequest by remember { mutableStateOf<WeshMessagePolicy.PublicSendRequest?>(null) }
     var publicCapture by remember { mutableStateOf<WeshDraftStore.Capture?>(null) }
-    var messageAction by remember { mutableStateOf<String?>(null) }
+    var messageAction by remember { mutableStateOf<Pair<String, PaveReportTarget>?>(null) }
+    var reportOffer by remember { mutableStateOf<PaveReportTarget?>(null) }
     var confirmAction by remember { mutableStateOf<Pair<String, String>?>(null) }
     var requestToBlock by remember { mutableStateOf<WeshMessageRequests.Request?>(null) }
     var contactActionsOpen by remember { mutableStateOf(false) }
@@ -318,25 +319,27 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                     onRetryContacts = viewModel::retryWeshContacts,
                 )
             }
-            PaveRoute.Public -> PublicRoomScreen(
-                phonesInReach = peers.size,
-                messages = publicMessages
-                    .filter { isPublicText(it, myPeerID, viewModel::weshIsBlocked) }
-                    .map { m ->
-                        val own = m.senderPeerID == myPeerID
-                        PaveMessageItem(
-                            id = m.id, text = m.content, own = own, time = time(m),
-                            sender = if (own) null else m.sender,
-                            senderFingerprint = if (own) null else peerFingerprint(m.senderPeerID),
-                            delivery = if (own) paveDelivery(m.deliveryStatus, public = true) else null,
-                        )
-                    },
-                composer = composer,
-                onDraftChange = onDraftChange,
-                onSend = ::send,
-                onBack = { go(PaveRoute.Home) },
-                onMessageActions = { id -> messageAction = publicMessages.firstOrNull { it.id == id }?.senderPeerID },
-            )
+            PaveRoute.Public -> {
+                val rendered = publicMessages.filter { isPublicText(it, myPeerID, viewModel::weshIsBlocked) }
+                PublicRoomScreen(
+                    phonesInReach = peers.size,
+                    messages = rendered
+                        .map { m ->
+                            val own = m.senderPeerID == myPeerID
+                            PaveMessageItem(
+                                id = m.id, text = m.content, own = own, time = time(m),
+                                sender = if (own) null else m.sender,
+                                senderFingerprint = if (own) null else peerFingerprint(m.senderPeerID),
+                                delivery = if (own) paveDelivery(m.deliveryStatus, public = true) else null,
+                            )
+                        },
+                    composer = composer,
+                    onDraftChange = onDraftChange,
+                    onSend = ::send,
+                    onBack = { go(PaveRoute.Home) },
+                    onMessageActions = { id -> messageAction = paveReportedPublicMessage(rendered, id, ::peerFingerprint) },
+                )
+            }
             PaveRoute.Private -> {
                 val contact = contacts.firstOrNull { it.conversationID == privatePeer }
                 val title = contact?.nickname ?: conversations.firstOrNull { it.conversationID == privatePeer }?.displayName.orEmpty()
@@ -462,15 +465,17 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
         )
     }
 
-    messageAction?.let { peerID ->
+    messageAction?.let { (peerID, target) ->
         PaveDialog(
             title = stringResource(R.string.wesh_pave_fluo_message_actions_title),
             body = stringResource(R.string.wesh_pave_fluo_report_body),
             confirm = stringResource(R.string.wesh_pave_fluo_report_action),
             onConfirm = {
-                feedback = if (viewModel.weshBlockPublicSender(peerID)) msgReported else msgHiddenSession
+                val (blocked, offer) = paveBlockThenOfferReport(target) { viewModel.weshBlockPublicSender(peerID) }
+                feedback = if (blocked) msgReported else msgHiddenSession
                 revision++
                 messageAction = null
+                reportOffer = offer
             },
             onDismiss = { messageAction = null },
         )
@@ -501,7 +506,13 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                 if (remove) {
                     viewModel.removeWeshContact(target)
                     if (privatePeer == target) go(PaveRoute.Home)
-                } else if (!viewModel.weshBlock(target)) feedback = msgBlockUnknown
+                } else {
+                    val contact = contacts.firstOrNull { it.conversationID == target }
+                    val reported = PaveReportTarget(contact?.nickname, contact?.let { PaveFingerprint.short(it.key) }, PaveReportSource.Contact)
+                    val (blocked, offer) = paveBlockThenOfferReport(reported) { viewModel.weshBlock(target) }
+                    if (!blocked) feedback = msgBlockUnknown
+                    reportOffer = offer
+                }
                 revision++
                 confirmAction = null
             },
@@ -515,12 +526,18 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
             body = stringResource(R.string.wesh_pave_fluo_block_request_body),
             confirm = stringResource(R.string.wesh_pave_requests_block),
             onConfirm = {
-                if (!viewModel.weshBlockRequest(request)) feedback = msgBlockUnknown
+                val (blocked, offer) = paveBlockThenOfferReport(paveReportTarget(request)) { viewModel.weshBlockRequest(request) }
+                if (!blocked) feedback = msgBlockUnknown
                 revision++
                 requestToBlock = null
+                reportOffer = offer
             },
             onDismiss = { requestToBlock = null },
         )
+    }
+
+    reportOffer?.let { target ->
+        PaveReportSendDialog(target, onFeedback = { feedback = it }, onDismiss = { reportOffer = null })
     }
 }
 

@@ -199,10 +199,14 @@ object AppStateStore {
         }
     }
 
-    /** Replace a live media row by ID, or append it if the row was not admitted yet. */
+    /**
+     * Replace a live media row by ID, or append it if the row was not admitted yet. IDs are chosen
+     * by the sender: a row from another sender is never replaced.
+     */
     fun upsertPublicMessage(msg: BitchatMessage) {
         synchronized(this) {
             val index = _publicMessages.value.indexOfFirst { it.id == msg.id }
+            if (index >= 0 && _publicMessages.value[index].senderPeerID != msg.senderPeerID) return
             if (index >= 0) {
                 _publicMessages.value = _publicMessages.value.toMutableList().also { it[index] = msg }
             } else {
