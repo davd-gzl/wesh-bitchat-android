@@ -49,34 +49,19 @@
     <string name="notification_active_peers_title">কাছাকাছি Weshter!</string>
     <string name="notification_active_peers_one">কাছাকাছি ১ জন</string>
     <string name="notification_active_peers_many">কাছাকাছি %1$d জন</string>
-    <string name="notification_new_messages">নতুন বার্তা</string>
     <string name="notification_new_location_messages">নতুন অবস্থান বার্তা</string>
-    <string name="notification_mentions_in">%1$s এ উল্লিখিত</string>
-    <string name="notification_mentions_in_more">%1$s এ উল্লিখিত (+%2$d আরো)</string>
-    <string name="notification_mentions_in_plural">%2$s এ %1$d উল্লেখ</string>
-    <string name="notification_new_activity_in">%1$s এ নতুন কার্যকলাপ</string>
-    <string name="notification_messages_in">%1$s এ বার্তা</string>
-    <string name="notification_joined_conversation">%1$s কথোপকথনে যোগ দিয়েছে</string>
-    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d উল্লেখ</string>
-    <string name="notification_geohash_summary_title">Wesh – অবস্থান চ্যাট</string>
-    <string name="notification_geohash_summary_text">%2$d অবস্থান থেকে %1$d বার্তা</string>
     <string name="notification_mesh_mention_title_singular">মেশ চ্যাটে উল্লিখিত</string>
     <string name="notification_mesh_mention_title_plural">মেশ চ্যাটে %1$d উল্লেখ</string>
-    <string name="notification_more_locations">এবং %1$d আরো অবস্থান</string>
     <string name="notification_and_more">এবং %1$d আরো</string>
 
     <!-- প্রিয় অ্যাক্সেসিবিলিটি -->
     <string name="cd_add_favorite">প্রিয়তে যোগ করুন</string>
     <string name="cd_remove_favorite">প্রিয় থেকে সরান</string>
-    <string name="cd_add_bookmark">বুকমার্ক যোগ করুন</string>
 
     <!-- চ্যাট হেডার ও অ্যাক্সেসিবিলিটি -->
     <string name="cd_nostr_reachable">Nostr এর মাধ্যমে পৌঁছানো যায়</string>
     <string name="cd_unread_private_messages">অপঠিত ব্যক্তিগত বার্তা</string>
-    <string name="cd_teleported">টেলিপোর্ট করা হয়েছে</string>
-    <string name="cd_open_location_channels">অবস্থান ও চ্যানেল সেটিংস খুলুন</string>
     <string name="cd_connected_peers">সংযুক্ত পিয়ার</string>
-    <string name="cd_geohash_participants">জিওহ্যাশ অংশগ্রহণকারী</string>
     <string name="cd_ready_for_handshake">হ্যান্ডশেকের জন্য প্রস্তুত</string>
     <string name="cd_handshake_in_progress">হ্যান্ডশেক চলছে</string>
     <string name="cd_encrypted">এন্ড-টু-এন্ড এনক্রিপ্ট করা</string>
@@ -94,8 +79,6 @@
     <!-- সম্পর্কে শিট -->
     <string name="about_offline_mesh_title">অফলাইন মেশ চ্যাট</string>
     <string name="about_offline_mesh_desc">ইন্টারনেট বা সার্ভার ছাড়াই Bluetooth LE এর মাধ্যমে সরাসরি যোগাযোগ করুন। পরিসর বাড়ানোর জন্য কাছাকাছি ডিভাইসের মাধ্যমে বার্তা রিলে করা হয়।</string>
-    <string name="about_online_geohash_title">অনলাইন জিওহ্যাশ চ্যানেল</string>
-    <string name="about_online_geohash_desc">জিওহ্যাশ-ভিত্তিক চ্যানেলের মাধ্যমে আপনার এলাকার মানুষদের সাথে সংযুক্ত হন। পাবলিক ইন্টারনেট রিলেগুলির মাধ্যমে মেশ বিস্তৃত করুন।</string>
     <string name="about_e2e_title">এন্ড-টু-এন্ড এনক্রিপশন</string>
     <string name="about_e2e_desc">ব্যক্তিগত বার্তাগুলি এনক্রিপ্ট করা। চ্যানেল বার্তাগুলি পাবলিক।</string>
     <string name="about_system">সিস্টেম</string>
@@ -137,15 +120,9 @@
     <string name="cd_not_supported_battery_optimization">ব্যাটারি অপ্টিমাইজেশন সমর্থিত নয়</string>
     <string name="cd_bluetooth">ব্লুটুথ</string>
     <string name="cd_unread_message">অপঠিত বার্তা</string>
-    <string name="cd_open_map">মানচিত্র খুলুন</string>
-    <string name="cd_remove_bookmark">বুকমার্ক সরান</string>
-    <string name="cd_teleport">টেলিপোর্ট</string>
     <string name="cd_leave_channel">চ্যানেল ছেড়ে দিন</string>
     <string name="cd_reachable_via_nostr">Nostr এর মাধ্যমে পৌঁছানো যায়</string>
     <string name="cd_offline_favorite">প্রিয় (অফলাইন)</string>
-    <string name="cd_decrease_precision">নির্ভুলতা কমান</string>
-    <string name="cd_increase_precision">নির্ভুলতা বাড়ান</string>
-    <string name="cd_select_geohash">জিওহ্যাশ নির্বাচন করুন</string>
     <string name="cd_scroll_to_bottom">নিচে স্ক্রল করুন</string>
     <string name="cd_file">ফাইল</string>
     <string name="cd_image">ছবি</string>
@@ -159,7 +136,6 @@
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">ভয়েস বার্তা রেকর্ড করুন</string>
     <string name="cd_offline_mesh_chat">অফলাইন মেশ চ্যাট</string>
-    <string name="cd_online_geohash_channels">অনলাইন জিওহ্যাশ চ্যানেল</string>
     <string name="cd_end_to_end_encryption">এন্ড-টু-এন্ড এনক্রিপশন</string>
 
     <!-- ছবি ও ফাইল -->
@@ -186,26 +162,9 @@
     <string name="action_block_subtitle">এই ব্যবহারকারীর সমস্ত বার্তা ব্লক করুন</string>
 
     <!-- জিওহ্যাশ চ্যানেল শিট -->
-    <string name="location_channels_title">#অবস্থান চ্যানেল</string>
-    <string name="location_channels_desc">জিওহ্যাশ চ্যানেলের মাধ্যমে আপনার কাছাকাছি মানুষদের সাথে চ্যাট করুন। শুধুমাত্র রূঢ় জিওহ্যাশ শেয়ার করা হয়, সঠিক GPS ডেটা নয়। গোপনীয়তার জন্য দয়া করে এই ভিউ স্ক্রিনশট করবেন না বা শেয়ার করবেন না।</string>
-    <string name="grant_location_permission">অবস্থান অনুমতি দিন</string>
-    <string name="location_permission_denied">অবস্থান অনুমতি প্রত্যাখ্যাত। অবস্থান চ্যানেল ব্যবহার করতে সেটিংসে সক্ষম করুন।</string>
     <string name="open_settings">সেটিংস খুলুন</string>
-    <string name="location_permission_granted">\u2713 অবস্থান অনুমতি দেওয়া হয়েছে</string>
     <string name="checking_permissions">অনুমতি পরীক্ষা করা হচ্ছে …</string>
-    <string name="finding_nearby_channels">কাছাকাছি চ্যানেল খোঁজা হচ্ছে …</string>
-    <string name="bookmarked">বুকমার্ক করা</string>
-    <string name="geohash_placeholder">জিওহ্যাশ</string>
-    <string name="invalid_geohash">অবৈধ জিওহ্যাশ</string>
-    <string name="teleport">টেলিপোর্ট</string>
-    <string name="disable_location_services">অবস্থান সেবা নিষ্ক্রিয় করুন</string>
-    <string name="enable_location_services">অবস্থান সেবা সক্রিয় করুন</string>
     <string name="mesh_label">মেশ</string>
-    <string name="location_level_block">ব্লক</string>
-    <string name="location_level_neighborhood">আশপাশ</string>
-    <string name="location_level_city">শহর</string>
-    <string name="location_level_province">প্রদেশ</string>
-    <string name="location_level_region">অঞ্চল</string>
     <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
 
     <!-- ডিবাগ / ডায়াগনস্টিক -->
@@ -372,9 +331,6 @@
   <string name="verify_success_body">You verified %1$s</string>
   <string name="verify_success_system_message">verified %1$s</string>
     <string name="cd_open_about">পরিচিতি খুলুন</string>
-  <string name="nearby_notes_reveal">এখানে রাখা নোট আছে কি না দেখুন</string>
-  <string name="nearby_notes_one">এখানে 1টি নোট রাখা আছে — পড়তে ট্যাপ করুন</string>
-  <string name="nearby_notes_many">এখানে %dটি নোট রাখা আছে — পড়তে ট্যাপ করুন</string>
     <string name="about_language">ভাষা</string>
     <string name="about_app_language">অ্যাপের ভাষা</string>
     <string name="about_system_default">সিস্টেম ডিফল্ট</string>

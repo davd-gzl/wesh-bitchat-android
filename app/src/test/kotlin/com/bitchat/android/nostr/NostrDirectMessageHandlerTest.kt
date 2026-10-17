@@ -90,8 +90,6 @@ class NostrDirectMessageHandlerTest {
             privateChatManager = privateChatManager,
             updateDeliveryStatus = { _, _ -> },
             scope = scope,
-            repo = GeohashRepository(application, state, dataManager),
-            dataManager = dataManager,
             seenStoreProvider = { seenStore }
         )
         val sender = NostrIdentity.generate()
@@ -129,9 +127,9 @@ class NostrDirectMessageHandlerTest {
             giftWrapCreatedAt = now - 86_400
         )
 
-        handler.onGiftWrap(first, "", recipient)
+        handler.onGiftWrap(first, recipient)
         waitForMessage(state, firstId)
-        handler.onGiftWrap(second, "", recipient)
+        handler.onGiftWrap(second, recipient)
         waitForMessage(state, secondId)
 
         val messages = state.getPrivateChatsValue().values.single()

@@ -85,7 +85,7 @@ gate.
 ### Completed checklist
 
 - [x] Create an isolated workspace and
-  `codex/client-rewrite-contract-tests` branch.
+  `chore/client-rewrite-contract-tests` branch.
 - [x] Add literal v1 and v2 outer packet vectors.
 - [x] Add public, private, optional-field, and encrypted message vectors.
 - [x] Add private-message, Noise envelope, fragment, sync, identity, and file

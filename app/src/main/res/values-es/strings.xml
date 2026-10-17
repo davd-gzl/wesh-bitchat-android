@@ -49,34 +49,19 @@
     <string name="notification_active_peers_title">¡Wesh cerca!</string>
     <string name="notification_active_peers_one">1 persona cerca</string>
     <string name="notification_active_peers_many">%1$d personas cerca</string>
-    <string name="notification_new_messages">Nuevos mensajes</string>
     <string name="notification_new_location_messages">Nuevos mensajes de ubicación</string>
-    <string name="notification_mentions_in">Mencionado en %1$s</string>
-    <string name="notification_mentions_in_more">Mencionado en %1$s (+%2$d más)</string>
-    <string name="notification_mentions_in_plural">%1$d menciones en %2$s</string>
-    <string name="notification_new_activity_in">Nueva actividad en %1$s</string>
-    <string name="notification_messages_in">Mensajes en %1$s</string>
-    <string name="notification_joined_conversation">%1$s se unió a la conversación</string>
-    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d menciones</string>
-    <string name="notification_geohash_summary_title">Wesh – Chats de ubicación</string>
-    <string name="notification_geohash_summary_text">%1$d mensajes desde %2$d ubicaciones</string>
     <string name="notification_mesh_mention_title_singular">Mencionado en chat mesh</string>
     <string name="notification_mesh_mention_title_plural">%1$d menciones en chat mesh</string>
-    <string name="notification_more_locations">y %1$d ubicaciones más</string>
     <string name="notification_and_more">y %1$d más</string>
 
     <!-- Accesibilidad de favoritos -->
     <string name="cd_add_favorite">Agregar a favoritos</string>
     <string name="cd_remove_favorite">Quitar de favoritos</string>
-    <string name="cd_add_bookmark">Agregar marcador</string>
 
     <!-- Encabezado de chat y accesibilidad -->
     <string name="cd_nostr_reachable">Accesible vía Nostr</string>
     <string name="cd_unread_private_messages">Mensajes privados sin leer</string>
-    <string name="cd_teleported">Teletransportado</string>
-    <string name="cd_open_location_channels">Abrir ajustes de ubicación y canales</string>
     <string name="cd_connected_peers">Pares conectados</string>
-    <string name="cd_geohash_participants">Participantes geohash</string>
     <string name="cd_ready_for_handshake">Listo para handshake</string>
     <string name="cd_handshake_in_progress">Handshake en progreso</string>
     <string name="cd_encrypted">Cifrado de extremo a extremo</string>
@@ -94,8 +79,6 @@
     <!-- Hoja Acerca de -->
     <string name="about_offline_mesh_title">Chat mesh sin conexión</string>
     <string name="about_offline_mesh_desc">Comunícate directamente a través de Bluetooth LE sin internet o servidores. Los mensajes se retransmiten a través de dispositivos cercanos para extender el alcance.</string>
-    <string name="about_online_geohash_title">Canales geohash en línea</string>
-    <string name="about_online_geohash_desc">Conéctate con personas cerca de ti a través de canales basados en geohash. Extiende la red mesh a través de repetidores de internet público.</string>
     <string name="about_e2e_title">Cifrado de extremo a extremo</string>
     <string name="about_e2e_desc">Los mensajes privados están cifrados. Los mensajes de canal son públicos.</string>
     <string name="about_system">Sistema</string>
@@ -137,15 +120,9 @@
     <string name="cd_not_supported_battery_optimization">Optimización de batería no soportada</string>
     <string name="cd_bluetooth">Bluetooth</string>
     <string name="cd_unread_message">Mensaje sin leer</string>
-    <string name="cd_open_map">Abrir mapa</string>
-    <string name="cd_remove_bookmark">Quitar marcador</string>
-    <string name="cd_teleport">Teletransportar</string>
     <string name="cd_leave_channel">Salir del canal</string>
     <string name="cd_reachable_via_nostr">Accesible vía Nostr</string>
     <string name="cd_offline_favorite">Favorito (sin conexión)</string>
-    <string name="cd_decrease_precision">Disminuir precisión</string>
-    <string name="cd_increase_precision">Aumentar precisión</string>
-    <string name="cd_select_geohash">Seleccionar geohash</string>
     <string name="cd_scroll_to_bottom">Desplazar al final</string>
     <string name="cd_file">Archivo</string>
     <string name="cd_image">Imagen</string>
@@ -159,7 +136,6 @@
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">Grabar nota de voz</string>
     <string name="cd_offline_mesh_chat">Chat mesh sin conexión</string>
-    <string name="cd_online_geohash_channels">Canales geohash en línea</string>
     <string name="cd_end_to_end_encryption">Cifrado de extremo a extremo</string>
 
     <!-- Imágenes y archivos -->
@@ -186,26 +162,9 @@
     <string name="action_block_subtitle">Bloquear todos los mensajes de este usuario</string>
 
     <!-- Hoja de canales geohash -->
-    <string name="location_channels_title">#Canales de ubicación</string>
-    <string name="location_channels_desc">Chatea con personas cerca de ti a través de canales geohash. Solo se comparte un geohash aproximado, nunca datos GPS exactos. Para preservar tu privacidad, no tomes capturas de pantalla ni compartas esta pantalla.</string>
-    <string name="grant_location_permission">Otorgar permiso de ubicación</string>
-    <string name="location_permission_denied">Permiso de ubicación denegado. Habilítalo en configuraciones para usar canales de ubicación.</string>
     <string name="open_settings">Abrir configuraciones</string>
-    <string name="location_permission_granted">\u2713 Permiso de ubicación otorgado</string>
     <string name="checking_permissions">Verificando permisos…</string>
-    <string name="finding_nearby_channels">Buscando canales cercanos…</string>
-    <string name="bookmarked">Marcado</string>
-    <string name="geohash_placeholder">Geohash</string>
-    <string name="invalid_geohash">Geohash inválido</string>
-    <string name="teleport">teletransportar</string>
-    <string name="disable_location_services">Deshabilitar servicios de ubicación</string>
-    <string name="enable_location_services">Habilitar servicios de ubicación</string>
     <string name="mesh_label">mesh</string>
-    <string name="location_level_block">Cuadra</string>
-    <string name="location_level_neighborhood">Barrio</string>
-    <string name="location_level_city">Ciudad</string>
-    <string name="location_level_province">Provincia</string>
-    <string name="location_level_region">Región</string>
     <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
 
     <!-- Debug / Diagnóstico -->
@@ -335,20 +294,7 @@
         <item quantity="other">%d personas</item>
     </plurals>
 
-  <plurals name="location_notes_title">
-    <item quantity="one">#%1$s ± 1 • %2$d nota</item>
-    <item quantity="many">#%1$s ± 1 • %2$d notas</item>
-    <item quantity="other">#%1$s ± 1 • %2$d notas</item>
-  </plurals>
-  <string name="location_notes_description">agrega notas cortas y permanentes a este lugar para que otros visitantes las encuentren.</string>
-  <string name="location_notes_relays_unavailable">relés geográficos no disponibles; notas en pausa</string>
-  <string name="location_notes_no_relays_title">no hay relés geográficos cercanos</string>
-  <string name="location_notes_no_relays_desc">las notas dependen de relés geográficos. verifica la conexión e inténtalo de nuevo.</string>
-  <string name="loading_location_notes">cargando notas…</string>
-  <string name="location_notes_empty_title">aún no hay notas</string>
-  <string name="location_notes_empty_desc">sé el primero en añadir una para este sitio.</string>
   <string name="dismiss">cerrar</string>
-  <string name="location_notes_input_placeholder">agrega una nota para este lugar</string>
     <string name="bluetooth_recommended">Bluetooth recomendado</string>
     <string name="mesh_service_notification_content">Mesh en ejecución — %1$d pares</string>
 
@@ -388,9 +334,6 @@
   <string name="verify_success_body">Verificaste a %1$s</string>
   <string name="verify_success_system_message">verificado %1$s</string>
     <string name="cd_open_about">Abrir Acerca de</string>
-  <string name="nearby_notes_reveal">buscar notas dejadas aquí</string>
-  <string name="nearby_notes_one">1 nota dejada aquí — toca para leer</string>
-  <string name="nearby_notes_many">%d notas dejadas aquí — toca para leer</string>
     <string name="about_language">Idioma</string>
     <string name="about_app_language">Idioma de la app</string>
     <string name="about_system_default">Predeterminado del sistema</string>

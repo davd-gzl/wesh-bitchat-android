@@ -49,34 +49,19 @@
     <string name="notification_active_peers_title">Des personnes sont à proximité sur Wesh</string>
     <string name="notification_active_peers_one">1 personne à proximité</string>
     <string name="notification_active_peers_many">%1$d personnes à proximité</string>
-    <string name="notification_new_messages">Nouveaux messages</string>
     <string name="notification_new_location_messages">Nouveaux messages de lieu</string>
-    <string name="notification_mentions_in">Mentionné dans %1$s</string>
-    <string name="notification_mentions_in_more">Mentionné dans %1$s (+%2$d de plus)</string>
-    <string name="notification_mentions_in_plural">%1$d mentions dans %2$s</string>
-    <string name="notification_new_activity_in">Nouvelle activité dans %1$s</string>
-    <string name="notification_messages_in">Messages dans %1$s</string>
-    <string name="notification_joined_conversation">%1$s a rejoint la conversation</string>
-    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d mentions</string>
-    <string name="notification_geohash_summary_title">Wesh – discussions par lieu</string>
-    <string name="notification_geohash_summary_text">%1$d messages depuis %2$d lieux</string>
     <string name="notification_mesh_mention_title_singular">Mentionné dans le chat Mesh</string>
     <string name="notification_mesh_mention_title_plural">%1$d mentions dans le chat Mesh</string>
-    <string name="notification_more_locations">et %1$d lieux de plus</string>
     <string name="notification_and_more">et %1$d de plus</string>
 
     <!-- Favoris / accessibilité -->
     <string name="cd_add_favorite">Ajouter aux favoris</string>
     <string name="cd_remove_favorite">Retirer des favoris</string>
-    <string name="cd_add_bookmark">Ajouter un signet</string>
 
     <!-- En‑tête de chat &amp; accessibilité -->
     <string name="cd_nostr_reachable">Joignable via Nostr</string>
     <string name="cd_unread_private_messages">Messages privés non lus</string>
-    <string name="cd_teleported">Téléporté</string>
-    <string name="cd_open_location_channels">Ouvrir les réglages de localisation et des canaux</string>
     <string name="cd_connected_peers">Pairs connectés</string>
-    <string name="cd_geohash_participants">Participants geohash</string>
     <string name="cd_ready_for_handshake">Prêt pour l’échange de clés</string>
     <string name="cd_handshake_in_progress">Échange de clés en cours</string>
     <string name="cd_encrypted">Chiffré de bout en bout</string>
@@ -94,8 +79,6 @@
     <!-- Feuille À propos -->
     <string name="about_offline_mesh_title">Chat Mesh hors‑ligne</string>
     <string name="about_offline_mesh_desc">Communique directement via Bluetooth LE sans internet ni serveurs. Les messages sont relayés par les appareils proches pour étendre la portée.</string>
-    <string name="about_online_geohash_title">Canaux Geohash en ligne</string>
-    <string name="about_online_geohash_desc">Discute avec des personnes proches via des canaux basés sur geohash. Étends le mesh grâce à des relais internet publics.</string>
     <string name="about_e2e_title">Chiffrement de bout en bout</string>
     <string name="about_e2e_desc">Les messages privés sont chiffrés. Les messages de canal sont publics.</string>
     <string name="about_system">système</string>
@@ -137,15 +120,9 @@
     <string name="cd_not_supported_battery_optimization">Optimisation non prise en charge</string>
     <string name="cd_bluetooth">Bluetooth</string>
     <string name="cd_unread_message">Message non lu</string>
-    <string name="cd_open_map">Ouvrir la carte</string>
-    <string name="cd_remove_bookmark">Retirer le signet</string>
-    <string name="cd_teleport">Téléporter</string>
     <string name="cd_leave_channel">Quitter le canal</string>
     <string name="cd_reachable_via_nostr">Joignable via Nostr</string>
     <string name="cd_offline_favorite">Favori (hors‑ligne)</string>
-    <string name="cd_decrease_precision">Diminuer la précision</string>
-    <string name="cd_increase_precision">Augmenter la précision</string>
-    <string name="cd_select_geohash">Sélectionner le geohash</string>
     <string name="cd_scroll_to_bottom">Aller en bas</string>
     <string name="cd_file">Fichier</string>
     <string name="cd_image">Image</string>
@@ -154,7 +131,6 @@
     <string name="cd_pick_media">Choisir un média</string>
     <string name="cd_record_voice">Enregistrer un message vocal</string>
     <string name="cd_offline_mesh_chat">Chat Mesh hors‑ligne</string>
-    <string name="cd_online_geohash_channels">Canaux Geohash en ligne</string>
     <string name="cd_end_to_end_encryption">Chiffrement de bout en bout</string>
 
     <!-- Images &amp; fichiers -->
@@ -179,27 +155,10 @@
     <string name="action_block_subtitle">bloquer tous les messages de cet utilisateur</string>
 
     <!-- Feuille des canaux de lieu -->
-    <string name="location_channels_title">#canaux de lieu</string>
-    <string name="location_channels_desc">Discutez avec des personnes proches via des canaux geohash. Seul un geohash approximatif est partagé, jamais une position GPS exacte. Ne faites pas de capture d’écran et ne partagez pas cet écran pour protéger votre vie privée.</string>
-    <string name="grant_location_permission">accorder la permission de localisation</string>
-    <string name="location_permission_denied">Permission de localisation refusée. Activez-la dans les paramètres pour utiliser les canaux de lieu.</string>
     <string name="open_settings">Ouvrir les paramètres</string>
-    <string name="location_permission_granted">\u2713 permission de localisation accordée</string>
     <string name="checking_permissions">vérification des permissions…</string>
-    <string name="finding_nearby_channels">recherche des canaux à proximité…</string>
-    <string name="bookmarked">ajouté aux favoris</string>
-    <string name="geohash_placeholder">geohash</string>
-    <string name="invalid_geohash">geohash invalide</string>
-    <string name="teleport">téléporter</string>
-    <string name="disable_location_services">désactiver les services de localisation</string>
-    <string name="enable_location_services">activer les services de localisation</string>
     <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
     <string name="mesh_label">mesh</string>
-    <string name="location_level_block">bloc</string>
-    <string name="location_level_neighborhood">quartier</string>
-    <string name="location_level_city">ville</string>
-    <string name="location_level_province">province</string>
-    <string name="location_level_region">région</string>
 
     <!-- Debug / Diagnostics -->
     <string name="debug_tools">outils de debug</string>
@@ -331,20 +290,7 @@
         <item quantity="other">%d personnes</item>
     </plurals>
 
-  <plurals name="location_notes_title">
-    <item quantity="one">#%1$s ± 1 • %2$d note</item>
-    <item quantity="many">#%1$s ± 1 • %2$d notes</item>
-    <item quantity="other">#%1$s ± 1 • %2$d notes</item>
-  </plurals>
-  <string name="location_notes_description">ajoutez de courtes notes permanentes à cet endroit pour que d\'autres visiteurs les trouvent.</string>
-  <string name="location_notes_relays_unavailable">relais géo indisponibles ; notes en pause</string>
-  <string name="location_notes_no_relays_title">aucun relais géo à proximité</string>
-  <string name="location_notes_no_relays_desc">les notes dépendent des relais géo. vérifiez la connexion et réessayez.</string>
-  <string name="loading_location_notes">chargement des notes…</string>
-  <string name="location_notes_empty_title">aucune note pour le moment</string>
-  <string name="location_notes_empty_desc">soyez le premier à en ajouter pour cet endroit.</string>
   <string name="dismiss">fermer</string>
-  <string name="location_notes_input_placeholder">ajoutez une note pour cet endroit</string>
     <string name="bluetooth_recommended">Bluetooth recommandé</string>
     <string name="mesh_service_notification_content">Mesh actif — %1$d pairs</string>
 
@@ -384,18 +330,12 @@
   <string name="verify_success_body">Vous avez vérifié %1$s</string>
   <string name="verify_success_system_message">vérifié %1$s</string>
     <string name="cd_open_about">Ouvrir À propos</string>
-  <string name="nearby_notes_reveal">vérifier s\'il y a des notes laissées ici</string>
-  <string name="nearby_notes_one">1 note laissée ici — appuyez pour lire</string>
-  <string name="nearby_notes_many">%d notes laissées ici — appuyez pour lire</string>
     <string name="about_language">Langue</string>
     <string name="about_app_language">Langue de l’appli</string>
     <string name="about_system_default">Langue du système</string>
     <string name="about_select_language">Choisir la langue</string>
     <string name="about_tagline">Se retrouver, même hors ligne</string>
     <string name="cd_privacy_protected">Confidentialité des messages</string>
-    <string name="perm_background_location_desc">Sur Android 10 et 11, cette permission système permet le scan Bluetooth en arrière-plan. Wesh n’utilise pas les coordonnées GPS.</string>
-    <string name="perm_background_location_system">Autoriser le scan Bluetooth en arrière-plan sur cet ancien Android.</string>
-    <string name="perm_type_background_location">Localisation en arrière-plan</string>
 
     <!-- Traductions françaises des ressources communes -->
     <string name="cashu_pay_via">payer avec Cashu</string>
@@ -443,10 +383,7 @@
     <string name="notification_content_hidden">Ouvrez Wesh pour le consulter</string>
     <string name="notification_channel_direct_messages">Messages privés</string>
     <string name="notification_channel_direct_messages_description">Notifications des messages privés des autres utilisateurs</string>
-    <string name="notification_channel_geohash">Discussions par geohash</string>
-    <string name="notification_channel_geohash_description">Notifications des mentions et messages dans les canaux géographiques par geohash</string>
     <string name="you">Vous</string>
-    <string name="cd_location_notes">Notes du lieu</string>
     <string name="private_media_legacy_title">Envoyer sans chiffrement de bout en bout ?</string>
     <string name="private_media_legacy_body">Impossible d’envoyer %1$s à %2$s avec chiffrement, car sa version de l’application est trop ancienne. %3$s</string>
     <string name="private_media_legacy_send_once">Envoyer ce fichier une seule fois</string>
@@ -462,7 +399,6 @@
     <string name="about_howto_nickname">Touchez votre pseudonyme pour le modifier</string>
     <string name="about_howto_channels">Touchez le nom du canal pour changer de canal</string>
     <string name="about_howto_people">Touchez l’icône des personnes pour voir qui se trouve dans le canal</string>
-    <string name="about_howto_bookmark">Ajoutez un canal aux favoris pour le conserver dans votre liste</string>
     <string name="about_howto_mention">Saisissez @ pour mentionner quelqu’un</string>
     <string name="about_howto_commands">Saisissez / pour voir les commandes disponibles</string>
     <string name="about_section_about">À propos</string>
@@ -489,30 +425,12 @@
     <string name="location_bluetooth_wifi_subtitle">Bluetooth • Wi-Fi • %1$s</string>
     <string name="action_private_message_title">Écrire à %1$s</string>
     <string name="action_private_message_subtitle">Envoyer un message privé</string>
-    <string name="location_channels_heading">Canaux géographiques</string>
-    <string name="location_channels_nearby">À proximité</string>
-    <string name="mesh_section_subtitle">Réseau maillé hors ligne. Aucun accès à internet requis.</string>
-    <string name="section_nearby">À proximité</string>
-    <string name="location_tor_routing_title">Acheminement via Tor</string>
-    <string name="location_tor_routing_desc">Masque votre adresse IP dans les canaux géographiques.</string>
-    <string name="badge_recommended">Recommandé</string>
     <string name="people_count_title">Personnes (%1$d)</string>
     <string name="section_people">Personnes</string>
-    <string name="section_on_location">Sur place</string>
-    <string name="section_teleported_in">À distance</string>
     <string name="mesh_title">Réseau maillé</string>
     <string name="debug_verbose_hint">Journalise les arrivées et départs des pairs, le sens des connexions, l’acheminement des paquets et les relais</string>
     <string name="debug_roles_hint">Activer ou désactiver les rôles ; leur désactivation ferme toutes les connexions</string>
     <string name="debug_rssi_fmt">RSSI : %1$s</string>
-    <string name="background_location_required_title">Localisation en arrière-plan recommandée</string>
-    <string name="background_location_required_subtitle">Facultative, améliore la fiabilité du réseau maillé</string>
-    <string name="background_location_explanation">Android recommande la localisation en arrière-plan pour permettre à Wesh de rechercher les appareils à proximité quand l’application n’est pas ouverte. Cela maintient le réseau maillé actif après un redémarrage.</string>
-    <string name="background_location_settings_tip">Dans les réglages, choisissez « Toujours autoriser ».</string>
-    <string name="background_location_needs_for">Wesh utilise la localisation en arrière-plan pour :</string>
-    <string name="background_location_needs_bullets">- Rechercher des appareils à proximité quand l’application est fermée\n- Se reconnecter après un redémarrage\n- Maintenir le réseau maillé actif en arrière-plan</string>
-    <string name="background_location_privacy_note">Cette autorisation permet la recherche Bluetooth sur Android 10 et 11. Wesh ne demande pas de coordonnées GPS.</string>
-    <string name="grant_background_location">Autoriser la localisation en arrière-plan</string>
-    <string name="skip_background_location">Continuer sans localisation en arrière-plan</string>
     <string name="tor_not_available_in_this_build">Tor n’est pas disponible dans cette version</string>
     <string name="checking">Vérification…</string>
     <string name="apk_not_ready_please_prepare_it_first">L’APK n’est pas prêt. Préparez-le d’abord.</string>

@@ -24,7 +24,6 @@ internal data class ConversationSummary(
     val identityAliases: Set<String>,
     val isConnected: Boolean = false,
     val connectedPeerID: String? = null,
-    val sourceGeohash: String? = null,
     val isPinned: Boolean = false,
     val isMuted: Boolean = false,
     val draft: String? = null

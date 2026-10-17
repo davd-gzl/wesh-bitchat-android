@@ -43,4 +43,43 @@ class WeshManifestContractTest {
         assertFalse(manifest.contains("SystemForegroundService"))
         assertFalse(manifest.contains("BitChat"))
     }
+
+    @Test
+    fun `no location SDK or location feature ships and background location is never requested`() {
+        assertFalse(File("build.gradle.kts").readText().contains("gms"))
+        assertFalse(File("gradle.lockfile").readText().contains("com.google.android.gms:"))
+        assertFalse(File("src/main/java/com/bitchat/android/geohash").exists())
+        assertFalse(manifest.contains("GeohashPickerActivity"))
+        val sources = File("src/main/java").walkTopDown().filter { it.extension == "kt" }.toList()
+        assertTrue(sources.isNotEmpty())
+        listOf(
+            "com.google.android.gms", "android.location.Geocoder", "requestLocationUpdates",
+            "getLastKnownLocation", "getCurrentLocation", "ACCESS_BACKGROUND_LOCATION"
+        ).forEach { needle ->
+            val offenders = sources.filter { it.readText().contains(needle) }.map { it.name }
+            assertTrue("$needle still referenced by $offenders", offenders.isEmpty())
+        }
+    }
+
+    @Test
+    fun `no app data leaves the phone by backup or device transfer`() {
+        val domains = listOf("root", "sharedpref", "database", "file", "external")
+        fun excludesAll(rules: String) = domains.forEach { domain ->
+            assertTrue("$domain must be excluded whole", rules.contains("""<exclude domain="$domain" path="."/>"""))
+        }
+        fun noIncludes(rules: String) = assertFalse("no include may re-add data", rules.contains("<include"))
+        val transfer = File("src/main/res/xml/data_extraction_rules.xml").readText()
+        listOf("cloud-backup", "device-transfer").forEach { section ->
+            val rules = Regex("<$section>(.*?)</$section>", RegexOption.DOT_MATCHES_ALL).find(transfer)?.groupValues?.get(1)
+            assertTrue("$section section missing", rules != null)
+            excludesAll(rules!!)
+            noIncludes(rules)
+        }
+        val legacy = File("src/main/res/xml/backup_rules.xml").readText()
+        excludesAll(legacy)
+        noIncludes(legacy)
+        assertTrue(manifest.contains("""android:allowBackup="false""""))
+        assertTrue(manifest.contains("""android:dataExtractionRules="@xml/data_extraction_rules""""))
+        assertTrue(manifest.contains("""android:fullBackupContent="@xml/backup_rules""""))
+    }
 }

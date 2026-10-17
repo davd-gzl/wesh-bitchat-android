@@ -214,8 +214,6 @@ object NostrKind {
     const val FILE_MESSAGE = 15       // NIP-17 file message (unsigned)
     const val SEAL = 13              // NIP-17 sealed event
     const val GIFT_WRAP = 1059       // NIP-17 gift wrap
-    const val EPHEMERAL_EVENT = 20000 // For geohash channels
-    const val GEOHASH_PRESENCE = 20001 // For geohash presence heartbeat
 }
 
 /**

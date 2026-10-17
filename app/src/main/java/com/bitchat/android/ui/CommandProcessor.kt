@@ -136,44 +136,11 @@ class CommandProcessor(
     
     private fun handleWhoCommand(meshService: MeshService, viewModel: ChatViewModel? = null) {
         // Channel-aware who command (matches iOS behavior)
-        val (peerList, contextDescription) = if (viewModel != null) {
-            when (val selectedChannel = viewModel.selectedLocationChannel.value) {
-                is com.bitchat.android.geohash.ChannelID.Mesh,
-                null -> {
-                    // Mesh channel: show Bluetooth-connected peers
-                    val connectedPeers = state.getConnectedPeersValue()
-                    val peerList = connectedPeers.joinToString(", ") { peerID ->
-                        getPeerNickname(peerID, meshService)
-                    }
-                    Pair(peerList, "online users")
-                }
-                
-                is com.bitchat.android.geohash.ChannelID.Location -> {
-                    // Location channel: show geohash participants
-                    val geohashPeople = viewModel.geohashPeople.value ?: emptyList()
-                    val currentNickname = state.getNicknameValue()
-                    
-                    val participantList = geohashPeople.mapNotNull { person ->
-                        val displayName = person.displayName
-                        // Exclude self from list
-                        if (displayName.startsWith("${currentNickname}#")) {
-                            null
-                        } else {
-                            displayName
-                        }
-                    }.joinToString(", ")
-                    
-                    Pair(participantList, "participants in ${selectedChannel.channel.geohash}")
-                }
-            }
-        } else {
-            // Fallback to mesh behavior
-            val connectedPeers = state.getConnectedPeersValue()
-            val peerList = connectedPeers.joinToString(", ") { peerID ->
-                getPeerNickname(peerID, meshService)
-            }
-            Pair(peerList, "online users")
+        val connectedPeers = state.getConnectedPeersValue()
+        val peerList = connectedPeers.joinToString(", ") { peerID ->
+            getPeerNickname(peerID, meshService)
         }
+        val contextDescription = "online users"
         
         val systemMessage = BitchatMessage(
             sender = "system",
@@ -301,10 +268,6 @@ class CommandProcessor(
             val targetName = parts[1].removePrefix("@")
             val actionMessage = "* ${state.getNicknameValue() ?: "someone"} $verb $targetName $object_ *"
 
-            // If we're in a geohash location channel, don't add a local echo here.
-            // GeohashViewModel.sendGeohashMessage() will add the local echo with proper metadata.
-            val isInLocationChannel = state.selectedLocationChannel.value is com.bitchat.android.geohash.ChannelID.Location
-
             // Send as regular message
             if (state.getSelectedPrivateChatPeerValue() != null) {
                 val peerID = state.getSelectedPrivateChatPeerValue()!!
@@ -317,9 +280,6 @@ class CommandProcessor(
                     meshService,
                     viewModel
                 )
-            } else if (isInLocationChannel) {
-                // Let the transport layer add the echo; just send it out
-                onSendMessage(actionMessage, emptyList(), null)
             } else {
                 val message = BitchatMessage(
                     sender = state.getNicknameValue() ?: myPeerID,
@@ -407,21 +367,17 @@ class CommandProcessor(
                 )
                 return
             }
-            val isLocationChannel =
-                state.selectedLocationChannel.value is com.bitchat.android.geohash.ChannelID.Location
-            if (!isLocationChannel) {
-                val message = BitchatMessage(
-                    sender = state.getNicknameValue() ?: myPeerID,
-                    content = token,
-                    timestamp = Date(),
-                    isRelay = false,
-                    senderPeerID = myPeerID,
-                    channel = state.getCurrentChannelValue()
-                )
-                val channel = state.getCurrentChannelValue()
-                if (channel != null) channelManager.addChannelMessage(channel, message, myPeerID)
-                else messageManager.addMessage(message)
-            }
+            val message = BitchatMessage(
+                sender = state.getNicknameValue() ?: myPeerID,
+                content = token,
+                timestamp = Date(),
+                isRelay = false,
+                senderPeerID = myPeerID,
+                channel = state.getCurrentChannelValue()
+            )
+            val channel = state.getCurrentChannelValue()
+            if (channel != null) channelManager.addChannelMessage(channel, message, myPeerID)
+            else messageManager.addMessage(message)
             onSendMessage(token, emptyList(), state.getCurrentChannelValue())
         }
 
@@ -438,17 +394,10 @@ class CommandProcessor(
             isRelay = false
         )
         val selectedPeer = state.getSelectedPrivateChatPeerValue()
-        val selectedLocationChannel = state.selectedLocationChannel.value
         val channel = state.getCurrentChannelValue()
         when {
             selectedPeer != null -> {
                 messageManager.addPrivateMessageNoUnread(selectedPeer, message.copy(isPrivate = true))
-            }
-            selectedLocationChannel is com.bitchat.android.geohash.ChannelID.Location -> {
-                messageManager.addChannelMessage(
-                    "geo:${selectedLocationChannel.channel.geohash}",
-                    message
-                )
             }
             channel != null -> channelManager.addChannelMessage(channel, message, null)
             else -> messageManager.addMessage(message)
@@ -513,12 +462,7 @@ class CommandProcessor(
             emptyList()
         }
         
-        val isPublicGeohash =
-            state.getSelectedPrivateChatPeerValue() == null &&
-                state.selectedLocationChannel.value is com.bitchat.android.geohash.ChannelID.Location
-        return (baseCommands + channelCommands).filterNot {
-            isPublicGeohash && it.command == "/pay"
-        }
+        return baseCommands + channelCommands
     }
     
     private fun filterCommands(commands: List<CommandSuggestion>, input: String): List<CommandSuggestion> {
@@ -558,42 +502,8 @@ class CommandProcessor(
         }
         
         // Get peer candidates based on active channel (matches iOS logic exactly)
-        val peerCandidates: List<String> = if (viewModel != null) {
-            when (val selectedChannel = viewModel.selectedLocationChannel.value) {
-                is com.bitchat.android.geohash.ChannelID.Mesh,
-                null -> {
-                    // Mesh channel: use Bluetooth mesh peer nicknames
-                    val peerNicknames = meshService.getPeerNicknames()
-                    peerNicknames.values.filter { it != peerNicknames[meshService.myPeerID] }
-                }
-                
-                is com.bitchat.android.geohash.ChannelID.Location -> {
-                    // Location channel: use geohash participants with collision-resistant suffixes
-                    val geohashPeople = viewModel.geohashPeople.value
-                    val currentNickname = state.getNicknameValue()
-                    val duplicateNames = duplicateGeohashBaseNames(geohashPeople)
-                    
-                    geohashPeople.mapNotNull { person ->
-                        val baseName = splitSuffix(person.displayName).first
-                        val hasNicknameCollision =
-                            baseName.lowercase(Locale.ROOT) in duplicateNames
-                        val displayName = disambiguatedGeohashDisplayName(person, duplicateNames)
-                        // A unique local nickname can be excluded directly. If it collides, the
-                        // nickname alone cannot identify which row is self, so keep the suffixed
-                        // rows rather than accidentally hiding the other user.
-                        if (
-                            !hasNicknameCollision &&
-                            baseName.equals(currentNickname, ignoreCase = true)
-                        ) {
-                            null
-                        } else {
-                            displayName
-                        }
-                    }
-                }
-            }
-        } else {
-            // Fallback to mesh peers if no viewModel available
+        val peerCandidates: List<String> = run {
+            // Mesh channel: use Bluetooth mesh peer nicknames
             val peerNicknames = meshService.getPeerNicknames()
             peerNicknames.values.filter { it != peerNicknames[meshService.myPeerID] }
         }

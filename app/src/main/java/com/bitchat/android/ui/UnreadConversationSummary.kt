@@ -11,7 +11,7 @@ internal enum class DirectMessageTransport {
  * Presence-independent presentation state for an unread private conversation.
  *
  * A conversation remains in this model until it is read, even when none of its identities are in
- * the current mesh or geohash participant lists.
+ * the current mesh participant list.
  */
 internal data class UnreadConversationSummary(
     val conversationID: String,
@@ -21,8 +21,7 @@ internal data class UnreadConversationSummary(
     val transport: DirectMessageTransport,
     val nostrPubkey: String?,
     val identityAliases: Set<String>,
-    val isConnected: Boolean = false,
-    val sourceGeohash: String? = null
+    val isConnected: Boolean = false
 )
 
 internal fun buildUnreadConversationSummaries(

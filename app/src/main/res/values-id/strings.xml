@@ -49,34 +49,19 @@
     <string name="notification_active_peers_title">Weshter terdekat!</string>
     <string name="notification_active_peers_one">1 orang terdekat</string>
     <string name="notification_active_peers_many">%1$d orang terdekat</string>
-    <string name="notification_new_messages">Pesan baru</string>
     <string name="notification_new_location_messages">Pesan lokasi baru</string>
-    <string name="notification_mentions_in">Disebut di %1$s</string>
-    <string name="notification_mentions_in_more">Disebut di %1$s (+%2$d lagi)</string>
-    <string name="notification_mentions_in_plural">%1$d penyebutan di %2$s</string>
-    <string name="notification_new_activity_in">Aktivitas baru di %1$s</string>
-    <string name="notification_messages_in">Pesan di %1$s</string>
-    <string name="notification_joined_conversation">%1$s bergabung dengan percakapan</string>
-    <string name="notification_geohash_summary_title_mentions">Wesh – %1$d penyebutan</string>
-    <string name="notification_geohash_summary_title">Wesh – Chat lokasi</string>
-    <string name="notification_geohash_summary_text">%1$d pesan dari %2$d lokasi</string>
     <string name="notification_mesh_mention_title_singular">Disebut di Mesh Chat</string>
     <string name="notification_mesh_mention_title_plural">%1$d penyebutan di Mesh Chat</string>
-    <string name="notification_more_locations">dan %1$d lokasi lagi</string>
     <string name="notification_and_more">dan %1$d lagi</string>
 
     <!-- Aksesibilitas favorit -->
     <string name="cd_add_favorite">Tambah ke favorit</string>
     <string name="cd_remove_favorite">Hapus dari favorit</string>
-    <string name="cd_add_bookmark">Tambah bookmark</string>
 
     <!-- Header chat &amp; aksesibilitas -->
     <string name="cd_nostr_reachable">Dapat dijangkau melalui Nostr</string>
     <string name="cd_unread_private_messages">Pesan pribadi yang belum dibaca</string>
-    <string name="cd_teleported">Diteleportasi</string>
-    <string name="cd_open_location_channels">Buka pengaturan lokasi dan channel</string>
     <string name="cd_connected_peers">Peer yang terhubung</string>
-    <string name="cd_geohash_participants">Peserta geohash</string>
     <string name="cd_ready_for_handshake">Siap untuk handshake</string>
     <string name="cd_handshake_in_progress">Handshake sedang berlangsung</string>
     <string name="cd_encrypted">Terenkripsi end-to-end</string>
@@ -94,8 +79,6 @@
     <!-- Sheet tentang -->
     <string name="about_offline_mesh_title">Chat Mesh Offline</string>
     <string name="about_offline_mesh_desc">Berkomunikasi langsung melalui Bluetooth LE tanpa Internet atau server. Pesan diteruskan melalui perangkat terdekat untuk memperluas jangkauan.</string>
-    <string name="about_online_geohash_title">Channel Geohash Online</string>
-    <string name="about_online_geohash_desc">Terhubung dengan orang-orang di area Anda melalui channel berbasis geohash. Perluas mesh melalui relay Internet publik.</string>
     <string name="about_e2e_title">Enkripsi end-to-end</string>
     <string name="about_e2e_desc">Pesan pribadi dienkripsi. Pesan channel bersifat publik.</string>
     <string name="about_system">Sistem</string>
@@ -137,15 +120,9 @@
     <string name="cd_not_supported_battery_optimization">Optimalisasi baterai tidak didukung</string>
     <string name="cd_bluetooth">Bluetooth</string>
     <string name="cd_unread_message">Pesan yang belum dibaca</string>
-    <string name="cd_open_map">Buka peta</string>
-    <string name="cd_remove_bookmark">Hapus bookmark</string>
-    <string name="cd_teleport">Teleportasi</string>
     <string name="cd_leave_channel">Keluar dari channel</string>
     <string name="cd_reachable_via_nostr">Dapat dijangkau melalui Nostr</string>
     <string name="cd_offline_favorite">Favorit (offline)</string>
-    <string name="cd_decrease_precision">Kurangi presisi</string>
-    <string name="cd_increase_precision">Tingkatkan presisi</string>
-    <string name="cd_select_geohash">Pilih geohash</string>
     <string name="cd_scroll_to_bottom">Gulir ke bawah</string>
     <string name="cd_file">File</string>
     <string name="cd_image">Gambar</string>
@@ -159,7 +136,6 @@
     <string name="cd_privacy_protected">About message privacy</string>
     <string name="cd_record_voice">Rekam pesan suara</string>
     <string name="cd_offline_mesh_chat">Chat Mesh Offline</string>
-    <string name="cd_online_geohash_channels">Channel Geohash Online</string>
     <string name="cd_end_to_end_encryption">Enkripsi end-to-end</string>
 
     <!-- Gambar &amp; file -->
@@ -186,26 +162,9 @@
     <string name="action_block_subtitle">Blokir semua pesan dari pengguna ini</string>
 
     <!-- Sheet channel geohash -->
-    <string name="location_channels_title">#Channel lokasi</string>
-    <string name="location_channels_desc">Chat dengan orang-orang di dekat Anda melalui channel geohash. Hanya geohash kasar yang dibagikan, bukan data GPS yang tepat. Harap jangan tangkap layar atau bagikan tampilan ini untuk privasi.</string>
-    <string name="grant_location_permission">Berikan izin lokasi</string>
-    <string name="location_permission_denied">Izin lokasi ditolak. Aktifkan di Pengaturan untuk menggunakan channel lokasi.</string>
     <string name="open_settings">Buka Pengaturan</string>
-    <string name="location_permission_granted">\u2713 Izin lokasi diberikan</string>
     <string name="checking_permissions">Memeriksa izin …</string>
-    <string name="finding_nearby_channels">Mencari channel terdekat …</string>
-    <string name="bookmarked">Dibookmark</string>
-    <string name="geohash_placeholder">Geohash</string>
-    <string name="invalid_geohash">Geohash tidak valid</string>
-    <string name="teleport">teleportasi</string>
-    <string name="disable_location_services">Nonaktifkan layanan lokasi</string>
-    <string name="enable_location_services">Aktifkan layanan lokasi</string>
     <string name="mesh_label">mesh</string>
-    <string name="location_level_block">Blok</string>
-    <string name="location_level_neighborhood">Lingkungan</string>
-    <string name="location_level_city">Kota</string>
-    <string name="location_level_province">Provinsi</string>
-    <string name="location_level_region">Wilayah</string>
     <string name="location_bluetooth_subtitle">#bluetooth • %1$s</string>
 
     <!-- Debug / Diagnostik -->
@@ -331,18 +290,7 @@
         <item quantity="other">%d orang</item>
     </plurals>
 
-  <plurals name="location_notes_title">
-    <item quantity="other">#%1$s ± 1 • %2$d catatan</item>
-  </plurals>
-  <string name="location_notes_description">tambahkan catatan singkat permanen ke lokasi ini agar pengunjung lain dapat menemukannya.</string>
-  <string name="location_notes_relays_unavailable">relay geo tidak tersedia; catatan dijeda</string>
-  <string name="location_notes_no_relays_title">tidak ada relay geo di sekitar</string>
-  <string name="location_notes_no_relays_desc">catatan bergantung pada relay geo. periksa koneksi lalu coba lagi.</string>
-  <string name="loading_location_notes">memuat catatan…</string>
-  <string name="location_notes_empty_title">belum ada catatan</string>
-  <string name="location_notes_empty_desc">jadilah yang pertama menambahkan catatan untuk tempat ini.</string>
   <string name="dismiss">tutup</string>
-  <string name="location_notes_input_placeholder">tambahkan catatan untuk tempat ini</string>
     <string name="bluetooth_recommended">Bluetooth Recommended</string>
     <string name="mesh_service_notification_content">Mesh berjalan — %1$d peer</string>
 
@@ -382,9 +330,6 @@
   <string name="verify_success_body">You verified %1$s</string>
   <string name="verify_success_system_message">verified %1$s</string>
     <string name="cd_open_about">Buka Tentang</string>
-  <string name="nearby_notes_reveal">periksa catatan yang ditinggalkan di sini</string>
-  <string name="nearby_notes_one">1 catatan ditinggalkan di sini — ketuk untuk membaca</string>
-  <string name="nearby_notes_many">%d catatan ditinggalkan di sini — ketuk untuk membaca</string>
     <string name="about_language">Bahasa</string>
     <string name="about_app_language">Bahasa aplikasi</string>
     <string name="about_system_default">Default sistem</string>

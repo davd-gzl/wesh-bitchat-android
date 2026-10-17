@@ -95,6 +95,6 @@ class PublicInboundBudget(
 
     companion object {
         /** Same limit as outgoing Wesh public text (V1). */
-        const val MAX_PUBLIC_TEXT_BYTES = 2_000
+        const val MAX_PUBLIC_TEXT_BYTES = com.bitchat.android.protocol.PacketPayloadLimits.PUBLIC_TEXT_BYTES
     }
 }

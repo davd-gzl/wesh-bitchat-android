@@ -64,6 +64,17 @@ class WeshInternetModeTest {
     private fun mode(startFenced: Boolean = false) = WeshInternetMode(prefs, tor, relays, network, { keysWiped = true; true }, { available }, scope.backgroundScope,
         ensureNostrIdentity = { keysCreated++ }, startFenced = startFenced)
 
+    @Test fun `wrongly typed stored values read as absent and the erase still clears them`() = scope.runTest {
+        prefs.edit().putString(WeshInternetMode.KEY_ENABLED, "yes").putInt(WeshInternetMode.KEY_DISCLOSURE, 1).commit()
+        val mode = mode(); runCurrent()
+        assertFalse(mode.enabled.value)
+        assertFalse(mode.disclosureAccepted)
+        assertFalse(mode.allowsNetwork())
+        assertTrue(mode.panicReset())
+        assertFalse(prefs.getBoolean(WeshInternetMode.KEY_ENABLED, true))
+        assertFalse(prefs.contains(WeshInternetMode.KEY_DISCLOSURE))
+    }
+
     private fun connected(mode: WeshInternetMode) {
         prefs.edit().putBoolean(WeshInternetMode.KEY_DISCLOSURE, true).commit()
         assertTrue(mode.setEnabled(true))

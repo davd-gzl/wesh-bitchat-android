@@ -76,9 +76,11 @@ class ArtiProxy internal constructor(
      * Waits for a stop in progress. A stop that lands at any point of the start wins: the start
      * stops whatever it began and throws.
      *
+     * @param stillWanted read under the lock that [stop] takes: a caller that withdraws its request
+     *   before calling [stop] is either seen here or cancels the start through [stop].
      * @throws ArtiException if initialization or startup fails
      */
-    fun start(socksPort: Int, credentials: SocksCredentials) {
+    fun start(socksPort: Int, credentials: SocksCredentials, stillWanted: () -> Boolean = { true }) {
         // Registered before the wipe check: a wipe either sees this start and waits for it,
         // or this start sees the wipe and refuses.
         synchronized(lock) { startsRequested++ }
@@ -86,6 +88,7 @@ class ArtiProxy internal constructor(
             val stopsAtStart = synchronized(lock) {
                 while (stopInProgress) lock.wait()
                 if (ArtiWipeLatch.isWiping()) throw ArtiException("Arti state is being wiped")
+                if (!stillWanted()) throw ArtiException("Arti start withdrawn")
                 if (isRunning) {
                     Log.w(TAG, "Arti already running")
                     return

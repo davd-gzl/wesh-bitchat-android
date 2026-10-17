@@ -34,11 +34,6 @@
 -dontwarn info.guardianproject.arti.**
 -dontwarn org.torproject.arti.**
 
-# Fix for AbstractMethodError on API < 29 where LocationListener methods are abstract
--keepclassmembers class * implements android.location.LocationListener {
-    public <methods>;
-}
-
 # Release builds drop verbose, debug, info and warning logs (and their message building) so peer
 # IDs, nicknames and routing details never reach logcat. Errors stay for crash diagnosis.
 -assumenosideeffects class android.util.Log {

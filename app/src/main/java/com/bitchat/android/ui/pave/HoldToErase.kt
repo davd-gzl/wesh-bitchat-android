@@ -47,11 +47,13 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.bitchat.android.R
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.draw.drawWithContent
 import java.util.Locale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.border
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -168,11 +170,16 @@ private fun EraseBar(progress: Float, label: String, modifier: Modifier) {
             .border(WeshStroke.publicRule, c.danger, shape),
         contentAlignment = Alignment.Center,
     ) {
+        // Same size as the bar without taking part in its measure, so the bar keeps its own
+        // height; the stripes cover it from the start edge in proportion to the hold.
         Box(
             Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(progress.coerceIn(0f, 1f))
-                .align(Alignment.CenterStart)
+                .matchParentSize()
+                .drawWithContent {
+                    val end = size.width * progress.coerceIn(0f, 1f)
+                    val left = if (layoutDirection == LayoutDirection.Rtl) size.width - end else 0f
+                    clipRect(left = left, right = left + end) { this@drawWithContent.drawContent() }
+                }
                 .paveHazard(c.danger, c.bg),
         )
         Row(

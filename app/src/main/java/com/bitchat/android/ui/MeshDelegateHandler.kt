@@ -75,14 +75,7 @@ class MeshDelegateHandler(
                 if (state.getJoinedChannelsValue().contains(message.channel)) {
                     val channel = message.channel
                     val viewingClassic = state.getCurrentChannelValue() == channel
-                    val viewingGeohash = try {
-                        if (channel.startsWith("geo:")) {
-                            val geo = channel.removePrefix("geo:")
-                            val selected = state.selectedLocationChannel.value
-                            selected is com.bitchat.android.geohash.ChannelID.Location && selected.channel.geohash.equals(geo, ignoreCase = true)
-                        } else false
-                    } catch (_: Exception) { false }
-                    if (!viewingClassic && !viewingGeohash) {
+                    if (!viewingClassic) {
                         val currentUnread = state.getUnreadChannelMessagesValue().toMutableMap()
                         currentUnread[channel] = (currentUnread[channel] ?: 0) + 1
                         state.setUnreadChannelMessages(currentUnread)

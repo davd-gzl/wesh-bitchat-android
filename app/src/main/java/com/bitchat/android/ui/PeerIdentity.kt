@@ -16,7 +16,7 @@ value class PeerIdentity private constructor(internal val stableKey: String) {
             PeerIdentity("noise:${normalize(peerID)}")
 
         /**
-         * Preserve the established geohash-chat color mapping while accepting a full public key.
+         * Preserve the established Nostr color mapping while accepting a full public key.
          *
          * Older chat rendering hashed `nostr:nostr:<first 8 hex characters>`. Keeping that visual
          * key here avoids recoloring existing conversations; the important change is that every

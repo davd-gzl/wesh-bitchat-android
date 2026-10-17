@@ -85,6 +85,16 @@ class ArtiTorControlWipeTest {
         assertFalse(ArtiTorControl.pendingMarker(app).exists())
     }
 
+    @Test fun `the wipe never stops Arti on the caller thread`() = runBlocking {
+        val caller = Thread.currentThread()
+        val status = MutableStateFlow(ArtiTorManager.TorStatus())
+        var stopThread: Thread? = null
+        val control = ArtiTorControl(app, status, applyOff = { stopThread = Thread.currentThread() }, requestOff = { })
+        assertTrue(control.stopAndWipe())
+        assertNotNull(stopThread)
+        assertNotSame("the native stop blocks; panic runs on the main thread", caller, stopThread)
+    }
+
     @Test fun `the wipe latch is up for the whole wipe and down afterwards`() = runBlocking {
         val status = MutableStateFlow(ArtiTorManager.TorStatus())
         val seen = mutableListOf<Boolean>()
