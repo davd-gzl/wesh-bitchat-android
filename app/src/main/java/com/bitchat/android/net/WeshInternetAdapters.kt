@@ -28,7 +28,8 @@ internal class ArtiTorControl(
     private val stopTimeoutMs: Long = STOP_TIMEOUT_MS,
     private val deleteArti: (File) -> Boolean = ::deleteDirectory,
     private val createMarker: (File) -> Boolean = { it.exists() || it.createNewFile() },
-    private val startInFlight: () -> Boolean = { ArtiTorManager.getInstance().isStartInFlight() }
+    private val startInFlight: () -> Boolean = { ArtiTorManager.getInstance().isStartInFlight() },
+    private val requestOff: () -> Unit = { ArtiTorManager.getInstance().requestOff() }
 ) : WeshTorControl {
     override val progress: Flow<Pair<Int, Boolean>> = status.map { it.bootstrapPercent to it.isReady() }
 
@@ -45,6 +46,8 @@ internal class ArtiTorControl(
     }
 
     override fun stop() {
+        // Immediate: a start still bootstrapping is cancelled now, not after it finishes.
+        requestOff()
         TorPreferenceManager.set(app, TorMode.OFF, commit = true)
     }
 
@@ -64,10 +67,13 @@ internal class ArtiTorControl(
 
     private suspend fun stopAndWipeLatched(): Boolean {
         stop()
-        val stopped = withTimeoutOrNull(stopTimeoutMs) {
-            applyOff()
-            status.first { it.state == ArtiTorManager.TorState.OFF && !it.running }
-        } != null
+        // The native stop blocks; panic runs on the main thread.
+        val stopped = withContext(Dispatchers.IO) {
+            withTimeoutOrNull(stopTimeoutMs) {
+                applyOff()
+                status.first { it.state == ArtiTorManager.TorState.OFF && !it.running }
+            } != null
+        }
         OkHttpProvider.reset()
         return withContext(Dispatchers.IO) {
             val marked = runCatching { createMarker(pendingMarker(app)) }.getOrDefault(false)
@@ -134,11 +140,15 @@ internal class ArtiTorControl(
 
         /** Clears the pending wipe only if the directory is really gone; otherwise re-arms it. */
         private fun clearPendingSignalsIfGone(context: Context) {
+            fun present() = runCatching { artiDirectory(context).exists() }.getOrDefault(true)
+            if (present()) return rearmPendingSignals(context)
             clearPendingSignals(context)
-            if (runCatching { artiDirectory(context).exists() }.getOrDefault(true)) {
-                runCatching { pendingMarker(context).createNewFile() }
-                runCatching { pendingPreferences(context).edit().putBoolean(KEY_PENDING, true).commit() }
-            }
+            if (present()) rearmPendingSignals(context)
+        }
+
+        private fun rearmPendingSignals(context: Context) {
+            runCatching { pendingMarker(context).createNewFile() }
+            runCatching { pendingPreferences(context).edit().putBoolean(KEY_PENDING, true).commit() }
         }
     }
 }
