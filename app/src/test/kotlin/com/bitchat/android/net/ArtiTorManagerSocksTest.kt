@@ -63,12 +63,14 @@ class ArtiTorManagerSocksTest {
         manager.init(app)
     }
 
-    @After fun tearDown() = runBlocking {
-        manager.requestOff()
-        managerScope.cancel()
-        TorPreferenceManager.set(app, TorMode.OFF, commit = true)
-        manager.applyMode(app, TorMode.OFF)
-        managerScope.coroutineContext[Job]?.join()
+    @After fun tearDown() {
+        runBlocking {
+            manager.requestOff()
+            managerScope.cancel()
+            TorPreferenceManager.set(app, TorMode.OFF, commit = true)
+            manager.applyMode(app, TorMode.OFF)
+            managerScope.coroutineContext[Job]?.join()
+        }
     }
 
     @Test fun `a successful start publishes exactly the bound port with its credentials`() = runBlocking {
