@@ -83,6 +83,17 @@ internal fun meetingNoteEditCallback(
     if (preferences.editMeetingDraft(text, capturedEpoch)) onAccepted()
 }
 
+internal fun composerDraftEditCallback(
+    store: WeshDraftStore,
+    destination: String?,
+    onRejected: () -> Unit
+): (String) -> Unit {
+    val capturedEpoch = store.epoch
+    return { text ->
+        destination?.let { if (!store.save(capturedEpoch, it, text)) onRejected() }
+    }
+}
+
 internal fun paveRouteFor(entry: PaveSettingsEntry): PaveRoute = when (entry) {
     PaveSettingsEntry.Profile -> PaveRoute.Profile
     PaveSettingsEntry.Connexion -> PaveRoute.Settings
@@ -292,9 +303,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
             }
         }
     }
-    val onDraftChange: (String) -> Unit = { text ->
-        destination?.let { if (!viewModel.weshDraftStore.save(it, text)) feedback = msgDraftTooLong }
-    }
+    val onDraftChange = composerDraftEditCallback(viewModel.weshDraftStore, destination) { feedback = msgDraftTooLong }
 
     Box(Modifier.fillMaxSize()) {
         when (route) {

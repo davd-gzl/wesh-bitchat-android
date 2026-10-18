@@ -47,8 +47,10 @@ internal class WeshDraftStore(
         }
     }
 
-    fun save(destination: String, value: String): Boolean = synchronized(lock) {
-        if (fenced || !validDestination(destination) || value.toByteArray(Charsets.UTF_8).size > MAX_DRAFT_BYTES) {
+    fun save(expectedEpoch: Long, destination: String, value: String): Boolean = synchronized(lock) {
+        if (fenced || generation != expectedEpoch || !validDestination(destination) ||
+            value.toByteArray(Charsets.UTF_8).size > MAX_DRAFT_BYTES
+        ) {
             return@synchronized false
         }
         if (!loaded && destination !in beforeLoad && beforeLoad.size >= MAX_DRAFTS) return@synchronized false
@@ -85,7 +87,7 @@ internal class WeshDraftStore(
     }
 
     fun clearIfUnchanged(capture: Capture) {
-        synchronized(lock) { if (isCurrent(capture)) save(capture.destination, "") }
+        synchronized(lock) { if (isCurrent(capture)) save(capture.epoch, capture.destination, "") }
     }
 
     /** A different local full Noise key fences pending work and discards the previous RAM owner. */
