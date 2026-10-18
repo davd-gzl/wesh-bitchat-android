@@ -594,6 +594,7 @@ class MeshCore(
     }
 
     fun sendReadReceipt(messageID: String, recipientPeerID: String, readerNickname: String) {
+        val receiptToken = com.bitchat.android.services.SeenMessageStore.captureReceiptToken()
         scope.launch {
             if (hooks.readReceiptInterceptor?.invoke(messageID, recipientPeerID) == true) return@launch
             try {
@@ -619,16 +620,12 @@ class MeshCore(
                     sendAttempt = {
                         dispatchGlobalAndReport(RoutedPacket(signedPacket))
                     },
-                    onComplete = { accepted ->
-                        if (accepted) {
-                            try {
-                                com.bitchat.android.services.SeenMessageStore
-                                    .getInstance(context.applicationContext)
-                                    .markReadReceiptSent(messageID)
-                            } catch (_: Exception) { }
-                            hooks.onReadReceiptSent?.invoke(messageID)
-                        }
-                    }
+                    onComplete = readReceiptCompletion(
+                        messageID = messageID,
+                        expectedToken = receiptToken,
+                        seenStore = { com.bitchat.android.services.SeenMessageStore.getInstance(context.applicationContext) },
+                        onAccepted = { hooks.onReadReceiptSent?.invoke(messageID) }
+                    )
                 )
             } catch (e: Exception) {
                 Log.e("MeshCore", "Failed to send read receipt: ${e.message}")

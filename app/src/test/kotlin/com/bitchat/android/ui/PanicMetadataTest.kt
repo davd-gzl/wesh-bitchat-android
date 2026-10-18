@@ -127,6 +127,7 @@ class PanicMetadataTest {
         var preferenceClears = 0
         var resumes = 0
         val resumed = resumeAfterWeshPanicWipe(
+            seenCleared = true,
             draftsCleared = true, conversationsCleared = true, mediaCleared = true,
             metadataCleared = metadataConfirmed,
             clearPreferences = { preferenceClears++; true },
@@ -160,7 +161,7 @@ class PanicMetadataTest {
         val backend = markerBackend()
         backend.wipe()
         val gate = WeshRecoveryGate().apply { requireRecovery() }
-        assertTrue(resumeAfterWeshPanicWipe(true, true, true,
+        assertTrue(resumeAfterWeshPanicWipe(true, true, true, seenCleared = true,
             metadataCleared = true, clearPreferences = { true }, resume = {
                 backend.finishVerifiedWipe(); gate.normalPanicCompleted(); true
             }))

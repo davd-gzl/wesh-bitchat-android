@@ -53,6 +53,7 @@ class NostrDirectMessageHandler(
     }
 
     fun onGiftWrap(giftWrap: NostrEvent, identity: NostrIdentity) {
+        val receiptToken = SeenMessageStore.captureReceiptToken()
         scope.launch {
             try {
                 if (dedupe(giftWrap.id)) return@launch
@@ -86,7 +87,7 @@ class NostrDirectMessageHandler(
                 val senderNickname = "anon"
                 val conversationID = ContactDirectory.canonicalConversationId(convKey)
 
-                processNoisePayload(noisePayload, conversationID, senderNickname, messageTimestamp, senderPubkey, identity)
+                processNoisePayload(noisePayload, conversationID, senderNickname, messageTimestamp, senderPubkey, identity, receiptToken)
 
             } catch (e: Exception) {
                 Log.e(TAG, "onGiftWrap error: ${e.message}")
@@ -100,7 +101,8 @@ class NostrDirectMessageHandler(
         senderNickname: String,
         timestamp: Date,
         senderPubkey: String,
-        recipientIdentity: NostrIdentity
+        recipientIdentity: NostrIdentity,
+        receiptToken: com.bitchat.android.services.SeenReceiptAdmission.Token?
     ) {
         when (payload.type) {
             NoisePayloadType.PRIVATE_MESSAGE -> {
@@ -161,7 +163,7 @@ class NostrDirectMessageHandler(
                     val nostrTransport = NostrTransport.getInstance(application)
                     nostrTransport.sendReadReceiptGeohash(pm.messageID, senderPubkey, recipientIdentity)
                     seenStore.markReadLocally(pm.messageID)
-                    seenStore.markReadReceiptSent(pm.messageID)
+                    seenStore.markReadReceiptSent(pm.messageID, receiptToken)
                 }
             }
             NoisePayloadType.DELIVERED -> {

@@ -167,6 +167,7 @@ class PanicStorageCompositionTest {
         val metadataCleared = clearPanicMetadata(dataManager, organization)
         val nicknameSaved = savePanicNickname(dataManager, "anon1234")
         val resumed = resumeAfterWeshPanicWipe(
+            seenCleared = true,
             draftsCleared = true, conversationsCleared = historyCleared, mediaCleared = true,
             metadataCleared = metadataCleared && nicknameSaved,
             clearPreferences = { preferences.clearForPanic() },

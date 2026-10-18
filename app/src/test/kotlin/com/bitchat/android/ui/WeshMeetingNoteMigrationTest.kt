@@ -277,6 +277,7 @@ class WeshMeetingNoteMigrationTest {
         val gate = WeshRecoveryGate().apply { requireRecovery() }
         var resumes = 0
         suspend fun globalPanic(): Boolean = resumeAfterWeshPanicWipe(
+            seenCleared = true,
             draftsCleared = true, conversationsCleared = true, mediaCleared = true,
             clearPreferences = { preferences.clearForPanic() }, resume = {
                 resumes++

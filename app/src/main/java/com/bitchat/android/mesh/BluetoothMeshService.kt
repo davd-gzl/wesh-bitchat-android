@@ -1053,6 +1053,7 @@ class BluetoothMeshService(
      * Uses same encryption approach as iOS SimplifiedBluetoothService
      */
     fun sendReadReceipt(messageID: String, recipientPeerID: String, readerNickname: String) {
+        val receiptToken = com.bitchat.android.services.SeenMessageStore.captureReceiptToken()
         serviceScope.launch {
             // Route geohash read receipts via MessageRouter instead of here
             val geo = runCatching { com.bitchat.android.services.MessageRouter.tryGetInstance() }.getOrNull()
@@ -1104,15 +1105,11 @@ class BluetoothMeshService(
                         )
                         accepted
                     },
-                    onComplete = { accepted ->
-                        if (accepted) {
-                            try {
-                                com.bitchat.android.services.SeenMessageStore
-                                    .getInstance(context.applicationContext)
-                                    .markReadReceiptSent(messageID)
-                            } catch (_: Exception) { }
-                        }
-                    }
+                    onComplete = readReceiptCompletion(
+                        messageID = messageID,
+                        expectedToken = receiptToken,
+                        seenStore = { com.bitchat.android.services.SeenMessageStore.getInstance(context.applicationContext) }
+                    )
                 )
 
             } catch (e: Exception) {

@@ -1480,6 +1480,7 @@ class ChatViewModel(
     fun panicClearAllData() {
         if (weshPanicInProgress.value) return
         weshPanicInProgress.value = true
+        val seenPanic = com.bitchat.android.services.SeenMessageStore.fenceReceiptAdmissionForPanic()
         if (com.bitchat.android.BuildConfig.WESH_POLICY) {
             weshPanicPreviousKey = mesh.getStaticNoisePublicKey()?.copyOf()
             com.bitchat.android.startup.WeshRuntime.requirePanicRecovery()
@@ -1489,7 +1490,9 @@ class ChatViewModel(
         com.bitchat.android.net.WeshInternetMode.get(getApplication()).fenceForPanic()
         viewModelScope.launch {
             try {
-                performPanicClearAllData()
+                performPanicClearAllData(seenPanic)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 // The durable recovery marker stays set; StartupScreen offers recovery.
             } finally {
@@ -1498,7 +1501,7 @@ class ChatViewModel(
         }
     }
 
-    private suspend fun performPanicClearAllData() {
+    private suspend fun performPanicClearAllData(seenPanic: com.bitchat.android.services.SeenReceiptAdmission.Token) {
         // Stop all message admission before wiping storage. The AppStateStore gate also rejects
         // any transport callback already in flight until the fresh identity is ready.
         clearAllMeshServiceData()
@@ -1515,9 +1518,9 @@ class ChatViewModel(
         val metadataCleared = clearPanicMetadata(dataManager, conversationListPreferences)
         
         // Clear seen message store and MessageRouter outbox
-        try {
-            com.bitchat.android.services.SeenMessageStore.getInstance(getApplication()).clear()
-        } catch (_: Exception) { }
+        val seenCleared = clearSeenForPanic(seenPanic) {
+            com.bitchat.android.services.SeenMessageStore.getInstance(getApplication())
+        }
         try {
             com.bitchat.android.services.MessageRouter.tryGetInstance()?.clearAll()
         } catch (_: Exception) { }
@@ -1563,11 +1566,12 @@ class ChatViewModel(
             mediaCleared = mediaCleared,
             legacyStoresCleared = legacyStoresCleared,
             metadataCleared = metadataCleared && nicknameSaved,
+            seenCleared = seenCleared,
             clearPreferences = {
                 withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { weshPreferences.clearForPanic() }
             },
             // This also finishes the durable draft marker; never enter it on an uncertain wipe.
-            resume = { recreateMeshServiceAfterPanic() }
+            resume = { recreateMeshServiceAfterPanic(seenPanic) }
         )
         if (!resumed) return
         weshPreferences.resumeAfterVerifiedPanic()
@@ -1578,7 +1582,7 @@ class ChatViewModel(
      * Recreate the mesh service with a fresh identity after panic clear.
      * This ensures the new cryptographic keys are used for a new peer ID.
      */
-    private suspend fun recreateMeshServiceAfterPanic(): Boolean {
+    private suspend fun recreateMeshServiceAfterPanic(seenPanic: com.bitchat.android.services.SeenReceiptAdmission.Token): Boolean {
         // Clear the holder so getOrCreate() returns a fresh instance
         MeshServiceHolder.clear()
 
@@ -1601,12 +1605,19 @@ class ChatViewModel(
         loadWeshDrafts()
         if (com.bitchat.android.BuildConfig.WESH_POLICY &&
             weshDraftStore.persistence.value != WeshDraftStore.Persistence.Confirmed) return false
-        if (com.bitchat.android.BuildConfig.WESH_POLICY) com.bitchat.android.startup.WeshRuntime.normalPanicCompleted()
-        com.bitchat.android.services.AppStateStore.resumePrivateConversationsAfterPanic()
-        // Restart mesh operations with new identity
-        mesh.startServices()
-        mesh.sendBroadcastAnnounce()
-        return true
+        if (!com.bitchat.android.services.SeenMessageStore.resumeReceiptAdmissionAfterVerifiedPanic(seenPanic)) return false
+        var restarted = false
+        try {
+            if (com.bitchat.android.BuildConfig.WESH_POLICY) com.bitchat.android.startup.WeshRuntime.normalPanicCompleted()
+            com.bitchat.android.services.AppStateStore.resumePrivateConversationsAfterPanic()
+            // Restart mesh operations only after the checked Seen phase and all other stores.
+            mesh.startServices()
+            mesh.sendBroadcastAnnounce()
+            restarted = true
+            return true
+        } finally {
+            if (!restarted) seenPanic.owner.retainFenceAfterFailure(seenPanic)
+        }
     }
     
     /**

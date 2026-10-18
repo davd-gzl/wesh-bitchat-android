@@ -338,7 +338,9 @@ internal suspend fun resumeAfterWeshPanicWipe(
     /** The removed features' preference files are gone. */
     legacyStoresCleared: Boolean = true,
     /** Plain metadata, conversation organization and the fresh nickname were confirmed. */
-    metadataCleared: Boolean = true
+    metadataCleared: Boolean = true,
+    /** Seen receipt bookkeeping has completed its panic clear. */
+    seenCleared: Boolean
 ): Boolean {
     val preferencesCleared = try {
         clearPreferences()
@@ -348,7 +350,7 @@ internal suspend fun resumeAfterWeshPanicWipe(
         false
     }
     if (!draftsCleared || !conversationsCleared || !mediaCleared || !internetCleared || !legacyStoresCleared ||
-        !metadataCleared || !preferencesCleared
+        !metadataCleared || !seenCleared || !preferencesCleared
     ) return false
     return resume()
 }
