@@ -51,6 +51,13 @@ class ChatViewModelNicknameGenerationTest {
         preferences = WeshPreferences(context.getSharedPreferences(policyName, Context.MODE_PRIVATE),
             Dispatchers.IO, commitEditor = { editor ->
                 if (policyCommitSucceeds) editor.commit() else { editor.apply(); false }
+            }, meetingBackendFactory = {
+                // This nickname fixture owns no meeting-note data or live storage.
+                object : WeshMeetingNoteBackend {
+                    override suspend fun load(): String? = null
+                    override suspend fun write(text: String) = error("Unexpected meeting-note write in nickname fixture")
+                    override suspend fun erase() = Unit
+                }
             })
         val dataContext = mock<Context>()
         org.mockito.kotlin.whenever(dataContext.getSharedPreferences("bitchat_prefs", Context.MODE_PRIVATE))
