@@ -7,6 +7,7 @@ import com.bitchat.android.services.AppStateStore
 import com.bitchat.android.ui.resumeAfterWeshPanicWipe
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -36,6 +37,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 
 /** Actual facade and owned announcement job, with RAM transport/clock ports and no Context. */
@@ -114,6 +116,96 @@ class UnifiedMeshOwnerRetirementTest {
             assertTrue("synthetic workers must finish without errors: $workerErrors", workerErrors.isEmpty())
             assertTrue("transport dispatch must release facade admission before acquiring the external holder lock",
                 acquiredExternalLock.get())
+        }
+    }
+
+    @Test fun `concurrent retirement waits held dispatch then detaches and erases only captured owners`() = runTest {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        withFixture(beforeClose = { release.countDown() }) { f ->
+            f.facade.delegate = f.ui
+            val portReturned = AtomicBoolean(false)
+            val detachedTooEarly = AtomicBoolean(false)
+            val detachCount = AtomicInteger()
+            val wifiReads = AtomicInteger()
+            val workerErrors = ConcurrentLinkedQueue<Throwable>()
+            f.currentWifiRead = { wifiReads.incrementAndGet() }
+            f.wifiA.delegateAction = { value ->
+                if (value == null) {
+                    if (!portReturned.get()) detachedTooEarly.set(true)
+                    detachCount.incrementAndGet()
+                }
+            }
+            f.ble.startAction = {
+                try {
+                    entered.countDown()
+                    check(release.await(5, TimeUnit.SECONDS)) { "Synthetic held start was not released" }
+                } catch (failure: Throwable) {
+                    workerErrors.add(failure)
+                    throw failure
+                } finally {
+                    portReturned.set(true)
+                }
+            }
+            val worker = Thread({
+                try { f.facade.startServices() } catch (failure: Throwable) { workerErrors.add(failure) }
+            }, "synthetic-held-dispatch").apply { isDaemon = true }
+            var first: Deferred<Boolean>? = null
+            var second: Deferred<Boolean>? = null
+            try {
+                worker.start()
+                assertTrue("actual synchronous transport dispatch must reach its barrier", entered.await(5, TimeUnit.SECONDS))
+                val firstRequest = async { f.facade.retireForPanic() }
+                val secondRequest = async { f.facade.retireForPanic() }
+                first = firstRequest
+                second = secondRequest
+                runCurrent()
+                assertFalse("first retirement must await admitted dispatch", firstRequest.isCompleted)
+                assertFalse("concurrent retirement must await the same completion", secondRequest.isCompleted)
+                assertEquals("retirement snapshots WiFi once", 1, wifiReads.get())
+                assertEquals(0, detachCount.get())
+                val before = f.events()
+                f.facade.startServices()
+                f.facade.sendMessage("Synthetic refused public", emptyList())
+                f.facade.sendVerifyChallenge(PEER, KEY_HEX, ByteArray(16) { 3 })
+                assertEquals("new dispatch is fenced while prior dispatch is held", before, f.events())
+                val differentFacade = RecordingDelegate()
+                val replacement = FakeMesh("replacement").apply { delegate = differentFacade }
+                f.wifi = replacement
+                // Final cleanup must preserve an owner installed by somebody else.
+                f.ble.delegate = differentFacade
+                release.countDown()
+                worker.join(5_000)
+                assertFalse("held dispatch worker must exit", worker.isAlive)
+                assertTrue(withTimeout(1_000) { firstRequest.await() })
+                assertTrue(withTimeout(1_000) { secondRequest.await() })
+                assertTrue(portReturned.get())
+                assertFalse(detachedTooEarly.get())
+                assertEquals("single retirement detaches captured WiFi once", 1, detachCount.get())
+                assertNull(f.wifiA.delegate)
+                assertSame(differentFacade, f.ble.delegate)
+                assertSame(differentFacade, replacement.delegate)
+                assertTrue("held BLE start must not continue into a later WiFi start phase", f.portCalls.isEmpty())
+                assertFalse(f.ownerScope.isActive)
+                f.facade.clearAllInternalData()
+                f.facade.clearAllEncryptionData()
+                assertEquals(1, f.ble.calls.count { it == "erase-state" })
+                assertEquals(1, f.ble.calls.count { it == "erase-crypto" })
+                assertEquals(1, f.wifiA.calls.count { it == "erase-state" })
+                assertEquals(1, f.wifiA.calls.count { it == "erase-crypto" })
+                assertTrue(replacement.calls.isEmpty())
+                assertEquals("no provider lookup after fencing or during either eraser", 1, wifiReads.get())
+            } finally {
+                release.countDown()
+                worker.interrupt()
+                worker.join(5_000)
+                assertFalse("owned held-dispatch worker must be reaped", worker.isAlive)
+                withTimeout(1_000) {
+                    first?.cancelAndJoin()
+                    second?.cancelAndJoin()
+                }
+            }
+            assertTrue("synthetic worker must finish without errors: $workerErrors", workerErrors.isEmpty())
         }
     }
 
@@ -477,6 +569,7 @@ class UnifiedMeshOwnerRetirementTest {
         val ble = FakeMesh("ble")
         val wifiA = FakeMesh("wifi-a")
         var wifi: MeshService? = wifiA
+        var currentWifiRead: (() -> Unit)? = null
         var bleEnabled = true
         val portCalls = mutableListOf<String>()
         val ui = RecordingDelegate()
@@ -484,7 +577,7 @@ class UnifiedMeshOwnerRetirementTest {
             scope = ownerScope,
             announcementProfile = profileOverride ?: profile,
             hasAnnouncementRecipients = { profile.value.second },
-            currentWifi = { wifi },
+            currentWifi = { currentWifiRead?.invoke(); wifi },
             startWifi = { portCalls += "start-wifi" },
             stopWifi = { portCalls += "stop-wifi" },
             bleEnabled = { bleEnabled },
@@ -513,7 +606,9 @@ class UnifiedMeshOwnerRetirementTest {
         var startAction: (() -> Unit)? = null
         var boundSend: (suspend (() -> Boolean) -> Boolean)? = null
         override val myPeerID = PEER
+        var delegateAction: ((MeshDelegate?) -> Unit)? = null
         override var delegate: MeshDelegate? = null
+            set(value) { field = value; delegateAction?.invoke(value) }
         override fun startServices() { calls += "start"; startAction?.invoke() }
         override fun stopServices() { calls += "stop" }
         override fun sendMessage(content: String, mentions: List<String>) { calls += "public" }

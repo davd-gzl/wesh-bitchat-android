@@ -11,7 +11,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.IdentityHashMap
 
 /**
  * Feature-facing mesh service that hides local transport selection from the rest of the app.
@@ -64,56 +66,156 @@ class UnifiedMeshService internal constructor(
     private val serviceScope = ports.scope
     private val ownerLock = Any()
     @Volatile private var retiredForPanic = false
+    @Volatile private var currentDelegate: MeshDelegate? = null
+    private var delegateGeneration = 0L
     private var retirementFailed = false
     private var announcementJob: Job? = null
     private var panicWifi: MeshService? = null
-    private var currentDelegate: MeshDelegate? = null
+    private var activeCalls = 0
+    private var idle = CompletableDeferred<Unit>().apply { complete(Unit) }
+    private val bindingTargets = IdentityHashMap<MeshService, Unit>()
+    private var retirement: Retirement? = null
 
-    /** Retires this facade only; controller, transport and Core task ownership are separate. */
+    private class Retirement(
+        val ownedJob: Job?,
+        val idle: CompletableDeferred<Unit>,
+        val targets: List<MeshService>,
+        val completion: CompletableDeferred<Boolean> = CompletableDeferred()
+    )
+
+    private class Binding(val target: MeshService, val value: MeshDelegate?, val generation: Long)
+
+    /**
+     * Called by CVM's independent viewModelScope, never from this facade's admitted callback or
+     * owned announcement scope. Controller, transport and Core task ownership are separate.
+     */
     internal suspend fun retireForPanic(): Boolean {
-        val ownedJob = synchronized(ownerLock) {
-            if (!retiredForPanic) {
-                // Capture exactly once, including absence, before closing this owner's admission.
+        val (attempt, leader) = synchronized(ownerLock) {
+            val existing = retirement
+            if (existing != null) existing to false else {
+                // currentWifi is a RAM identity snapshot, never a factory, binder or platform call.
                 try { panicWifi = ports.currentWifi() } catch (_: Exception) { retirementFailed = true }
                 retiredForPanic = true
                 currentDelegate = null
-                try { bluetooth.delegate = null } catch (_: Exception) { retirementFailed = true }
-                try { panicWifi?.delegate = null } catch (_: Exception) { retirementFailed = true }
-            }
-            serviceScope.coroutineContext[Job].also {
-                if (it == null) retirementFailed = true
+                val targets = mutableListOf(bluetooth)
+                fun retain(target: MeshService) {
+                    if (targets.none { it === target }) targets.add(target)
+                }
+                panicWifi?.let(::retain)
+                bindingTargets.keys.forEach(::retain)
+                val ownedJob = serviceScope.coroutineContext[Job]
+                if (ownedJob == null) retirementFailed = true
+                Retirement(ownedJob, idle, targets).also { retirement = it } to true
             }
         }
-        // Never suspend under ownerLock. A cancelled caller must still finish this owned scope.
+        // No monitor is held across cancellation, completion, external setters or either await.
         return withContext(NonCancellable) {
-            try { ownedJob?.cancelAndJoin() } catch (_: Exception) {
-                synchronized(ownerLock) { retirementFailed = true }
-            }
-            synchronized(ownerLock) { ownedJob != null && ownedJob.isCompleted && !retirementFailed }
+            if (!leader) attempt.completion.await() else finishRetirement(attempt)
         }
     }
+
+    private suspend fun finishRetirement(attempt: Retirement): Boolean {
+        var result = false
+        try {
+            val cancelled = try {
+                attempt.ownedJob?.cancel()
+                true
+            } catch (_: Exception) {
+                failRetirement()
+                false
+            }
+            attempt.idle.await()
+            if (cancelled) {
+                try { attempt.ownedJob?.join() } catch (_: Exception) { failRetirement() }
+            }
+            // A pre-fence refresh may have been inside an external setter. Detach only after it
+            // finishes, using its recorded identity, and preserve a different facade's delegate.
+            attempt.targets.forEach { target ->
+                try {
+                    if (target.delegate === this) target.delegate = null
+                } catch (_: Exception) { failRetirement() }
+            }
+            result = synchronized(ownerLock) {
+                attempt.ownedJob != null && attempt.ownedJob.isCompleted && !retirementFailed
+            }
+        } finally {
+            attempt.completion.complete(result)
+        }
+        return result
+    }
+
+    private fun failRetirement() { synchronized(ownerLock) { retirementFailed = true } }
 
     override val myPeerID: String
         get() = bluetooth.myPeerID
 
     override var delegate: MeshDelegate?
-        get() = synchronized(ownerLock) { currentDelegate }
+        get() = currentDelegate
         set(value) {
-            synchronized(ownerLock) {
-                if (retiredForPanic) return
-                currentDelegate = value
-                refreshDelegates()
+            val accepted = synchronized(ownerLock) {
+                if (retiredForPanic) false else {
+                    currentDelegate = value
+                    delegateGeneration++
+                    true
+                }
             }
+            if (accepted) refreshDelegates()
         }
 
-    private inline fun <T> withActiveOwner(fallback: T, action: () -> T): T = synchronized(ownerLock) {
-        if (retiredForPanic) fallback else action()
+    private fun admitCallLocked() {
+        if (activeCalls == 0) idle = CompletableDeferred()
+        activeCalls++
+    }
+
+    private fun releaseCall() {
+        val completed = synchronized(ownerLock) {
+            activeCalls--
+            check(activeCalls >= 0)
+            if (activeCalls == 0) idle else null
+        }
+        // Completing a deferred may invoke continuations immediately; keep it outside the monitor.
+        completed?.complete(Unit)
+    }
+
+    private inline fun <T> withActiveOwner(fallback: T, action: () -> T): T {
+        val admitted = synchronized(ownerLock) {
+            if (retiredForPanic) false else { admitCallLocked(); true }
+        }
+        if (!admitted) return fallback
+        try { return action() } finally { releaseCall() }
+    }
+
+    private fun bindDelegate(target: MeshService, clearWhenAbsent: Boolean, force: Boolean) {
+        var binding = synchronized(ownerLock) {
+            if (retiredForPanic || (!clearWhenAbsent && currentDelegate == null)) null else {
+                admitCallLocked()
+                // Keep every identity, including a setter that throws or a formerly current WiFi.
+                bindingTargets[target] = Unit
+                Binding(target, if (currentDelegate != null) this else null, delegateGeneration)
+            }
+        } ?: return
+        try {
+            while (!retiredForPanic) {
+                if (force || binding.target.delegate !== binding.value) {
+                    binding.target.delegate = binding.value
+                }
+                // An older refresh finishing last must not restore a superseded null/non-null
+                // binding. Reconcile the RAM generation without holding the lock in a setter.
+                binding = synchronized(ownerLock) {
+                    if (retiredForPanic || delegateGeneration == binding.generation) null else {
+                        Binding(target, if (currentDelegate != null) this else null, delegateGeneration)
+                    }
+                } ?: break
+            }
+        } finally {
+            releaseCall()
+        }
     }
 
     fun refreshDelegates() {
         withActiveOwner(Unit) {
-            try { bluetooth.delegate = if (delegate != null) this else null } catch (_: Exception) { }
-            try { wifiService()?.delegate = if (delegate != null) this else null } catch (_: Exception) { }
+            try { bindDelegate(bluetooth, clearWhenAbsent = true, force = true) } catch (_: Exception) { }
+            try { wifiService()?.let { bindDelegate(it, clearWhenAbsent = true, force = true) } } catch (_: Exception) { }
         }
     }
 
@@ -126,9 +228,11 @@ class UnifiedMeshService internal constructor(
             } else {
                 try { ports.disableBle() } catch (_: Exception) { }
             }
+            if (retiredForPanic) return@withActiveOwner
             try { ports.startWifi() } catch (e: Exception) {
                 Log.w(TAG, "Failed to start Wi-Fi Aware transport: ${e.message}")
             }
+            if (retiredForPanic) return@withActiveOwner
             startAnnouncementScheduler()
             refreshDelegates()
         }
@@ -136,28 +240,34 @@ class UnifiedMeshService internal constructor(
 
     override fun stopServices() {
         withActiveOwner(Unit) {
-            announcementJob?.cancel()
-            announcementJob = null
+            val stopped = synchronized(ownerLock) { announcementJob.also { announcementJob = null } }
+            stopped?.cancel()
+            if (retiredForPanic) return@withActiveOwner
             try { bluetooth.stopServices() } catch (_: Exception) { }
+            if (retiredForPanic) return@withActiveOwner
             try { ports.stopWifi() } catch (_: Exception) { }
         }
     }
 
     private fun startAnnouncementScheduler() {
-        if (announcementJob?.isActive == true) return
-        announcementJob = serviceScope.launch {
-            ports.announcementProfile
-                .distinctUntilChanged()
-                .collectLatest { (intervalMs, hasRecipients) ->
-                    if (!hasRecipients) return@collectLatest
-                    // Connection-specific paths already send an immediate announce. Begin the
-                    // periodic cadence after the configured interval to avoid a transition burst.
-                    while (isActive) {
-                        delay(intervalMs)
-                        if (ports.hasAnnouncementRecipients()) sendBroadcastAnnounce()
-                    }
-                }
+        val started = synchronized(ownerLock) {
+            if (retiredForPanic || announcementJob?.isCompleted == false) null else {
+                // Lazy construction registers the owned Job without executing callbacks in this lock.
+                serviceScope.launch(start = CoroutineStart.LAZY) {
+                    ports.announcementProfile
+                        .distinctUntilChanged()
+                        .collectLatest { (intervalMs, hasRecipients) ->
+                            if (!hasRecipients) return@collectLatest
+                            // Wait the full cadence interval; connection paths announce immediately.
+                            while (isActive) {
+                                delay(intervalMs)
+                                if (ports.hasAnnouncementRecipients()) sendBroadcastAnnounce()
+                            }
+                        }
+                }.also { announcementJob = it }
             }
+        }
+        started?.start()
     }
 
     override fun sendMessage(content: String, mentions: List<String>) {
@@ -456,18 +566,18 @@ class UnifiedMeshService internal constructor(
         return ids.toList()
     }
 
-    private fun wifiForErasure(): MeshService? = synchronized(ownerLock) {
-        if (retiredForPanic) panicWifi else wifiService()
+    private fun wifiForErasure(): MeshService? {
+        val captured = synchronized(ownerLock) { retiredForPanic to panicWifi }
+        return if (captured.first) captured.second else wifiService()
     }
 
-    private fun wifiService(): MeshService? = synchronized(ownerLock) {
-        if (retiredForPanic) return@synchronized null
+    private fun wifiService(): MeshService? = withActiveOwner(null) {
         try {
-            ports.currentWifi()?.also { service ->
-                if (currentDelegate != null && service.delegate !== this) {
-                    service.delegate = this
-                }
+            val service = synchronized(ownerLock) {
+                if (retiredForPanic) null else ports.currentWifi()
             }
+            if (service != null) bindDelegate(service, clearWhenAbsent = false, force = false)
+            if (retiredForPanic) null else service
         } catch (_: Exception) {
             null
         }
@@ -506,6 +616,7 @@ internal data class UnifiedMeshPorts(
     val scope: CoroutineScope,
     val announcementProfile: Flow<Pair<Long, Boolean>>,
     val hasAnnouncementRecipients: () -> Boolean,
+    /** Identity-only RAM read; must not create, bind, dispatch callbacks or acquire a holder lock. */
     val currentWifi: () -> MeshService?,
     val startWifi: () -> Unit,
     val stopWifi: () -> Unit,
