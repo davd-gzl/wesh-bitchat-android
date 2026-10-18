@@ -60,6 +60,8 @@ fun SettingsScreen(
     summary: PaveSettingsSummary,
     onErase: () -> Unit,
     onOpen: (PaveSettingsEntry) -> Unit,
+    autoStartOnBoot: Boolean,
+    onAutoStartOnBoot: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val c = WeshPave.colors
@@ -97,6 +99,10 @@ fun SettingsScreen(
                 if (i > 0) HorizontalDivider(thickness = WeshStroke.s1, color = c.line)
                 SettingsRow(stringResource(content.first), content.second, onClick = { onOpen(entry) })
             }
+        }
+        Column {
+            SwitchRow(stringResource(R.string.wesh_pave_settings_boot), autoStartOnBoot, onAutoStartOnBoot)
+            Text(stringResource(R.string.wesh_pave_settings_boot_body), style = WeshType.caption, color = c.inkMuted)
         }
         Spacer(Modifier.height(WeshSpace.s4))
         Text(stringResource(R.string.wesh_pave_settings_footer), style = WeshType.caption, color = c.inkMuted)
@@ -213,7 +219,7 @@ fun LicensesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
 private fun SettingsScreenPreview() = PavePreview(padded = false) {
     SettingsScreen(
         PaveSettingsSummary("Renard 42", previewsHidden = true, meeting = "Fontaine, 18 h", blockedCount = 2, appearance = WeshAppearance.Nuit),
-        onErase = {}, onOpen = {},
+        onErase = {}, onOpen = {}, autoStartOnBoot = true, onAutoStartOnBoot = {},
     )
 }
 

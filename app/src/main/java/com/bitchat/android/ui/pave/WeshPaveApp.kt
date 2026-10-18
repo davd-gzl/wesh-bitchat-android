@@ -39,6 +39,7 @@ import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.model.DeliveryStatus
 import com.bitchat.android.net.WeshInternetMode
 import com.bitchat.android.nostr.NostrRelayManager
+import com.bitchat.android.service.MeshServicePreferences
 import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.services.VerificationService
 import com.bitchat.android.services.WeshMessageRequests
@@ -410,24 +411,32 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                 viewModel.weshContactSheet.value = false
                 route = PaveRoute.Private
             })
-            PaveRoute.Settings -> SettingsScreen(
-                summary = PaveSettingsSummary(
-                    nickname = nickname,
-                    previewsHidden = !prefs.notificationShowsSender,
-                    meeting = when (meetingState) {
-                        MeetingNoteState.Ready -> savedMeetingNote.takeIf { it.isNotBlank() }
-                        MeetingNoteState.Unavailable -> stringResource(R.string.wesh_pave_fluo_meeting_unavailable)
-                        MeetingNoteState.Unloaded, MeetingNoteState.Loading -> stringResource(R.string.wesh_pave_fluo_meeting_loading)
-                        MeetingNoteState.Fenced -> null
+            PaveRoute.Settings -> {
+                var autoStartOnBoot by remember { mutableStateOf(MeshServicePreferences.isAutoStartEnabled()) }
+                SettingsScreen(
+                    summary = PaveSettingsSummary(
+                        nickname = nickname,
+                        previewsHidden = !prefs.notificationShowsSender,
+                        meeting = when (meetingState) {
+                            MeetingNoteState.Ready -> savedMeetingNote.takeIf { it.isNotBlank() }
+                            MeetingNoteState.Unavailable -> stringResource(R.string.wesh_pave_fluo_meeting_unavailable)
+                            MeetingNoteState.Unloaded, MeetingNoteState.Loading -> stringResource(R.string.wesh_pave_fluo_meeting_loading)
+                            MeetingNoteState.Fenced -> null
+                        },
+                        blockedCount = if (revision >= 0) viewModel.weshBlockedFingerprints().size + sessionHidden.size else 0,
+                        appearance = appearance,
+                    ),
+                    onErase = { go(PaveRoute.Erase) },
+                    onOpen = { entry ->
+                        if (entry == PaveSettingsEntry.Connexion) connexionOpen = true else go(paveRouteFor(entry))
                     },
-                    blockedCount = if (revision >= 0) viewModel.weshBlockedFingerprints().size + sessionHidden.size else 0,
-                    appearance = appearance,
-                ),
-                onErase = { go(PaveRoute.Erase) },
-                onOpen = { entry ->
-                    if (entry == PaveSettingsEntry.Connexion) connexionOpen = true else go(paveRouteFor(entry))
-                },
-            )
+                    autoStartOnBoot = autoStartOnBoot,
+                    onAutoStartOnBoot = { enabled ->
+                        MeshServicePreferences.setAutoStartEnabled(enabled)
+                        autoStartOnBoot = enabled
+                    },
+                )
+            }
             PaveRoute.Profile -> ProfileRoute(viewModel, nickname, onBack = { go(PaveRoute.Settings) })
             PaveRoute.Discretion -> {
                 var muted by remember(preferencesEpoch) { mutableStateOf(prefs.publicMuted) }
