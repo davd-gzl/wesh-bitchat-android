@@ -63,8 +63,9 @@ class SeenMessageStore private constructor(
     fun hasBeenReadLocally(id: String) = synchronized(receiptAdmission.monitor) { locallyRead.contains(id) }
     fun hasReadReceiptBeenSent(id: String) = synchronized(receiptAdmission.monitor) { readReceiptsSent.contains(id) }
 
-    fun markDelivered(id: String) {
+    internal fun markDelivered(id: String, expectedToken: SeenReceiptAdmission.Token?) {
         synchronized(receiptAdmission.monitor) {
+            if (!receiptAdmission.admits(expectedToken)) return
             if (delivered.remove(id)) delivered.add(id) else {
                 delivered.add(id)
                 trim(delivered)
@@ -73,8 +74,9 @@ class SeenMessageStore private constructor(
         }
     }
 
-    fun markReadLocally(id: String) {
+    internal fun markReadLocally(id: String, expectedToken: SeenReceiptAdmission.Token?) {
         synchronized(receiptAdmission.monitor) {
+            if (!receiptAdmission.admits(expectedToken)) return
             if (locallyRead.remove(id)) locallyRead.add(id) else {
                 locallyRead.add(id)
                 trim(locallyRead)
@@ -95,8 +97,9 @@ class SeenMessageStore private constructor(
             true
         }
 
-    fun remove(ids: Set<String>) {
+    internal fun remove(ids: Set<String>, expectedToken: SeenReceiptAdmission.Token?) {
         synchronized(receiptAdmission.monitor) {
+            if (!receiptAdmission.admits(expectedToken)) return
             if (ids.isEmpty()) return
             delivered.removeAll(ids)
             locallyRead.removeAll(ids)

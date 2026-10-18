@@ -333,7 +333,11 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                         contactStoreFailed = contactStoreFailed,
                     ),
                     onOpenPublicRoom = { viewModel.endPrivateChat(); go(PaveRoute.Public) },
-                    onOpenContact = { id -> scope.launch { viewModel.startPrivateChat(id) }; route = PaveRoute.Private },
+                    onOpenContact = { id ->
+                        val seenToken = com.bitchat.android.services.SeenMessageStore.captureReceiptToken()
+                        scope.launch { viewModel.startPrivateChat(id, seenToken) }
+                        route = PaveRoute.Private
+                    },
                     onOpenRequests = { go(PaveRoute.Requests) },
                     onExchange = { go(PaveRoute.Exchange) },
                     onOpenSettings = { go(PaveRoute.Settings) },
@@ -407,7 +411,8 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                 onBlock = { id -> requestToBlock = requests.firstOrNull { (it.fingerprint ?: it.peerID) == id } },
             )
             PaveRoute.Exchange -> ExchangeRoute(viewModel, nickname, onClose = { go(PaveRoute.Home) }, onOpenChat = { conversationID ->
-                scope.launch { viewModel.startPrivateChat(conversationID) }
+                val seenToken = com.bitchat.android.services.SeenMessageStore.captureReceiptToken()
+                scope.launch { viewModel.startPrivateChat(conversationID, seenToken) }
                 viewModel.weshContactSheet.value = false
                 route = PaveRoute.Private
             })

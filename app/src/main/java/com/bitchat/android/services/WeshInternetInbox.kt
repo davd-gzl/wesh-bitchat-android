@@ -38,7 +38,7 @@ internal class WeshInternetInbox(
     private val updateStatus: (conversationID: String, messageID: String, status: DeliveryStatus) -> Unit,
     /** Durable record of DELIVERED acks already sent, so the 48 h lookback never re-acks after a restart. */
     private val alreadyAcked: (messageID: String) -> Boolean,
-    private val markAcked: (messageID: String) -> Unit,
+    private val markAcked: (messageID: String, expectedToken: SeenReceiptAdmission.Token?) -> Unit,
     /** The Bluetooth admission gate (session-hidden peers, block list, unloaded list fails closed). */
     private val senderBlocked: (WeshContactStore.Contact) -> Boolean,
     private val nowSeconds: () -> Long = { System.currentTimeMillis() / 1000 }
@@ -47,7 +47,7 @@ internal class WeshInternetInbox(
 
     private val seen = LinkedHashSet<String>()
 
-    suspend fun onGiftWrap(event: NostrEvent): Outcome {
+    suspend fun onGiftWrap(event: NostrEvent, expectedToken: SeenReceiptAdmission.Token?): Outcome {
         val identity = myIdentity() ?: return Outcome.DROPPED
         val (content, rawSender, rumorSeconds) = runCatching { NostrProtocol.decryptPrivateMessage(event, identity) }
             .getOrNull() ?: return Outcome.DROPPED
@@ -83,7 +83,7 @@ internal class WeshInternetInbox(
                 // conversation also purges this record.
                 if (!runCatching { alreadyAcked(pm.messageID) }.getOrDefault(false) &&
                     route.sendAck(NoisePayloadType.DELIVERED, pm.messageID, conversationID)) {
-                    runCatching { markAcked(pm.messageID) }
+                    runCatching { markAcked(pm.messageID, expectedToken) }
                 }
                 Outcome.STORED
             }
@@ -204,7 +204,10 @@ internal object WeshInternetReceiver {
             myIdentity = { WeshQrIdentity.mine(app) },
             subscribe = { filter, handler -> relays.subscribe(filter = filter, id = SUBSCRIPTION_ID, handler = handler) },
             unsubscribe = { relays.unsubscribe(SUBSCRIPTION_ID) },
-            onEvent = { event -> scope.launch { created.onGiftWrap(event) } },
+            onEvent = { event ->
+                val seenToken = SeenMessageStore.captureReceiptToken()
+                scope.launch { created.onGiftWrap(event, seenToken) }
+            },
             onOff = created::clear
         )
         scope.launch { WeshInternetMode.get(app).state.collect(subscription::apply) }
