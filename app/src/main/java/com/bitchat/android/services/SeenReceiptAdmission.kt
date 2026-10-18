@@ -32,6 +32,10 @@ internal class SeenReceiptAdmission {
         if (ownsPanic(token)) clearConfirmed = confirmed
     }
 
+    fun canResumeAfterVerifiedPanic(token: Token): Boolean = synchronized(monitor) {
+        ownsPanic(token) && clearConfirmed
+    }
+
     /** Called only from the successful all-store recovery continuation. */
     fun resumeAfterVerifiedPanic(token: Token): Boolean = synchronized(monitor) {
         if (!ownsPanic(token) || !clearConfirmed) return@synchronized false

@@ -37,6 +37,8 @@ internal class WeshDraftStore(
     private var loaded = backend == null
     private var fenced = false
     private var wipeVerified = false
+    private var panicCompletionDeferred = false
+    private var preparedPanic: PanicPreparation? = null
     private val beforeLoad = linkedMapOf<String, String>()
     private val destinationVersions = linkedMapOf<String, Long>()
     val epoch: Long get() = synchronized(lock) { generation }
@@ -97,7 +99,7 @@ internal class WeshDraftStore(
         require(validOwner(identity))
         val token = synchronized(lock) {
             if (expectedGeneration != null && (generation != expectedGeneration || owner != identity)) return
-            if (fenced && !wipeVerified) return
+            if (fenced && (!wipeVerified || panicCompletionDeferred)) return
             if (owner != null && owner != identity) {
                 generation++
                 revision++
@@ -205,6 +207,8 @@ internal class WeshDraftStore(
             fenced = true
             loaded = false
             wipeVerified = false
+            panicCompletionDeferred = false
+            preparedPanic = null
             _drafts.value = emptyMap()
             beforeLoad.clear()
             destinationVersions.clear()
@@ -212,8 +216,9 @@ internal class WeshDraftStore(
         }
     }
 
-    suspend fun panicClear(): Boolean {
+    suspend fun panicClear(deferCompletion: Boolean = false): Boolean {
         fenceForPanic()
+        synchronized(lock) { panicCompletionDeferred = deferCompletion }
         return withContext(NonCancellable + ioDispatcher) {
             io.withLock {
                 try {
@@ -225,6 +230,58 @@ internal class WeshDraftStore(
                     }
                     true
                 } catch (_: Exception) {
+                    false
+                }
+            }
+        }
+    }
+
+    internal class PanicPreparation internal constructor(internal val generation: Long, internal val identity: String)
+
+    /** Prepare only RAM; ordinary loads and writers stay fenced until global completion. */
+    fun prepareAfterVerifiedPanic(identity: String): PanicPreparation? = synchronized(lock) {
+        require(validOwner(identity))
+        if (!fenced || !wipeVerified || !panicCompletionDeferred) return@synchronized null
+        val prepared = preparedPanic
+        if (prepared != null) return@synchronized prepared.takeIf { it.identity == identity }
+        PanicPreparation(generation, identity).also { preparedPanic = it }
+    }
+
+    /**
+     * The caller serializes its remaining admission token before invoking finishDrafts.
+     * Both marker completion and synchronous admission reopening run in the enclosing
+     * non-cancellable final commit; no IO-to-caller cancellation can split them.
+     */
+    suspend fun completePreparedPanic(
+        prepared: PanicPreparation,
+        commitAdmission: (finishDrafts: () -> Unit) -> Boolean
+    ): Boolean = withContext(ioDispatcher) {
+        io.withLock {
+            synchronized(lock) {
+                if (preparedPanic !== prepared || generation != prepared.generation ||
+                    !fenced || !wipeVerified || !panicCompletionDeferred
+                ) return@synchronized false
+                try {
+                    val completed = commitAdmission {
+                        backend?.finishVerifiedWipe()
+                        owner = prepared.identity
+                        loaded = true
+                        wipeVerified = false
+                        panicCompletionDeferred = false
+                        preparedPanic = null
+                        confirmedRevision = revision
+                        fenced = false
+                    }
+                    // Publish only after synchronous admission reopening; observers cannot
+                    // supersede the Seen token between durable finish and its release.
+                    if (completed && generation == prepared.generation && !fenced) {
+                        _persistence.value = Persistence.Confirmed
+                    }
+                    completed
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    _persistence.value = Persistence.WipeRequired
                     false
                 }
             }

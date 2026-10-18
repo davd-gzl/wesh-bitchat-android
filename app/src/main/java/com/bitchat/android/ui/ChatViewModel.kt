@@ -1505,7 +1505,7 @@ class ChatViewModel(
         // Stop all message admission before wiping storage. The AppStateStore gate also rejects
         // any transport callback already in flight until the fresh identity is ready.
         clearAllMeshServiceData()
-        val draftsCleared = !com.bitchat.android.BuildConfig.WESH_POLICY || weshDraftStore.panicClear()
+        val draftsCleared = !com.bitchat.android.BuildConfig.WESH_POLICY || weshDraftStore.panicClear(deferCompletion = true)
         val conversationsCleared =
             com.bitchat.android.services.AppStateStore
                 .panicClearPrivateConversations()
@@ -1574,7 +1574,6 @@ class ChatViewModel(
             resume = { recreateMeshServiceAfterPanic(seenPanic) }
         )
         if (!resumed) return
-        weshPreferences.resumeAfterVerifiedPanic()
         weshPreferences.loadMeetingNote()
     }
 
@@ -1601,23 +1600,36 @@ class ChatViewModel(
             val fresh = mesh.getStaticNoisePublicKey()?.takeIf { it.size == 32 } ?: return false
             if (previous.contentEquals(fresh)) return false
         }
-        // Confirm the dedicated draft wipe before restarting any transport.
-        loadWeshDrafts()
-        if (com.bitchat.android.BuildConfig.WESH_POLICY &&
-            weshDraftStore.persistence.value != WeshDraftStore.Persistence.Confirmed) return false
-        if (!com.bitchat.android.services.SeenMessageStore.resumeReceiptAdmissionAfterVerifiedPanic(seenPanic)) return false
-        var restarted = false
-        try {
-            if (com.bitchat.android.BuildConfig.WESH_POLICY) com.bitchat.android.startup.WeshRuntime.normalPanicCompleted()
-            com.bitchat.android.services.AppStateStore.resumePrivateConversationsAfterPanic()
-            // Restart mesh operations only after the checked Seen phase and all other stores.
-            mesh.startServices()
-            mesh.sendBroadcastAnnounce()
-            restarted = true
-            return true
-        } finally {
-            if (!restarted) seenPanic.owner.retainFenceAfterFailure(seenPanic)
-        }
+        var preparedDrafts: WeshDraftStore.PanicPreparation? = null
+        return PanicResetCoordinator.resume(
+            prepareFreshDrafts = {
+                if (!com.bitchat.android.BuildConfig.WESH_POLICY) true else {
+                    com.bitchat.android.startup.WeshRuntime.get(getApplication()).awaitReady()
+                    val freshKey = mesh.getStaticNoisePublicKey()?.takeIf { it.size == 32 }
+                    preparedDrafts = freshKey?.let { weshDraftStore.prepareAfterVerifiedPanic(it.hexEncodedString()) }
+                    preparedDrafts != null
+                }
+            },
+            seenReady = { seenPanic.owner.canResumeAfterVerifiedPanic(seenPanic) },
+            startTransport = { mesh.startServices() },
+            announce = { mesh.sendBroadcastAnnounce() },
+            complete = {
+                val reopenAdmission = {
+                    weshPreferences.resumeAfterVerifiedPanic()
+                    com.bitchat.android.services.AppStateStore.resumePrivateConversationsAfterPanic()
+                    if (com.bitchat.android.BuildConfig.WESH_POLICY) com.bitchat.android.startup.WeshRuntime.normalPanicCompleted()
+                }
+                if (com.bitchat.android.BuildConfig.WESH_POLICY) {
+                    preparedDrafts?.let { PanicResetCoordinator.complete(weshDraftStore, it, seenPanic, reopenAdmission) } ?: false
+                } else synchronized(seenPanic.owner.monitor) {
+                    if (!seenPanic.owner.resumeAfterVerifiedPanic(seenPanic)) false else {
+                        reopenAdmission()
+                        true
+                    }
+                }
+            },
+            retainSeenFence = { seenPanic.owner.retainFenceAfterFailure(seenPanic) }
+        )
     }
     
     /**
