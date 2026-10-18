@@ -13,6 +13,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -131,14 +132,19 @@ class PrivateHistoryPanicGenerationTest {
     fun `a loaded snapshot delivered after panic cannot repopulate memory`() = runBlocking {
         assertTrue(AppStateStore.addPrivateMessageDurably(CONTACT, message("before-load")))
         val delivery = PausedSubmissionDispatcher()
-        val loader = CoroutineScope(SupervisorJob() + delivery)
+        val loaderJob = SupervisorJob()
+        val loader = CoroutineScope(loaderJob + delivery)
+        var primaryFailure: Throwable? = null
         try {
             delivery.pauseNextSubmission()
-            // Start inline: the held dispatch is the completed database read's
-            // return to its caller, not the initial coroutine start.
+            dispatcher.pauseNextSubmission()
+            // Hold the database submission until the inline caller has suspended;
+            // its completed read must then return through the delivery dispatcher.
             val load = loader.async(start = CoroutineStart.UNDISPATCHED) {
                 AppStateStore.loadPrivateConversationHistory(CONTACT)
             }
+            dispatcher.awaitSubmission()
+            dispatcher.release()
             delivery.awaitSubmission()
             assertTrue(AppStateStore.panicClearPrivateConversations())
             AppStateStore.resumePrivateConversationsAfterPanic()
@@ -146,10 +152,22 @@ class PrivateHistoryPanicGenerationTest {
             val restored = load.await()
             assertHistoryStaysErased()
             assertFalse(restored)
+        } catch (failure: Throwable) {
+            primaryFailure = failure
+            throw failure
         } finally {
-            delivery.release()
-            loader.cancel()
-            delivery.close()
+            try {
+                dispatcher.release()
+                delivery.release()
+                try {
+                    withTimeout(1_000) { loaderJob.cancelAndJoin() }
+                } finally {
+                    delivery.close()
+                }
+            } catch (cleanupFailure: Throwable) {
+                val original = primaryFailure
+                if (original != null) original.addSuppressed(cleanupFailure) else throw cleanupFailure
+            }
         }
     }
 
