@@ -126,7 +126,7 @@ fun ProfileScreen(
 }
 
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     val c = WeshPave.colors
     Row(
         verticalAlignment = Alignment.CenterVertically,

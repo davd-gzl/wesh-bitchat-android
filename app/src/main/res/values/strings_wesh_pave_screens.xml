@@ -53,6 +53,8 @@
     <string name="wesh_pave_internet_disclosure">Goes through Tor and public relays. Off by default.</string>
     <string name="wesh_pave_bt_visibility">A phone using Wesh stays detectable over Bluetooth nearby. Turn off Bluetooth to stop that.</string>
     <string name="wesh_pave_settings_title">Settings</string>
+    <string name="wesh_pave_settings_boot">Start after restart</string>
+    <string name="wesh_pave_settings_boot_body">Allow Wesh to start after your phone restarts, if Android permits it. This does not change the current session.</string>
     <string name="wesh_pave_settings_profile">Profile</string>
     <string name="wesh_pave_settings_connexion">Connection</string>
     <string name="wesh_pave_settings_connexion_value">Bluetooth · Internet</string>
