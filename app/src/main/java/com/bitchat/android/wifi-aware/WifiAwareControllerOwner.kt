@@ -62,6 +62,8 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
     }
     private class Product<S : Any>(val value: S) {
         var stop: CompletableDeferred<Boolean>? = null
+        // Failed preparation and unrelated publications do not invalidate liveness samples.
+        var startDispatch = 0L
     }
     private class Restart<S : Any>(val owner: Lifetime<S>) {
         val ready = CompletableDeferred<Job?>()
@@ -295,6 +297,7 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
                     pendingCandidates += candidate
                     return false
                 }
+                if (candidate.running == null) candidate.product.startDispatch++
                 true
             }
         }
@@ -519,7 +522,26 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
     }
 
     /** Recovery reached its cleanup finally; this is not a checked stop acknowledgment. */
-    fun onServiceRecoveryCleanupFinished(origin: WifiAwareOwnerToken, product: S) = Unit
+    fun onServiceRecoveryCleanupFinished(origin: WifiAwareOwnerToken, product: S) {
+        val (owner, record, dispatch) = synchronized(lifecycleLock) {
+            val owner = current
+            if (!active(owner) || owner.token !== origin || !enabledState || isHeldForHotspot() ||
+                serviceOwner !== owner || service !== product) return
+            val record = owner.products[product] ?: return
+            addCall(owner)
+            Triple(owner, record, record.startDispatch)
+        }
+        try {
+            if (ports.isRunning(product)) return
+            val reconciled = synchronized(lifecycleLock) {
+                if (!active(owner) || owner.token !== origin || !enabledState || isHeldForHotspot() ||
+                    serviceOwner !== owner || service !== product || owner.products[product] !== record ||
+                    record.startDispatch != dispatch) false
+                else { runningState = false; stateRevision++; true }
+            }
+            if (reconciled) publishRunning()
+        } finally { releaseCall(owner) }
+    }
 
     fun restartIfStillEnabled(origin: WifiAwareOwnerToken, delayMs: Long = 0L) {
         val restart = synchronized(lifecycleLock) {
