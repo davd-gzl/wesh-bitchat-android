@@ -75,7 +75,12 @@ object AppStateStore {
         if (privateConversationWritesSuspended) null else privateConversationGeneration
     }
 
-    internal fun fencePrivateConversationAdmissionForPanic() { }
+    internal fun fencePrivateConversationAdmissionForPanic() {
+        synchronized(this) {
+            privateConversationWritesSuspended = true
+            privateConversationGeneration += 1
+        }
+    }
 
     internal fun isCurrentPrivateConversationGeneration(generation: Long): Boolean = synchronized(this) {
         !privateConversationWritesSuspended && generation == privateConversationGeneration
