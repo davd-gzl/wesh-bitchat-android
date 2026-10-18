@@ -4,6 +4,21 @@ This document specifies the Source-Based Routing extension (v2) for the BitChat 
 
 **Status:** Implemented in Android and iOS. Backward compatible (v1 clients ignore routing data).
 
+### Wesh hop-count admission
+
+Wesh accepts mesh TTL values from 0 through 7. Values above 7 are refused before
+dispatch, authentication/dedup state, presence updates or forwarding, including a
+packet recovered from fragments. The relay also checks the ceiling before either
+source-route forwarding or broadcast. A received TTL of 7 forwards as 6, 1 forwards
+as 0, and 0 may be delivered locally but is never forwarded. Neighbor-only sync
+therefore retains TTL 0.
+
+This is a local admission policy: the wire byte, signing preimage, packet types,
+Noise handshake and routing format are unchanged. TTL is excluded from signatures
+so relays can decrement it; a valid signature therefore cannot authorize an
+inflated hop count. This bound limits forwarding by cooperating Wesh relays; it
+cannot stop a hostile node from originating or reinjecting fresh packets.
+
 ---
 
 ## 1. Protocol Versioning & Layering

@@ -5,6 +5,7 @@ import android.util.Log
 import com.bitchat.android.model.RoutedPacket
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.util.toHexString
+import com.bitchat.android.util.AppConstants
 import kotlinx.coroutines.*
 import kotlin.random.Random
 
@@ -56,8 +57,8 @@ class PacketRelayManager(private val myPeerID: String) {
         }
         
         // Check TTL and decrement
-        if (packet.ttl == 0u.toUByte()) {
-            Log.d(TAG, "TTL expired, not relaying packet")
+        if (packet.ttl == 0u.toUByte() || packet.ttl > AppConstants.MAX_MESH_TTL_HOPS) {
+            Log.d(TAG, "TTL outside the forwarding range, not relaying packet")
             return
         }
         
