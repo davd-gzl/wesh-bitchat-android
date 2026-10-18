@@ -26,6 +26,7 @@ import java.security.MessageDigest
 import java.util.Date
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Process-wide, serialized persistence for private conversations.
@@ -69,6 +70,18 @@ class ConversationRepository internal constructor(
     )
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val initialized = AtomicBoolean(false)
+    private val writeGeneration = AtomicLong()
+
+    internal fun captureWriteGeneration(): Long = writeGeneration.get()
+
+    // Every database mutation runs on the same serial writer. A transaction
+    // already executing finishes before clear; later old submissions do nothing.
+    private fun enqueueMutation(block: () -> Unit) {
+        val generation = captureWriteGeneration()
+        scope.launch {
+            if (generation == captureWriteGeneration()) block()
+        }
+    }
     private val _storeState =
         MutableStateFlow<ConversationStoreState>(ConversationStoreState.Loading)
     val storeState: StateFlow<ConversationStoreState> = _storeState.asStateFlow()
@@ -92,7 +105,7 @@ class ConversationRepository internal constructor(
         pruneFirst: Boolean,
         onLoaded: (PersistedConversationSnapshot) -> Unit
     ) {
-        scope.launch {
+        enqueueMutation {
             try {
                 if (pruneFirst) {
                     deleteStoredMedia(database.pruneToRetentionLimits())
@@ -116,8 +129,10 @@ class ConversationRepository internal constructor(
     }
 
     internal suspend fun loadConversationAndWait(
-        conversationID: String
+        conversationID: String,
+        expectedGeneration: Long = captureWriteGeneration()
     ): PersistedConversationSnapshot? = withContext(dispatcher) {
+        if (expectedGeneration != captureWriteGeneration()) return@withContext null
         try {
             database.loadConversation(conversationID)
         } catch (error: Exception) {
@@ -136,7 +151,7 @@ class ConversationRepository internal constructor(
         message: BitchatMessage,
         isRead: Boolean
     ) {
-        scope.launch {
+        enqueueMutation {
             upsertMessageLocked(conversationID, aliases, displayName, message, isRead)
         }
     }
@@ -146,8 +161,10 @@ class ConversationRepository internal constructor(
         aliases: Set<String>,
         displayName: String?,
         message: BitchatMessage,
-        isRead: Boolean
+        isRead: Boolean,
+        expectedGeneration: Long = captureWriteGeneration()
     ): Boolean = withContext(dispatcher) {
+        if (expectedGeneration != captureWriteGeneration()) return@withContext false
         upsertMessageLocked(conversationID, aliases, displayName, message, isRead)
     }
 
@@ -177,7 +194,7 @@ class ConversationRepository internal constructor(
     }
 
     fun updateDeliveryStatus(messageID: String, status: DeliveryStatus) {
-        scope.launch {
+        enqueueMutation {
             try {
                 database.updateDeliveryStatus(messageID, status)
             } catch (error: Exception) {
@@ -187,7 +204,7 @@ class ConversationRepository internal constructor(
     }
 
     fun markRead(messageID: String) {
-        scope.launch {
+        enqueueMutation {
             try {
                 database.markRead(messageID)
             } catch (error: Exception) {
@@ -198,8 +215,10 @@ class ConversationRepository internal constructor(
 
     internal suspend fun setConversationReadAndWait(
         conversationID: String,
-        isRead: Boolean
+        isRead: Boolean,
+        expectedGeneration: Long = captureWriteGeneration()
     ): ConversationReadResult = withContext(dispatcher) {
+        if (expectedGeneration != captureWriteGeneration()) return@withContext ConversationReadResult(success = false)
         try {
             ConversationReadResult(
                 success = true,
@@ -215,7 +234,7 @@ class ConversationRepository internal constructor(
     }
 
     fun mergeAliases(targetConversationID: String, aliases: Set<String>) {
-        scope.launch {
+        enqueueMutation {
             try {
                 database.mergeAliases(targetConversationID, aliases)
             } catch (error: Exception) {
@@ -229,7 +248,7 @@ class ConversationRepository internal constructor(
         aliases: Set<String>,
         displayName: String
     ) {
-        scope.launch {
+        enqueueMutation {
             try {
                 database.updateConversationIdentity(conversationID, aliases, displayName)
             } catch (error: Exception) {
@@ -239,15 +258,17 @@ class ConversationRepository internal constructor(
     }
 
     fun deleteConversation(conversationID: String, aliases: Set<String>) {
-        scope.launch {
+        enqueueMutation {
             deleteConversationLocked(conversationID, aliases)
         }
     }
 
     suspend fun deleteConversationAndWait(
         conversationID: String,
-        aliases: Set<String>
+        aliases: Set<String>,
+        expectedGeneration: Long = captureWriteGeneration()
     ): Boolean = withContext(dispatcher) {
+        if (expectedGeneration != captureWriteGeneration()) return@withContext false
         deleteConversationLocked(conversationID, aliases)
     }
 
@@ -256,8 +277,10 @@ class ConversationRepository internal constructor(
         aliases: Set<String>,
         displayName: String?,
         messages: List<BitchatMessage>,
-        readMessageIDs: Set<String>
+        readMessageIDs: Set<String>,
+        expectedGeneration: Long = captureWriteGeneration()
     ): Boolean = withContext(dispatcher) {
+        if (expectedGeneration != captureWriteGeneration()) return@withContext false
         try {
             deleteStoredMedia(
                 database.restoreConversation(
@@ -295,7 +318,7 @@ class ConversationRepository internal constructor(
     }
 
     fun deleteMessage(messageID: String) {
-        scope.launch {
+        enqueueMutation {
             try {
                 deleteStoredMedia(database.deleteMessage(messageID))
             } catch (error: Exception) {
@@ -310,18 +333,23 @@ class ConversationRepository internal constructor(
      * Panic mode uses this stronger variant so identity regeneration and transport restart cannot
      * race an outstanding message insert or an unfinished conversation deletion.
      */
-    suspend fun clearAllAndWait(): Boolean = withContext(dispatcher) {
-        try {
-            database.clearAll()
-            _storeState.value = ConversationStoreState.Ready
-            true
-        } catch (error: Exception) {
-            Log.e(TAG, "Unable to synchronously clear private conversations", error)
-            database.destroyStorage()
-            _storeState.value = ConversationStoreState.Error(
-                error.message ?: "Unable to erase conversations"
-            )
-            false
+    suspend fun clearAllAndWait(): Boolean {
+        // Retire pending work before the first suspension, including on a failed
+        // or cancelled wipe. Never re-authorize an old generation on retry.
+        writeGeneration.incrementAndGet()
+        return withContext(dispatcher) {
+            try {
+                database.clearAll()
+                _storeState.value = ConversationStoreState.Ready
+                true
+            } catch (error: Exception) {
+                Log.e(TAG, "Unable to synchronously clear private conversations", error)
+                database.destroyStorage()
+                _storeState.value = ConversationStoreState.Error(
+                    error.message ?: "Unable to erase conversations"
+                )
+                false
+            }
         }
     }
 

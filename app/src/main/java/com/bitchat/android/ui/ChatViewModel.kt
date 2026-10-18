@@ -671,6 +671,8 @@ class ChatViewModel(
     internal suspend fun deletePrivateConversation(
         peerOrConversationID: String
     ): com.bitchat.android.services.DeletedPrivateConversation? {
+        val generation = com.bitchat.android.services.AppStateStore
+            .capturePrivateConversationGeneration() ?: return null
         val canonicalID = ContactDirectory.canonicalConversationId(peerOrConversationID)
         val wasPinned = conversationListPreferences.isPinned(canonicalID)
         val wasMuted = conversationListPreferences.isMuted(canonicalID)
@@ -682,12 +684,15 @@ class ChatViewModel(
         )
         val deletion = withContext(Dispatchers.IO) {
             com.bitchat.android.services.AppStateStore
-                .deletePrivateConversationAndWait(canonicalID)
+                .deletePrivateConversationAndWait(canonicalID, expectedGeneration = generation)
         }?.copy(
             wasPinned = wasPinned,
             wasMuted = wasMuted,
             draft = draft
         ) ?: return null
+        if (deletion.generation != generation ||
+            !com.bitchat.android.services.AppStateStore.isCurrentPrivateConversationGeneration(generation)
+        ) return null
         conversationListPreferences.removeConversation(canonicalID)
 
         state.setPrivateChats(
@@ -725,11 +730,16 @@ class ChatViewModel(
     internal suspend fun restoreDeletedConversation(
         deletion: com.bitchat.android.services.DeletedPrivateConversation
     ): Boolean {
+        if (!com.bitchat.android.services.AppStateStore
+                .isCurrentPrivateConversationGeneration(deletion.generation)
+        ) return false
         val restored = withContext(Dispatchers.IO) {
             com.bitchat.android.services.AppStateStore
                 .restoreDeletedConversation(deletion)
         }
-        if (!restored) return false
+        if (!restored || !com.bitchat.android.services.AppStateStore
+                .isCurrentPrivateConversationGeneration(deletion.generation)
+        ) return false
         if (deletion.wasPinned != conversationListPreferences.isPinned(deletion.conversationID)) {
             conversationListPreferences.togglePinned(deletion.conversationID)
         }
@@ -756,12 +766,16 @@ class ChatViewModel(
         conversationID: String,
         isRead: Boolean
     ): Boolean {
+        val generation = com.bitchat.android.services.AppStateStore
+            .capturePrivateConversationGeneration() ?: return false
         val canonicalID = ContactDirectory.canonicalConversationId(conversationID)
         val updated = withContext(Dispatchers.IO) {
             com.bitchat.android.services.AppStateStore
-                .setPrivateConversationRead(canonicalID, isRead)
+                .setPrivateConversationRead(canonicalID, isRead, expectedGeneration = generation)
         }
-        if (!updated) return false
+        if (!updated || !com.bitchat.android.services.AppStateStore
+                .isCurrentPrivateConversationGeneration(generation)
+        ) return false
         state.setUnreadPrivateMessages(
             if (isRead) {
                 state.getUnreadPrivateMessagesValue().filterNotTo(mutableSetOf()) {
