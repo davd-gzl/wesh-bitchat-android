@@ -384,6 +384,7 @@ class PanicResetCoordinatorTest {
             check(!pending)
             stored[owner] = drafts.toMap()
         }
+        override fun markPanicPending() { pending = true }
         override fun wipe() { pending = true; stored.clear() }
         override fun finishVerifiedWipe() {
             check(pending && !failFinish)

@@ -216,6 +216,24 @@ internal class WeshDraftStore(
         }
     }
 
+    /** Confirms only durable intent. No key, ciphertext or owner is erased here. */
+    internal suspend fun establishPanicIntent(expectedEpoch: Long): Boolean {
+        fun current() = synchronized(lock) { fenced && generation == expectedEpoch }
+        if (!current()) return false
+        return withContext(NonCancellable + ioDispatcher) {
+            io.withLock {
+                if (!current()) return@withLock false
+                val persistent = backend ?: return@withLock false
+                try {
+                    persistent.markPanicPending()
+                    current()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) { false }
+            }
+        }
+    }
+
     suspend fun panicClear(deferCompletion: Boolean = false): Boolean {
         fenceForPanic()
         synchronized(lock) { panicCompletionDeferred = deferCompletion }
@@ -320,6 +338,7 @@ internal class WeshDraftStore(
             private val delegate by lazy { EncryptedWeshDraftBackend(context) }
             override fun load(owner: String) = delegate.load(owner)
             override fun write(owner: String, drafts: Map<String, String>) = delegate.write(owner, drafts)
+            override fun markPanicPending() = delegate.markPanicPending()
             override fun wipe() = delegate.wipe()
             override fun finishVerifiedWipe() = delegate.finishVerifiedWipe()
         }

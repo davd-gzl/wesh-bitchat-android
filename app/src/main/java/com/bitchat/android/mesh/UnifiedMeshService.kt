@@ -81,32 +81,37 @@ class UnifiedMeshService internal constructor(
         val idle: CompletableDeferred<Unit>,
         val targets: List<MeshService>,
         val completion: CompletableDeferred<Boolean> = CompletableDeferred()
-    )
+    ) { var drainClaimed = false }
 
     private class Binding(val target: MeshService, val value: MeshDelegate?, val generation: Long)
 
-    /**
-     * Called by CVM's independent viewModelScope, never from this facade's admitted callback or
-     * owned announcement scope. Controller, transport and Core task ownership are separate.
-     */
-    internal suspend fun retireForPanic(): Boolean {
-        val (attempt, leader) = synchronized(ownerLock) {
-            val existing = retirement
-            if (existing != null) existing to false else {
-                // currentWifi is a RAM identity snapshot, never a factory, binder or platform call.
-                try { panicWifi = ports.currentWifi() } catch (_: Exception) { retirementFailed = true }
-                retiredForPanic = true
-                currentDelegate = null
-                val targets = mutableListOf(bluetooth)
-                fun retain(target: MeshService) {
-                    if (targets.none { it === target }) targets.add(target)
-                }
-                panicWifi?.let(::retain)
-                bindingTargets.keys.forEach(::retain)
-                val ownedJob = serviceScope.coroutineContext[Job]
-                if (ownedJob == null) retirementFailed = true
-                Retirement(ownedJob, idle, targets).also { retirement = it } to true
+    /** Synchronous admission only; the checked drain remains owned by retireForPanic. */
+    internal fun fenceForPanic() { prepareRetirement() }
+
+    private fun prepareRetirement(): Retirement = synchronized(ownerLock) {
+        val existing = retirement
+        if (existing != null) existing else {
+            // currentWifi is a RAM identity snapshot, never a factory, binder or platform call.
+            try { panicWifi = ports.currentWifi() } catch (_: Exception) { retirementFailed = true }
+            retiredForPanic = true
+            currentDelegate = null
+            val targets = mutableListOf(bluetooth)
+            fun retain(target: MeshService) {
+                if (targets.none { it === target }) targets.add(target)
             }
+            panicWifi?.let(::retain)
+            bindingTargets.keys.forEach(::retain)
+            val ownedJob = serviceScope.coroutineContext[Job]
+            if (ownedJob == null) retirementFailed = true
+            Retirement(ownedJob, idle, targets).also { retirement = it }
+        }
+    }
+
+    /** Called outside admitted callbacks and the owned scope; transport/Core owners are separate. */
+    internal suspend fun retireForPanic(): Boolean {
+        val attempt = prepareRetirement()
+        val leader = synchronized(ownerLock) {
+            if (attempt.drainClaimed) false else { attempt.drainClaimed = true; true }
         }
         // No monitor is held across cancellation, completion, external setters or either await.
         return withContext(NonCancellable) {
