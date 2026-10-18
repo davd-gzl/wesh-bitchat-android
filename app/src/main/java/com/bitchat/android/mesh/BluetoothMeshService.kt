@@ -37,9 +37,10 @@ import kotlin.random.Random
  * - BluetoothConnectionManager: BLE connections and GATT operations
  * - PacketProcessor: Incoming packet routing
  */
-class BluetoothMeshService(
+class BluetoothMeshService internal constructor(
     private val context: Context,
-    private val encryptionService: EncryptionService = EncryptionService(context)
+    private val encryptionService: EncryptionService = EncryptionService(context),
+    private val holderConstruction: com.bitchat.android.service.HolderConstructionContext
 ) : TransportBridgeService.TransportLayer {
     private val debugManager by lazy { try { com.bitchat.android.ui.debug.DebugSettingsManager.getInstance() } catch (e: Exception) { null } }
     
@@ -155,7 +156,9 @@ class BluetoothMeshService(
             }
         )
 
-        com.bitchat.android.service.MeshServiceHolder.setGossipManager(gossipSyncManager) { packet ->
+        com.bitchat.android.service.MeshServiceHolder.setGossipManager(
+            com.bitchat.android.service.HolderManagerProvenance.Constructed(holderConstruction), gossipSyncManager
+        ) { packet ->
             signPacketBeforeBroadcast(packet)
         }
         if (isBleTransportEnabled()) {

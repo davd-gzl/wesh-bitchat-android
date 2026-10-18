@@ -139,7 +139,7 @@ class MeshServiceHolderOwnerTest {
         val old = Bluetooth()
         f.owner.getUnifiedOrCreate({ old }, { Unified(it) })
         val manager = Manager()
-        f.owner.setGossipManager(manager) { it }
+        f.owner.setGossipManager(HolderManagerProvenance.UnattributedExternal, manager) { it }
         val attached = Bluetooth()
         f.owner.attach(attached)
         assertSame(attached, f.owner.meshService)
@@ -152,7 +152,7 @@ class MeshServiceHolderOwnerTest {
         f.owner.startSharedGossip("Synthetic BLE")
         f.owner.startSharedGossip("Synthetic BLE")
         val manager = Manager()
-        f.owner.setGossipManager(manager) { it }
+        f.owner.setGossipManager(HolderManagerProvenance.UnattributedExternal, manager) { it }
         assertEquals(1, manager.starts)
         f.owner.startSharedGossip("Synthetic WIFI")
         f.owner.stopSharedGossip("Synthetic BLE")
@@ -169,16 +169,16 @@ class MeshServiceHolderOwnerTest {
     @Test fun `manager replacement stops previous identity and installs updated signer`() = withFixture { f ->
         val first = Manager()
         val second = Manager()
-        f.owner.setGossipManager(first) { it }
+        f.owner.setGossipManager(HolderManagerProvenance.UnattributedExternal, first) { it }
         f.owner.startSharedGossip("Synthetic owner")
         val signed = packet(2)
-        f.owner.setGossipManager(second) { signed }
+        f.owner.setGossipManager(HolderManagerProvenance.UnattributedExternal, second) { signed }
         assertEquals(1, first.stops)
         assertEquals(1, second.starts)
         assertSame(second, f.owner.sharedGossipSyncManager)
         assertSame(signed, requireNotNull(second.delegate).signPacketForBroadcast(packet(1)))
         val updated = packet(3)
-        f.owner.setGossipManager(second) { updated }
+        f.owner.setGossipManager(HolderManagerProvenance.UnattributedExternal, second) { updated }
         assertEquals(0, second.stops)
         assertEquals(2, second.starts)
         assertSame(updated, requireNotNull(second.delegate).signPacketForBroadcast(packet(1)))
@@ -187,10 +187,10 @@ class MeshServiceHolderOwnerTest {
     @Test fun `previous manager stop failure still installs and starts replacement`() = withFixture { f ->
         val first = Manager()
         val replacement = Manager()
-        f.owner.setGossipManager(first) { it }
+        f.owner.setGossipManager(HolderManagerProvenance.UnattributedExternal, first) { it }
         f.owner.startSharedGossip("Synthetic owner")
         f.onManagerStop = { if (it === first) error("Synthetic previous manager stop failure") }
-        f.owner.setGossipManager(replacement) { it }
+        f.owner.setGossipManager(HolderManagerProvenance.UnattributedExternal, replacement) { it }
         assertEquals(1, first.stops)
         assertSame(replacement, f.owner.sharedGossipSyncManager)
         assertTrue(replacement.delegate != null)
@@ -200,8 +200,8 @@ class MeshServiceHolderOwnerTest {
     @Test fun `constructor registration remains visible when initial factory throws`() = withFixture { f ->
         val partialManager = Manager()
         val failure = IllegalStateException("Synthetic partial construction failure")
-        assertSame(failure, runCatching { f.owner.getOrCreate {
-            f.owner.setGossipManager(partialManager) { it }
+        assertSame(failure, runCatching { f.owner.getOrCreate { construction ->
+            f.owner.setGossipManager(HolderManagerProvenance.Constructed(construction), partialManager) { it }
             throw failure
         } }.exceptionOrNull())
         assertNull(f.owner.meshService)
@@ -217,7 +217,7 @@ class MeshServiceHolderOwnerTest {
             val bluetooth = Bluetooth()
             f.owner.getUnifiedOrCreate({ bluetooth }, { Unified(it) })
             val manager = Manager()
-            f.owner.setGossipManager(manager) { it }
+            f.owner.setGossipManager(HolderManagerProvenance.UnattributedExternal, manager) { it }
             f.owner.startSharedGossip("Synthetic owner")
             f.onManagerClear = { if (failClear) error("Synthetic clear failure") }
             f.onManagerStop = { if (failStop) error("Synthetic stop failure") }
@@ -229,7 +229,7 @@ class MeshServiceHolderOwnerTest {
             assertNull(f.owner.sharedGossipSyncManager)
             assertEquals(0, bluetooth.stops)
             val fresh = Manager()
-            f.owner.setGossipManager(fresh) { it }
+            f.owner.setGossipManager(HolderManagerProvenance.UnattributedExternal, fresh) { it }
             assertEquals("clear also forgets active gossip owners", 0, fresh.starts)
         }
     }
@@ -237,8 +237,8 @@ class MeshServiceHolderOwnerTest {
     @Test fun `clear reentry preserves the later lookup of the current manager for stop`() = withFixture { f ->
         val first = Manager()
         val replacement = Manager()
-        f.owner.setGossipManager(first) { it }
-        f.onManagerClear = { f.owner.setGossipManager(replacement) { it } }
+        f.owner.setGossipManager(HolderManagerProvenance.UnattributedExternal, first) { it }
+        f.onManagerClear = { f.owner.setGossipManager(HolderManagerProvenance.UnattributedExternal, replacement) { it } }
         f.owner.clear()
         assertEquals(1, first.clears)
         assertEquals("replacement stops the old manager", 1, first.stops)
@@ -251,7 +251,7 @@ class MeshServiceHolderOwnerTest {
         val original = packet(1)
         val signed = packet(2)
         var signingInput: BitchatPacket? = null
-        f.owner.setGossipManager(manager) { signingInput = it; signed }
+        f.owner.setGossipManager(HolderManagerProvenance.UnattributedExternal, manager) { signingInput = it; signed }
         val delegate = requireNotNull(manager.delegate)
         assertSame(signed, delegate.signPacketForBroadcast(original))
         assertSame(original, signingInput)
@@ -261,7 +261,7 @@ class MeshServiceHolderOwnerTest {
         assertEquals("Synthetic peer", f.peerSends.single().first)
         assertSame(original, f.peerSends.single().second)
         val failure = IllegalStateException("Synthetic signer failure")
-        f.owner.setGossipManager(manager) { throw failure }
+        f.owner.setGossipManager(HolderManagerProvenance.UnattributedExternal, manager) { throw failure }
         assertSame(failure, runCatching { requireNotNull(manager.delegate).signPacketForBroadcast(original) }.exceptionOrNull())
         assertEquals(1, f.broadcasts.size)
     }
@@ -271,7 +271,7 @@ class MeshServiceHolderOwnerTest {
         val manager = Manager()
         val failure = IllegalStateException("Synthetic delegate installation failure")
         f.onInstall = { throw failure }
-        assertSame(failure, runCatching { f.owner.setGossipManager(manager) { it } }.exceptionOrNull())
+        assertSame(failure, runCatching { f.owner.setGossipManager(HolderManagerProvenance.UnattributedExternal, manager) { it } }.exceptionOrNull())
         assertSame(manager, f.owner.sharedGossipSyncManager)
         assertEquals(0, manager.starts)
     }
@@ -286,9 +286,9 @@ class MeshServiceHolderOwnerTest {
         val product = Bluetooth()
         val results = ConcurrentLinkedQueue<Bluetooth>()
         val first = f.worker {
-            results += f.owner.getOrCreate {
+            results += f.owner.getOrCreate { construction ->
                 calls.incrementAndGet()
-                f.owner.setGossipManager(manager) { it }
+                f.owner.setGossipManager(HolderManagerProvenance.Constructed(construction), manager) { it }
                 f.owner.startSharedGossip("Synthetic nested owner")
                 entered.countDown()
                 check(release.await(5, TimeUnit.SECONDS)) { "Held synthetic factory was not released" }
