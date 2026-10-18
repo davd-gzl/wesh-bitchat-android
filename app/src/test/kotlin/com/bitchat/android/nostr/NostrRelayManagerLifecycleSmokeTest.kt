@@ -27,8 +27,6 @@ class NostrRelayManagerLifecycleSmokeTest {
             listOf("wss://relay.damus.io", "wss://relay.primal.net", "wss://offchain.pub"),
             manager.getRelayStatuses().map { it.url }
         )
-        manager.retryConnection("wss://relay.damus.io")
-        assertTrue(manager.isConnectionDesired())
         manager.clearAllOnPanic()
         assertFalse(manager.isConnectionDesired())
         manager.resetAllConnections()

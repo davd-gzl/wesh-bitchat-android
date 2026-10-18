@@ -19,7 +19,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Manages WebSocket connections to Nostr relays
  * Compatible with iOS implementation with Android-specific optimizations
  */
-class NostrRelayManager private constructor() {
+class NostrRelayManager internal constructor(
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+) {
     
     companion object {
         /**
@@ -87,14 +89,15 @@ class NostrRelayManager private constructor() {
     private val _isConnected = MutableStateFlow<Boolean>(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
     
+    // Socket identity, mutable relay state and publication share the same teardown boundary.
+    private val lifecycleLock = Any()
+    private class ConnectionAttempt
+    private val connectionAttempts = mutableMapOf<String, ConnectionAttempt>()
+
     // Internal state
     private val relaysList = mutableListOf<Relay>()
     private val connections = ConcurrentHashMap<String, WebSocket>()
     private val reconnectJobs = ConcurrentHashMap<String, Job>()
-    /** Relays with a socket being created; Tor ready and the Internet toggle can both connect. */
-    private val connecting = ConcurrentHashMap.newKeySet<String>()
-    /** Relays asked for again while an attempt was in flight; that attempt re-runs once it ends. */
-    private val connectAgain = ConcurrentHashMap.newKeySet<String>()
     private val desiredConnected = AtomicBoolean(false)
     private val subscriptions = ConcurrentHashMap<String, Set<String>>() // relay URL -> subscription IDs
     private val messageHandlers = ConcurrentHashMap<String, (NostrEvent) -> Unit>()
@@ -119,9 +122,6 @@ class NostrRelayManager private constructor() {
     
     // Bounded per-relay delivery queue for reconnect reliability.
     private val messageQueue = NostrPendingEventQueue(MAX_QUEUED_EVENTS)
-    
-    // Coroutine scope for background operations
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
     // Subscription validation timer
     private var subscriptionValidationJob: Job? = null
@@ -165,17 +165,19 @@ class NostrRelayManager private constructor() {
                 val closeQueued = runCatching { webSocket.send(message) }
                     .getOrDefault(false)
                 if (!closeQueued) {
-                    connections.remove(relayUrl, webSocket)
-                    subscriptions.remove(relayUrl)
-                    webSocket.cancel()
-                    updateRelayStatus(
-                        relayUrl,
-                        isConnected = false,
-                        error = IllegalStateException("Failed to close revoked subscription")
-                    )
-                    if (desiredConnected.get()) {
-                        scope.launch { connectToRelay(relayUrl) }
+                    synchronized(lifecycleLock) {
+                        if (connections.remove(relayUrl, webSocket)) {
+                            connectionAttempts.remove(relayUrl)
+                            subscriptions.remove(relayUrl)
+                            updateRelayStatus(
+                                relayUrl,
+                                isConnected = false,
+                                error = IllegalStateException("Failed to close revoked subscription")
+                            )
+                            if (desiredConnected.get()) scope.launch { connectToRelay(relayUrl) }
+                        }
                     }
+                    webSocket.cancel()
                     break
                 }
             }
@@ -200,41 +202,33 @@ class NostrRelayManager private constructor() {
     /**
      * Connect to all configured relays
      */
-    fun connect() {
-        if (!com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) return
+    fun connect(): Unit = synchronized(lifecycleLock) {
+        if (!isNetworkActionAllowed()) return
         desiredConnected.set(true)
         Log.i(TAG, "Connecting to ${relaysList.size} Nostr relays")
         scope.launch {
             relaysList.forEach { relay ->
-                launch {
-                    connectToRelay(relay.url)
-                }
+                launch { connectToRelay(relay.url) }
             }
         }
-        
-        // Start periodic subscription validation
         startSubscriptionValidation()
     }
-    
-    /**
-     * Disconnect from all relays
-     */
-    fun disconnect() {
-        Log.i(TAG, "Disconnecting from all Nostr relays")
-        desiredConnected.set(false)
 
-        // Stop subscription validation
+    /** Disconnect invalidates attempts before closing sockets, so late callbacks are harmless. */
+    fun disconnect() {
+        val sockets = synchronized(lifecycleLock) { disconnectLocked() }
+        sockets.forEach { it.close(1000, "Manual disconnect") }
+    }
+
+    /** Caller holds [lifecycleLock]; socket close is performed after releasing it. */
+    private fun disconnectLocked(): List<WebSocket> {
+        desiredConnected.set(false)
+        connectionAttempts.clear()
         stopSubscriptionValidation()
         reconnectJobs.values.forEach(Job::cancel)
         reconnectJobs.clear()
-
         val sockets = connections.values.toList()
         connections.clear()
-        sockets.forEach { webSocket ->
-            webSocket.close(1000, "Manual disconnect")
-        }
-
-        // Preserve logical subscriptions for controlled resets, but forget per-socket state.
         subscriptions.clear()
         relaysList.forEach {
             it.isConnected = false
@@ -242,8 +236,9 @@ class NostrRelayManager private constructor() {
         }
         updateRelaysList()
         updateConnectionStatus()
+        return sockets
     }
-    
+
     /**
      * Send an event to specified relays (or all if none specified)
      */
@@ -383,43 +378,39 @@ class NostrRelayManager private constructor() {
      * Manually retry connection to a specific relay
      */
     fun retryConnection(relayUrl: String) {
-        val relay = relaysList.find { it.url == relayUrl } ?: return
-        desiredConnected.set(true)
-        if (!isNetworkActionAllowed()) return
-        
-        // Reset reconnection attempts
-        relay.reconnectAttempts = 0
-        relay.nextReconnectTime = null
-        
-        // Disconnect if connected
-        reconnectJobs.remove(relayUrl)?.cancel()
-        connections.remove(relayUrl)?.close(1000, "Manual retry")
-        
-        // Attempt immediate reconnection
-        scope.launch {
-            connectToRelay(relayUrl)
-        }
-    }
-    
-    /**
-     * Reset all relay connections
-     * This will automatically restore all subscriptions when reconnected
-     */
-    fun resetAllConnections() {
-        val shouldReconnect = desiredConnected.get()
-        disconnect()
-        
-        // Reset all relay states
-        relaysList.forEach { relay ->
+        val socket = synchronized(lifecycleLock) {
+            val relay = relaysList.find { it.url == relayUrl } ?: return
+            if (!isNetworkActionAllowed()) return
+            desiredConnected.set(true)
             relay.reconnectAttempts = 0
             relay.nextReconnectTime = null
-            relay.lastError = null
+            reconnectJobs.remove(relayUrl)?.cancel()
+            connectionAttempts.remove(relayUrl)
+            val previous = connections.remove(relayUrl)
+            updateRelayStatus(relayUrl, false)
+            scope.launch { connectToRelay(relayUrl) }
+            previous
         }
-        
-        // Reconnect only when connectivity was desired before the controlled reset.
-        if (shouldReconnect) connect()
+        socket?.close(1000, "Manual retry")
     }
-    
+
+    /** Reset atomically preserves the user's intent, while invalidating the old generation. */
+    fun resetAllConnections() {
+        val sockets = synchronized(lifecycleLock) {
+            val shouldReconnect = desiredConnected.get()
+            val previous = disconnectLocked()
+            relaysList.forEach { relay ->
+                relay.reconnectAttempts = 0
+                relay.nextReconnectTime = null
+                relay.lastError = null
+            }
+            updateRelaysList()
+            if (shouldReconnect) connect()
+            previous
+        }
+        sockets.forEach { it.close(1000, "Reset connection") }
+    }
+
     /**
      * Force re-establishment of all subscriptions on currently connected relays
      * Useful for ensuring subscription consistency after network issues
@@ -470,8 +461,8 @@ class NostrRelayManager private constructor() {
     /**
      * Get detailed status for all relays
      */
-    fun getRelayStatuses(): List<Relay> {
-        return relaysList.toList()
+    fun getRelayStatuses(): List<Relay> = synchronized(lifecycleLock) {
+        relaysList.map { it.copy() }
     }
     
     /**
@@ -609,55 +600,48 @@ class NostrRelayManager private constructor() {
     
     // MARK: - Private Methods
     
-    private suspend fun connectToRelay(
-        urlString: String
-    ) {
-        if (urlString !in WESH_PINNED_RELAYS || !com.bitchat.android.net.WeshNetworkPolicy.allowsNetwork()) return
-        if (!desiredConnected.get()) return
-        // One attempt per relay. A caller that finds one in flight is not dropped: the attempt may
-        // be abandoned (a disconnect closed its socket), so it is asked to run once more.
-        if (!connecting.add(urlString)) {
-            connectAgain.add(urlString)
-            // The attempt may have ended between the two calls; then this caller takes over.
-            if (!connecting.add(urlString)) return
-            connectAgain.remove(urlString)
+    private suspend fun connectToRelay(urlString: String) {
+        val attempt = synchronized(lifecycleLock) {
+            if (urlString !in WESH_PINNED_RELAYS || !isNetworkActionAllowed() ||
+                !desiredConnected.get() || connections.containsKey(urlString) ||
+                connectionAttempts.containsKey(urlString)
+            ) return
+            ConnectionAttempt().also { connectionAttempts[urlString] = it }
         }
         try {
-            // Skip if we already have a connection
-            if (connections.containsKey(urlString)) return
-
-            val request = Request.Builder()
-                .url(urlString)
-                .build()
-            
-            val webSocket = openWebSocket(request, RelayWebSocketListener(urlString))
-            val existing = connections.putIfAbsent(urlString, webSocket)
-            when {
-                existing != null -> webSocket.close(1000, "Duplicate connection")
-                !desiredConnected.get() -> {
-                    connections.remove(urlString, webSocket)
-                    webSocket.close(1000, "Connection no longer desired")
+            val request = Request.Builder().url(urlString).build()
+            // Reserve the attempt before calling OkHttp: its listener may run before this returns.
+            val webSocket = openWebSocket(request, RelayWebSocketListener(urlString, attempt))
+            val accepted = synchronized(lifecycleLock) {
+                if (!isNetworkActionAllowed() || !desiredConnected.get() ||
+                    connectionAttempts[urlString] !== attempt
+                ) {
+                    if (connectionAttempts[urlString] === attempt) connectionAttempts.remove(urlString)
+                    false
+                } else {
+                    connections[urlString] = webSocket
+                    true
                 }
             }
-            
+            if (!accepted) webSocket.close(1000, "Stale connection")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create WebSocket connection")
-            handleConnectionCreationFailure(urlString, e)
-        } finally {
-            connecting.remove(urlString)
-            if (connectAgain.remove(urlString) && desiredConnected.get() && !connections.containsKey(urlString)) {
-                scope.launch { connectToRelay(urlString) }
+            synchronized(lifecycleLock) {
+                if (connectionAttempts[urlString] === attempt) {
+                    connectionAttempts.remove(urlString)
+                    handleCurrentDisconnection(urlString, e)
+                }
             }
         }
     }
-    
+
     private fun sendToRelay(
         event: NostrEvent,
         webSocket: WebSocket,
         relayUrl: String
-    ): Boolean {
-        if (!isNetworkActionAllowed()) return false
-        return try {
+    ): Boolean = synchronized(lifecycleLock) {
+        if (!isNetworkActionAllowed() || connections[relayUrl] !== webSocket) return false
+        try {
             val request = NostrRequest.Event(event)
             val message = gson.toJson(request, NostrRequest::class.java)
 
@@ -753,21 +737,15 @@ class NostrRelayManager private constructor() {
     
     private fun handleDisconnection(
         relayUrl: String,
+        attempt: ConnectionAttempt,
         webSocket: WebSocket,
         error: Throwable
-    ) {
-        // Ignore callbacks from intentionally closed or replaced sockets. They must not remove a
-        // newer socket or schedule a reconnect after a controlled disconnect/privacy revocation.
-        if (!connections.remove(relayUrl, webSocket)) return
+    ): Unit = synchronized(lifecycleLock) {
+        // The attempt is registered before socket creation, including an early failure callback.
+        if (connectionAttempts[relayUrl] !== attempt) return
+        connectionAttempts.remove(relayUrl)
+        connections.remove(relayUrl, webSocket)
         subscriptions.remove(relayUrl)
-        handleCurrentDisconnection(relayUrl, error)
-    }
-
-    private fun handleConnectionCreationFailure(
-        relayUrl: String,
-        error: Throwable
-    ) {
-        if (!desiredConnected.get()) return
         handleCurrentDisconnection(relayUrl, error)
     }
 
@@ -807,7 +785,7 @@ class NostrRelayManager private constructor() {
         }
     }
     
-    internal fun updateRelayStatus(url: String, isConnected: Boolean, error: Throwable? = null) {
+    internal fun updateRelayStatus(url: String, isConnected: Boolean, error: Throwable? = null): Unit = synchronized(lifecycleLock) {
         val relay = relaysList.find { it.url == url } ?: return
         
         relay.isConnected = isConnected
@@ -825,13 +803,13 @@ class NostrRelayManager private constructor() {
         updateConnectionStatus()
     }
     
-    private fun updateRelaysList() {
+    private fun updateRelaysList(): Unit = synchronized(lifecycleLock) {
         // Relay is mutated in place: a list of the same instances equals the previous value and
         // StateFlow would drop the update, so collectors never saw a relay connect.
         _relays.value = relaysList.map { it.copy() }
     }
     
-    private fun updateConnectionStatus() {
+    private fun updateConnectionStatus(): Unit = synchronized(lifecycleLock) {
         val connected = relaysList.any { it.isConnected }
         _isConnected.value = connected
     }
@@ -843,7 +821,8 @@ class NostrRelayManager private constructor() {
     /**
      * Restore all active subscriptions for a specific relay that just reconnected
      */
-    private fun restoreSubscriptionsForRelay(relayUrl: String, webSocket: WebSocket) {
+    private fun restoreSubscriptionsForRelay(relayUrl: String, webSocket: WebSocket): Unit = synchronized(lifecycleLock) {
+        if (!isNetworkActionAllowed() || connections[relayUrl] !== webSocket) return
         val subscriptionsToRestore = activeSubscriptions.values.filter { subscriptionInfo ->
             // Include subscription if it targets all relays or specifically targets this relay
             isNetworkActionAllowed() &&
@@ -879,55 +858,54 @@ class NostrRelayManager private constructor() {
      * WebSocket listener for relay connections
      */
     private inner class RelayWebSocketListener(
-        private val relayUrl: String
+        private val relayUrl: String,
+        private val attempt: ConnectionAttempt
     ) : WebSocketListener() {
         
         override fun onOpen(webSocket: WebSocket, response: Response) {
-            if (!desiredConnected.get() ||
-                connections[relayUrl] !== webSocket ||
-                !isNetworkActionAllowed()
-            ) {
-                connections.remove(relayUrl, webSocket)
-                webSocket.close(1000, "Stale connection")
-                return
-            }
-            reconnectJobs.remove(relayUrl)?.cancel()
-            updateRelayStatus(relayUrl, true)
-            
-            // Restore all active subscriptions for this relay
-            restoreSubscriptionsForRelay(relayUrl, webSocket)
-            
-            // Process only events still pending for this relay, outside the queue lock.
-            val queuedForRelay = messageQueue.pendingForRelay(relayUrl)
-            queuedForRelay.forEach { delivery ->
-                if (sendToRelay(
-                        delivery.event,
-                        webSocket,
-                        relayUrl
-                    )
+            val accepted = synchronized(lifecycleLock) {
+                if (!isNetworkActionAllowed() || !desiredConnected.get() ||
+                    connectionAttempts[relayUrl] !== attempt
                 ) {
-                    messageQueue.markDelivered(delivery.queueId, relayUrl)
+                    if (connectionAttempts[relayUrl] === attempt) {
+                        connectionAttempts.remove(relayUrl)
+                        connections.remove(relayUrl, webSocket)
+                        updateRelayStatus(relayUrl, false)
+                    }
+                    false
+                } else {
+                    connections[relayUrl] = webSocket
+                    reconnectJobs.remove(relayUrl)?.cancel()
+                    updateRelayStatus(relayUrl, true)
+                    restoreSubscriptionsForRelay(relayUrl, webSocket)
+                    messageQueue.pendingForRelay(relayUrl).forEach { delivery ->
+                        if (sendToRelay(delivery.event, webSocket, relayUrl)) {
+                            messageQueue.markDelivered(delivery.queueId, relayUrl)
+                        }
+                    }
+                    true
                 }
             }
+            if (!accepted) webSocket.close(1000, "Stale connection")
         }
-        
-        override fun onMessage(webSocket: WebSocket, text: String) {
-            if (connections[relayUrl] !== webSocket) return
+
+        override fun onMessage(webSocket: WebSocket, text: String): Unit = synchronized(lifecycleLock) {
+            if (connectionAttempts[relayUrl] !== attempt || connections[relayUrl] !== webSocket) return
             handleMessage(text, relayUrl)
         }
-        
+
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
             // Server-initiated close; onClosed will follow
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             val error = Exception("WebSocket closed: $code $reason")
-            handleDisconnection(relayUrl, webSocket, error)
+            handleDisconnection(relayUrl, attempt, webSocket, error)
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             Log.e(TAG, "Nostr WebSocket failure")
-            handleDisconnection(relayUrl, webSocket, t)
+            handleDisconnection(relayUrl, attempt, webSocket, t)
         }
     }
 }
