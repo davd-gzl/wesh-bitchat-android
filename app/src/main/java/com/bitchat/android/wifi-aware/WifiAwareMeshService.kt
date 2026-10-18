@@ -612,6 +612,9 @@ class WifiAwareMeshService(private val context: Context, private val controllerO
                 }
             } finally {
                 recoveryInProgress = false
+                if (generation == sessionGeneration.get() && !isActive) {
+                    com.bitchat.android.wifiaware.WifiAwareController.onServiceRecoveryCleanupFinished(controllerOwner, this@WifiAwareMeshService)
+                }
                 // Recovery cleanup is done; nudge a restart now that startServices() will no
                 // longer be deferred by recoveryInProgress. The controller coalesces requests.
                 if (com.bitchat.android.wifiaware.WifiAwareController.enabled.value) {

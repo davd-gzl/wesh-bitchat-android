@@ -518,6 +518,9 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
         runCleanup(cleanup)
     }
 
+    /** Recovery reached its cleanup finally; this is not a checked stop acknowledgment. */
+    fun onServiceRecoveryCleanupFinished(origin: WifiAwareOwnerToken, product: S) = Unit
+
     fun restartIfStillEnabled(origin: WifiAwareOwnerToken, delayMs: Long = 0L) {
         val restart = synchronized(lifecycleLock) {
             val owner = current

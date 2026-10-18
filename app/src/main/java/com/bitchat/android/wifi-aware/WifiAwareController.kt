@@ -86,6 +86,9 @@ object WifiAwareController {
     internal fun onServiceStopped(origin: WifiAwareOwnerToken, stoppedService: WifiAwareMeshService) =
         owner.onServiceStopped(origin, stoppedService)
 
+    internal fun onServiceRecoveryCleanupFinished(origin: WifiAwareOwnerToken, product: WifiAwareMeshService) =
+        owner.onServiceRecoveryCleanupFinished(origin, product)
+
     internal fun restartIfStillEnabled(delayMs: Long = 0L) = owner.restartIfStillEnabled(owner.currentOwner(), delayMs)
 
     internal fun restartIfStillEnabled(origin: WifiAwareOwnerToken, delayMs: Long) =
