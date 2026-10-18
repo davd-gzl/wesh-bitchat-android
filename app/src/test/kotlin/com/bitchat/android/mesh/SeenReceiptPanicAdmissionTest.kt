@@ -267,7 +267,8 @@ class SeenReceiptPanicAdmissionTest {
                 recovery.normalPanicCompleted()
                 true
             }
-        }
+        },
+        identityErasureConfirmed = true
     )
 
     private class Fixture(seeded: Boolean = false) {

@@ -149,7 +149,7 @@ class WeshPreferencesPanicTest {
                 gate.normalPanicCompleted()
                 preferences.resumeAfterVerifiedPanic()
                 true
-            })
+            }, identityErasureConfirmed = true)
         assertFalse(resumed)
         assertEquals(0, resumes)
         assertTrue(File(directory.root, "wesh-drafts-wipe-v1").isFile)
@@ -178,7 +178,7 @@ class WeshPreferencesPanicTest {
                 preferences.resumeAfterVerifiedPanic()
                 assertTrue(preferences.loadMeetingNote())
                 true
-            }))
+            }, identityErasureConfirmed = true))
         assertEquals(1, resumes)
         assertFalse(File(directory.root, "wesh-drafts-wipe-v1").exists())
         assertTrue(gate.allowsTransport(prepared = true))
@@ -232,7 +232,7 @@ class WeshPreferencesPanicTest {
             val preferences = newPreferences(storage)
             var resumes = 0
             assertFalse(resumeAfterWeshPanicWipe(drafts, conversations, seenCleared = true, mediaCleared = true,
-                clearPreferences = { preferences.clearForPanic() }, resume = { resumes++; true }))
+                clearPreferences = { preferences.clearForPanic() }, resume = { resumes++; true }, identityErasureConfirmed = true))
             assertEquals(1, storage.commits)
             assertTrue(storage.disk.isEmpty())
             assertEquals(0, resumes)
@@ -262,7 +262,7 @@ class WeshPreferencesPanicTest {
         }
         assertFalse(firstCleanup)
         assertFalse(resumeAfterWeshPanicWipe(true, true, seenCleared = true, mediaCleared = firstCleanup,
-            clearPreferences = { preferences.clearForPanic() }, resume = resume))
+            clearPreferences = { preferences.clearForPanic() }, resume = resume, identityErasureConfirmed = true))
         assertEquals(0, resumes)
         assertTrue(File(directory.root, "wesh-drafts-wipe-v1").isFile)
         assertFalse(gate.allowsTransport(prepared = true))
@@ -271,7 +271,7 @@ class WeshPreferencesPanicTest {
         val verifiedCleanup = FileUtils.clearAllMedia({ files }, { cache })
         assertTrue(verifiedCleanup)
         assertTrue(resumeAfterWeshPanicWipe(true, true, seenCleared = true, mediaCleared = verifiedCleanup,
-            clearPreferences = { preferences.clearForPanic() }, resume = resume))
+            clearPreferences = { preferences.clearForPanic() }, resume = resume, identityErasureConfirmed = true))
         assertEquals(1, resumes)
         assertFalse(File(directory.root, "wesh-drafts-wipe-v1").exists())
         assertTrue(gate.allowsTransport(prepared = true))
@@ -474,10 +474,10 @@ class WeshPreferencesPanicTest {
     @Test fun `a legacy preference file that cannot be deleted keeps the panic marker`() = runTest {
         var resumes = 0
         assertFalse(resumeAfterWeshPanicWipe(true, true, seenCleared = true, mediaCleared = true, legacyStoresCleared = false,
-            clearPreferences = { true }, resume = { resumes++; true }))
+            clearPreferences = { true }, resume = { resumes++; true }, identityErasureConfirmed = true))
         assertEquals(0, resumes)
         assertTrue(resumeAfterWeshPanicWipe(true, true, seenCleared = true, mediaCleared = true, legacyStoresCleared = true,
-            clearPreferences = { true }, resume = { resumes++; true }))
+            clearPreferences = { true }, resume = { resumes++; true }, identityErasureConfirmed = true))
         assertEquals(1, resumes)
     }
 

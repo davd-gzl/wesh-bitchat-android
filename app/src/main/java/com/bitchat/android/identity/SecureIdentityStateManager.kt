@@ -12,6 +12,7 @@ import com.bitchat.android.model.AuthenticatedPeerState
 import com.bitchat.android.model.PeerCapabilities
 import com.bitchat.android.util.hexEncodedString
 import androidx.core.content.edit
+import kotlinx.coroutines.CancellationException
 
 /**
  * Manages persistent identity storage and peer ID rotation - 100% compatible with iOS implementation
@@ -428,6 +429,29 @@ class SecureIdentityStateManager {
         }
     }
     
+    internal fun clearIdentityDataForPanic(): Boolean = synchronized(peerStateLock) {
+        peerStateEpoch += 1
+        peerStateEpochAtCreation = peerStateEpoch
+        val committed = try {
+            DurableIdentityPreferences.clear(prefs)
+            true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
+        // A failed commit may already have emptied the process cache. Both
+        // the disk acknowledgment and an independent absence check are required.
+        val absent = try {
+            prefs.all.isEmpty()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
+        committed && absent
+    }
+
     /**
      * Check if identity data exists
      */
@@ -474,6 +498,27 @@ class SecureIdentityStateManager {
             editor.remove(key)
         }
         editor.apply()
+    }
+
+    internal fun clearSecureValuesForPanic(vararg keys: String): Boolean {
+        val committed = try {
+            clearSecureValuesSynchronously(*keys)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
+        // Probe every owned key even after a failed write or another failed probe.
+        val absent = keys.map { key ->
+            try {
+                !hasSecureValue(key)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                false
+            }
+        }.all { it }
+        return committed && absent
     }
 
     /** Use for panic paths that must finish the disk mutation before identity reset continues. */

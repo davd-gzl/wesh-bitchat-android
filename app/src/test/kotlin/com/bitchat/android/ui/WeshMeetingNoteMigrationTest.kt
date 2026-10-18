@@ -284,7 +284,8 @@ class WeshMeetingNoteMigrationTest {
                 gate.normalPanicCompleted()
                 preferences.resumeAfterVerifiedPanic()
                 true
-            }
+            },
+            identityErasureConfirmed = true
         )
         assertFalse(globalPanic())
         assertEquals(0, resumes)

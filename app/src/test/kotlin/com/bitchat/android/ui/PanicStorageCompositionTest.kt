@@ -177,7 +177,8 @@ class PanicStorageCompositionTest {
                 recovery.normalPanicCompleted()
                 AppStateStore.resumePrivateConversationsAfterPanic()
                 true
-            }
+            },
+            identityErasureConfirmed = true
         )
         if (resumed) preferences.resumeAfterVerifiedPanic()
         return resumed
