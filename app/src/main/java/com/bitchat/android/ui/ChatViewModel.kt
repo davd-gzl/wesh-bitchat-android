@@ -89,7 +89,7 @@ class ChatViewModel(
 
     // Specialized managers
     private val dataManager = DataManager(application.applicationContext)
-    internal val weshPreferences by lazy { WeshPreferences(application.applicationContext) }
+    internal val weshPreferences by lazy { WeshPreferences.getInstance(application.applicationContext) }
     private val identityManager by lazy { SecureIdentityStateManager(getApplication()) }
     private val seenMessageStore by lazy {
         com.bitchat.android.services.SeenMessageStore.getInstance(getApplication())
@@ -375,6 +375,9 @@ class ChatViewModel(
     }
 
     init {
+        viewModelScope.launch {
+            if (com.bitchat.android.BuildConfig.WESH_POLICY) weshPreferences.loadMeetingNote()
+        }
         viewModelScope.launch { loadWeshDrafts() }
         observeConversationPresenceWithDisconnectGrace()
         // Note: Mesh service delegate is now set by MainActivity
@@ -1553,6 +1556,7 @@ class ChatViewModel(
         )
         if (!resumed) return
         weshPreferences.resumeAfterVerifiedPanic()
+        weshPreferences.loadMeetingNote()
     }
 
     /**

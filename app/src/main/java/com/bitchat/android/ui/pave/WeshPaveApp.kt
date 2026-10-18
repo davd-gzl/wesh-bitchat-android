@@ -42,6 +42,7 @@ import com.bitchat.android.nostr.NostrRelayManager
 import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.services.VerificationService
 import com.bitchat.android.services.WeshMessageRequests
+import com.bitchat.android.ui.MeetingNoteState
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.WeshDraftStore
 import com.bitchat.android.ui.WeshMessagePolicy
@@ -132,6 +133,8 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
     val scope = rememberCoroutineScope()
     val prefs = viewModel.weshPreferences
     val preferencesEpoch by prefs.resetEpoch.collectAsState()
+    val savedMeetingNote by prefs.savedMeetingNote.collectAsState()
+    val meetingState by prefs.meetingNoteState.collectAsState()
     val publicMessages by viewModel.messages.collectAsState()
     val publicSending by viewModel.weshPublicSending.collectAsState()
     val privateChats by viewModel.privateChats.collectAsState()
@@ -394,7 +397,12 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                 summary = PaveSettingsSummary(
                     nickname = nickname,
                     previewsHidden = !prefs.notificationShowsSender,
-                    meeting = prefs.meetingNote.takeIf { it.isNotBlank() },
+                    meeting = when (meetingState) {
+                        MeetingNoteState.Ready -> savedMeetingNote.takeIf { it.isNotBlank() }
+                        MeetingNoteState.Unavailable -> stringResource(R.string.wesh_pave_fluo_meeting_unavailable)
+                        MeetingNoteState.Unloaded, MeetingNoteState.Loading -> stringResource(R.string.wesh_pave_fluo_meeting_loading)
+                        MeetingNoteState.Fenced -> null
+                    },
                     blockedCount = if (revision >= 0) viewModel.weshBlockedFingerprints().size + sessionHidden.size else 0,
                     appearance = appearance,
                 ),
@@ -703,6 +711,9 @@ private fun MeetingRoute(viewModel: ChatViewModel, onBack: () -> Unit) {
     val prefs = viewModel.weshPreferences
     val epoch by prefs.resetEpoch.collectAsState()
     val note by prefs.meetingDraft.collectAsState()
+    val loadState by prefs.meetingNoteState.collectAsState()
+    // Re-entering the screen restarts a load cancelled with the previous route.
+    LaunchedEffect(prefs, epoch) { prefs.loadMeetingNote(epoch) }
     val scope = rememberCoroutineScope()
     var saving by remember { mutableStateOf(false) }
     var feedback by remember(epoch) { mutableStateOf<String?>(null) }
@@ -710,6 +721,12 @@ private fun MeetingRoute(viewModel: ChatViewModel, onBack: () -> Unit) {
     val saved = stringResource(R.string.wesh_pave_fluo_meeting_saved)
     val unconfirmed = stringResource(R.string.wesh_pave_fluo_meeting_unconfirmed)
     MeetingNoteScreen(
+        ready = loadState == MeetingNoteState.Ready,
+        loading = loadState == MeetingNoteState.Unloaded || loadState == MeetingNoteState.Loading,
+        onRetry = if (loadState == MeetingNoteState.Unavailable) ({
+            scope.launch { prefs.loadMeetingNote(epoch) }
+            Unit
+        }) else null,
         note = note,
         onNoteChange = { if (prefs.editMeetingDraft(it, epoch)) feedback = null },
         saving = saving,
