@@ -1494,8 +1494,7 @@ class ChatViewModel(
         messageManager.clearAllMessages()
         channelManager.clearAllChannels()
         privateChatManager.clearAllPrivateChats()
-        dataManager.clearAllData()
-        conversationListPreferences.clearAll()
+        val metadataCleared = clearPanicMetadata(dataManager, conversationListPreferences)
         
         // Clear seen message store and MessageRouter outbox
         try {
@@ -1533,7 +1532,7 @@ class ChatViewModel(
         // Reset nickname
         val newNickname = "anon${Random.nextInt(1000, 9999)}"
         state.setNickname(newNickname)
-        dataManager.saveNickname(newNickname)
+        val nicknameSaved = savePanicNickname(dataManager, newNickname)
 
         val legacyStoresCleared = withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
             deleteLegacyFeaturePreferences(getApplication())
@@ -1545,6 +1544,7 @@ class ChatViewModel(
             conversationsCleared = conversationsCleared,
             mediaCleared = mediaCleared,
             legacyStoresCleared = legacyStoresCleared,
+            metadataCleared = metadataCleared && nicknameSaved,
             clearPreferences = {
                 withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { weshPreferences.clearForPanic() }
             },
