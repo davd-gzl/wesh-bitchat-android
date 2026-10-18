@@ -285,7 +285,8 @@ class WeshMeetingNoteMigrationTest {
                 preferences.resumeAfterVerifiedPanic()
                 true
             },
-            identityErasureConfirmed = true
+            identityErasureConfirmed = true,
+            meshOwnerRetired = true
         )
         assertFalse(globalPanic())
         assertEquals(0, resumes)

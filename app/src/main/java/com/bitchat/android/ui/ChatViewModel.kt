@@ -1285,6 +1285,7 @@ class ChatViewModel(
     }
 
     private suspend fun performPanicClearAllData(seenPanic: com.bitchat.android.services.SeenReceiptAdmission.Token) {
+        val meshOwnerRetired = (mesh as? com.bitchat.android.mesh.UnifiedMeshService)?.retireForPanic() ?: false
         // Stop all message admission before wiping storage. The AppStateStore gate also rejects
         // any transport callback already in flight until the fresh identity is ready.
         clearAllMeshServiceData()
@@ -1350,6 +1351,7 @@ class ChatViewModel(
             metadataCleared = metadataCleared && nicknameSaved,
             seenCleared = seenCleared,
             identityErasureConfirmed = cryptographyErasure.confirmed,
+            meshOwnerRetired = meshOwnerRetired,
             clearPreferences = {
                 withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { weshPreferences.clearForPanic() }
             },

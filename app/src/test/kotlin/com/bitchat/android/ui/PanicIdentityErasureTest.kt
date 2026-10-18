@@ -185,7 +185,8 @@ class PanicIdentityErasureTest {
             val resumed = resumeAfterWeshPanicWipe(
                 draftsCleared = true, conversationsCleared = true, mediaCleared = true, seenCleared = true,
                 identityErasureConfirmed = erased.confirmed, clearPreferences = { true },
-                resume = { resumes++; pending = false; gate.normalPanicCompleted(); true }
+                resume = { resumes++; pending = false; gate.normalPanicCompleted(); true },
+                meshOwnerRetired = true
             )
             assertFalse("Uncertain $failed cleanup must not enter the real continuation", resumed)
             assertEquals(0, resumes)
@@ -207,7 +208,8 @@ class PanicIdentityErasureTest {
         val resumed = resumeAfterWeshPanicWipe(
             draftsCleared = true, conversationsCleared = true, mediaCleared = true, seenCleared = true,
             identityErasureConfirmed = erased.confirmed, clearPreferences = { true },
-            resume = { restarted = true; true }
+            resume = { restarted = true; true },
+            meshOwnerRetired = true
         )
         assertTrue(storage.disk.containsKey("static_private_key"))
         assertFalse(resumed)
@@ -251,7 +253,8 @@ class PanicIdentityErasureTest {
         assertTrue(result.confirmed)
         assertTrue(resumeAfterWeshPanicWipe(
             draftsCleared = true, conversationsCleared = true, mediaCleared = true, seenCleared = true,
-            identityErasureConfirmed = result.confirmed, clearPreferences = { true }, resume = { resumed++; true }
+            identityErasureConfirmed = result.confirmed, clearPreferences = { true }, resume = { resumed++; true },
+            meshOwnerRetired = true
         ))
         assertEquals(1, resumed)
     }

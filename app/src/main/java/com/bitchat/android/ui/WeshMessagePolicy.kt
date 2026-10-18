@@ -342,7 +342,9 @@ internal suspend fun resumeAfterWeshPanicWipe(
     /** Seen receipt bookkeeping has completed its panic clear. */
     seenCleared: Boolean,
     /** Checked identity and favorites cleanup; never inferred from a fresh key alone. */
-    identityErasureConfirmed: Boolean
+    identityErasureConfirmed: Boolean,
+    /** The previous facade finished its panic-only owner retirement. */
+    meshOwnerRetired: Boolean
 ): Boolean {
     val preferencesCleared = try {
         clearPreferences()
