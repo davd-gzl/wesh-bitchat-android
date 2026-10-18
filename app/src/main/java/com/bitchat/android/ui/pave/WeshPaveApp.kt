@@ -675,6 +675,7 @@ private fun ExchangeRoute(viewModel: ChatViewModel, nickname: String, onClose: (
 
 @Composable
 private fun ProfileRoute(viewModel: ChatViewModel, nickname: String, onBack: () -> Unit) {
+    val epoch = viewModel.weshPreferences.resetEpoch.collectAsState().value
     var edited by rememberSaveable(nickname) { mutableStateOf(nickname) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf(false) }
@@ -688,8 +689,9 @@ private fun ProfileRoute(viewModel: ChatViewModel, nickname: String, onBack: () 
         onSave = {
             val clean = edited.trim()
             if (NicknameGenerator.isValid(clean)) {
-                viewModel.setNickname(clean)
-                feedback = saved; error = false
+                if (viewModel.setNickname(clean, epoch)) {
+                    feedback = saved; error = false
+                }
             } else { feedback = invalid; error = true }
         },
         feedback = feedback,

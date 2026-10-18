@@ -94,6 +94,13 @@ internal class WeshPreferences(
     private val _meetingDraft = MutableStateFlow(prefs.stringOr("meeting_note", "") ?: "")
     val meetingDraft = _meetingDraft.asStateFlow()
 
+    /** Serializes synchronous UI mutations with the panic fence; never use for suspending or blocking IO. */
+    internal fun withCurrentEpoch(expectedEpoch: Long, action: () -> Unit): Boolean = synchronized(lock) {
+        if (fenced || expectedEpoch != _resetEpoch.value) return@synchronized false
+        action()
+        true
+    }
+
     var publicMuted: Boolean
         get() = prefs.booleanOr("public_muted", false)
         set(value) {

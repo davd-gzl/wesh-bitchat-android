@@ -592,11 +592,12 @@ class ChatViewModel(
     
     // MARK: - Nickname Management
     
-    fun setNickname(newNickname: String) {
-        state.setNickname(newNickname)
-        dataManager.saveNickname(newNickname)
-        mesh.sendBroadcastAnnounce()
-    }
+    fun setNickname(newNickname: String, expectedEpoch: Long): Boolean =
+        weshPreferences.withCurrentEpoch(expectedEpoch) {
+            state.setNickname(newNickname)
+            dataManager.saveNickname(newNickname)
+            mesh.sendBroadcastAnnounce()
+        }
     
     // MARK: - Channel Management (delegated)
     

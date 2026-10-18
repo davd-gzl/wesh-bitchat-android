@@ -317,6 +317,7 @@ class MainActivity : OrientationAwareActivity() {
                 // Pavé welcome: nickname, the Bluetooth explanation, then (Android 13+) the
                 // notifications explanation, each before its system prompt.
                 val prefs = chatViewModel.weshPreferences
+                val policyEpoch = prefs.resetEpoch.collectAsState().value
                 val currentNickname by chatViewModel.nickname.collectAsState()
                 val initialNickname = remember(currentNickname) { welcomeNickname(prefs.welcomed, currentNickname) }
                 val notifications = permissionManager.getUnrequestedOptionalPermissions()
@@ -324,20 +325,26 @@ class MainActivity : OrientationAwareActivity() {
                 val requiredGranted = permissionManager.areRequiredPermissionsGranted()
                 com.bitchat.android.ui.pave.OnboardingFlow(
                     onFinished = { chosen, _ ->
-                        // Only a nickname the person actually set replaces the stored one.
-                        if (chosen != initialNickname && com.bitchat.android.ui.pave.NicknameGenerator.isValid(chosen)) {
-                            chatViewModel.setNickname(chosen)
+                        prefs.withCurrentEpoch(policyEpoch) {
+                            // Only a nickname the person actually set replaces the stored one.
+                            if (chosen != initialNickname && com.bitchat.android.ui.pave.NicknameGenerator.isValid(chosen)) {
+                                chatViewModel.setNickname(chosen, policyEpoch)
+                            }
+                            prefs.welcomed = true
+                            mainViewModel.updateOnboardingState(OnboardingState.PERMISSION_REQUESTING)
+                            // The welcome only finishes with Bluetooth granted; the coordinator asks for anything else missing.
+                            onboardingCoordinator.requestPermissions()
                         }
-                        prefs.welcomed = true
-                        mainViewModel.updateOnboardingState(OnboardingState.PERMISSION_REQUESTING)
-                        // The welcome only finishes with Bluetooth granted; the coordinator asks for anything else missing.
-                        onboardingCoordinator.requestPermissions()
                     },
                     modifier = modifier,
                     initialNickname = initialNickname,
                     start = welcomeStart(prefs.welcomed, requiredGranted, notifications.isNotEmpty()),
                     askNotifications = notifications.isNotEmpty(),
-                    onNotificationsAsked = { permissionManager.markOptionalPermissionsRequested(notifications) },
+                    onNotificationsAsked = {
+                        prefs.withCurrentEpoch(policyEpoch) {
+                            permissionManager.markOptionalPermissionsRequested(notifications)
+                        }
+                    },
                 )
             }
 
