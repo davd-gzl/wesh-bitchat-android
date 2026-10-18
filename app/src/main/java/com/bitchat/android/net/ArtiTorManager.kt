@@ -41,7 +41,9 @@ class ArtiTorManager internal constructor(
     private val newProxy: (Application, ArtiLogListener) -> ArtiProxy = { app, listener ->
         ArtiProxy.Builder(app).setLogListener(listener).build()
     },
-    private val stopTimeoutMs: Long = STOP_TIMEOUT_MS
+    private val stopTimeoutMs: Long = STOP_TIMEOUT_MS,
+    private val appScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    private val modeFlow: StateFlow<TorMode> = TorPreferenceManager.modeFlow
 ) {
     enum class TorState {
         OFF,
@@ -76,8 +78,6 @@ class ArtiTorManager internal constructor(
             }
         }
     }
-
-    private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     @Volatile
     private var initialized = false
@@ -159,7 +159,7 @@ class ArtiTorManager internal constructor(
             appScope.launch {
                 // Not behind applyMutex, which a start holds for its whole bootstrap. The initial
                 // value is skipped: nothing runs yet, and the collector below applies it.
-                TorPreferenceManager.modeFlow.drop(1).collect { mode ->
+                modeFlow.drop(1).collect { mode ->
                     if (mode == TorMode.OFF) requestOff()
                 }
             }
@@ -168,8 +168,8 @@ class ArtiTorManager internal constructor(
                 // Applies the saved mode at start-up too (the first value), so there is a single ON
                 // to cancel. An immediate stop re-runs the serialized path, which then settles on the
                 // current mode.
-                combine(TorPreferenceManager.modeFlow, immediateStops) { mode, _ -> mode }.collect { mode ->
-                    applyMode(application, mode)
+                combine(modeFlow, immediateStops) { mode, _ -> mode }.collect { mode ->
+                    applyObservedMode(application, mode)
                 }
             }
         }
@@ -272,6 +272,11 @@ class ArtiTorManager internal constructor(
             }
             true
         } ?: false
+    }
+
+    /** Applies a value captured by the preference observer, distinct from an explicit command. */
+    internal suspend fun applyObservedMode(application: Application, mode: TorMode) {
+        applyMode(application, mode)
     }
 
     suspend fun applyMode(application: Application, mode: TorMode) {
