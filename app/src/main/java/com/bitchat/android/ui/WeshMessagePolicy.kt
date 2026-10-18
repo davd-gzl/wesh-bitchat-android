@@ -340,7 +340,9 @@ internal suspend fun resumeAfterWeshPanicWipe(
     /** Plain metadata, conversation organization and the fresh nickname were confirmed. */
     metadataCleared: Boolean = true,
     /** Seen receipt bookkeeping has completed its panic clear. */
-    seenCleared: Boolean
+    seenCleared: Boolean,
+    /** Checked identity and favorites cleanup; never inferred from a fresh key alone. */
+    identityErasureConfirmed: Boolean
 ): Boolean {
     val preferencesCleared = try {
         clearPreferences()
@@ -350,7 +352,7 @@ internal suspend fun resumeAfterWeshPanicWipe(
         false
     }
     if (!draftsCleared || !conversationsCleared || !mediaCleared || !internetCleared || !legacyStoresCleared ||
-        !metadataCleared || !seenCleared || !preferencesCleared
+        !metadataCleared || !seenCleared || !identityErasureConfirmed || !preferencesCleared
     ) return false
     return resume()
 }

@@ -1307,7 +1307,7 @@ class ChatViewModel(
         weshContactStore.clear()
         com.bitchat.android.services.WeshMessageRequests.clear()
         com.bitchat.android.services.SessionHiddenPeers.clear()
-        clearAllCryptographicData()
+        val cryptographyErasure = clearAllCryptographicData()
         
         // Clear all notifications
         notificationManager.clearAllNotifications(removeConversationShortcuts = true)
@@ -1344,6 +1344,7 @@ class ChatViewModel(
             legacyStoresCleared = legacyStoresCleared,
             metadataCleared = metadataCleared && nicknameSaved,
             seenCleared = seenCleared,
+            identityErasureConfirmed = cryptographyErasure.confirmed,
             clearPreferences = {
                 withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { weshPreferences.clearForPanic() }
             },
@@ -1426,34 +1427,18 @@ class ChatViewModel(
     /**
      * Clear all cryptographic data including persistent identity
      */
-    private fun clearAllCryptographicData() {
-        try {
-            // Clear encryption service persistent identity (Ed25519 signing keys)
-            mesh.clearAllEncryptionData()
-            
-            // Clear secure identity state (if used)
-            try {
-                val identityManager = SecureIdentityStateManager(getApplication())
-                identityManager.clearIdentityData()
-                // Also clear secure values used by FavoritesPersistenceService (favorites + peerID index)
-                try {
-                    identityManager.clearSecureValues("favorite_relationships", "favorite_peerid_index")
-                } catch (_: Exception) { }
-                Log.d(TAG, "✅ Cleared secure identity state and secure favorites store")
-            } catch (e: Exception) {
-                Log.d(TAG, "SecureIdentityStateManager not available or already cleared: ${e.message}")
-            }
-
-            // Clear FavoritesPersistenceService persistent relationships
-            try {
-                FavoritesPersistenceService.shared.clearAllFavorites()
-                Log.d(TAG, "✅ Cleared FavoritesPersistenceService relationships")
-            } catch (_: Exception) { }
-            
-            Log.d(TAG, "✅ Cleared all cryptographic data")
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error clearing cryptographic data: ${e.message}")
-        }
+    private fun clearAllCryptographicData(): PanicCryptographyErasure {
+        var identityManager: SecureIdentityStateManager? = null
+        return clearPanicCryptography(
+            clearMesh = { mesh.clearAllEncryptionData() },
+            clearIdentity = {
+                SecureIdentityStateManager(getApplication()).also { identityManager = it }.clearIdentityDataForPanic()
+            },
+            clearFavoriteKeys = {
+                checkNotNull(identityManager).clearSecureValuesForPanic("favorite_relationships", "favorite_peerid_index")
+            },
+            clearFavorites = { FavoritesPersistenceService.shared.clearAllFavoritesForPanic() }
+        )
     }
 
     // MARK: - Navigation Management
