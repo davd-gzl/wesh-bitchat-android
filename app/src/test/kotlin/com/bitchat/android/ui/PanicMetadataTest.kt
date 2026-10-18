@@ -137,7 +137,8 @@ class PanicMetadataTest {
                 gate.normalPanicCompleted()
                 true
             },
-            identityErasureConfirmed = true
+            identityErasureConfirmed = true,
+            meshOwnerRetired = true
         )
         assertEquals("Independent preference cleanup must still run", 1, preferenceClears)
         assertFalse("Unconfirmed metadata must retain global recovery", resumed)
@@ -165,7 +166,7 @@ class PanicMetadataTest {
         assertTrue(resumeAfterWeshPanicWipe(true, true, true, seenCleared = true,
             metadataCleared = true, clearPreferences = { true }, resume = {
                 backend.finishVerifiedWipe(); gate.normalPanicCompleted(); true
-            }, identityErasureConfirmed = true))
+            }, identityErasureConfirmed = true, meshOwnerRetired = true))
         assertFalse(File(directory.root, "wesh-drafts-wipe-v1").exists())
         assertTrue(gate.allowsTransport(prepared = true))
     }

@@ -178,7 +178,8 @@ class PanicStorageCompositionTest {
                 AppStateStore.resumePrivateConversationsAfterPanic()
                 true
             },
-            identityErasureConfirmed = true
+            identityErasureConfirmed = true,
+            meshOwnerRetired = true
         )
         if (resumed) preferences.resumeAfterVerifiedPanic()
         return resumed

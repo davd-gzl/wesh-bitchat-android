@@ -268,7 +268,8 @@ class SeenReceiptPanicAdmissionTest {
                 true
             }
         },
-        identityErasureConfirmed = true
+        identityErasureConfirmed = true,
+        meshOwnerRetired = true
     )
 
     private class Fixture(seeded: Boolean = false) {
