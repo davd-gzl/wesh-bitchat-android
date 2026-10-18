@@ -5,6 +5,7 @@ import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.protocol.MessageType
 import com.bitchat.android.protocol.SpecialRecipients
 import com.bitchat.android.model.RoutedPacket
+import com.bitchat.android.util.AppConstants
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import java.util.concurrent.atomic.AtomicLong
@@ -85,6 +86,9 @@ class PacketProcessor(
             Log.w(TAG, "Received packet with no peer ID, skipping")
             return
         }
+        // TTL is mutable and excluded from signatures. Reject inflated hop counts before
+        // they consume an actor slot or reach authentication, presence, storage or forwarding.
+        if (routed.packet.ttl > AppConstants.MAX_MESH_TTL_HOPS) return
         
         val bytes = queuedSize(routed)
         val link = quotaKey(routed, peerID)
@@ -179,6 +183,8 @@ class PacketProcessor(
     private suspend fun handleReceivedPacket(routed: RoutedPacket) {
         val packet = routed.packet
         val peerID = routed.peerID ?: "unknown"
+        // Re-check at dispatch, including packets supplied by reassembly.
+        if (packet.ttl > AppConstants.MAX_MESH_TTL_HOPS) return
 
         // Basic validation and security checks
         if (!delegate?.validatePacketSecurity(packet, peerID)!!) {
@@ -309,6 +315,9 @@ class PacketProcessor(
         if (result is FragmentResult.Refused) return false
         if (result !is FragmentResult.Complete) return true
         val reassembledPacket = result.packet
+        // A valid outer hop count does not authorize an inflated inner packet. Refuse the
+        // completed assembly as well, so its outer fragment cannot refresh presence or relay.
+        if (reassembledPacket.ttl > AppConstants.MAX_MESH_TTL_HOPS) return false
         if (reassembledPacket.type == MessageType.FRAGMENT.value) {
             // Fragments are never nested: refuse a second level of reassembly.
             Log.w(TAG, "Dropping nested fragment from ${formatPeerForLog(routed.peerID ?: "unknown")}")
