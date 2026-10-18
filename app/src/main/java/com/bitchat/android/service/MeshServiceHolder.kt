@@ -13,60 +13,35 @@ import com.bitchat.android.sync.GossipSyncManager
  */
 object MeshServiceHolder {
     private const val TAG = "MeshServiceHolder"
-    @Volatile
-    var sharedGossipSyncManager: GossipSyncManager? = null
-        private set
-
-    private val activeGossipOwners = mutableSetOf<String>()
-
-    @Synchronized
-    fun setGossipManager(
-        mgr: GossipSyncManager,
-        signer: (BitchatPacket) -> BitchatPacket
-    ) {
-        val previous = sharedGossipSyncManager
-        if (previous !== mgr) {
-            try { previous?.stop() } catch (_: Exception) { }
+    private val owner = MeshServiceHolderOwner(MeshServiceHolderPorts<BluetoothMeshService, UnifiedMeshService, GossipSyncManager>(
+        isReusable = { it.isReusable() },
+        stopBluetooth = { it.stopServices() },
+        refreshUnified = { it.refreshDelegates() },
+        startGossip = { it.start() },
+        stopGossip = { it.stop() },
+        clearGossip = { it.clear() },
+        installGossipDelegate = { manager, delegate -> manager.delegate = delegate },
+        broadcast = { TransportBridgeService.broadcastFromLocal(RoutedPacket(it)) },
+        sendToPeer = { peerID, packet -> TransportBridgeService.sendToPeerFromLocal(peerID, packet) },
+        log = { level, message ->
+            when (level) {
+                HolderLogLevel.DEBUG -> android.util.Log.d(TAG, message)
+                HolderLogLevel.INFO -> android.util.Log.i(TAG, message)
+                HolderLogLevel.WARN -> android.util.Log.w(TAG, message)
+                HolderLogLevel.ERROR -> android.util.Log.e(TAG, message)
+            }
         }
-        sharedGossipSyncManager = mgr
-        mgr.delegate = TransportGossipDelegate(signer)
-        if (activeGossipOwners.isNotEmpty()) {
-            mgr.start()
-        }
-    }
+    ))
 
-    @Synchronized
-    fun startSharedGossip(owner: String) {
-        val wasIdle = activeGossipOwners.isEmpty()
-        activeGossipOwners.add(owner)
-        if (wasIdle) {
-            sharedGossipSyncManager?.start()
-        }
-    }
+    val sharedGossipSyncManager: GossipSyncManager? get() = owner.sharedGossipSyncManager
+    val meshService: BluetoothMeshService? get() = owner.meshService
+    val unifiedMeshService: UnifiedMeshService? get() = owner.unifiedMeshService
 
-    @Synchronized
-    fun stopSharedGossip(owner: String) {
-        activeGossipOwners.remove(owner)
-        if (activeGossipOwners.isEmpty()) {
-            sharedGossipSyncManager?.stop()
-        }
-    }
+    fun setGossipManager(mgr: GossipSyncManager, signer: (BitchatPacket) -> BitchatPacket) =
+        owner.setGossipManager(mgr, signer)
 
-    private class TransportGossipDelegate(
-        private val signer: (BitchatPacket) -> BitchatPacket
-    ) : GossipSyncManager.Delegate {
-        override fun sendPacket(packet: BitchatPacket) {
-            TransportBridgeService.broadcastFromLocal(RoutedPacket(packet))
-        }
-
-        override fun sendPacketToPeer(peerID: String, packet: BitchatPacket) {
-            TransportBridgeService.sendToPeerFromLocal(peerID, packet)
-        }
-
-        override fun signPacketForBroadcast(packet: BitchatPacket): BitchatPacket {
-            return signer(packet)
-        }
-    }
+    fun startSharedGossip(owner: String) = this.owner.startSharedGossip(owner)
+    fun stopSharedGossip(owner: String) = this.owner.stopSharedGossip(owner)
 
     private fun createBluetooth(
         context: Context,
@@ -77,85 +52,19 @@ object MeshServiceHolder {
         BluetoothMeshService(context.applicationContext)
     }
 
-    @Volatile
-    var meshService: BluetoothMeshService? = null
-        private set
-
-    @Volatile
-    var unifiedMeshService: UnifiedMeshService? = null
-        private set
-
-    @Synchronized
     fun getOrCreate(
         context: Context,
         preparedEncryption: com.bitchat.android.crypto.EncryptionService? = null
-    ): BluetoothMeshService {
-        val existing = meshService
-        if (existing != null) {
-            // If the existing instance is healthy, reuse it; otherwise, replace it.
-            return try {
-                if (existing.isReusable()) {
-                    android.util.Log.d(TAG, "Reusing existing BluetoothMeshService instance")
-                    existing
-                } else {
-                    android.util.Log.w(TAG, "Existing BluetoothMeshService not reusable; replacing with a fresh instance")
-                    // Best-effort stop before replacing
-                    try { existing.stopServices() } catch (e: Exception) {
-                        android.util.Log.w(TAG, "Error while stopping non-reusable instance: ${e.message}")
-                    }
-                    val created = createBluetooth(context, preparedEncryption)
-                    android.util.Log.i(TAG, "Created new BluetoothMeshService (replacement)")
-                    meshService = created
-                    unifiedMeshService = null
-                    created
-                }
-            } catch (e: Exception) {
-                android.util.Log.e(TAG, "Error checking service reusability; creating new instance: ${e.message}")
-                val created = createBluetooth(context, preparedEncryption)
-                meshService = created
-                unifiedMeshService = null
-                created
-            }
-        }
-        val created = createBluetooth(context, preparedEncryption)
-        android.util.Log.i(TAG, "Created new BluetoothMeshService (no existing instance)")
-        meshService = created
-        unifiedMeshService = null
-        return created
-    }
+    ): BluetoothMeshService = owner.getOrCreate { createBluetooth(context, preparedEncryption) }
 
-    @Synchronized
     fun getUnifiedOrCreate(
         context: Context,
         preparedEncryption: com.bitchat.android.crypto.EncryptionService? = null
-    ): UnifiedMeshService {
-        val bluetooth = getOrCreate(context, preparedEncryption)
-        val existing = unifiedMeshService
-        if (existing != null) {
-            existing.refreshDelegates()
-            return existing
-        }
-        val created = UnifiedMeshService(context.applicationContext, bluetooth)
-        unifiedMeshService = created
-        android.util.Log.i(TAG, "Created new UnifiedMeshService")
-        return created
-    }
+    ): UnifiedMeshService = owner.getUnifiedOrCreate(
+        createBluetooth = { createBluetooth(context, preparedEncryption) },
+        createUnified = { UnifiedMeshService(context.applicationContext, it) }
+    )
 
-    @Synchronized
-    fun attach(service: BluetoothMeshService) {
-        android.util.Log.d(TAG, "Attaching BluetoothMeshService to holder")
-        meshService = service
-        unifiedMeshService = null
-    }
-
-    @Synchronized
-    fun clear() {
-        android.util.Log.d(TAG, "Clearing BluetoothMeshService from holder")
-        try { sharedGossipSyncManager?.clear() } catch (_: Exception) { }
-        try { sharedGossipSyncManager?.stop() } catch (_: Exception) { }
-        sharedGossipSyncManager = null
-        activeGossipOwners.clear()
-        meshService = null
-        unifiedMeshService = null
-    }
+    fun attach(service: BluetoothMeshService) = owner.attach(service)
+    fun clear() = owner.clear()
 }
