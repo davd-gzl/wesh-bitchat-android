@@ -46,6 +46,7 @@ import com.bitchat.android.ui.MeetingNoteState
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.WeshDraftStore
 import com.bitchat.android.ui.WeshMessagePolicy
+import com.bitchat.android.ui.WeshPreferences
 import com.bitchat.android.ui.weshNamesakes
 import com.bitchat.android.util.dataFromHexString
 import kotlinx.coroutines.delay
@@ -72,6 +73,14 @@ internal enum class PaveRoute(val parent: PaveRoute?) {
     Home(null), Public(Home), Private(Home), Requests(Home), Exchange(Home), Settings(Home),
     Profile(Settings), Discretion(Settings), Meeting(Settings), Blocked(Settings), Appearance(Settings),
     About(Settings), Licenses(About), Erase(Settings),
+}
+
+internal fun meetingNoteEditCallback(
+    preferences: WeshPreferences,
+    capturedEpoch: Long,
+    onAccepted: () -> Unit
+): (String) -> Unit = { text ->
+    if (preferences.editMeetingDraft(text, capturedEpoch)) onAccepted()
 }
 
 internal fun paveRouteFor(entry: PaveSettingsEntry): PaveRoute = when (entry) {
@@ -709,7 +718,7 @@ private fun ProfileRoute(viewModel: ChatViewModel, nickname: String, onBack: () 
 @Composable
 private fun MeetingRoute(viewModel: ChatViewModel, onBack: () -> Unit) {
     val prefs = viewModel.weshPreferences
-    val epoch by prefs.resetEpoch.collectAsState()
+    val epoch = prefs.resetEpoch.collectAsState().value
     val note by prefs.meetingDraft.collectAsState()
     val loadState by prefs.meetingNoteState.collectAsState()
     // Re-entering the screen restarts a load cancelled with the previous route.
@@ -728,7 +737,7 @@ private fun MeetingRoute(viewModel: ChatViewModel, onBack: () -> Unit) {
             Unit
         }) else null,
         note = note,
-        onNoteChange = { if (prefs.editMeetingDraft(it, epoch)) feedback = null },
+        onNoteChange = meetingNoteEditCallback(prefs, epoch) { feedback = null },
         saving = saving,
         onSave = {
             saving = true
