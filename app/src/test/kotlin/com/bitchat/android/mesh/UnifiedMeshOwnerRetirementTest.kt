@@ -32,6 +32,11 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.util.Date
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.ReentrantLock
 
 /** Actual facade and owned announcement job, with RAM transport/clock ports and no Context. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -40,6 +45,77 @@ import java.util.Date
 class UnifiedMeshOwnerRetirementTest {
     @Before fun setUp() { AppStateStore.clear() }
     @After fun tearDown() { AppStateStore.clear() }
+
+    @Test fun `transport start cannot hold facade monitor while an external holder refreshes delegates`() = runTest {
+        withFixture { f ->
+            f.facade.delegate = f.ui
+            val externalHolder = ReentrantLock()
+            val holderLocked = CountDownLatch(1)
+            val startPortEntered = CountDownLatch(1)
+            val refreshRequested = CountDownLatch(1)
+            val acquiredExternalLock = AtomicBoolean(false)
+            val workerErrors = ConcurrentLinkedQueue<Throwable>()
+            f.ble.startAction = {
+                try {
+                    startPortEntered.countDown()
+                    check(refreshRequested.await(5, TimeUnit.SECONDS)) { "Synthetic holder did not request refresh" }
+                    // A timed acquisition breaks the old lock cycle so even RED can reap both workers.
+                    if (externalHolder.tryLock(2, TimeUnit.SECONDS)) {
+                        try { acquiredExternalLock.set(true) } finally { externalHolder.unlock() }
+                    }
+                } catch (failure: Throwable) {
+                    // The facade catches transport exceptions; retain fixture failures independently.
+                    workerErrors.add(failure)
+                    throw failure
+                }
+            }
+            val holderThread = Thread({
+                try {
+                    externalHolder.lockInterruptibly()
+                    try {
+                        holderLocked.countDown()
+                        check(startPortEntered.await(5, TimeUnit.SECONDS)) { "Synthetic BLE start did not enter" }
+                        refreshRequested.countDown()
+                        f.facade.refreshDelegates()
+                    } finally {
+                        externalHolder.unlock()
+                    }
+                } catch (failure: Throwable) {
+                    workerErrors.add(failure)
+                }
+            }, "synthetic-holder-refresh").apply { isDaemon = true }
+            val startThread = Thread({
+                try {
+                    check(holderLocked.await(5, TimeUnit.SECONDS)) { "Synthetic holder did not acquire its lock" }
+                    f.facade.startServices()
+                } catch (failure: Throwable) {
+                    workerErrors.add(failure)
+                }
+            }, "synthetic-facade-start").apply { isDaemon = true }
+            var completedBeforeCleanup = false
+            try {
+                holderThread.start()
+                startThread.start()
+                startThread.join(7_000)
+                holderThread.join(7_000)
+                completedBeforeCleanup = !startThread.isAlive && !holderThread.isAlive
+            } finally {
+                holderLocked.countDown()
+                startPortEntered.countDown()
+                refreshRequested.countDown()
+                startThread.interrupt()
+                holderThread.interrupt()
+                startThread.join(5_000)
+                holderThread.join(5_000)
+            }
+            assertTrue("workers must finish before forced escape cleanup", completedBeforeCleanup)
+            assertFalse("owned synthetic start thread must exit", startThread.isAlive)
+            assertFalse("owned synthetic holder thread must exit", holderThread.isAlive)
+            assertTrue("synthetic workers must finish without errors: $workerErrors", workerErrors.isEmpty())
+            assertTrue("transport dispatch must release facade admission before acquiring the external holder lock",
+                acquiredExternalLock.get())
+        }
+    }
 
     @Test fun `retirement before start permanently refuses later transport starts`() = runTest {
         withFixture { f ->
@@ -434,10 +510,11 @@ class UnifiedMeshOwnerRetirementTest {
     private class FakeMesh(val label: String) : MeshService {
         val calls = mutableListOf<String>()
         var connected = true
+        var startAction: (() -> Unit)? = null
         var boundSend: (suspend (() -> Boolean) -> Boolean)? = null
         override val myPeerID = PEER
         override var delegate: MeshDelegate? = null
-        override fun startServices() { calls += "start" }
+        override fun startServices() { calls += "start"; startAction?.invoke() }
         override fun stopServices() { calls += "stop" }
         override fun sendMessage(content: String, mentions: List<String>) { calls += "public" }
         override fun sendPrivateMessage(content: String, recipientPeerID: String, recipientNickname: String, messageID: String?) { calls += "private" }
