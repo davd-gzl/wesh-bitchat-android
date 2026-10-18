@@ -37,7 +37,7 @@ class WeshMessagePolicyTest {
 
     @Test fun `refused public handoff preserves captured draft and creates no success echo`() = runTest {
         val drafts = WeshDraftStore()
-        drafts.save("public", "synthetic public")
+        drafts.save(drafts.epoch, "public", "synthetic public")
         val capture = requireNotNull(drafts.capture("public"))
         var echoes = 0
         val accepted = WeshMessagePolicy.sendPublicText(capture.text, "Synthetic", "peer-local",
@@ -50,7 +50,7 @@ class WeshMessagePolicyTest {
 
     @Test fun `pending public handoff creates no echo and late success preserves a newer draft`() = runTest {
         val drafts = WeshDraftStore()
-        drafts.save("public", "synthetic original")
+        drafts.save(drafts.epoch, "public", "synthetic original")
         val capture = requireNotNull(drafts.capture("public"))
         val awaitingHandoff = CompletableDeferred<Unit>()
         val acceptedHandoff = CompletableDeferred<Boolean>()
@@ -65,7 +65,7 @@ class WeshMessagePolicyTest {
         awaitingHandoff.await()
         assertEquals(0, echoes)
         assertEquals(capture.text, drafts.drafts.value["public"])
-        drafts.save("public", "synthetic newer")
+        drafts.save(drafts.epoch, "public", "synthetic newer")
         acceptedHandoff.complete(true)
         assertTrue(send.await())
         drafts.clearIfUnchanged(capture)
@@ -75,7 +75,7 @@ class WeshMessagePolicyTest {
 
     @Test fun `revoked admission before final echo preserves draft even after a local handoff`() = runTest {
         val drafts = WeshDraftStore()
-        drafts.save("public", "synthetic public")
+        drafts.save(drafts.epoch, "public", "synthetic public")
         val capture = requireNotNull(drafts.capture("public"))
         var allowed = true
         var echoes = 0
