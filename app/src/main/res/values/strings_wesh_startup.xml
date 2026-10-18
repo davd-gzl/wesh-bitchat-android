@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- Wesh startup, recovery and verification copy: English by default, French in values-fr. -->
+    <string name="wesh_startup_reset_title">Reset your identity?</string>
+    <string name="wesh_startup_reset_body">Your identity can’t be read on this phone. Resetting erases all Wesh data: identity, contacts, messages, drafts and settings. A new identity is created and your contacts will need to be verified again.</string>
+    <string name="wesh_startup_reset_confirm">Reset</string>
+    <string name="wesh_startup_cancel">Cancel</string>
+    <string name="wesh_startup_erase_title">Erase all Wesh data?</string>
+    <string name="wesh_startup_erase_body">Your identity, messages, drafts and settings will be lost. You will need to allow the permissions again after Wesh closes.</string>
+    <string name="wesh_startup_erase_confirm">Erase everything</string>
+    <string name="wesh_startup_erase_locked">An erase is unfinished or can’t be checked. Wesh stays locked to protect your data. You can ask Android to erase all Wesh data.</string>
+    <string name="wesh_startup_identity_unavailable">Your identity is unavailable for now. Try again without erasing the app’s data.</string>
+    <string name="wesh_startup_erase_failed">The erase request failed. Wesh stays locked. Try again or use the app’s Android settings.</string>
+    <string name="wesh_startup_erase_requested">Request sent to Android. Wesh will close; the erase isn’t confirmed yet.</string>
+    <string name="wesh_startup_erase_all">Erase all Wesh data</string>
+    <string name="wesh_startup_retry">Try again</string>
+    <string name="wesh_startup_reset_offer">Several attempts failed. If the problem continues, you can reset your identity.</string>
+    <string name="wesh_startup_reset_action">Reset identity</string>
+    <string name="wesh_startup_preparing">Getting Wesh ready…</string>
+    <string name="wesh_verify_app_settings">App settings</string>
+    <string name="wesh_verify_qr_description">QR code to verify your identity</string>
+</resources>

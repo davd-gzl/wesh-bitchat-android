@@ -1,25 +1,30 @@
 use jni::JNIEnv;
 use jni::objects::{JClass, JString, JObject, GlobalRef};
-use jni::sys::{jint, jstring};
+use jni::sys::{jint, jlong, jstring};
 use jni::JavaVM;
 
 use arti_client::TorClient;
 use arti_client::config::TorClientConfigBuilder;
 use tor_rtcompat::PreferredRuntime;
 
-use std::sync::{Arc, Mutex, Once};
+use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
+use std::time::Duration;
 use anyhow::Result;
 
 // ============================================================================
 // Global State
 // ============================================================================
 
-/// Global Arti client instance
-static ARTI_CLIENT: Mutex<Option<Arc<TorClient<PreferredRuntime>>>> = Mutex::new(None);
+/// Everything one start owns. Stopping drops all of it: no client, no runtime, no task.
+struct Session {
+    runtime: tokio::runtime::Runtime,
+    client: Arc<TorClient<PreferredRuntime>>,
+    socks_task: Option<tokio::task::JoinHandle<()>>,
+}
 
-/// Global Tokio runtime (must persist for Arti to work)
-static TOKIO_RUNTIME: Mutex<Option<tokio::runtime::Runtime>> = Mutex::new(None);
+/// The current session, if any. A new start or a stop always replaces it.
+static SESSION: lifecycle::Lifecycle<Session> = lifecycle::Lifecycle::new();
 
 /// Global JavaVM reference (cached on first JNI call)
 static JAVA_VM: Mutex<Option<JavaVM>> = Mutex::new(None);
@@ -27,11 +32,57 @@ static JAVA_VM: Mutex<Option<JavaVM>> = Mutex::new(None);
 /// Global log callback reference
 static LOG_CALLBACK: Mutex<Option<GlobalRef>> = Mutex::new(None);
 
-/// Handle to SOCKS server task (for graceful shutdown)
-static SOCKS_TASK: Mutex<Option<tokio::task::JoinHandle<()>>> = Mutex::new(None);
+/// How long a stop waits for the runtime's worker and blocking threads.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// Initialization flag
-static INIT_ONCE: Once = Once::new();
+/// How often an in-progress bootstrap checks whether a stop cancelled it.
+const CANCEL_POLL: Duration = Duration::from_millis(50);
+
+/// Longest a SOCKS client may take for its greeting, authentication and request. Our own
+/// clients answer at once over loopback; a short limit keeps stalled sockets from holding places.
+const SOCKS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Concurrent authenticated SOCKS connections. More are refused, so no local app can exhaust
+/// our file descriptors.
+const MAX_SOCKS_CONNECTIONS: usize = 64;
+
+/// Concurrent connections still in their handshake. Kept apart and small, so sockets that never
+/// authenticate cannot take the places of authenticated ones.
+const MAX_SOCKS_HANDSHAKES: usize = 16;
+
+/// Pause after a failed accept (for example out of file descriptors) before accepting again.
+const ACCEPT_RETRY: Duration = Duration::from_millis(500);
+
+/// At most one log line per interval for refused connections, so a burst cannot flood the logs.
+const REFUSAL_LOG_INTERVAL: Duration = Duration::from_secs(1);
+
+/// Aborts the SOCKS task, drops the client inside its runtime, then shuts the runtime down,
+/// which ends every Arti background task (circuits, guards, directory fetches). False when the
+/// runtime did not finish in time.
+fn teardown(session: Session) -> bool {
+    let Session { runtime, client, socks_task } = session;
+    if let Some(task) = socks_task {
+        task.abort();
+    }
+    {
+        let _context = runtime.enter();
+        drop(client);
+    }
+    shut_down(runtime)
+}
+
+/// Dropping a runtime waits for every task and thread it owns. False when that did not finish
+/// within SHUTDOWN_TIMEOUT: Tor work may still run, so the stop must be reported as failed.
+fn shut_down(runtime: tokio::runtime::Runtime) -> bool {
+    deadline::finishes_within(SHUTDOWN_TIMEOUT, move || drop(runtime))
+}
+
+/// Records a teardown that did not finish; every later stop then reports a failure.
+fn note_teardown(clean: bool) {
+    if !clean {
+        SESSION.mark_unclean();
+    }
+}
 
 // ============================================================================
 // Logging Integration
@@ -116,12 +167,26 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_setLogCallback(
     }
 }
 
-/// Initialize Arti runtime
+/// The stop generation. A start reads it before its first native call and passes it to
+/// initialize(), so a stop that completes in between still cancels that start.
+#[no_mangle]
+pub extern "C" fn Java_org_torproject_arti_ArtiNative_generation(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jlong {
+    SESSION.generation() as jlong
+}
+
+/// Initialize Arti: a fresh runtime and a freshly bootstrapped client on every call.
+///
+/// Returns 0 on success, -4 when a stop came after `generation` was read or cancelled the bootstrap,
+/// -5 when an earlier runtime did not stop in time: Tor work may still run, so nothing starts.
 #[no_mangle]
 pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
     mut env: JNIEnv,
     _class: JClass,
     data_dir: JString,
+    generation: jlong,
 ) -> jint {
     // Cache JavaVM if not already cached
     if JAVA_VM.lock().unwrap().is_none() {
@@ -141,28 +206,29 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
     log_info!("AMEx: state changed to Initialized");
     log_info!("Initializing Arti with data directory: {}", data_dir_str);
 
-    // Initialize Tokio runtime (once)
-    INIT_ONCE.call_once(|| {
-        match tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(rt) => {
-                log_info!("Tokio runtime created successfully");
-                *TOKIO_RUNTIME.lock().unwrap() = Some(rt);
-            }
-            Err(e) => {
-                log_error!("Failed to create Tokio runtime: {:?}", e);
-            }
-        }
-    });
+    // Waits out a stop in progress. A client left by an earlier start is released first:
+    // a start never reuses guards or circuits from before.
+    let (start, previous) = SESSION.begin_start(generation as u64);
+    if let Some(session) = previous {
+        log_info!("Releasing the previous Tor client");
+        note_teardown(teardown(session));
+    }
+    if SESSION.is_unclean() {
+        log_error!("A Tor runtime did not stop within {:?}; not starting", SHUTDOWN_TIMEOUT);
+        return -5;
+    }
+    if start.is_cancelled() {
+        log_info!("Arti start cancelled by an earlier stop");
+        return -4;
+    }
 
-    // Check if runtime exists
-    let runtime_guard = TOKIO_RUNTIME.lock().unwrap();
-    let runtime = match runtime_guard.as_ref() {
-        Some(rt) => rt,
-        None => {
-            log_error!("Tokio runtime not initialized");
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            log_error!("Failed to create Tokio runtime: {:?}", e);
             return -2;
         }
     };
@@ -176,7 +242,7 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
     std::fs::create_dir_all(&cache_dir).ok();
     std::fs::create_dir_all(&state_dir).ok();
 
-    let result: Result<()> = runtime.block_on(async {
+    let bootstrap = async {
         log_info!("Creating Arti client...");
         log_info!("Cache dir: {:?}", cache_dir);
         log_info!("State dir: {:?}", state_dir);
@@ -187,139 +253,285 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
 
         // Create client with Android-specific config
         let client = TorClient::create_bootstrapped(config).await?;
+        Ok::<_, anyhow::Error>(client)
+    };
 
-        log_info!("Arti client created successfully");
-
-        // Store client globally
-        *ARTI_CLIENT.lock().unwrap() = Some(Arc::new(client));
-
-        Ok(())
+    // A stop() during bootstrap wins: the bootstrap future is dropped within CANCEL_POLL.
+    let outcome = runtime.block_on(async {
+        tokio::select! {
+            result = bootstrap => Some(result),
+            _ = wait_until_cancelled(&start) => None,
+        }
     });
 
-    match result {
-        Ok(_) => {
-            log_info!("Arti initialized successfully");
-            0
+    // `start` stays held until the end of this function, so a waiting stop() returns only
+    // once the runtime below is gone.
+    match outcome {
+        Some(Ok(client)) => {
+            let session = Session { runtime, client: Arc::new(client), socks_task: None };
+            match start.install(session) {
+                Ok(()) => {
+                    log_info!("Arti client created successfully");
+                    log_info!("Arti initialized successfully");
+                    0
+                }
+                Err(session) => {
+                    log_info!("Arti stopped during bootstrap; client released");
+                    note_teardown(teardown(session));
+                    -4
+                }
+            }
         }
-        Err(e) => {
+        Some(Err(e)) => {
             log_error!("Failed to initialize Arti: {:?}", e);
+            note_teardown(shut_down(runtime));
             -3
+        }
+        None => {
+            log_info!("Arti bootstrap cancelled by stop");
+            note_teardown(shut_down(runtime));
+            -4
         }
     }
 }
 
-/// Start SOCKS proxy on specified port
+async fn wait_until_cancelled(start: &lifecycle::Start<'_, Session>) {
+    while !start.is_cancelled() {
+        tokio::time::sleep(CANCEL_POLL).await;
+    }
+}
+
+/// Start the SOCKS proxy on 127.0.0.1:`port`, accepting only RFC 1929 username/password
+/// authentication with the given per-start credentials.
 #[no_mangle]
-pub extern "C" fn Java_org_torproject_arti_ArtiNative_startSocksProxy(
-    _env: JNIEnv,
+pub extern "C" fn Java_org_torproject_arti_ArtiNative_startSocksProxyWithAuth(
+    mut env: JNIEnv,
     _class: JClass,
     port: jint,
+    username: JString,
+    password: JString,
 ) -> jint {
     log_info!("AMEx: state changed to Starting");
     log_info!("Starting SOCKS proxy on port {}", port);
 
-    // Stop any existing SOCKS server first
-    if let Some(handle) = SOCKS_TASK.lock().unwrap().take() {
-        log_info!("Aborting previous SOCKS server task");
-        handle.abort();
-    }
-
-    let client_guard = ARTI_CLIENT.lock().unwrap();
-    let client = match client_guard.as_ref() {
-        Some(c) => Arc::clone(c),
+    let username: Option<String> = env.get_string(&username).ok().map(Into::into);
+    let password: Option<String> = env.get_string(&password).ok().map(Into::into);
+    let credentials = match username.zip(password)
+        .and_then(|(u, p)| socks_auth::Credentials::new(u.into_bytes(), p.into_bytes()))
+    {
+        Some(c) => Arc::new(c),
         None => {
-            log_error!("Arti client not initialized - call initialize() first");
-            return -1;
-        }
-    };
-    drop(client_guard);
-
-    let runtime_guard = TOKIO_RUNTIME.lock().unwrap();
-    let runtime = match runtime_guard.as_ref() {
-        Some(rt) => rt,
-        None => {
-            log_error!("Tokio runtime not initialized");
-            return -2;
+            log_error!("SOCKS credentials missing or invalid");
+            return -4;
         }
     };
 
     // Try to bind IMMEDIATELY to detect port conflicts before returning
     let addr = format!("127.0.0.1:{}", port);
 
-    // Use block_on to synchronously attempt binding
-    let bind_result = runtime.block_on(async {
-        tokio::net::TcpListener::bind(&addr).await
+    let started = SESSION.with_current(|session| {
+        // Stop any existing SOCKS server first
+        if let Some(handle) = session.socks_task.take() {
+            log_info!("Aborting previous SOCKS server task");
+            handle.abort();
+        }
+
+        let listener = match session.runtime.block_on(tokio::net::TcpListener::bind(&addr)) {
+            Ok(l) => {
+                log_info!("SOCKS proxy bound to {}", addr);
+                l
+            }
+            Err(e) => {
+                log_error!("Failed to bind SOCKS proxy to {}: {:?}", addr, e);
+                return -3;
+            }
+        };
+
+        let client = Arc::clone(&session.client);
+        let addr = addr.clone();
+        // Now spawn the background task with the already-bound listener
+        let handle = session.runtime.spawn(async move {
+            log_info!("SOCKS proxy listening on {}", addr);
+            log_info!("Sufficiently bootstrapped; system SOCKS now functional");
+
+            // Signal bootstrap completion to bitchat-android (expected by ArtiTorManager)
+            // This sets bootstrapPercent to 100% and stops inactivity restarts
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            log_info!("We have found that guard [scrubbed] is usable.");
+
+            // Accept connections. Logs name a connection by a counter only, never its destination.
+            let handshakes = Arc::new(tokio::sync::Semaphore::new(MAX_SOCKS_HANDSHAKES));
+            let slots = Arc::new(tokio::sync::Semaphore::new(MAX_SOCKS_CONNECTIONS));
+            let mut next_id: u64 = 0;
+            let mut refused: u64 = 0;
+            let mut last_refusal_log: Option<std::time::Instant> = None;
+            loop {
+                match listener.accept().await {
+                    Ok((stream, _peer_addr)) => {
+                        next_id += 1;
+                        let id = next_id;
+                        let Ok(handshake) = Arc::clone(&handshakes).try_acquire_owned() else {
+                            drop(stream);
+                            refused += 1;
+                            if last_refusal_log.map_or(true, |t| t.elapsed() >= REFUSAL_LOG_INTERVAL) {
+                                log_error!("SOCKS: {} connections refused, too many handshakes", refused);
+                                refused = 0;
+                                last_refusal_log = Some(std::time::Instant::now());
+                            }
+                            continue;
+                        };
+                        let client_clone = Arc::clone(&client);
+                        let credentials = Arc::clone(&credentials);
+                        let slots = Arc::clone(&slots);
+
+                        tokio::spawn(async move {
+                            if let Err(e) = handle_socks_connection(id, stream, client_clone, credentials, handshake, slots).await {
+                                log_error!("SOCKS connection {}: {}", id, e);
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        // Keep serving: a transient error such as EMFILE must not end the proxy.
+                        log_error!("Failed to accept SOCKS connection: {:?}", e);
+                        tokio::time::sleep(ACCEPT_RETRY).await;
+                    }
+                }
+            }
+        });
+
+        // Store handle for cleanup
+        session.socks_task = Some(handle);
+        0
     });
 
-    let listener = match bind_result {
-        Ok(l) => {
-            log_info!("SOCKS proxy bound to {}", addr);
-            l
+    match started {
+        Some(0) => {
+            log_info!("SOCKS proxy started on port {}", port);
+            0
         }
-        Err(e) => {
-            log_error!("Failed to bind SOCKS proxy to {}: {:?}", addr, e);
-            return -3;
+        Some(code) => code,
+        None => {
+            log_error!("Arti client not initialized - call initialize() first");
+            -1
+        }
+    }
+}
+
+/// Handle a single SOCKS connection. `handshake` is held until the request is read; a place
+/// in `slots` is taken only after authentication.
+async fn handle_socks_connection(
+    id: u64,
+    mut stream: tokio::net::TcpStream,
+    client: Arc<TorClient<PreferredRuntime>>,
+    credentials: Arc<socks_auth::Credentials>,
+    handshake: tokio::sync::OwnedSemaphorePermit,
+    slots: Arc<tokio::sync::Semaphore>,
+) -> Result<()> {
+    use tokio::io::AsyncWriteExt;
+
+    // A client that stalls before its request never holds a handshake place for long.
+    let (target_host, target_port) =
+        match tokio::time::timeout(SOCKS_HANDSHAKE_TIMEOUT, socks_handshake(&mut stream, &credentials)).await {
+            Ok(target) => target?,
+            Err(_) => return Err(anyhow::anyhow!("SOCKS handshake timed out")),
+        };
+    drop(handshake);
+
+    let Ok(_slot) = slots.try_acquire_owned() else {
+        // General failure: the client may retry once a connection closes.
+        stream.write_all(&[0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
+        return Err(anyhow::anyhow!("SOCKS connection limit reached"));
+    };
+
+    log_info!("SOCKS connection {}: CONNECT", id);
+
+    // Establish Tor connection. The Arti error may name the destination, so it is not logged.
+    let tor_stream = match client.connect((target_host.as_str(), target_port)).await {
+        Ok(s) => s,
+        Err(_) => {
+            // Send SOCKS5 error: general failure
+            stream.write_all(&[0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
+            return Err(anyhow::anyhow!("Failed to connect through Tor"));
         }
     };
 
-    // Now spawn the background task with the already-bound listener
-    let handle = runtime.spawn(async move {
-        log_info!("SOCKS proxy listening on {}", addr);
-        log_info!("Sufficiently bootstrapped; system SOCKS now functional");
+    log_info!("SOCKS connection {}: Tor stream established", id);
 
-        // Signal bootstrap completion to bitchat-android (expected by ArtiTorManager)
-        // This sets bootstrapPercent to 100% and stops inactivity restarts
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-        log_info!("We have found that guard [scrubbed] is usable.");
+    // Send SOCKS5 success response
+    stream.write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
 
-        // Accept connections
-        loop {
-            match listener.accept().await {
-                Ok((stream, peer_addr)) => {
-                    log_info!("SOCKS connection from: {}", peer_addr);
-                    let client_clone = Arc::clone(&client);
+    // Bidirectional data forwarding
+    let (mut client_read, mut client_write) = stream.split();
+    let (mut tor_read, mut tor_write) = tor_stream.split();
 
-                    tokio::spawn(async move {
-                        if let Err(e) = handle_socks_connection(stream, client_clone).await {
-                            log_error!("SOCKS connection error: {:?}", e);
-                        }
-                    });
-                }
-                Err(e) => {
-                    log_error!("Failed to accept SOCKS connection: {:?}", e);
-                    break; // Exit loop on error
-                }
+    let client_to_tor = async {
+        tokio::io::copy(&mut client_read, &mut tor_write).await
+    };
+
+    let tor_to_client = async {
+        tokio::io::copy(&mut tor_read, &mut client_write).await
+    };
+
+    // Run both directions concurrently, exit when either completes
+    tokio::select! {
+        result = client_to_tor => {
+            if let Err(ref e) = result {
+                log_error!("Client->Tor copy error: {:?}", e.kind());
             }
         }
+        result = tor_to_client => {
+            if let Err(ref e) = result {
+                log_error!("Tor->Client copy error: {:?}", e.kind());
+            }
+        }
+    };
 
-        log_info!("SOCKS proxy task exiting");
-    });
+    log_info!("SOCKS connection {}: closed", id);
 
-    // Store handle for cleanup
-    *SOCKS_TASK.lock().unwrap() = Some(handle);
-
-    log_info!("SOCKS proxy started on port {}", port);
-    0
+    Ok(())
 }
 
-/// Handle a single SOCKS connection
-async fn handle_socks_connection(
-    mut stream: tokio::net::TcpStream,
-    client: Arc<TorClient<PreferredRuntime>>,
-) -> Result<()> {
+/// Greeting, username/password authentication and CONNECT request; returns the target.
+async fn socks_handshake(
+    stream: &mut tokio::net::TcpStream,
+    credentials: &socks_auth::Credentials,
+) -> Result<(String, u16)> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    // Simple SOCKS5 handshake
-    let mut buf = [0u8; 512];
-
-    // Read version + methods
-    let n = stream.read(&mut buf).await?;
-    if n < 2 {
-        return Err(anyhow::anyhow!("Invalid SOCKS handshake"));
+    // Greeting: VER NMETHODS METHODS. Only username/password is accepted, so another app
+    // on the phone cannot use this port without the per-start credentials.
+    let mut head = [0u8; 2];
+    stream.read_exact(&mut head).await?;
+    if head[0] != 0x05 {
+        return Err(anyhow::anyhow!("Unsupported SOCKS version: {}", head[0]));
+    }
+    let mut methods = vec![0u8; head[1] as usize];
+    stream.read_exact(&mut methods).await?;
+    let method = socks_auth::choose_method(&methods);
+    stream.write_all(&[0x05, method]).await?;
+    if method != socks_auth::USER_PASS {
+        return Err(anyhow::anyhow!("SOCKS client offered no username/password"));
     }
 
-    // Send "no auth required" response
-    stream.write_all(&[0x05, 0x00]).await?;
+    // RFC 1929: VER(1)=1 ULEN UNAME PLEN PASSWD
+    let mut auth_head = [0u8; 2];
+    stream.read_exact(&mut auth_head).await?;
+    if auth_head[0] != 0x01 {
+        return Err(anyhow::anyhow!("Unsupported SOCKS auth version: {}", auth_head[0]));
+    }
+    let mut user = vec![0u8; auth_head[1] as usize];
+    stream.read_exact(&mut user).await?;
+    let mut pass_len = [0u8; 1];
+    stream.read_exact(&mut pass_len).await?;
+    let mut pass = vec![0u8; pass_len[0] as usize];
+    stream.read_exact(&mut pass).await?;
+    let accepted = credentials.accepts(&user, &pass);
+    stream.write_all(&[0x01, if accepted { 0x00 } else { 0x01 }]).await?;
+    if !accepted {
+        return Err(anyhow::anyhow!("SOCKS authentication failed"));
+    }
+
+    let mut buf = [0u8; 512];
 
     // Read request
     let n = stream.read(&mut buf).await?;
@@ -356,7 +568,10 @@ async fn handle_socks_connection(
             if n < 5 + len + 2 {
                 return Err(anyhow::anyhow!("Invalid domain name length"));
             }
-            let domain = String::from_utf8_lossy(&buf[5..5 + len]).to_string();
+            let Some(domain) = socks_auth::domain(&buf[5..5 + len]) else {
+                stream.write_all(&[0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
+                return Err(anyhow::anyhow!("Invalid domain name"));
+            };
             let port = u16::from_be_bytes([buf[5 + len], buf[5 + len + 1]]);
             (domain, port)
         }
@@ -379,57 +594,13 @@ async fn handle_socks_connection(
             return Err(anyhow::anyhow!("Unsupported address type: {}", atyp));
         }
     };
-
-    log_info!("SOCKS5 CONNECT to {}:{}", target_host, target_port);
-
-    // Establish Tor connection
-    let tor_stream = match client.connect((target_host.as_str(), target_port)).await {
-        Ok(s) => s,
-        Err(e) => {
-            log_error!("Failed to connect through Tor: {:?}", e);
-            // Send SOCKS5 error: general failure
-            stream.write_all(&[0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
-            return Err(e.into());
-        }
-    };
-
-    log_info!("Tor connection established to {}:{}", target_host, target_port);
-
-    // Send SOCKS5 success response
-    stream.write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
-
-    // Bidirectional data forwarding
-    let (mut client_read, mut client_write) = stream.split();
-    let (mut tor_read, mut tor_write) = tor_stream.split();
-
-    let client_to_tor = async {
-        tokio::io::copy(&mut client_read, &mut tor_write).await
-    };
-
-    let tor_to_client = async {
-        tokio::io::copy(&mut tor_read, &mut client_write).await
-    };
-
-    // Run both directions concurrently, exit when either completes
-    tokio::select! {
-        result = client_to_tor => {
-            if let Err(ref e) = result {
-                log_error!("Client->Tor copy error: {:?}", e);
-            }
-        }
-        result = tor_to_client => {
-            if let Err(ref e) = result {
-                log_error!("Tor->Client copy error: {:?}", e);
-            }
-        }
-    };
-
-    log_info!("SOCKS connection closed for {}:{}", target_host, target_port);
-
-    Ok(())
+    Ok((target_host, target_port))
 }
 
-/// Stop Arti and cleanup
+/// Stop Arti: cancels a bootstrap in progress, then drops the client and shuts its runtime
+/// down. When this returns 0 no Tor task is left, so the data directory can be deleted and the
+/// next initialize() builds a new client with new guards. Returns -5 when a runtime did not
+/// stop in time, now or earlier in this process: Tor work may still run.
 #[no_mangle]
 pub extern "C" fn Java_org_torproject_arti_ArtiNative_stop(
     _env: JNIEnv,
@@ -438,27 +609,18 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_stop(
     log_info!("AMEx: state changed to Stopping");
     log_info!("Stopping Arti...");
 
-    // Abort SOCKS proxy task (releases the port)
-    if let Some(handle) = SOCKS_TASK.lock().unwrap().take() {
-        log_info!("Aborting SOCKS server task");
-        handle.abort();
+    let mut stop = SESSION.begin_stop();
+    if let Some(session) = stop.take() {
+        log_info!("Releasing the Tor client");
+        note_teardown(teardown(session));
     }
-
-    // Give the abort a moment to complete and release the port
-    if let Some(rt) = TOKIO_RUNTIME.lock().unwrap().as_ref() {
-        rt.block_on(async {
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        });
-    }
-
-    // NOTE: We do NOT clear ARTI_CLIENT here!
-    // The TorClient can be reused for multiple SOCKS proxy start/stop cycles.
-    // Only clear it if you want to force full reinitialization.
-
-    // Uncomment this line only if you want to force reinitialization on every start:
-    // *ARTI_CLIENT.lock().unwrap() = None;
+    drop(stop);
 
     log_info!("AMEx: state changed to Stopped");
+    if SESSION.is_unclean() {
+        log_error!("A Tor runtime did not stop within {:?}", SHUTDOWN_TIMEOUT);
+        return -5;
+    }
     log_info!("Arti stopped successfully");
 
     0
@@ -486,8 +648,430 @@ mod android_logger {
     pub fn log(message: &str) {
         unsafe {
             let tag = CString::new("ArtiNative").unwrap();
-            let text = CString::new(message).unwrap();
+            // A NUL byte (from a peer-supplied host name, say) must never panic across JNI.
+            let Ok(text) = CString::new(message.replace('\0', "\\0")) else { return };
             __android_log_write(ANDROID_LOG_INFO, tag.as_ptr() as *const c_char, text.as_ptr() as *const c_char);
+        }
+    }
+}
+
+// ============================================================================
+// Start/stop bookkeeping (std only: no Arti, Tokio or JNI, so it is testable alone)
+// ============================================================================
+
+mod lifecycle {
+    use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
+
+    struct Inner<R> {
+        /// Bumped by every stop; a start that sees it change has been cancelled.
+        generation: u64,
+        /// A start or stop is in progress; the other side waits.
+        busy: bool,
+        current: Option<R>,
+        /// A teardown did not finish in time. Never cleared: its threads may still run.
+        unclean: bool,
+    }
+
+    /// Holds at most one session. Starts and stops never overlap, and a stop cancels a start
+    /// in progress instead of waiting for it to finish.
+    pub struct Lifecycle<R> {
+        inner: Mutex<Inner<R>>,
+        changed: Condvar,
+    }
+
+    impl<R> Lifecycle<R> {
+        pub const fn new() -> Self {
+            Self {
+                inner: Mutex::new(Inner { generation: 0, busy: false, current: None, unclean: false }),
+                changed: Condvar::new(),
+            }
+        }
+
+        fn lock(&self) -> MutexGuard<'_, Inner<R>> {
+            self.inner.lock().unwrap_or_else(PoisonError::into_inner)
+        }
+
+        fn wait_idle<'a>(&'a self, mut inner: MutexGuard<'a, Inner<R>>) -> MutexGuard<'a, Inner<R>> {
+            while inner.busy {
+                inner = self.changed.wait(inner).unwrap_or_else(PoisonError::into_inner);
+            }
+            inner
+        }
+
+        fn release(&self) {
+            self.lock().busy = false;
+            self.changed.notify_all();
+        }
+
+        /// The stop generation, read by a start before it waits for anything.
+        pub fn generation(&self) -> u64 {
+            self.lock().generation
+        }
+
+        /// Waits out any other start or stop, then returns the previous session for teardown:
+        /// every start builds a fresh one. `generation` was read before the caller began, so any
+        /// stop since then, even one this start queued behind, leaves it cancelled.
+        pub fn begin_start(&self, generation: u64) -> (Start<'_, R>, Option<R>) {
+            let mut inner = self.wait_idle(self.lock());
+            inner.busy = true;
+            let previous = inner.current.take();
+            (Start { owner: self, generation }, previous)
+        }
+
+        pub fn mark_unclean(&self) {
+            self.lock().unclean = true;
+        }
+
+        pub fn is_unclean(&self) -> bool {
+            self.lock().unclean
+        }
+
+        /// Cancels a start in progress, waits for it to return, and takes the current session.
+        pub fn begin_stop(&self) -> Stop<'_, R> {
+            let mut inner = self.lock();
+            inner.generation = inner.generation.wrapping_add(1);
+            let mut inner = self.wait_idle(inner);
+            inner.busy = true;
+            let current = inner.current.take();
+            Stop { owner: self, current }
+        }
+
+        /// Runs `f` on the current session; None when there is none.
+        pub fn with_current<T>(&self, f: impl FnOnce(&mut R) -> T) -> Option<T> {
+            self.lock().current.as_mut().map(f)
+        }
+    }
+
+    /// A start in progress. Dropping it lets a waiting stop proceed.
+    pub struct Start<'a, R> {
+        owner: &'a Lifecycle<R>,
+        generation: u64,
+    }
+
+    impl<R> Start<'_, R> {
+        pub fn is_cancelled(&self) -> bool {
+            self.owner.lock().generation != self.generation
+        }
+
+        /// Publishes the session unless a stop came in meanwhile; then it is handed back.
+        pub fn install(&self, session: R) -> Result<(), R> {
+            let mut inner = self.owner.lock();
+            if inner.generation != self.generation {
+                return Err(session);
+            }
+            inner.current = Some(session);
+            Ok(())
+        }
+    }
+
+    impl<R> Drop for Start<'_, R> {
+        fn drop(&mut self) {
+            self.owner.release();
+        }
+    }
+
+    /// A stop in progress: holds the session it took until torn down.
+    pub struct Stop<'a, R> {
+        owner: &'a Lifecycle<R>,
+        current: Option<R>,
+    }
+
+    impl<R> Stop<'_, R> {
+        pub fn take(&mut self) -> Option<R> {
+            self.current.take()
+        }
+    }
+
+    impl<R> Drop for Stop<'_, R> {
+        fn drop(&mut self) {
+            self.owner.release();
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::Lifecycle;
+        use std::sync::mpsc;
+        use std::sync::Arc;
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        #[test]
+        fn start_stop_start_builds_a_new_session() {
+            let life = Lifecycle::new();
+            let (start, previous) = life.begin_start(life.generation());
+            assert!(previous.is_none());
+            assert!(start.install(1).is_ok());
+            drop(start);
+
+            let mut stop = life.begin_stop();
+            assert_eq!(stop.take(), Some(1));
+            drop(stop);
+            assert_eq!(life.with_current(|s| *s), None);
+
+            let (start, previous) = life.begin_start(life.generation());
+            assert!(previous.is_none(), "the stopped session is never handed to the next start");
+            assert!(!start.is_cancelled());
+            assert!(start.install(2).is_ok());
+            drop(start);
+            assert_eq!(life.with_current(|s| *s), Some(2));
+        }
+
+        #[test]
+        fn a_start_without_stop_still_releases_the_previous_session() {
+            let life = Lifecycle::new();
+            let (start, _) = life.begin_start(life.generation());
+            start.install(1).unwrap();
+            drop(start);
+            let (start, previous) = life.begin_start(life.generation());
+            assert_eq!(previous, Some(1));
+            start.install(2).unwrap();
+            drop(start);
+            assert_eq!(life.with_current(|s| *s), Some(2));
+        }
+
+        #[test]
+        fn stop_during_start_returns_promptly_and_the_start_is_refused() {
+            let life = Arc::new(Lifecycle::new());
+            let (started_tx, started_rx) = mpsc::channel();
+            let worker = {
+                let life = Arc::clone(&life);
+                thread::spawn(move || {
+                    let (start, _) = life.begin_start(life.generation());
+                    started_tx.send(()).unwrap();
+                    // A bootstrap that would take a minute unless cancelled.
+                    let deadline = Instant::now() + Duration::from_secs(60);
+                    while !start.is_cancelled() && Instant::now() < deadline {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    start.install(7)
+                })
+            };
+            started_rx.recv().unwrap();
+            let began = Instant::now();
+            let mut stop = life.begin_stop();
+            assert!(began.elapsed() < Duration::from_secs(2), "stop waited for the whole bootstrap");
+            assert_eq!(stop.take(), None);
+            drop(stop);
+            assert_eq!(worker.join().unwrap(), Err(7), "a cancelled start must hand its session back");
+            assert_eq!(life.with_current(|s| *s), None);
+        }
+
+        #[test]
+        fn stop_waits_for_a_cancelled_start_to_finish_its_teardown() {
+            let life = Arc::new(Lifecycle::<u32>::new());
+            let (started_tx, started_rx) = mpsc::channel();
+            let (torn_down_tx, torn_down_rx) = mpsc::channel();
+            let worker = {
+                let life = Arc::clone(&life);
+                thread::spawn(move || {
+                    let (start, _) = life.begin_start(life.generation());
+                    started_tx.send(()).unwrap();
+                    while !start.is_cancelled() {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    thread::sleep(Duration::from_millis(50));
+                    torn_down_tx.send(()).unwrap();
+                })
+            };
+            started_rx.recv().unwrap();
+            let stop = life.begin_stop();
+            assert!(torn_down_rx.try_recv().is_ok(), "stop returned before the start released its runtime");
+            drop(stop);
+            worker.join().unwrap();
+        }
+
+        #[test]
+        fn a_stop_after_the_generation_was_read_cancels_the_start() {
+            let life = Lifecycle::<u32>::new();
+            let generation = life.generation();
+            drop(life.begin_stop());
+            let (start, _) = life.begin_start(generation);
+            assert!(start.is_cancelled());
+            assert_eq!(start.install(1), Err(1));
+        }
+
+        #[test]
+        fn a_start_queued_behind_another_cannot_escape_a_stop() {
+            for _ in 0..50 {
+                let life = Arc::new(Lifecycle::<u32>::new());
+                let (a_tx, a_rx) = mpsc::channel();
+                let a = {
+                    let life = Arc::clone(&life);
+                    thread::spawn(move || {
+                        let (start, _) = life.begin_start(life.generation());
+                        a_tx.send(()).unwrap();
+                        while !start.is_cancelled() {
+                            thread::sleep(Duration::from_millis(1));
+                        }
+                    })
+                };
+                a_rx.recv().unwrap();
+                let (b_tx, b_rx) = mpsc::channel();
+                let b = {
+                    let life = Arc::clone(&life);
+                    thread::spawn(move || {
+                        let generation = life.generation();
+                        b_tx.send(()).unwrap();
+                        // Queued behind A until the stop below.
+                        let (start, _) = life.begin_start(generation);
+                        let began = Instant::now();
+                        while !start.is_cancelled() && began.elapsed() < Duration::from_secs(2) {
+                            thread::sleep(Duration::from_millis(1));
+                        }
+                        start.is_cancelled()
+                    })
+                };
+                b_rx.recv().unwrap();
+                thread::sleep(Duration::from_millis(5));
+                let began = Instant::now();
+                drop(life.begin_stop());
+                assert!(began.elapsed() < Duration::from_secs(1), "the stop waited for B's bootstrap");
+                a.join().unwrap();
+                assert!(b.join().unwrap(), "a queued start escaped the stop");
+            }
+        }
+
+        #[test]
+        fn an_unclean_teardown_is_remembered() {
+            let life = Lifecycle::<u32>::new();
+            assert!(!life.is_unclean());
+            life.mark_unclean();
+            drop(life.begin_stop());
+            assert!(life.is_unclean());
+        }
+
+        #[test]
+        fn a_start_after_a_stop_is_not_cancelled() {
+            let life = Lifecycle::new();
+            drop(life.begin_stop());
+            drop(life.begin_stop());
+            let (start, _) = life.begin_start(life.generation());
+            assert!(!start.is_cancelled());
+            assert!(start.install(3).is_ok());
+        }
+    }
+}
+
+// ============================================================================
+// Teardown deadline (std only)
+// ============================================================================
+
+mod deadline {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    /// Runs `work` on its own thread; true only if it finished within `limit`. Work that is
+    /// late keeps running on that thread.
+    pub fn finishes_within<F: FnOnce() + Send + 'static>(limit: Duration, work: F) -> bool {
+        let (done, finished) = mpsc::channel();
+        let spawned = std::thread::Builder::new()
+            .name("arti-teardown".into())
+            .spawn(move || {
+                work();
+                let _ = done.send(());
+            });
+        spawned.is_ok() && finished.recv_timeout(limit).is_ok()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::finishes_within;
+        use std::time::Duration;
+
+        #[test]
+        fn quick_work_finishes() {
+            assert!(finishes_within(Duration::from_secs(5), || {}));
+        }
+
+        #[test]
+        fn late_work_is_reported() {
+            assert!(!finishes_within(Duration::from_millis(50), || std::thread::sleep(Duration::from_millis(500))));
+        }
+    }
+}
+
+// ============================================================================
+// SOCKS5 username/password and request rules (std only)
+// ============================================================================
+
+mod socks_auth {
+    pub const USER_PASS: u8 = 0x02;
+    pub const NO_ACCEPTABLE: u8 = 0xFF;
+
+    /// Username/password (RFC 1929) is the only method accepted.
+    pub fn choose_method(offered: &[u8]) -> u8 {
+        if offered.contains(&USER_PASS) { USER_PASS } else { NO_ACCEPTABLE }
+    }
+
+    /// Compares without stopping at the first difference.
+    fn same(expected: &[u8], given: &[u8]) -> bool {
+        let mut diff = expected.len() ^ given.len();
+        for (i, byte) in expected.iter().enumerate() {
+            diff |= usize::from(byte ^ given.get(i).copied().unwrap_or(0));
+        }
+        diff == 0
+    }
+
+    pub struct Credentials {
+        username: Vec<u8>,
+        password: Vec<u8>,
+    }
+
+    impl Credentials {
+        /// None for an empty or over-long value: an empty secret would let any local app in.
+        pub fn new(username: Vec<u8>, password: Vec<u8>) -> Option<Self> {
+            let valid = |v: &Vec<u8>| !v.is_empty() && v.len() <= 255;
+            (valid(&username) && valid(&password)).then_some(Self { username, password })
+        }
+
+        pub fn accepts(&self, username: &[u8], password: &[u8]) -> bool {
+            same(&self.username, username) & same(&self.password, password)
+        }
+    }
+
+    /// A requested host name: nonempty UTF-8 without NUL, or None and the request is refused.
+    pub fn domain(bytes: &[u8]) -> Option<String> {
+        let name = std::str::from_utf8(bytes).ok()?;
+        (!name.is_empty() && !name.contains('\0')).then(|| name.to_owned())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn only_username_password_is_offered_back() {
+            assert_eq!(choose_method(&[0x00, 0x02]), USER_PASS);
+            assert_eq!(choose_method(&[0x02]), USER_PASS);
+            assert_eq!(choose_method(&[0x00]), NO_ACCEPTABLE);
+            assert_eq!(choose_method(&[]), NO_ACCEPTABLE);
+        }
+
+        #[test]
+        fn only_the_exact_credentials_are_accepted() {
+            let c = Credentials::new(b"synthetic-user".to_vec(), b"synthetic-pass".to_vec()).unwrap();
+            assert!(c.accepts(b"synthetic-user", b"synthetic-pass"));
+            assert!(!c.accepts(b"synthetic-user", b"synthetic-pas"));
+            assert!(!c.accepts(b"synthetic-user", b"synthetic-pass!"));
+            assert!(!c.accepts(b"other-user", b"synthetic-pass"));
+            assert!(!c.accepts(b"", b""));
+        }
+
+        #[test]
+        fn host_names_with_nul_or_invalid_utf8_are_refused() {
+            assert_eq!(domain(b"example.onion").as_deref(), Some("example.onion"));
+            assert_eq!(domain(b"exa\0mple.org"), None);
+            assert_eq!(domain(b""), None);
+            assert_eq!(domain(&[0xff, 0xfe]), None);
+        }
+
+        #[test]
+        fn empty_or_oversized_credentials_are_rejected() {
+            assert!(Credentials::new(Vec::new(), b"p".to_vec()).is_none());
+            assert!(Credentials::new(b"u".to_vec(), Vec::new()).is_none());
+            assert!(Credentials::new(vec![b'u'; 256], b"p".to_vec()).is_none());
+            assert!(Credentials::new(vec![b'u'; 255], vec![b'p'; 255]).is_some());
         }
     }
 }

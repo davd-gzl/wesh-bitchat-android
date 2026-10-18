@@ -2,76 +2,157 @@ package info.guardianproject.arti
 
 import android.app.Application
 import android.util.Log
+import com.bitchat.android.net.SocksCredentials
 import org.torproject.arti.ArtiNative
 import java.io.File
+
+/** The native calls ArtiProxy makes; tests replace it. */
+internal interface ArtiNativeApi {
+    fun setLogCallback(callback: ArtiLogListener)
+    fun generation(): Long
+    fun initialize(dataDir: String, generation: Long): Int
+    fun startSocksProxyWithAuth(port: Int, username: String, password: String): Int
+    fun stop(): Int
+}
+
+/** Loads the native library only on first use. */
+internal object DefaultArtiNative : ArtiNativeApi {
+    override fun setLogCallback(callback: ArtiLogListener) = ArtiNative.setLogCallback(callback)
+    override fun generation() = ArtiNative.generation()
+    override fun initialize(dataDir: String, generation: Long) = ArtiNative.initialize(dataDir, generation)
+    override fun startSocksProxyWithAuth(port: Int, username: String, password: String) =
+        ArtiNative.startSocksProxyWithAuth(port, username, password)
+    override fun stop() = ArtiNative.stop()
+}
 
 /**
  * Arti Tor proxy implementation compatible with Guardian Project API.
  *
- * This class provides a wrapper around the custom-built Arti native library,
- * maintaining API compatibility with Guardian Project's arti-mobile-ex library.
- *
  * Usage:
  * ```
  * val proxy = ArtiProxy.Builder(application)
- *     .setSocksPort(9050)
- *     .setDnsPort(9051)
  *     .setLogListener { logLine -> Log.i("Arti", logLine ?: "") }
  *     .build()
  *
- * proxy.start()
+ * proxy.start(socksPort, credentials)
  * // ... use proxy ...
  * proxy.stop()
  * ```
  */
-class ArtiProxy private constructor(
+class ArtiProxy internal constructor(
     private val application: Application,
-    private val socksPort: Int,
-    private val dnsPort: Int,
-    private val logListener: ArtiLogListener?
+    private val logListener: ArtiLogListener?,
+    private val native: ArtiNativeApi = DefaultArtiNative
 ) {
     companion object {
         private const val TAG = "ArtiProxy"
     }
 
-    @Volatile
+    private val lock = Object()
+
+    /** Guarded by [lock]. True from a successful start until a native stop succeeds. */
     private var isRunning = false
+
+    /** Guarded by [lock]. Once a start began, every stop reaches the native side (it is idempotent). */
+    private var startAttempted = false
+
+    /** Guarded by [lock]. Bumped by every stop, so a start can tell a stop happened while it ran. */
+    private var stops = 0L
+
+    /** Guarded by [lock]. A native stop is running; a new start waits for its teardown. */
+    private var stopInProgress = false
+
+    /** Guarded by [lock]. Starts requested and not yet finished, including those still waiting. */
+    private var startsRequested = 0
+
+    /** Guarded by [lock]. The last native stop failed: Tor work may still run. */
+    private var stopFailed = false
+
+    /** The last native stop did not confirm that the Tor runtime is gone. */
+    fun hasStopFailed(): Boolean = synchronized(lock) { stopFailed }
+
+    fun isStartInFlight(): Boolean = synchronized(lock) { startsRequested > 0 }
 
     /**
      * Start the Arti Tor proxy.
      *
      * This method:
      * 1. Registers log callback
-     * 2. Initializes Arti runtime with data directory
-     * 3. Starts SOCKS proxy on configured port
+     * 2. Bootstraps a fresh Tor client (blocks; [stop] from another thread cancels it)
+     * 3. Starts the authenticated SOCKS proxy on [socksPort]
      *
+     * Waits for a stop in progress. A stop that lands at any point of the start wins: the start
+     * stops whatever it began and throws.
+     *
+     * @param stillWanted read under the lock that [stop] takes: a caller that withdraws its request
+     *   before calling [stop] is either seen here or cancels the start through [stop].
      * @throws ArtiException if initialization or startup fails
      */
-    fun start() {
-        if (isRunning) {
-            Log.w(TAG, "Arti already running")
-            return
+    fun start(socksPort: Int, credentials: SocksCredentials, stillWanted: () -> Boolean = { true }) {
+        // Registered before the wipe check: a wipe either sees this start and waits for it,
+        // or this start sees the wipe and refuses.
+        synchronized(lock) { startsRequested++ }
+        try {
+            val (stopsAtStart, generation) = synchronized(lock) {
+                while (stopInProgress) lock.wait()
+                if (ArtiWipeLatch.isWiping()) throw ArtiException("Arti state is being wiped")
+                if (!stillWanted()) throw ArtiException("Arti start withdrawn")
+                // Never report a start over a runtime that may still run.
+                if (stopFailed) throw ArtiException("The last Arti stop did not complete")
+                if (isRunning) {
+                    Log.w(TAG, "Arti already running")
+                    return
+                }
+                startAttempted = true
+                // Read with stopsAtStart: a native stop after this point cancels the bootstrap,
+                // even one that completes before initialize() reaches the native side.
+                stops to native.generation()
+            }
+            startRegistered(stopsAtStart, generation, socksPort, credentials)
+        } finally {
+            synchronized(lock) {
+                startsRequested--
+                lock.notifyAll()
+            }
         }
+    }
 
+    private fun startRegistered(stopsAtStart: Long, generation: Long, socksPort: Int, credentials: SocksCredentials) {
         try {
             logListener?.let { listener ->
                 Log.d(TAG, "Registering log callback")
-                ArtiNative.setLogCallback(listener)
+                native.setLogCallback(listener)
             }
 
+            // Before any file or native client is created.
+            abortIfStopped(stopsAtStart)
             val dataDir = getDataDirectory()
-            Log.i(TAG, "Initializing Arti with data directory: $dataDir")
+            Log.i(TAG, "Initializing Arti")
 
-            val initResult = ArtiNative.initialize(dataDir.absolutePath)
-            if (initResult != 0) {
-                throw ArtiException("Failed to initialize Arti: error code $initResult")
+            when (val initResult = native.initialize(dataDir.absolutePath, generation)) {
+                0 -> Unit
+                -4 -> throw ArtiException("Arti stopped during bootstrap")
+                -5 -> {
+                    // The previous runtime outlived its teardown: Tor work may still run.
+                    synchronized(lock) { stopFailed = true }
+                    throw ArtiException("The previous Arti runtime did not stop")
+                }
+                else -> throw ArtiException("Failed to initialize Arti: error code $initResult")
             }
+            // A stop may have reached the native side before this bootstrap did.
+            abortIfStopped(stopsAtStart)
 
-            Log.i(TAG, "Starting SOCKS proxy on port $socksPort (DNS port: $dnsPort)")
-            val startResult = ArtiNative.startSocksProxy(socksPort)
+            Log.i(TAG, "Starting SOCKS proxy on port $socksPort")
+            val startResult = native.startSocksProxyWithAuth(socksPort, credentials.username, credentials.password)
             when (startResult) {
                 0 -> {
-                    isRunning = true
+                    val stoppedMeanwhile = synchronized(lock) {
+                        (stops != stopsAtStart).also { if (!it) isRunning = true }
+                    }
+                    if (stoppedMeanwhile) {
+                        native.stop()
+                        throw ArtiException("Arti stopped during start")
+                    }
                     Log.i(TAG, "Arti started successfully")
                 }
                 -1 -> throw ArtiException("Arti client not initialized")
@@ -90,29 +171,40 @@ class ArtiProxy private constructor(
         }
     }
 
+    private fun abortIfStopped(stopsAtStart: Long) {
+        if (synchronized(lock) { stops != stopsAtStart }) {
+            native.stop()
+            throw ArtiException("Arti stopped during start")
+        }
+    }
+
     /**
-     * Stop the Arti Tor proxy.
-     *
-     * This method gracefully shuts down the Tor client and SOCKS proxy.
+     * Stop the Arti Tor proxy: drops the Tor client and its runtime, and cancels a start still
+     * bootstrapping. Also runs after a failed start, which can leave a client behind. Starts
+     * wait until it returns; the running state is cleared only once the native stop succeeded.
      */
     fun stop() {
-        if (!isRunning) {
-            Log.w(TAG, "Arti not running")
-            return
+        synchronized(lock) {
+            if (!startAttempted) return
+            stops++
+            stopInProgress = true
         }
 
+        var stopped = false
         try {
             Log.i(TAG, "Stopping Arti...")
-            val stopResult = ArtiNative.stop()
-            if (stopResult != 0) {
-                Log.w(TAG, "Stop returned error code: $stopResult")
-            }
-
-            isRunning = false
-            Log.i(TAG, "Arti stopped successfully")
-
+            val stopResult = native.stop()
+            stopped = stopResult == 0
+            if (stopped) Log.i(TAG, "Arti stopped successfully") else Log.w(TAG, "Stop returned error code: $stopResult")
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping Arti", e)
+        } finally {
+            synchronized(lock) {
+                if (stopped) isRunning = false
+                stopFailed = !stopped
+                stopInProgress = false
+                lock.notifyAll()
+            }
         }
     }
 
@@ -124,6 +216,7 @@ class ArtiProxy private constructor(
      * - {app_data}/arti/state - Tor persistent state
      */
     private fun getDataDirectory(): File {
+        if (ArtiWipeLatch.isWiping()) throw ArtiException("Arti state is being wiped")
         val artiDir = File(application.filesDir, "arti")
         if (!artiDir.exists()) {
             artiDir.mkdirs()
@@ -136,32 +229,10 @@ class ArtiProxy private constructor(
     }
 
     /**
-     * Builder for ArtiProxy instances.
-     *
-     * Provides fluent API for configuring proxy settings before creation.
+     * Builder for ArtiProxy instances. The SOCKS port and credentials are chosen per start.
      */
     class Builder(private val application: Application) {
-        private var socksPort: Int = 9050
-        private var dnsPort: Int = 9051
         private var logListener: ArtiLogListener? = null
-
-        /**
-         * Set SOCKS proxy port.
-         * @param port Port number (default: 9050)
-         * @return this Builder for chaining
-         */
-        fun setSocksPort(port: Int) = apply {
-            this.socksPort = port
-        }
-
-        /**
-         * Set DNS port.
-         * @param port Port number (default: 9051)
-         * @return this Builder for chaining
-         */
-        fun setDnsPort(port: Int) = apply {
-            this.dnsPort = port
-        }
 
         /**
          * Set log listener for Arti log messages.
@@ -177,7 +248,7 @@ class ArtiProxy private constructor(
          * @return Configured ArtiProxy (not yet started)
          */
         fun build(): ArtiProxy {
-            return ArtiProxy(application, socksPort, dnsPort, logListener)
+            return ArtiProxy(application, logListener)
         }
     }
 }

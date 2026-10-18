@@ -1,10 +1,14 @@
 package com.bitchat.android.mesh
 
+import android.bluetooth.BluetoothAdapter
+import com.bitchat.android.model.FragmentPayload
 import com.bitchat.android.model.RoutedPacket
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.protocol.MessageType
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -41,5 +45,32 @@ class BluetoothConnectionManagerTest {
         )
 
         assertFalse(manager.broadcastPacket(RoutedPacket(packet)))
+    }
+
+    @Test
+    fun `a disconnected link frees the fragment assemblies it opened`() {
+        val fragments = FragmentManager()
+        val withFragments = BluetoothConnectionManager(RuntimeEnvironment.getApplication(), "0011223344556677", fragments)
+        try {
+            val fragment = BitchatPacket(
+                version = 1u,
+                type = MessageType.FRAGMENT.value,
+                senderID = byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8),
+                recipientID = null,
+                timestamp = 1uL,
+                payload = FragmentPayload(ByteArray(8) { 1 }, 0, 2, MessageType.NOISE_ENCRYPTED.value, ByteArray(32) { 1 }).encode(),
+                ttl = 7u
+            )
+            assertEquals(FragmentResult.Pending, fragments.receiveFragment(fragment, PacketProcessor.linkQuotaKey("link-1")))
+
+            val device = BluetoothAdapter.getDefaultAdapter().getRemoteDevice("AA:BB:CC:DD:EE:FF")
+            withFragments.componentDelegate.onDeviceDisconnected(device, "link-1", null)
+
+            assertTrue(fragments.getDebugInfo().contains("Active Fragment Sets: 0"))
+            assertEquals(FragmentResult.Skipped, fragments.receiveFragment(fragment, PacketProcessor.linkQuotaKey("link-1")))
+        } finally {
+            withFragments.stopServices()
+            fragments.shutdown()
+        }
     }
 }

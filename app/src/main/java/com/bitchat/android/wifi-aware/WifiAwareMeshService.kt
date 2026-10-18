@@ -1325,6 +1325,7 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
         }
 
         ingressLinks.remove(ingressLinkID, ingressLink)
+        meshCore.onIngressLinkClosed(ingressLinkID)
         
         // Breaking out of the loop means the socket is dead or service is stopping.
         Log.i(TAG, "Disconnected from ${logicalPeerId.take(8)} (socket closed)")

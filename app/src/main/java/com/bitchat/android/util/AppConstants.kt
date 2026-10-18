@@ -42,7 +42,13 @@ object AppConstants {
         const val MAX_FRAGMENTS_PER_ID: Int = 256
         const val MAX_FRAGMENT_TOTAL_BYTES: Int = 1_048_576
         const val MAX_ACTIVE_FRAGMENT_SETS: Int = 64
+        /** Assembly slots one ingress link may open, within [MAX_ACTIVE_FRAGMENT_SETS]. */
+        const val MAX_ACTIVE_FRAGMENT_SETS_PER_LINK: Int = 24
+        /** Assembly slots one ingress link may open for a single claimed sender. */
+        const val MAX_ACTIVE_FRAGMENT_SETS_PER_LINK_SENDER: Int = 8
         const val MAX_GLOBAL_FRAGMENT_TOTAL_BYTES: Long = 4L * 1_048_576L
+        /** Bytes one ingress link may hold buffered: one largest assembly fits, half the global cap. */
+        const val MAX_FRAGMENT_BYTES_PER_LINK: Long = 2L * 1_048_576L
     }
 
     object Security {
@@ -110,7 +116,6 @@ object AppConstants {
     }
 
     object Tor {
-        const val DEFAULT_SOCKS_PORT: Int = 9060
         const val RESTART_DELAY_MS: Long = 2_000L
         const val INACTIVITY_TIMEOUT_MS: Long = 5_000L
         const val MAX_RETRY_ATTEMPTS: Int = 5

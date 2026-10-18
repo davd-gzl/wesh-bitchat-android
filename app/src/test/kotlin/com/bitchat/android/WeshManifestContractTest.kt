@@ -19,6 +19,7 @@ class WeshManifestContractTest {
             "ACCESS_BACKGROUND_LOCATION", "READ_MEDIA_IMAGES", "READ_MEDIA_VIDEO", "READ_MEDIA_AUDIO",
             "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE",
             "RECORD_AUDIO", "NEARBY_WIFI_DEVICES", "ACCESS_LOCAL_NETWORK",
+            "ACCESS_WIFI_STATE", "CHANGE_WIFI_STATE", "CHANGE_NETWORK_STATE",
             "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "FOREGROUND_SERVICE_LOCATION", "FOREGROUND_SERVICE_DATA_SYNC"
         ).forEach { permission ->
             val found = declarations(permission)
@@ -50,6 +51,26 @@ class WeshManifestContractTest {
             assertTrue(declarations(it).single().contains("""android:maxSdkVersion="30""""))
         }
         assertTrue(declarations("BLUETOOTH_SCAN").single().contains("neverForLocation"))
+    }
+
+    @Test
+    fun `wifi aware stays off under the Wesh policy and declares no manifest surface`() {
+        // The Wi-Fi permissions above are removed because nothing can switch Wi-Fi Aware on in Wesh.
+        val application = File("src/main/java/com/bitchat/android/BitchatApplication.kt").readText()
+        assertTrue(Regex("""val enabled = !BuildConfig\.WESH_POLICY &&\s+com\.bitchat\.android\.ui\.debug\.DebugPreferenceManager\.getWifiAwareEnabled""").containsMatchIn(application))
+        assertFalse(manifest.contains("android.hardware.wifi.aware"))
+        assertFalse(manifest.contains("wifiaware"))
+        // The Internet mode watches the default network: ACCESS_NETWORK_STATE stays, once, not removed.
+        assertFalse(declarations("ACCESS_NETWORK_STATE").single().contains("tools:node"))
+    }
+
+    @Test
+    fun `only the wesh URL scheme is registered with the OS`() {
+        listOf(manifest, File("src/debug/AndroidManifest.xml").readText()).forEach { source ->
+            val schemes = Regex("""android:scheme="([^"]*)"""").findAll(source).map { it.groupValues[1] }.toList()
+            assertTrue("unexpected URL schemes $schemes", schemes.all { it == "wesh" })
+            assertFalse(source.contains("""android:scheme="bitchat""""))
+        }
     }
 
     @Test

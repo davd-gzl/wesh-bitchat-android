@@ -33,6 +33,9 @@ class PacketProcessor(
         private const val TAG = "PacketProcessor"
         // Header, IDs and signature counted against the byte bound for every queued packet.
         private const val PACKET_OVERHEAD_BYTES = 128L
+
+        /** Quota key of a packet received over the transport link [linkID]. */
+        fun linkQuotaKey(linkID: String): String = "link:$linkID"
     }
     
     // Delegate for callbacks
@@ -107,7 +110,7 @@ class PacketProcessor(
 
     /** Quotas follow the link a packet arrived on, never the sender ID it claims. */
     private fun quotaKey(routed: RoutedPacket, peerID: String): String =
-        routed.ingressLinkID?.let { "link:$it" } ?: routed.relayAddress?.let { "addr:$it" } ?: "peer:$peerID"
+        routed.ingressLinkID?.let(::linkQuotaKey) ?: routed.relayAddress?.let { "addr:$it" } ?: "peer:$peerID"
 
     /** Starts a queue for a new peer, forgetting an idle one when the table is full. */
     private fun newQueueLocked(peerID: String): PeerQueue? {
@@ -301,7 +304,8 @@ class PacketProcessor(
      * Handle message fragments. Returns false for a refused fragment, which is then not relayed.
      */
     private suspend fun handleFragment(routed: RoutedPacket): Boolean {
-        val result = delegate?.handleFragment(routed.packet) ?: return false
+        // Assembly slots follow the ingress link, like the queue quotas above.
+        val result = delegate?.handleFragment(routed.packet, quotaKey(routed, routed.peerID ?: "")) ?: return false
         if (result is FragmentResult.Refused) return false
         if (result !is FragmentResult.Complete) return true
         val reassembledPacket = result.packet
@@ -421,7 +425,8 @@ interface PacketProcessorDelegate {
     fun handleMessage(routed: RoutedPacket)
     fun isRelaySuppressed(packet: BitchatPacket, peerID: String): Boolean = false
     fun handleLeave(routed: RoutedPacket)
-    fun handleFragment(packet: BitchatPacket): FragmentResult
+    /** [ingressKey] is the quota key of the link the fragment arrived on. */
+    fun handleFragment(packet: BitchatPacket, ingressKey: String): FragmentResult
     fun handleRequestSync(routed: RoutedPacket)
     
     // Communication

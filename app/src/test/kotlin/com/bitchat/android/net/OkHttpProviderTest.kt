@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 class OkHttpProviderTest {
     private val original = OkHttpProvider.socksAddressProvider
+    private val originalAuth = OkHttpProvider.socksAuthProvider
     private val originalGate = OkHttpProvider.networkAllowed
 
     @Before fun openGate() {
@@ -30,6 +31,7 @@ class OkHttpProviderTest {
 
     @After fun restore() {
         OkHttpProvider.socksAddressProvider = original
+        OkHttpProvider.socksAuthProvider = originalAuth
         OkHttpProvider.networkAllowed = originalGate
         OkHttpProvider.reset()
     }
@@ -108,5 +110,62 @@ class OkHttpProviderTest {
             assertEquals("SOCKS5 ATYP must be a domain name", 3, addressType)
             assertEquals("relay.example.invalid", host)
         }
+    }
+
+    @Test
+    fun `the SOCKS proxy receives this start's username and password`() {
+        val credentials = SocksCredentials("synthetic-user", "synthetic-pass")
+        ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { server ->
+            // Minimal SOCKS5 peer that requires RFC 1929 and records what it was given.
+            val seen = CompletableFuture.supplyAsync {
+                server.accept().use { socket ->
+                    val input = DataInputStream(socket.getInputStream())
+                    val output = socket.getOutputStream()
+                    check(input.readUnsignedByte() == 5)
+                    val methods = ByteArray(input.readUnsignedByte()).also(input::readFully)
+                    check(2.toByte() in methods) { "username/password not offered" }
+                    output.write(byteArrayOf(5, 2)); output.flush()
+                    check(input.readUnsignedByte() == 1)
+                    val user = String(ByteArray(input.readUnsignedByte()).also(input::readFully))
+                    val pass = String(ByteArray(input.readUnsignedByte()).also(input::readFully))
+                    output.write(byteArrayOf(1, 1)); output.flush()
+                    user to pass
+                }
+            }
+            // As ArtiTorManager publishes it after its proxy bound the port.
+            val bound = InetSocketAddress("127.0.0.1", server.localPort)
+            OkHttpProvider.socksAddressProvider = { bound }
+            OkHttpProvider.socksAuthProvider = { SocksAuth(bound, credentials) }
+            OkHttpProvider.reset()
+            runCatching {
+                OkHttpProvider.httpClient().newCall(Request.Builder().url("http://relay.example.invalid/").build()).execute().close()
+            }
+            assertEquals("synthetic-user" to "synthetic-pass", seen.get(10, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test
+    fun `the Tor credentials only go to the exact address the proxy bound`() {
+        val bound = InetSocketAddress("127.0.0.1", 23456)
+        val auth = SocksAuth(bound, SocksCredentials("synthetic-user", "synthetic-pass"))
+        OkHttpProvider.socksAddressProvider = { bound }
+        OkHttpProvider.socksAuthProvider = { auth }
+        TorSocksAuthenticator.install()
+        val loopback = InetAddress.getByName("127.0.0.1")
+        fun ask(port: Int, protocol: String, site: InetAddress = loopback) =
+            java.net.Authenticator.requestPasswordAuthentication("synthetic", site, port, protocol, "prompt", null)
+        assertEquals("synthetic-user", ask(23456, "SOCKS5")?.userName)
+        assertEquals(null, ask(23457, "SOCKS5"))
+        assertEquals(null, ask(23456, "http"))
+        assertEquals(null, ask(23456, "SOCKS5", InetAddress.getByAddress(byteArrayOf(192.toByte(), 0, 2, 1))))
+        assertEquals(null, ask(23456, "SOCKS5", InetAddress.getByName("127.0.0.2")))
+
+        // Clients routed elsewhere (a retry on a new port not yet bound) get nothing.
+        OkHttpProvider.socksAddressProvider = { InetSocketAddress("127.0.0.1", 23457) }
+        assertEquals(null, ask(23457, "SOCKS5"))
+        assertEquals(null, ask(23456, "SOCKS5"))
+        OkHttpProvider.socksAddressProvider = { bound }
+        OkHttpProvider.socksAuthProvider = { null }
+        assertEquals("no credentials while Tor is stopped", null, ask(23456, "SOCKS5"))
     }
 }

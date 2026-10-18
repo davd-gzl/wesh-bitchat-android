@@ -159,6 +159,11 @@ class MeshCore(
         )
     }
 
+    /** Frees the fragment slots opened by an ingress link that is gone. */
+    fun onIngressLinkClosed(ingressLinkID: String) {
+        fragmentManager.onIngressLinkClosed(PacketProcessor.linkQuotaKey(ingressLinkID))
+    }
+
     fun sendFromBridge(packet: RoutedPacket) {
         transport.broadcastPacket(packet)
     }
@@ -461,8 +466,8 @@ class MeshCore(
                 scope.launch { messageHandler.handleLeave(routed) }
             }
 
-            override fun handleFragment(packet: BitchatPacket): FragmentResult {
-                val result = fragmentManager.receiveFragment(packet)
+            override fun handleFragment(packet: BitchatPacket, ingressKey: String): FragmentResult {
+                val result = fragmentManager.receiveFragment(packet, ingressKey)
                 if (result.keptForSync) {
                     try {
                         val isBroadcast = (packet.recipientID == null || packet.recipientID.contentEquals(SpecialRecipients.BROADCAST))
