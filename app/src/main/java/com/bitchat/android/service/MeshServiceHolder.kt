@@ -37,31 +37,35 @@ object MeshServiceHolder {
     val meshService: BluetoothMeshService? get() = owner.meshService
     val unifiedMeshService: UnifiedMeshService? get() = owner.unifiedMeshService
 
-    fun setGossipManager(mgr: GossipSyncManager, signer: (BitchatPacket) -> BitchatPacket) =
-        owner.setGossipManager(mgr, signer)
+    internal fun setGossipManager(
+        provenance: HolderManagerProvenance,
+        mgr: GossipSyncManager,
+        signer: (BitchatPacket) -> BitchatPacket
+    ) = owner.setGossipManager(provenance, mgr, signer)
 
     fun startSharedGossip(owner: String) = this.owner.startSharedGossip(owner)
     fun stopSharedGossip(owner: String) = this.owner.stopSharedGossip(owner)
 
     private fun createBluetooth(
         context: Context,
-        preparedEncryption: com.bitchat.android.crypto.EncryptionService?
+        preparedEncryption: com.bitchat.android.crypto.EncryptionService?,
+        construction: HolderConstructionContext
     ): BluetoothMeshService = if (preparedEncryption != null) {
-        BluetoothMeshService(context.applicationContext, preparedEncryption)
+        BluetoothMeshService(context.applicationContext, preparedEncryption, construction)
     } else {
-        BluetoothMeshService(context.applicationContext)
+        BluetoothMeshService(context.applicationContext, holderConstruction = construction)
     }
 
     fun getOrCreate(
         context: Context,
         preparedEncryption: com.bitchat.android.crypto.EncryptionService? = null
-    ): BluetoothMeshService = owner.getOrCreate { createBluetooth(context, preparedEncryption) }
+    ): BluetoothMeshService = owner.getOrCreate { createBluetooth(context, preparedEncryption, it) }
 
     fun getUnifiedOrCreate(
         context: Context,
         preparedEncryption: com.bitchat.android.crypto.EncryptionService? = null
     ): UnifiedMeshService = owner.getUnifiedOrCreate(
-        createBluetooth = { createBluetooth(context, preparedEncryption) },
+        createBluetooth = { createBluetooth(context, preparedEncryption, it) },
         createUnified = { UnifiedMeshService(context.applicationContext, it) }
     )
 
