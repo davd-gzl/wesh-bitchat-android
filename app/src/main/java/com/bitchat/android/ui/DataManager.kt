@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 /**
@@ -45,6 +48,10 @@ class DataManager(private val context: Context) {
     fun saveNickname(nickname: String) {
         prefs.edit().putString("nickname", nickname).apply()
     }
+
+    internal fun saveNicknameForPanic(nickname: String): Boolean =
+        prefs.edit().putString("nickname", nickname).commit() &&
+            prefs.getString("nickname", null) == nickname
     
     // MARK: - Channel Data Management
     
@@ -198,11 +205,13 @@ class DataManager(private val context: Context) {
     
     // MARK: - Emergency Clear
     
-    fun clearAllData() {
+    suspend fun clearAllData(): Boolean {
         _channelCreators.clear()
         _favoritePeers.clear()
         _blockedUsers.clear()
         _channelMembers.clear()
-        prefs.edit().clear().apply()
+        return withContext(NonCancellable + Dispatchers.IO) {
+            prefs.edit().clear().commit() && prefs.all.isEmpty()
+        }
     }
 }

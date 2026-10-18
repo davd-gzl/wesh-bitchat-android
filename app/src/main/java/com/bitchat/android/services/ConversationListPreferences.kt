@@ -132,13 +132,12 @@ internal class ConversationListPreferences private constructor(
     }
 
     fun clearAll(): Boolean {
-        val cleared = stateManager.clearSecureValuesSynchronously(
-            PINNED_KEY,
-            MUTED_KEY,
-            DRAFTS_KEY
-        )
-        clearInMemory()
-        return cleared
+        return try {
+            stateManager.clearSecureValuesSynchronously(PINNED_KEY, MUTED_KEY, DRAFTS_KEY) &&
+                listOf(PINNED_KEY, MUTED_KEY, DRAFTS_KEY).none(stateManager::hasSecureValue)
+        } finally {
+            clearInMemory()
+        }
     }
 
     private fun loadSet(key: String): Set<String> = runCatching {

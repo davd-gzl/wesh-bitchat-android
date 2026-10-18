@@ -329,7 +329,9 @@ internal suspend fun resumeAfterWeshPanicWipe(
     /** Internet off, Tor state deleted and Nostr keys erased. */
     internetCleared: Boolean = true,
     /** The removed features' preference files are gone. */
-    legacyStoresCleared: Boolean = true
+    legacyStoresCleared: Boolean = true,
+    /** Plain metadata, conversation organization and the fresh nickname were confirmed. */
+    metadataCleared: Boolean = true
 ): Boolean {
     val preferencesCleared = try {
         clearPreferences()
@@ -339,7 +341,7 @@ internal suspend fun resumeAfterWeshPanicWipe(
         false
     }
     if (!draftsCleared || !conversationsCleared || !mediaCleared || !internetCleared || !legacyStoresCleared ||
-        !preferencesCleared
+        !metadataCleared || !preferencesCleared
     ) return false
     return resume()
 }
