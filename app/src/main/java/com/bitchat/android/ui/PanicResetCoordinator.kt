@@ -2,12 +2,26 @@ package com.bitchat.android.ui
 
 import com.bitchat.android.services.SeenReceiptAdmission
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /** Restart remains provisional until the durable marker and every admission gate commit. */
 internal object PanicResetCoordinator {
+    fun launchPanic(scope: CoroutineScope, action: suspend () -> Unit): Job = scope.launch { action() }
+
+    suspend fun admitDestructivePanic(
+        establishIntent: suspend () -> Boolean,
+        retireOwner: suspend () -> Boolean,
+        eraseOwnedData: suspend (meshOwnerRetired: Boolean) -> Boolean
+    ): Boolean {
+        val retired = retireOwner()
+        return eraseOwnedData(retired)
+    }
+
     suspend fun resume(
         prepareFreshDrafts: suspend () -> Boolean,
         seenReady: () -> Boolean,

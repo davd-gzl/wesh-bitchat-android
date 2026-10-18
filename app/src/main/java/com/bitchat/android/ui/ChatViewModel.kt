@@ -1271,7 +1271,9 @@ class ChatViewModel(
         weshDraftStore.fenceForPanic()
         weshPreferences.fenceForPanic()
         com.bitchat.android.net.WeshInternetMode.get(getApplication()).fenceForPanic()
-        viewModelScope.launch {
+        (mesh as? com.bitchat.android.mesh.UnifiedMeshService)?.fenceForPanic()
+        com.bitchat.android.services.AppStateStore.fencePrivateConversationAdmissionForPanic()
+        PanicResetCoordinator.launchPanic(viewModelScope) {
             try {
                 performPanicClearAllData(seenPanic)
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -1285,7 +1287,20 @@ class ChatViewModel(
     }
 
     private suspend fun performPanicClearAllData(seenPanic: com.bitchat.android.services.SeenReceiptAdmission.Token) {
-        val meshOwnerRetired = (mesh as? com.bitchat.android.mesh.UnifiedMeshService)?.retireForPanic() ?: false
+        val draftEpoch = weshDraftStore.epoch
+        PanicResetCoordinator.admitDestructivePanic(
+            establishIntent = {
+                !com.bitchat.android.BuildConfig.WESH_POLICY || weshDraftStore.establishPanicIntent(draftEpoch)
+            },
+            retireOwner = { (mesh as? com.bitchat.android.mesh.UnifiedMeshService)?.retireForPanic() ?: false },
+            eraseOwnedData = { retired -> clearPanicDataAfterAdmission(seenPanic, retired) }
+        )
+    }
+
+    private suspend fun clearPanicDataAfterAdmission(
+        seenPanic: com.bitchat.android.services.SeenReceiptAdmission.Token,
+        meshOwnerRetired: Boolean
+    ): Boolean {
         // Stop all message admission before wiping storage. The AppStateStore gate also rejects
         // any transport callback already in flight until the fresh identity is ready.
         clearAllMeshServiceData()
@@ -1358,8 +1373,9 @@ class ChatViewModel(
             // This also finishes the durable draft marker; never enter it on an uncertain wipe.
             resume = { recreateMeshServiceAfterPanic(seenPanic) }
         )
-        if (!resumed) return
+        if (!resumed) return false
         weshPreferences.loadMeetingNote()
+        return true
     }
 
     /**

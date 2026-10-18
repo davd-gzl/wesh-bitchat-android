@@ -256,6 +256,7 @@ class WeshDraftStoreTest {
             if (!dropWrite) stored[owner] = drafts.toMap()
             check(!failWrite)
         }
+        override fun markPanicPending() { marker = true }
         override fun wipe() {
             wipes++
             marker = true

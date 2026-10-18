@@ -4,6 +4,12 @@ import android.app.Application
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.noise.NoiseSession
 import com.bitchat.android.services.AppStateStore
+import com.bitchat.android.services.ConversationStorageCipher
+import com.bitchat.android.services.SeenReceiptAdmission
+import com.bitchat.android.startup.WeshRecoveryGate
+import com.bitchat.android.ui.EncryptedWeshDraftBackend
+import com.bitchat.android.ui.PanicResetCoordinator
+import com.bitchat.android.ui.WeshDraftStore
 import com.bitchat.android.ui.resumeAfterWeshPanicWipe
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -29,10 +35,13 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.util.Date
+import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -45,6 +54,7 @@ import java.util.concurrent.locks.ReentrantLock
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, manifest = Config.NONE, sdk = [35])
 class UnifiedMeshOwnerRetirementTest {
+    @get:Rule val intentDirectory = TemporaryFolder()
     @Before fun setUp() { AppStateStore.clear() }
     @After fun tearDown() { AppStateStore.clear() }
 
@@ -535,6 +545,156 @@ class UnifiedMeshOwnerRetirementTest {
                 assertEquals(1, preferences)
                 assertEquals(1, fresh.ble.calls.count { it == "start" })
                 assertEquals(listOf("start-wifi"), fresh.portCalls)
+            }
+        }
+    }
+
+    @Test fun `synchronous preparation cannot consume the only checked drain leader`() = runTest {
+        withFixture { f ->
+            f.facade.delegate = f.ui
+            val oldDelegate = requireNotNull(f.ble.delegate)
+            f.facade.fenceForPanic()
+            assertTrue("preparation alone never cancels the scope", f.ownerScope.isActive)
+            val before = f.events()
+            f.facade.startServices()
+            f.facade.sendMessage("Synthetic refused after preparation", emptyList())
+            oldDelegate.didReceiveMessage(message())
+            assertEquals(before, f.events())
+            assertTrue(f.ui.events.isEmpty())
+            val first = async { f.facade.retireForPanic() }
+            val second = async { f.facade.retireForPanic() }
+            try {
+                assertTrue(withTimeout(1_000) { first.await() })
+                assertTrue(withTimeout(1_000) { second.await() })
+                assertFalse(f.ownerScope.isActive)
+            } finally {
+                withTimeout(1_000) { first.cancelAndJoin(); second.cancelAndJoin() }
+            }
+        }
+    }
+
+    @Test fun `actual held facade drain already has verified durable intent without key erasure`() = runTest {
+        heldIntentContract(cancelRequest = false)
+    }
+
+    @Test fun `caller cancellation during actual held drain retains durable intent`() = runTest {
+        heldIntentContract(cancelRequest = true)
+    }
+
+    private suspend fun TestScope.heldIntentContract(cancelRequest: Boolean) {
+        val cancelling = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        withFixture(heldProfile(cancelling, release), beforeClose = { release.complete(Unit) }) { f ->
+            f.facade.startServices()
+            runCurrent()
+            val root = intentDirectory.newFolder()
+            val data = File(root, "wesh-drafts-v1.bin")
+            val opaque = "Synthetic opaque draft sentinel".toByteArray()
+            data.writeBytes(opaque)
+            val destroys = AtomicInteger()
+            val backend = EncryptedWeshDraftBackend(root, object : ConversationStorageCipher {
+                override fun encrypt(plaintext: ByteArray, associatedData: ByteArray): ByteArray = error("Unexpected cipher access")
+                override fun decrypt(envelope: ByteArray, associatedData: ByteArray): ByteArray = error("Unexpected cipher access")
+                override fun destroyKey() { destroys.incrementAndGet() }
+            })
+            val drafts = WeshDraftStore(backend, ioDispatcher = StandardTestDispatcher(testScheduler))
+            drafts.fenceForPanic()
+            f.facade.fenceForPanic()
+            val recovery = WeshRecoveryGate().also { it.requireRecovery() }
+            val seen = SeenReceiptAdmission().also { it.fenceForPanic() }
+            var erases = 0
+            val request = async {
+                PanicResetCoordinator.admitDestructivePanic(
+                    establishIntent = { drafts.establishPanicIntent(drafts.epoch) },
+                    retireOwner = { f.facade.retireForPanic() },
+                    eraseOwnedData = { retired -> erases++; drafts.panicClear(deferCompletion = true) && retired }
+                )
+            }
+            var primaryFailure: Throwable? = null
+            try {
+                withTimeout(1_000) { cancelling.await() }
+                if (cancelRequest) request.cancel()
+                assertFalse("the actual owned collector has not completed", request.isCompleted)
+                val marker = File(root, "wesh-drafts-wipe-v1")
+                assertTrue("durable intent must precede the held owner drain", marker.isFile)
+                assertArrayEquals(byteArrayOf(1), marker.readBytes())
+                val cold = WeshRecoveryGate()
+                if (EncryptedWeshDraftBackend.hasPendingWipe(root)) cold.requireRecovery()
+                assertFalse(cold.allowsTransport(prepared = true))
+                assertFalse(recovery.allowsTransport(prepared = true))
+                assertNull(seen.capture())
+                assertFalse(drafts.save(drafts.epoch, "public", "Synthetic refused edit"))
+                assertArrayEquals(opaque, data.readBytes())
+                assertEquals(0, destroys.get())
+                assertEquals(0, erases)
+            } catch (failure: Throwable) {
+                primaryFailure = failure
+                throw failure
+            } finally {
+                try {
+                    request.cancel()
+                    release.complete(Unit)
+                    withTimeout(1_000) { request.cancelAndJoin() }
+                } catch (cleanupFailure: Throwable) {
+                    val original = primaryFailure
+                    if (original != null) original.addSuppressed(cleanupFailure) else throw cleanupFailure
+                }
+            }
+            if (cancelRequest) {
+                assertTrue("the cancelled request has completed after the actual drain", request.isCancelled && request.isCompleted)
+                val marker = File(root, "wesh-drafts-wipe-v1")
+                assertTrue("cancellation after drain must retain durable intent", marker.isFile)
+                assertArrayEquals(byteArrayOf(1), marker.readBytes())
+                assertTrue(EncryptedWeshDraftBackend.hasPendingWipe(root))
+                val cold = WeshRecoveryGate()
+                if (EncryptedWeshDraftBackend.hasPendingWipe(root)) cold.requireRecovery()
+                assertFalse(cold.allowsTransport(prepared = true))
+                assertFalse(recovery.allowsTransport(prepared = true))
+                assertNull(seen.capture())
+                assertFalse(drafts.save(drafts.epoch, "public", "Synthetic refused edit after cancellation"))
+                assertArrayEquals(opaque, data.readBytes())
+                assertEquals(0, destroys.get())
+                assertEquals(0, erases)
+            }
+        }
+    }
+
+    @Test fun `cancellation before request dispatch cannot skip durable intent`() = runTest {
+        withFixture { f ->
+            val root = intentDirectory.newFolder()
+            val destroys = AtomicInteger()
+            val backend = EncryptedWeshDraftBackend(root, object : ConversationStorageCipher {
+                override fun encrypt(plaintext: ByteArray, associatedData: ByteArray): ByteArray = error("Unexpected cipher access")
+                override fun decrypt(envelope: ByteArray, associatedData: ByteArray): ByteArray = error("Unexpected cipher access")
+                override fun destroyKey() { destroys.incrementAndGet() }
+            })
+            val drafts = WeshDraftStore(backend, ioDispatcher = StandardTestDispatcher(testScheduler))
+            drafts.fenceForPanic()
+            f.facade.fenceForPanic()
+            val requestOwner = SupervisorJob()
+            val scope = CoroutineScope(requestOwner + StandardTestDispatcher(testScheduler))
+            requestOwner.cancel()
+            var ownerCalls = 0
+            var erases = 0
+            val request = PanicResetCoordinator.launchPanic(scope) {
+                PanicResetCoordinator.admitDestructivePanic(
+                    establishIntent = { drafts.establishPanicIntent(drafts.epoch) },
+                    retireOwner = { ownerCalls++; f.facade.retireForPanic() },
+                    eraseOwnedData = { erases++; true }
+                )
+            }
+            try {
+                runCurrent()
+                withTimeout(1_000) { request.join() }
+                assertTrue(request.isCancelled)
+                assertTrue("a cancelled dispatch still records the already requested panic", File(root, "wesh-drafts-wipe-v1").isFile)
+                assertTrue(EncryptedWeshDraftBackend.hasPendingWipe(root))
+                assertEquals(0, ownerCalls)
+                assertEquals(0, erases)
+                assertEquals(0, destroys.get())
+                assertFalse(drafts.save(drafts.epoch, "public", "Synthetic refused edit"))
+            } finally {
+                withTimeout(1_000) { request.cancelAndJoin(); requestOwner.cancelAndJoin() }
             }
         }
     }
