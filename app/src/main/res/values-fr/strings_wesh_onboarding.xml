@@ -7,4 +7,24 @@
     <string name="wesh_permissions_partially_denied_footer">Wesh risque de mal fonctionner sans toutes les autorisations.</string>
     <string name="wesh_permissions_critical_denied">Wesh a besoin de ces autorisations pour fonctionner :</string>
     <string name="wesh_permissions_critical_denied_footer">Accordez-les dans les réglages Android pour utiliser Wesh.</string>
+    <string name="wesh_permission_bluetooth">Bluetooth / appareils à proximité</string>
+    <string name="wesh_permission_legacy_location">Autorisation de localisation pour le scan Bluetooth sur cet ancien Android</string>
+    <string name="wesh_permission_wifi">Appareils Wi-Fi à proximité</string>
+    <string name="wesh_permission_notifications">Notifications</string>
+    <string name="wesh_onboarding_bluetooth_off_title">Activez Bluetooth</string>
+    <string name="wesh_onboarding_bluetooth_off_body">Bluetooth vous relie aux personnes à proximité, même sans Internet. Activez-le pour continuer.</string>
+    <string name="wesh_onboarding_bluetooth_unavailable_title">Bluetooth indisponible</string>
+    <string name="wesh_onboarding_bluetooth_unavailable_body">Cet appareil ne permet pas la connexion Bluetooth nécessaire à Wesh. Vous ne pouvez pas continuer sur cet appareil.</string>
+    <string name="wesh_onboarding_bluetooth_on_title">Bluetooth est activé</string>
+    <string name="wesh_onboarding_bluetooth_on_body">Vérifiez à nouveau pour continuer.</string>
+    <string name="wesh_onboarding_enable_bluetooth">Activer Bluetooth</string>
+    <string name="wesh_onboarding_legacy_location_title">Activez le scan Bluetooth</string>
+    <string name="wesh_onboarding_legacy_location_body">Sur Android 11 et versions antérieures, le scan Bluetooth exige le réglage système de localisation. Wesh n’utilise pas votre position. Activez ce réglage dans les paramètres Android, puis revenez dans Wesh.</string>
+    <string name="wesh_onboarding_legacy_location_unavailable_title">Réglage système indisponible</string>
+    <string name="wesh_onboarding_legacy_location_unavailable_body">Android ne donne pas accès au réglage nécessaire au scan Bluetooth sur cet appareil. Vous ne pouvez pas continuer tant qu’il est indisponible.</string>
+    <string name="wesh_onboarding_legacy_location_on_title">Le scan Bluetooth est disponible</string>
+    <string name="wesh_onboarding_legacy_location_on_body">Vérifiez à nouveau pour continuer.</string>
+    <string name="wesh_onboarding_open_android_settings">Ouvrir les réglages Android</string>
+    <string name="wesh_onboarding_retry">Vérifier à nouveau</string>
+    <string name="wesh_onboarding_waiting">En attente d’Android…</string>
 </resources>
