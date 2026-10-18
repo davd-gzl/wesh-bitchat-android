@@ -5,6 +5,11 @@ import info.guardianproject.arti.ArtiLogListener
 import info.guardianproject.arti.ArtiNativeApi
 import info.guardianproject.arti.ArtiProxy
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -22,6 +27,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /** Observer scheduling is controlled independently from each explicitly applied command. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -79,6 +86,38 @@ class ArtiTorObservedModeTest {
         assertTrue("a stale observed OFF must not stop the current start", wasRunning)
     }
 
+    @Test fun `an observed ON queued behind bootstrap is rechecked after the mutex`() = runTest {
+        modes.value = TorMode.ON
+        val manager = manager()
+        val release = CountDownLatch(1)
+        native.blockInitialize = release
+        val first = launch(Dispatchers.IO) { manager.applyMode(app, TorMode.ON) }
+        var queued: Job? = null
+        var off: Job? = null
+        try {
+            assertTrue("the first bootstrap holds the mutex", native.initializeEntered.await(5, TimeUnit.SECONDS))
+            // UNDISPATCHED runs through entry validation and suspends at the held mutex
+            // before launch returns, so this proves the second validation is necessary.
+            queued = launch(start = CoroutineStart.UNDISPATCHED) {
+                manager.applyObservedMode(app, TorMode.ON)
+            }
+            modes.value = TorMode.OFF
+            off = launch(Dispatchers.IO) { manager.applyMode(app, TorMode.OFF) }
+            assertTrue("OFF reaches native before bootstrap is released", native.stopped.await(5, TimeUnit.SECONDS))
+            release.countDown()
+            joinAll(first, requireNotNull(queued), requireNotNull(off))
+
+            assertEquals("the queued stale ON never bootstraps", 1, native.snapshot().count { it == "initialize" })
+            assertFalse(manager.statusFlow.value.running)
+        } finally {
+            release.countDown()
+            manager.applyMode(app, TorMode.OFF)
+            first.join()
+            queued?.join()
+            off?.join()
+        }
+    }
+
     @Test fun `an explicit ON remains independent of the preference observer`() = runTest {
         val manager = manager()
         manager.applyMode(app, TorMode.ON)
@@ -93,11 +132,16 @@ class ArtiTorObservedModeTest {
 
     private class FakeNative : ArtiNativeApi {
         private val calls = mutableListOf<String>()
+        @Volatile var blockInitialize: CountDownLatch? = null
+        val initializeEntered = CountDownLatch(1)
+        val stopped = CountDownLatch(1)
         fun snapshot(): List<String> = synchronized(calls) { calls.toList() }
         override fun setLogCallback(callback: ArtiLogListener) = Unit
         override fun generation(): Long = 0
         override fun initialize(dataDir: String, generation: Long): Int {
             synchronized(calls) { calls += "initialize" }
+            initializeEntered.countDown()
+            check(blockInitialize?.await(10, TimeUnit.SECONDS) != false) { "synthetic bootstrap was not released" }
             return 0
         }
         override fun startSocksProxyWithAuth(port: Int, username: String, password: String): Int {
@@ -106,6 +150,7 @@ class ArtiTorObservedModeTest {
         }
         override fun stop(): Int {
             synchronized(calls) { calls += "stop" }
+            stopped.countDown()
             return 0
         }
     }
