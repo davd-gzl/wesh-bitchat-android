@@ -120,6 +120,13 @@ internal class WeshPreferences(
     private var backendEpoch: Long? = null
     private var pendingLegacyRemoval = false
 
+    /** Serializes synchronous UI mutations with the panic fence; never use for suspending or blocking IO. */
+    internal fun withCurrentEpoch(expectedEpoch: Long, action: () -> Unit): Boolean = synchronized(lock) {
+        if (fenced || expectedEpoch != _resetEpoch.value) return@synchronized false
+        action()
+        true
+    }
+
     var publicMuted: Boolean
         get() = prefs.booleanOr("public_muted", false)
         set(value) { synchronized(lock) { if (!fenced) prefs.edit { putBoolean("public_muted", value) } } }
