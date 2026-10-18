@@ -7,6 +7,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
+import com.bitchat.android.services.InMemoryConversationStorageCipher
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -16,6 +19,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], manifest = Config.NONE, application = Application::class)
 class WeshPreferencesTypeTest {
+    @get:Rule val directory = TemporaryFolder()
     @Test fun `wrongly typed values read as defaults and the erase still deletes them`() = runBlocking {
         val app = RuntimeEnvironment.getApplication()
         val prefs = app.getSharedPreferences(WeshPreferences.FILE, Context.MODE_PRIVATE)
@@ -27,7 +31,9 @@ class WeshPreferencesTypeTest {
             .putBoolean("appearance", true)
             .commit()
 
-        val preferences = WeshPreferences(app)
+        val preferences = WeshPreferences(prefs, meetingBackendFactory = {
+            EncryptedWeshMeetingNoteBackend(directory.root, InMemoryConversationStorageCipher())
+        })
         assertEquals("", preferences.meetingDraft.value)
         assertEquals("", preferences.meetingNote)
         assertFalse(preferences.publicMuted)

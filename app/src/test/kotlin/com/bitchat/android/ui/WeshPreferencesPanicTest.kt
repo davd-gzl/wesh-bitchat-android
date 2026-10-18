@@ -37,6 +37,7 @@ class WeshPreferencesPanicTest {
         val prefs: SharedPreferences = mock()
         private val editor: SharedPreferences.Editor = mock()
         private val puts = mutableMapOf<String, Any>()
+        private val removes = mutableSetOf<String>()
         private var clearPending = false
         var commitSucceeds = true
         var throwOnClear = false
@@ -45,15 +46,45 @@ class WeshPreferencesPanicTest {
         var commits = 0
         var readbackOverride: String? = null
         val committedNotes = mutableListOf<String?>()
+        var noteDisk: String? = null
+        var noteMemory: String? = null
+        var beforeNoteWrite: suspend () -> Unit = {}
+        var afterNoteWrite: suspend () -> Unit = {}
+
+        fun noteBackend(): WeshMeetingNoteBackend = object : WeshMeetingNoteBackend {
+            private var retired = false
+            override suspend fun load(): String? {
+                check(!retired)
+                return readbackOverride ?: noteDisk
+            }
+            override suspend fun write(text: String) {
+                check(!retired)
+                beforeNoteWrite()
+                commits++
+                noteMemory = text
+                committedNotes += text
+                if (throwOnCommit) error("synthetic note commit failure")
+                check(commitSucceeds) { "synthetic uncertain note commit" }
+                noteDisk = text
+                afterNoteWrite()
+            }
+            override suspend fun erase() {
+                retired = true
+                noteDisk = null
+                noteMemory = null
+            }
+        }
 
         init {
-            whenever(prefs.getString(eq("meeting_note"), anyOrNull())).thenAnswer { readbackOverride ?: memory["meeting_note"] as String? ?: "" }
+            whenever(prefs.getString(any(), anyOrNull())).thenAnswer { memory[it.getArgument<String>(0)] as String? ?: it.getArgument<String?>(1) }
+            whenever(prefs.contains(any())).thenAnswer { memory.containsKey(it.getArgument<String>(0)) }
             whenever(prefs.getBoolean(any(), any())).thenAnswer { memory[it.getArgument<String>(0)] as Boolean? ?: false }
             whenever(prefs.all).thenAnswer { memory.toMap() }
             whenever(prefs.edit()).thenReturn(editor)
             whenever(editor.putString(any(), anyOrNull())).thenAnswer {
                 puts[it.getArgument(0)] = it.getArgument<String>(1); editor
             }
+            whenever(editor.remove(any())).thenAnswer { removes += it.getArgument<String>(0); editor }
             whenever(editor.putBoolean(any(), any())).thenAnswer {
                 puts[it.getArgument(0)] = it.getArgument<Boolean>(1); editor
             }
@@ -76,10 +107,11 @@ class WeshPreferencesPanicTest {
         private fun publishMemory() {
             if (clearPending && !retainOnClear) memory.clear()
             clearPending = false
+            removes.forEach(memory::remove)
+            removes.clear()
             memory.putAll(puts)
             puts.clear()
         }
-
         private fun persistMemory() { disk.clear(); disk.putAll(memory) }
         fun simulateRestart() { memory.clear(); memory.putAll(disk) }
     }
@@ -92,7 +124,16 @@ class WeshPreferencesPanicTest {
     })
 
     private fun TestScope.newPreferences(storage: Storage) =
-        WeshPreferences(storage.prefs, StandardTestDispatcher(testScheduler))
+        WeshPreferences(storage.prefs, StandardTestDispatcher(testScheduler), meetingBackendFactory = storage::noteBackend)
+
+    // Save/fencing controls start from a synthetic already-encrypted note.
+    // Legacy plaintext migration is exercised independently with the real backend.
+    private suspend fun TestScope.newLoadedPreferences(storage: Storage): WeshPreferences {
+        storage.memory.remove("meeting_note")
+        storage.disk.remove("meeting_note")
+        if (storage.noteDisk == null) storage.noteDisk = "synthetic saved note"
+        return newPreferences(storage).also { assertTrue(it.loadMeetingNote()) }
+    }
 
     private suspend fun TestScope.assertRefused(storage: Storage, operation: (suspend () -> Boolean)? = null) {
         val preferences = newPreferences(storage)
@@ -118,7 +159,7 @@ class WeshPreferencesPanicTest {
 
     @Test fun `verified global panic clears note disclosure and mute before finishing marker and resuming`() = runTest {
         val storage = Storage()
-        val preferences = newPreferences(storage)
+        val preferences = newLoadedPreferences(storage)
         preferences.editMeetingDraft("synthetic unsaved note", preferences.resetEpoch.value)
         val gate = WeshRecoveryGate().apply { requireRecovery() }
         val backend = emptyDraftBackend()
@@ -135,6 +176,7 @@ class WeshPreferencesPanicTest {
                 backend.finishVerifiedWipe()
                 gate.normalPanicCompleted()
                 preferences.resumeAfterVerifiedPanic()
+                assertTrue(preferences.loadMeetingNote())
                 true
             }))
         assertEquals(1, resumes)
@@ -142,6 +184,7 @@ class WeshPreferencesPanicTest {
         assertTrue(gate.allowsTransport(prepared = true))
         storage.simulateRestart()
         val restored = newPreferences(storage)
+        assertTrue(restored.loadMeetingNote())
         assertEquals("", restored.meetingNote)
         assertEquals("", restored.meetingDraft.value)
         assertFalse(restored.publicDisclosureAccepted)
@@ -153,7 +196,7 @@ class WeshPreferencesPanicTest {
         assertRefused(storage)
         assertTrue(storage.memory.isEmpty())
         storage.simulateRestart()
-        assertEquals("synthetic saved note", newPreferences(storage).meetingNote)
+        assertEquals("synthetic saved note", storage.disk["meeting_note"])
         assertTrue(newPreferences(storage).publicDisclosureAccepted)
         assertTrue(newPreferences(storage).publicMuted)
     }
@@ -237,13 +280,14 @@ class WeshPreferencesPanicTest {
 
     @Test fun `callbacks captured before panic cannot restore note after successful resume`() = runTest {
         val storage = Storage()
-        val preferences = newPreferences(storage)
+        val preferences = newLoadedPreferences(storage)
         val oldEpoch = preferences.resetEpoch.value
         val oldEdit = { preferences.editMeetingDraft("synthetic stale note", oldEpoch) }
         val oldSave: suspend () -> Boolean = { preferences.saveMeetingDraft(oldEpoch) }
         preferences.fenceForPanic()
         assertTrue(preferences.clearForPanic())
         preferences.resumeAfterVerifiedPanic()
+        assertTrue(preferences.loadMeetingNote())
         assertFalse(oldEdit())
         assertFalse(oldSave())
         assertEquals("", preferences.meetingDraft.value)
@@ -256,44 +300,44 @@ class WeshPreferencesPanicTest {
         assertFalse(oldEdit())
         assertFalse(oldSave())
         assertEquals("synthetic fresh note", preferences.meetingDraft.value)
-        assertEquals("synthetic fresh note", storage.disk["meeting_note"])
+        assertEquals("synthetic fresh note", storage.noteDisk)
     }
 
     @Test fun `failed note commit changed in RAM still requires a new successful commit on retry`() = runTest {
         val storage = Storage().apply { commitSucceeds = false }
-        val preferences = newPreferences(storage)
+        val preferences = newLoadedPreferences(storage)
         val epoch = preferences.resetEpoch.value
         assertTrue(preferences.editMeetingDraft("synthetic edited note", epoch))
         assertFalse(preferences.saveMeetingDraft(epoch))
         assertEquals("synthetic edited note", preferences.meetingDraft.value)
-        assertEquals("synthetic edited note", storage.memory["meeting_note"])
-        assertEquals("synthetic saved note", storage.disk["meeting_note"])
+        assertEquals("synthetic edited note", storage.noteMemory)
+        assertEquals("synthetic saved note", storage.noteDisk)
         assertFalse(preferences.saveMeetingDraft(epoch))
         assertEquals(2, storage.commits)
         storage.commitSucceeds = true
         assertTrue(preferences.saveMeetingDraft(epoch))
         assertEquals(3, storage.commits)
         storage.simulateRestart()
-        assertEquals("synthetic edited note", newPreferences(storage).meetingNote)
+        assertEquals("synthetic edited note", newLoadedPreferences(storage).meetingNote)
     }
 
     @Test fun `note commit exception retains the edited draft and permits an explicit retry`() = runTest {
         val storage = Storage().apply { throwOnCommit = true }
-        val preferences = newPreferences(storage)
+        val preferences = newLoadedPreferences(storage)
         val epoch = preferences.resetEpoch.value
         preferences.editMeetingDraft("synthetic edited note", epoch)
         assertFalse(preferences.saveMeetingDraft(epoch))
         assertEquals("synthetic edited note", preferences.meetingDraft.value)
-        assertEquals("synthetic saved note", storage.disk["meeting_note"])
+        assertEquals("synthetic saved note", storage.noteDisk)
         storage.throwOnCommit = false
         assertTrue(preferences.saveMeetingDraft(epoch))
         assertEquals(2, storage.commits)
-        assertEquals("synthetic edited note", storage.disk["meeting_note"])
+        assertEquals("synthetic edited note", storage.noteDisk)
     }
 
     @Test fun `note commit success without exact readback remains unconfirmed until retry`() = runTest {
         val storage = Storage()
-        val preferences = newPreferences(storage)
+        val preferences = newLoadedPreferences(storage)
         val epoch = preferences.resetEpoch.value
         preferences.editMeetingDraft("synthetic edited note", epoch)
         storage.readbackOverride = "synthetic divergent note"
@@ -311,14 +355,13 @@ class WeshPreferencesPanicTest {
         var active = 0
         var peakActive = 0
         var attempts = 0
-        val preferences = WeshPreferences(storage.prefs, StandardTestDispatcher(testScheduler), commitEditor = { editor ->
+        storage.beforeNoteWrite = {
             active++
             peakActive = maxOf(active, peakActive)
-            try {
-                if (attempts++ == 0) { entered.complete(Unit); release.await() }
-                editor.commit()
-            } finally { active-- }
-        })
+            if (attempts++ == 0) { entered.complete(Unit); release.await() }
+        }
+        storage.afterNoteWrite = { active-- }
+        val preferences = newLoadedPreferences(storage)
         val epoch = preferences.resetEpoch.value
         preferences.editMeetingDraft("synthetic first note", epoch)
         val first = async { preferences.saveMeetingDraft(epoch) }
@@ -333,7 +376,7 @@ class WeshPreferencesPanicTest {
         assertEquals(1, peakActive)
         assertEquals(listOf("synthetic first note", "synthetic newer note"), storage.committedNotes)
         assertEquals("synthetic newer note", preferences.meetingDraft.value)
-        assertEquals("synthetic newer note", storage.disk["meeting_note"])
+        assertEquals("synthetic newer note", storage.noteDisk)
     }
 
     @Test fun `panic fences immediately while commit is suspended then clears before queued old writes`() = runTest {
@@ -341,10 +384,10 @@ class WeshPreferencesPanicTest {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         var attempts = 0
-        val preferences = WeshPreferences(storage.prefs, StandardTestDispatcher(testScheduler), commitEditor = { editor ->
+        storage.beforeNoteWrite = {
             if (attempts++ == 0) { entered.complete(Unit); release.await() }
-            editor.commit()
-        })
+        }
+        val preferences = newLoadedPreferences(storage)
         val epoch = preferences.resetEpoch.value
         preferences.editMeetingDraft("synthetic in flight", epoch)
         val first = async { preferences.saveMeetingDraft(epoch) }
@@ -367,13 +410,14 @@ class WeshPreferencesPanicTest {
         assertTrue(storage.memory.isEmpty())
         assertTrue(storage.disk.isEmpty())
         preferences.resumeAfterVerifiedPanic()
+        assertTrue(preferences.loadMeetingNote())
         assertFalse(preferences.saveMeetingDraft(epoch))
         assertEquals(2, storage.commits)
     }
 
     @Test fun `panic before IO dispatch refuses a captured save without writing its text`() = runTest {
         val storage = Storage()
-        val preferences = newPreferences(storage)
+        val preferences = newLoadedPreferences(storage)
         val epoch = preferences.resetEpoch.value
         preferences.editMeetingDraft("synthetic queued", epoch)
         val save = async(start = CoroutineStart.UNDISPATCHED) { preferences.saveMeetingDraft(epoch) }
@@ -390,24 +434,25 @@ class WeshPreferencesPanicTest {
         val caller = StandardTestDispatcher(testScheduler, name = "synthetic-caller")
         val io = StandardTestDispatcher(testScheduler, name = "synthetic-io")
         lateinit var preferences: WeshPreferences
-        preferences = WeshPreferences(storage.prefs, io, commitEditor = { editor ->
-            val committed = editor.commit()
-            launch(caller) { preferences.fenceForPanic() }
-            committed
-        })
+        storage.memory.remove("meeting_note")
+        storage.disk.remove("meeting_note")
+        storage.noteDisk = "synthetic saved note"
+        storage.afterNoteWrite = { launch(caller) { preferences.fenceForPanic() }; Unit }
+        preferences = WeshPreferences(storage.prefs, io, meetingBackendFactory = storage::noteBackend)
+        assertTrue(preferences.loadMeetingNote())
         val epoch = preferences.resetEpoch.value
         preferences.editMeetingDraft("synthetic edited note", epoch)
         val save = async(caller) { preferences.saveMeetingDraft(epoch) }
         advanceUntilIdle()
         assertFalse(save.await())
         assertEquals(1, storage.commits)
-        assertEquals("synthetic edited note", storage.disk["meeting_note"])
+        assertEquals("synthetic edited note", storage.noteDisk)
         assertEquals("", preferences.meetingDraft.value)
     }
 
     @Test fun `stale UI callbacks cannot rewrite note disclosure or mute while panic remains fenced`() = runTest {
         val storage = Storage()
-        val preferences = newPreferences(storage)
+        val preferences = newLoadedPreferences(storage)
         preferences.editMeetingDraft("synthetic unsaved note", preferences.resetEpoch.value)
         preferences.fenceForPanic()
         assertEquals("", preferences.meetingDraft.value)
@@ -420,6 +465,7 @@ class WeshPreferencesPanicTest {
         assertTrue(storage.memory.isEmpty())
         assertTrue(storage.disk.isEmpty())
         preferences.resumeAfterVerifiedPanic()
+        assertTrue(preferences.loadMeetingNote())
         preferences.editMeetingDraft("synthetic fresh note", preferences.resetEpoch.value)
         assertTrue(preferences.saveMeetingDraft(preferences.resetEpoch.value))
         assertEquals("synthetic fresh note", preferences.meetingNote)
