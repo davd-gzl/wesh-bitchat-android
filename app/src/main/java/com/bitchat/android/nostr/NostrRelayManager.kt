@@ -704,7 +704,12 @@ class NostrRelayManager internal constructor(
                         val handler = messageHandlers[response.subscriptionId]
                         if (handler != null) {
                             scope.launch(Dispatchers.Main) {
-                                if (isNetworkActionAllowed()) {
+                                // A queued delivery belongs to this registration, even when a
+                                // replacement reuses the same subscription ID and callback.
+                                if (isNetworkActionAllowed() &&
+                                    activeSubscriptions[response.subscriptionId] === subscriptionInfo &&
+                                    messageHandlers[response.subscriptionId] === handler
+                                ) {
                                     handler(event)
                                 }
                             }
