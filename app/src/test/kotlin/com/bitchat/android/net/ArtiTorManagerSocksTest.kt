@@ -4,6 +4,11 @@ import android.app.Application
 import info.guardianproject.arti.ArtiLogListener
 import info.guardianproject.arti.ArtiNativeApi
 import info.guardianproject.arti.ArtiProxy
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -45,15 +50,26 @@ class ArtiTorManagerSocksTest {
 
     private lateinit var native: FakeNative
     private lateinit var manager: ArtiTorManager
+    private val managerScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     @Before fun setUp() {
         TorPreferenceManager.set(app, TorMode.OFF, commit = true)
         native = FakeNative { manager }
-        manager = ArtiTorManager(newProxy = { app, listener -> ArtiProxy(app, listener, native) }, stopTimeoutMs = 50)
+        manager = ArtiTorManager(
+            newProxy = { app, listener -> ArtiProxy(app, listener, native) },
+            stopTimeoutMs = 50,
+            appScope = managerScope
+        )
         manager.init(app)
     }
 
-    @After fun tearDown() = runBlocking { manager.applyMode(app, TorMode.OFF) }
+    @After fun tearDown() = runBlocking {
+        manager.requestOff()
+        managerScope.cancel()
+        TorPreferenceManager.set(app, TorMode.OFF, commit = true)
+        manager.applyMode(app, TorMode.OFF)
+        managerScope.coroutineContext[Job]?.join()
+    }
 
     @Test fun `a successful start publishes exactly the bound port with its credentials`() = runBlocking {
         manager.applyMode(app, TorMode.ON)
