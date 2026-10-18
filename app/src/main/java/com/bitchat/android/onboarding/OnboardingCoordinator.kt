@@ -97,10 +97,10 @@ class OnboardingCoordinator(
         // The launcher result only contains permissions requested in this round. Returning
         // users may be asked for POST_NOTIFICATIONS alone, so re-check required permissions
         // against package state instead of treating absent result-map entries as denials.
-        val criticalGranted = criticalPermissions.all(permissionManager::isPermissionGranted)
+        val deniedCritical = criticalPermissions.filterNot(permissionManager::isPermissionGranted)
 
         when {
-            criticalGranted -> {
+            deniedCritical.isEmpty() -> {
                 if (allGranted) {
                     Log.d(TAG, "All permissions granted successfully")
                     completeOnboarding()
@@ -111,7 +111,7 @@ class OnboardingCoordinator(
             }
             else -> {
                 Log.d(TAG, "Critical permissions denied")
-                handlePermissionDenial(permissions)
+                handlePermissionDenial(deniedCritical)
             }
         }
     }
@@ -120,7 +120,7 @@ class OnboardingCoordinator(
      * Get the list of critical permissions that are absolutely required
      */
     private fun getCriticalPermissions(): List<String> {
-        // For bitchat, Bluetooth and location permissions are critical
+        // Legacy Android needs foreground location permission for BLE scanning.
         // Notifications are nice-to-have but not critical and are not included in getRequiredPermissions()
         return permissionManager.getRequiredPermissions()
     }
@@ -148,24 +148,17 @@ class OnboardingCoordinator(
     /**
      * Handle permission denial scenarios
      */
-    private fun handlePermissionDenial(permissions: Map<String, Boolean>) {
-        val deniedCritical = permissions.filter { !it.value && getCriticalPermissions().contains(it.key) }
-        
-        if (deniedCritical.isNotEmpty()) {
-            val message = buildString {
-                append(activity.getString(com.bitchat.android.R.string.wesh_permissions_critical_denied)).append("\n")
-                deniedCritical.keys.forEach { permission ->
-                    append("- ${getPermissionDisplayName(permission)}\n")
-                }
-                append("\n").append(activity.getString(com.bitchat.android.R.string.wesh_permissions_critical_denied_footer))
+    private fun handlePermissionDenial(deniedCritical: List<String>) {
+        val message = buildString {
+            append(activity.getString(com.bitchat.android.R.string.wesh_permissions_critical_denied)).append("\n")
+            deniedCritical.forEach { permission ->
+                append("- ${getPermissionDisplayName(permission)}\n")
             }
-            
-            Log.e(TAG, "Critical permissions denied: $deniedCritical")
-            onOnboardingFailed(message)
-        } else {
-            // Shouldn't happen given our logic above, but handle gracefully
-            completeOnboarding()
+            append("\n").append(activity.getString(com.bitchat.android.R.string.wesh_permissions_critical_denied_footer))
         }
+
+        Log.e(TAG, "Critical permissions denied: $deniedCritical")
+        onOnboardingFailed(message)
     }
 
     /**
@@ -208,10 +201,10 @@ class OnboardingCoordinator(
      */
     private fun getPermissionDisplayName(permission: String): String {
         return when {
-            permission.contains("BLUETOOTH") -> "Bluetooth/Nearby Devices"
-            permission.contains("LOCATION") -> "Location (for Bluetooth scanning)"
-            permission.contains("NEARBY_WIFI") -> "Nearby Wi‑Fi Devices (for Wi‑Fi Aware)"
-            permission.contains("NOTIFICATION") -> "Notifications"
+            permission.contains("BLUETOOTH") -> activity.getString(com.bitchat.android.R.string.wesh_permission_bluetooth)
+            permission.contains("LOCATION") -> activity.getString(com.bitchat.android.R.string.wesh_permission_legacy_location)
+            permission.contains("NEARBY_WIFI") -> activity.getString(com.bitchat.android.R.string.wesh_permission_wifi)
+            permission.contains("NOTIFICATION") -> activity.getString(com.bitchat.android.R.string.wesh_permission_notifications)
             else -> permission.substringAfterLast(".")
         }
     }

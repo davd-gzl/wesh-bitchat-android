@@ -7,9 +7,12 @@ import android.location.LocationManager
 import androidx.activity.ComponentActivity
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
@@ -18,6 +21,29 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 class SystemStateManagerContractTest {
+    @Test
+    fun `unsupported Bluetooth returns no unregistered receiver to dispose`() {
+        val controller = Robolectric.buildActivity(ComponentActivity::class.java).create()
+        try {
+            val context = mock<Context>()
+            val bluetoothManager = mock<BluetoothManager>()
+            whenever(context.getSystemService(Context.BLUETOOTH_SERVICE)).thenReturn(bluetoothManager)
+            whenever(context.getString(com.bitchat.android.R.string.wesh_bluetooth_unsupported))
+                .thenReturn("Synthetic unsupported Bluetooth")
+            val disabled = mutableListOf<String>()
+            val statuses = mutableListOf<BluetoothStatus>()
+            val manager = BluetoothStatusManager(controller.get(), context, {}, disabled::add)
+
+            val receiver = manager.monitorBluetoothState(context, manager, statuses::add)
+
+            assertNull(receiver)
+            assertEquals(listOf(BluetoothStatus.NOT_SUPPORTED), statuses)
+            assertEquals(listOf("Synthetic unsupported Bluetooth"), disabled)
+        } finally {
+            controller.destroy()
+        }
+    }
+
     @Test
     fun `Bluetooth disabled and enabled states are observable without throwing`() {
         val app = ApplicationProvider.getApplicationContext<Application>()

@@ -7,4 +7,24 @@
     <string name="wesh_permissions_partially_denied_footer">Wesh may not work properly without all permissions.</string>
     <string name="wesh_permissions_critical_denied">Wesh needs these permissions to work:</string>
     <string name="wesh_permissions_critical_denied_footer">Grant them in the Android settings to use Wesh.</string>
+    <string name="wesh_permission_bluetooth">Bluetooth / nearby devices</string>
+    <string name="wesh_permission_legacy_location">Location permission for Bluetooth scanning on older Android</string>
+    <string name="wesh_permission_wifi">Nearby Wi-Fi devices</string>
+    <string name="wesh_permission_notifications">Notifications</string>
+    <string name="wesh_onboarding_bluetooth_off_title">Turn on Bluetooth</string>
+    <string name="wesh_onboarding_bluetooth_off_body">Bluetooth connects you to people nearby, even without Internet. Turn it on to continue.</string>
+    <string name="wesh_onboarding_bluetooth_unavailable_title">Bluetooth unavailable</string>
+    <string name="wesh_onboarding_bluetooth_unavailable_body">This device does not provide the Bluetooth connection Wesh needs. You cannot continue on this device.</string>
+    <string name="wesh_onboarding_bluetooth_on_title">Bluetooth is on</string>
+    <string name="wesh_onboarding_bluetooth_on_body">Check again to continue.</string>
+    <string name="wesh_onboarding_enable_bluetooth">Turn on Bluetooth</string>
+    <string name="wesh_onboarding_legacy_location_title">Enable Bluetooth scanning</string>
+    <string name="wesh_onboarding_legacy_location_body">Android 11 and earlier require the system location switch for Bluetooth scanning. Wesh does not use your location. Enable the switch in Android settings, then return to Wesh.</string>
+    <string name="wesh_onboarding_legacy_location_unavailable_title">System setting unavailable</string>
+    <string name="wesh_onboarding_legacy_location_unavailable_body">Android does not provide the setting Bluetooth scanning needs on this device. You cannot continue while it is unavailable.</string>
+    <string name="wesh_onboarding_legacy_location_on_title">Bluetooth scanning is available</string>
+    <string name="wesh_onboarding_legacy_location_on_body">Check again to continue.</string>
+    <string name="wesh_onboarding_open_android_settings">Open Android settings</string>
+    <string name="wesh_onboarding_retry">Check again</string>
+    <string name="wesh_onboarding_waiting">Waiting for Android…</string>
 </resources>

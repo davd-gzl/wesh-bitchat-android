@@ -35,9 +35,6 @@ class MainViewModel : ViewModel() {
     private val _isBatteryOptimizationLoading = MutableStateFlow(false)
     val isBatteryOptimizationLoading: StateFlow<Boolean> = _isBatteryOptimizationLoading.asStateFlow()
 
-    private val _isBluetoothCheckSkipped = MutableStateFlow(false)
-    val isBluetoothCheckSkipped: StateFlow<Boolean> = _isBluetoothCheckSkipped.asStateFlow()
-
     // Public update functions for MainActivity
     fun updateOnboardingState(state: OnboardingState) {
         _onboardingState.value = state
@@ -71,7 +68,4 @@ class MainViewModel : ViewModel() {
         _isBatteryOptimizationLoading.value = loading
     }
 
-    fun skipBluetoothCheck() {
-        _isBluetoothCheckSkipped.value = true
-    }
 }
