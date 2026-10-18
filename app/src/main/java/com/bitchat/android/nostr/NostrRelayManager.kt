@@ -616,7 +616,12 @@ class NostrRelayManager internal constructor(
                 if (!isNetworkActionAllowed() || !desiredConnected.get() ||
                     connectionAttempts[urlString] !== attempt
                 ) {
-                    if (connectionAttempts[urlString] === attempt) connectionAttempts.remove(urlString)
+                    if (connectionAttempts[urlString] === attempt) {
+                        connections.remove(urlString, webSocket)
+                        subscriptions.remove(urlString)
+                        connectionAttempts.remove(urlString)
+                        updateRelayStatus(urlString, false)
+                    }
                     false
                 } else {
                     connections[urlString] = webSocket

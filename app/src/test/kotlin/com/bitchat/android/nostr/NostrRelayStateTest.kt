@@ -3,6 +3,7 @@ package com.bitchat.android.nostr
 import com.bitchat.android.net.NostrRelayControl
 import com.bitchat.android.net.WeshNetworkGate
 import com.bitchat.android.net.WeshNetworkPolicy
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -25,6 +26,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import java.io.IOException
+import kotlin.coroutines.CoroutineContext
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -174,6 +176,80 @@ class NostrRelayStateTest {
     }
 
     @Test
+    fun `gate revocation after an early open removes its published socket`() = runTest {
+        var revokeFirst = true
+        val (manager, attempts) = fixture {
+            it.open()
+            if (revokeFirst) {
+                revokeFirst = false
+                WeshNetworkPolicy.gate = WeshNetworkGate { false }
+            }
+        }
+        manager.connect()
+        runCurrent()
+        val rejected = attempts.single()
+        assertTrue(rejected.socket.closed)
+        // A late terminal callback must not leave a socket or a published count behind.
+        rejected.fail()
+        val connectedAfterRevocation = manager.isConnected.value
+        val publishedAfterRevocation = manager.relays.value.count { it.isConnected }
+
+        WeshNetworkPolicy.gate = WeshNetworkGate { true }
+        manager.connect()
+        runCurrent()
+        assertEquals(2, attempts.count { it.request.url.host == rejected.request.url.host })
+        assertFalse(connectedAfterRevocation)
+        assertEquals(0, publishedAfterRevocation)
+        assertEquals(NostrRelayManager.WESH_PINNED_RELAYS.size, manager.relays.value.count { it.isConnected })
+    }
+
+    @Test
+    fun `revocation publication cannot discard a replacement opened by its collector`() = runTest {
+        // Run each manager launch immediately, including a retry from inside publication.
+        // Unconfined dispatchers may queue that nested launch until the old cleanup finishes.
+        val inlineDispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = block.run()
+        }
+        var revokeFirst = true
+        val (manager, attempts) = fixture(dispatcher = inlineDispatcher) {
+            it.open()
+            if (revokeFirst) {
+                revokeFirst = false
+                WeshNetworkPolicy.gate = WeshNetworkGate { false }
+            }
+        }
+        var sawEarlyOpen = false
+        var retried = false
+        val observer = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            manager.relays.collect { relays ->
+                if (relays.single { it.url == RELAY }.isConnected) {
+                    sawEarlyOpen = true
+                } else if (sawEarlyOpen && !retried) {
+                    retried = true
+                    WeshNetworkPolicy.gate = WeshNetworkGate { true }
+                    manager.retryConnection(RELAY)
+                }
+            }
+        }
+        manager.connect()
+        runCurrent()
+        observer.cancel()
+
+        val relayAttempts = attempts.filter { it.request.url.host == "relay.damus.io" }
+        assertTrue(retried)
+        assertEquals(2, relayAttempts.size)
+        val rejected = relayAttempts.first()
+        val replacement = relayAttempts.last()
+        assertTrue(rejected.socket.closed)
+        rejected.open()
+        rejected.fail()
+        replacement.open()
+
+        assertFalse(replacement.socket.closed)
+        assertTrue(manager.relays.value.single { it.url == RELAY }.isConnected)
+    }
+
+    @Test
     fun `retry with a closed gate cannot arm a later reset`() = runTest {
         val (manager, attempts) = fixture()
         WeshNetworkPolicy.gate = WeshNetworkGate { false }
@@ -205,9 +281,12 @@ class NostrRelayStateTest {
         assertTrue(attempts.all { it.socket.closed })
     }
 
-    private fun TestScope.fixture(onCreate: (Attempt) -> Unit = {}): Pair<NostrRelayManager, MutableList<Attempt>> {
+    private fun TestScope.fixture(
+        dispatcher: CoroutineDispatcher = UnconfinedTestDispatcher(testScheduler),
+        onCreate: (Attempt) -> Unit = {}
+    ): Pair<NostrRelayManager, MutableList<Attempt>> {
         WeshNetworkPolicy.gate = WeshNetworkGate { true }
-        val manager = NostrRelayManager(CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler)))
+        val manager = NostrRelayManager(CoroutineScope(backgroundScope.coroutineContext + dispatcher))
         managers += manager
         val attempts = mutableListOf<Attempt>()
         manager.openWebSocket = { request, listener ->
