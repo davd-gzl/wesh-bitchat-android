@@ -113,8 +113,8 @@ class ChatViewModel(
         hasReadReceiptBeenSent = { messageID ->
             seenMessageStore.hasReadReceiptBeenSent(messageID)
         },
-        markMessageReadLocally = { messageID ->
-            seenMessageStore.markReadLocally(messageID)
+        markMessageReadLocally = { messageID, seenToken ->
+            seenMessageStore.markReadLocally(messageID, seenToken)
         }
     )
     private val notificationManager = NotificationManager(
@@ -157,8 +157,8 @@ class ChatViewModel(
         onHapticFeedback = { ChatViewModelUtils.triggerHapticFeedback(application.applicationContext) },
         getMeshService = { mesh },
         publicNotificationsMuted = { weshPreferences.publicMuted },
-        markMessageReadLocally = { messageID ->
-            seenMessageStore.markReadLocally(messageID)
+        markMessageReadLocally = { messageID, seenToken ->
+            seenMessageStore.markReadLocally(messageID, seenToken)
         }
     )
 
@@ -557,7 +557,10 @@ class ChatViewModel(
     
     // MARK: - Private Chat Management (delegated)
     
-    suspend fun startPrivateChat(peerID: String) {
+    internal suspend fun startPrivateChat(
+        peerID: String,
+        expectedSeenToken: com.bitchat.android.services.SeenReceiptAdmission.Token?
+    ) {
         // Wesh never opens a private conversation with an identity that was not enrolled by QR.
         if (com.bitchat.android.BuildConfig.WESH_POLICY &&
             weshContactStore.contact(ContactDirectory.canonicalConversationId(peerID)) == null) return
@@ -579,6 +582,7 @@ class ChatViewModel(
             canonicalID to privateChatManager.startPrivateChat(
                 peerID = canonicalID,
                 meshService = mesh,
+                expectedSeenToken = expectedSeenToken,
                 unreadAliases = unreadAliases
             )
         }
@@ -613,6 +617,7 @@ class ChatViewModel(
     internal suspend fun deletePrivateConversation(
         peerOrConversationID: String
     ): com.bitchat.android.services.DeletedPrivateConversation? {
+        val seenToken = com.bitchat.android.services.SeenMessageStore.captureReceiptToken()
         val generation = com.bitchat.android.services.AppStateStore
             .capturePrivateConversationGeneration() ?: return null
         val canonicalID = ContactDirectory.canonicalConversationId(peerOrConversationID)
@@ -645,7 +650,7 @@ class ChatViewModel(
         state.setUnreadPrivateMessages(
             state.getUnreadPrivateMessagesValue() - unreadAliases
         )
-        seenMessageStore.remove(deletion.messageIDs)
+        seenMessageStore.remove(deletion.messageIDs, seenToken)
 
         val selected = state.getSelectedPrivateChatPeerValue()
         if (

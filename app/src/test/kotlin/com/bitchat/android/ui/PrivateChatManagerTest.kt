@@ -129,6 +129,7 @@ class PrivateChatManagerTest {
         whenever(meshService.hasEstablishedSession(meshPeerID)).thenReturn(true)
 
         manager.sendReadReceiptsForPeer(
+            expectedSeenToken = null,
             conversationID = conversationID,
             meshPeerID = meshPeerID,
             meshService = meshService
@@ -159,7 +160,7 @@ class PrivateChatManagerTest {
         state.setNickname("bob")
         state.setPrivateChats(mapOf(conversationID to listOf(placeholder, text)))
 
-        manager.sendReadReceiptsForPeer(conversationID, meshPeerID, meshService)
+        manager.sendReadReceiptsForPeer(conversationID, meshPeerID, meshService, expectedSeenToken = null)
 
         verify(meshService).sendReadReceipt(text.id, meshPeerID, "bob")
         verify(meshService, never()).sendReadReceipt(eq(placeholder.id), any(), any())
@@ -177,6 +178,7 @@ class PrivateChatManagerTest {
         )
 
         manager.startPrivateChat(
+            expectedSeenToken = null,
             peerID = canonicalID,
             meshService = meshService,
             unreadAliases = setOf(canonicalID, nostrAlias, meshAlias)
@@ -230,7 +232,7 @@ class PrivateChatManagerTest {
         )
         whenever(meshService.hasEstablishedSession(meshPeerID)).thenReturn(true)
 
-        manager.sendReadReceiptsForPeer(conversationID, meshPeerID, meshService)
+        manager.sendReadReceiptsForPeer(conversationID, meshPeerID, meshService, expectedSeenToken = null)
 
         verify(meshService, never()).sendReadReceipt(oldMessage.id, meshPeerID, "bob")
         verify(meshService).sendReadReceipt(unreadMessage.id, meshPeerID, "bob")
@@ -274,7 +276,7 @@ class PrivateChatManagerTest {
                 noiseSessionDelegate = mock(),
                 weshPolicy = true
             )
-            assertEquals(false, wesh.startPrivateChat(peerID = peerID, meshService = mock()))
+            assertEquals(false, wesh.startPrivateChat(peerID = peerID, meshService = mock(), expectedSeenToken = null))
             assertTrue(state.getMessagesValue().isEmpty())
             assertTrue(AppStateStore.publicMessages.value.isEmpty())
         } finally {

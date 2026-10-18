@@ -52,7 +52,7 @@ class MeshDelegateHandlerStateContractTest {
             coroutineScope = scope,
             onHapticFeedback = { haptics.incrementAndGet() },
             getMeshService = { mesh },
-            markMessageReadLocally = locallyReadMessageIDs::add
+            markMessageReadLocally = { id, _ -> locallyReadMessageIDs.add(id) }
         )
     }
 

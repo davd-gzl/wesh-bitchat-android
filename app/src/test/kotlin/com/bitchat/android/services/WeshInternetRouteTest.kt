@@ -59,7 +59,7 @@ class WeshInternetRouteTest {
         fun newInbox() = WeshInternetInbox(contacts, { nostr }, route,
             deliver = { conversationID, message -> stored += conversationID to message; true },
             updateStatus = { conversationID, id, status -> statuses += Triple(conversationID, id, status) },
-            alreadyAcked = { it in acked }, markAcked = { acked += it },
+            alreadyAcked = { it in acked }, markAcked = { id, _ -> acked += id },
             senderBlocked = { it.noiseHex in hidden },
             nowSeconds = { now ?: (System.currentTimeMillis() / 1000) })
         var inbox = newInbox()
@@ -91,7 +91,7 @@ class WeshInternetRouteTest {
         val (content, sender, _) = NostrProtocol.decryptPrivateMessage(wrap, bob.nostr)!!
         assertEquals(alice.nostr.publicKeyHex, sender)
         assertTrue(content.startsWith("bitchat1:"))
-        assertEquals(WeshInternetInbox.Outcome.STORED, bob.inbox.onGiftWrap(wrap))
+        assertEquals(WeshInternetInbox.Outcome.STORED, bob.inbox.onGiftWrap(wrap, expectedToken = null))
         val (conversation, message) = bob.stored.single()
         assertEquals(aliceConversation, conversation)
         assertEquals("msg-1", message.id)
@@ -101,9 +101,9 @@ class WeshInternetRouteTest {
 
     @Test fun `the delivery ack goes back over Internet and updates only Alice's conversation`() = runTest {
         alice.route.sendPrivate("salut", bobConversation, "msg-2")
-        bob.inbox.onGiftWrap(alice.link.published.single())
+        bob.inbox.onGiftWrap(alice.link.published.single(), expectedToken = null)
         val ack = bob.link.published.single()
-        assertEquals(WeshInternetInbox.Outcome.ACK_APPLIED, alice.inbox.onGiftWrap(ack))
+        assertEquals(WeshInternetInbox.Outcome.ACK_APPLIED, alice.inbox.onGiftWrap(ack, expectedToken = null))
         val (conversation, id, status) = alice.statuses.single()
         assertEquals(bobConversation, conversation)
         assertEquals("msg-2", id)
@@ -135,7 +135,7 @@ class WeshInternetRouteTest {
         val stranger = Phone("stranger", NostrIdentity.generate(), "9999aaaabbbbcccc")
         stranger.enroll(bobNoise, bob.nostr.npub)
         stranger.route.sendPrivate("spam", bobConversation, "spam-1")
-        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(stranger.link.published.single()))
+        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(stranger.link.published.single(), expectedToken = null))
         assertTrue(bob.stored.isEmpty())
         assertTrue(bob.link.published.isEmpty())
     }
@@ -145,10 +145,10 @@ class WeshInternetRouteTest {
         alice.route.sendPrivate("two", bobConversation, "flagged-1")
         val (first, second) = alice.link.published.toList()
         bob.blocks.edit().putStringSet("blocked_users", setOf(ContactIdentityResolver.fingerprintHex(aliceNoise))).commit()
-        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(first))
+        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(first, expectedToken = null))
         bob.blocks.edit().clear().commit()
         bob.enroll(aliceNoise, alice.nostr.npub, warning = true)
-        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(second))
+        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(second, expectedToken = null))
         assertTrue(bob.stored.isEmpty())
         assertTrue(bob.link.published.isEmpty())
     }
@@ -157,22 +157,22 @@ class WeshInternetRouteTest {
         alice.route.sendPrivate("one", bobConversation, "hidden-1")
         alice.route.sendPrivate("two", bobConversation, "hidden-2")
         val (first, second) = alice.link.published.toList()
-        assertEquals(WeshInternetInbox.Outcome.STORED, bob.inbox.onGiftWrap(first))
+        assertEquals(WeshInternetInbox.Outcome.STORED, bob.inbox.onGiftWrap(first, expectedToken = null))
         val ack = bob.link.published.single()
         // Bob hides Alice: her next message is dropped with no store and no ack.
         bob.hidden += aliceNoise.joinToString("") { "%02x".format(it) }
-        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(second))
+        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(second, expectedToken = null))
         assertEquals(1, bob.stored.size)
         assertEquals(1, bob.link.published.size)
         // Alice hides Bob: his ack no longer updates anything.
         alice.hidden += bobNoise.joinToString("") { "%02x".format(it) }
-        assertEquals(WeshInternetInbox.Outcome.DROPPED, alice.inbox.onGiftWrap(ack))
+        assertEquals(WeshInternetInbox.Outcome.DROPPED, alice.inbox.onGiftWrap(ack, expectedToken = null))
         assertTrue(alice.statuses.isEmpty())
     }
 
     @Test fun `a FAVORITED notice over Internet is never trusted`() = runTest {
         alice.route.sendPrivate("[FAVORITED]:${NostrIdentity.generate().npub}", bobConversation, "fav-1")
-        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(alice.link.published.single()))
+        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(alice.link.published.single(), expectedToken = null))
         assertTrue(bob.stored.isEmpty())
     }
 
@@ -180,10 +180,10 @@ class WeshInternetRouteTest {
         alice.route.sendPrivate("one", bobConversation, "window-1")
         alice.route.sendPrivate("two", bobConversation, "window-2")
         val (first, second) = alice.link.published.toList()
-        assertEquals(WeshInternetInbox.Outcome.STORED, bob.inbox.onGiftWrap(first))
-        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(first))
+        assertEquals(WeshInternetInbox.Outcome.STORED, bob.inbox.onGiftWrap(first, expectedToken = null))
+        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(first, expectedToken = null))
         bob.now = System.currentTimeMillis() / 1000 + WeshInternetInbox.LOOKBACK_SECONDS + 3600
-        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(second))
+        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(second, expectedToken = null))
         assertEquals(1, bob.stored.size)
     }
 
@@ -234,10 +234,10 @@ class WeshInternetRouteTest {
     @Test fun `a message replayed by the lookback after a restart is not acked again`() = runTest {
         alice.route.sendPrivate("salut", bobConversation, "ack-once")
         val wrap = alice.link.published.single()
-        assertEquals(WeshInternetInbox.Outcome.STORED, bob.inbox.onGiftWrap(wrap))
+        assertEquals(WeshInternetInbox.Outcome.STORED, bob.inbox.onGiftWrap(wrap, expectedToken = null))
         assertEquals(1, bob.link.published.size)
         bob.inbox = bob.newInbox() // process restart: in-memory event IDs are gone, the ack record is durable
-        assertEquals(WeshInternetInbox.Outcome.STORED, bob.inbox.onGiftWrap(wrap))
+        assertEquals(WeshInternetInbox.Outcome.STORED, bob.inbox.onGiftWrap(wrap, expectedToken = null))
         assertEquals(1, bob.link.published.size)
     }
 
@@ -246,7 +246,7 @@ class WeshInternetRouteTest {
         alice.route.sendPrivate("y", bobConversation, "a".repeat(129))
         alice.route.sendPrivate("z", bobConversation, "id-\u0430\u0431")      // Cyrillic letters
         alice.route.sendPrivate("w", bobConversation, "id-\uFF11\uFF12")      // full-width digits
-        for (wrap in alice.link.published) assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(wrap))
+        for (wrap in alice.link.published) assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(wrap, expectedToken = null))
         assertTrue(bob.stored.isEmpty())
         assertTrue(bob.link.published.isEmpty())
         assertTrue(bob.acked.isEmpty())
@@ -256,7 +256,7 @@ class WeshInternetRouteTest {
         for (type in listOf(NoisePayloadType.FILE_TRANSFER, NoisePayloadType.VERIFY_CHALLENGE,
                 NoisePayloadType.VERIFY_RESPONSE, NoisePayloadType.VOICE_FRAME, NoisePayloadType.PEER_STATE)) {
             val wrap = NostrProtocol.createPrivateMessage(embed(type, ByteArray(48) { 7 }), bob.nostr.publicKeyHex, alice.nostr).single()
-            assertEquals(type.name, WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(wrap))
+            assertEquals(type.name, WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(wrap, expectedToken = null))
         }
         assertTrue(bob.stored.isEmpty())
         assertTrue(bob.link.published.isEmpty())
@@ -279,7 +279,7 @@ class WeshInternetRouteTest {
             tags = listOf(listOf("p", bob.nostr.publicKeyHex)),
             content = com.bitchat.android.nostr.NostrCrypto.encryptNIP44(gson.toJson(seal), bob.nostr.publicKeyHex, wrapKey))
             .sign(wrapKey)
-        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(wrap))
+        assertEquals(WeshInternetInbox.Outcome.DROPPED, bob.inbox.onGiftWrap(wrap, expectedToken = null))
         assertTrue(bob.stored.isEmpty())
         assertTrue(bob.link.published.isEmpty())
     }

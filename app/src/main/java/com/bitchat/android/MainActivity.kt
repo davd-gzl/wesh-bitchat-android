@@ -856,8 +856,10 @@ class MainActivity : OrientationAwareActivity() {
                 val peerID = intent.getStringExtra(com.bitchat.android.ui.NotificationManager.EXTRA_PEER_ID)
                 if (peerID != null) {
                     // Open the private chat sheet with this peer
-                    if (BuildConfig.WESH_POLICY) lifecycleScope.launch { chatViewModel.startPrivateChat(peerID) }
-                    else { chatViewModel.showMeshPeerList(); chatViewModel.showPrivateChatSheet(peerID) }
+                    if (BuildConfig.WESH_POLICY) {
+                        val seenToken = com.bitchat.android.services.SeenMessageStore.captureReceiptToken()
+                        lifecycleScope.launch { chatViewModel.startPrivateChat(peerID, seenToken) }
+                    } else { chatViewModel.showMeshPeerList(); chatViewModel.showPrivateChatSheet(peerID) }
                     
                     // Clear notifications for this sender since user is now viewing the chat
                     chatViewModel.clearNotificationsForSender(peerID)

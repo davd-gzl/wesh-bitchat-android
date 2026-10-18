@@ -123,7 +123,7 @@ class NostrDirectMessageHandler(
                     if (!seenStore.hasDelivered(pm.messageID)) {
                         val nostrTransport = NostrTransport.getInstance(application)
                         nostrTransport.sendDeliveryAckGeohash(pm.messageID, senderPubkey, recipientIdentity)
-                        seenStore.markDelivered(pm.messageID)
+                        seenStore.markDelivered(pm.messageID, receiptToken)
                     }
                     return
                 }
@@ -156,13 +156,13 @@ class NostrDirectMessageHandler(
                 if (!seenStore.hasDelivered(pm.messageID)) {
                     val nostrTransport = NostrTransport.getInstance(application)
                     nostrTransport.sendDeliveryAckGeohash(pm.messageID, senderPubkey, recipientIdentity)
-                    seenStore.markDelivered(pm.messageID)
+                    seenStore.markDelivered(pm.messageID, receiptToken)
                 }
 
                 if (isViewing && !suppressUnread) {
                     val nostrTransport = NostrTransport.getInstance(application)
                     nostrTransport.sendReadReceiptGeohash(pm.messageID, senderPubkey, recipientIdentity)
-                    seenStore.markReadLocally(pm.messageID)
+                    seenStore.markReadLocally(pm.messageID, receiptToken)
                     seenStore.markReadReceiptSent(pm.messageID, receiptToken)
                 }
             }
