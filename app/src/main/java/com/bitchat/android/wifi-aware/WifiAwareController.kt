@@ -47,7 +47,7 @@ object WifiAwareController {
         appContext = context.applicationContext
         val origin = owner.beginOwner()
         val status = refreshSupportStatus(appContext!!, origin)
-        if (status.supported) registerAwareStateReceiver(appContext!!, origin)
+        if (status.supported) registerAwareStateReceiver(appContext!!)
         else Log.i(TAG, "Wi-Fi Aware unsupported: ${status.reason}")
         setEnabled(enabledByDefault)
     }
@@ -97,13 +97,13 @@ object WifiAwareController {
         if (!status.supported) {
             val reason = status.reason ?: "not supported"
             Log.w(TAG, "Wi-Fi Aware unsupported; not starting ($reason)")
-            owner.blocked("unsupported:$reason", "Wi-Fi Aware not supported on this device ($reason)")
+            owner.blocked(origin, "unsupported:$reason", "Wi-Fi Aware not supported on this device ($reason)")
             return false
         }
         val awareManager = WifiAwareSupport.getManager(ctx)
         if (awareManager == null || !status.available) {
             Log.w(TAG, "Wi-Fi Aware is not currently available; not starting")
-            owner.blocked("unavailable", "Wi-Fi Aware is not available right now")
+            owner.blocked(origin, "unavailable", "Wi-Fi Aware is not available right now")
             return false
         }
         // These live eligibility checks are never invoked by the inert owner's synthetic fixtures.
@@ -117,32 +117,31 @@ object WifiAwareController {
         }
         if (!locationEnabled) {
             Log.w(TAG, "Location services are disabled; Wi-Fi Aware cannot start.")
-            owner.blocked("location-disabled", "Enable Location Services to start Wi-Fi Aware")
+            owner.blocked(origin, "location-disabled", "Enable Location Services to start Wi-Fi Aware")
             return false
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.NEARBY_WIFI_DEVICES) == android.content.pm.PackageManager.PERMISSION_GRANTED
             if (!granted) {
                 Log.w(TAG, "Missing NEARBY_WIFI_DEVICES permission; not starting")
-                owner.blocked("missing-nearby-wifi", "Grant Nearby Wi-Fi Devices to start Wi-Fi Aware")
+                owner.blocked(origin, "missing-nearby-wifi", "Grant Nearby Wi-Fi Devices to start Wi-Fi Aware")
                 return false
             }
         }
         return true
     }
 
-    private fun registerAwareStateReceiver(ctx: Context, origin: WifiAwareOwnerToken) {
+    private fun registerAwareStateReceiver(ctx: Context) {
         if (awareReceiverRegistered) return
-        if (!refreshSupportStatus(ctx, origin).supported) return
+        if (!refreshSupportStatus(ctx, owner.currentOwner()).supported) return
         try {
             val filter = android.content.IntentFilter(android.net.wifi.aware.WifiAwareManager.ACTION_WIFI_AWARE_STATE_CHANGED)
             ctx.registerReceiver(object : android.content.BroadcastReceiver() {
                 override fun onReceive(c: Context?, intent: android.content.Intent?) {
-                    val status = refreshSupportStatus(ctx, origin)
-                    Log.i(TAG, "Wi-Fi Aware availability changed: supported=${status.supported} available=${status.available} enabled=${enabled.value} running=${running.value}")
-                    if (status.available) {
-                        if (enabled.value) owner.restartIfStillEnabled(origin, 500)
-                    } else if (running.value) stop()
+                    // This persistent observer represents current system availability.
+                    // Service callbacks still carry the token captured at construction.
+                    owner.environmentChanged { WifiAwareSupport.evaluate(ctx) }
+                    Log.i(TAG, "Wi-Fi Aware availability changed: supported=${supported.value} available=${available.value} enabled=${enabled.value} running=${running.value}")
                 }
             }, filter)
             awareReceiverRegistered = true

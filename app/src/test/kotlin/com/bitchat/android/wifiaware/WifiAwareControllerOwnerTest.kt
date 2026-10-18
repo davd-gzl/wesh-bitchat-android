@@ -18,6 +18,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 /** Actual singleton-used owner, RAM ports and owned workers only; no platform singleton initialization. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -510,6 +511,101 @@ class WifiAwareControllerOwnerTest {
                 withTimeout(1_000) { first.cancelAndJoin() }
                 withTimeout(1_000) { second.cancelAndJoin() }
             }
+        }
+    }
+
+    @Test fun `cancelling the retirement leader cannot cancel a shared product check`() = runTest {
+        withFixture { f ->
+            val release = CompletableDeferred<Unit>()
+            f.acknowledge = { release.await(); true }
+            f.owner.setEnabled(true)
+            val first = async { f.owner.retireForPanic() }
+            val second = async { f.owner.retireForPanic() }
+            try {
+                runCurrent()
+                assertEquals(1, f.acknowledgments.get())
+                first.cancel()
+                runCurrent()
+                assertFalse("cancelled caller still owns its noncancellable cleanup", first.isCompleted)
+                assertFalse("follower still waits for the shared check", second.isCompleted)
+                assertEquals(1, f.stopRequests.get())
+                release.complete(Unit)
+                withTimeout(1_000) { first.join() }
+                val result = withTimeout(1_000) { second.await() }
+                assertTrue(first.isCancelled)
+                assertTrue(result.admittedStartsDrained)
+                assertTrue(result.capturedProductsAcknowledged)
+                assertEquals(1, f.acknowledgments.get())
+                assertEquals(1, f.stopRequests.get())
+            } finally {
+                release.complete(Unit)
+                withTimeout(1_000) { first.cancelAndJoin() }
+                withTimeout(1_000) { second.cancelAndJoin() }
+            }
+        }
+    }
+
+    @Test fun `current environment availability survives reinitialization without reviving old service callbacks`() = runTest {
+        withFixture { f ->
+            f.owner.setEnabled(true)
+            val old = f.owner.currentOwner()
+            f.owner.retireForPanic()
+            val fresh = f.owner.beginOwner()
+            val available = WifiAwareSupport.Status(true, true)
+            f.owner.environmentChanged { available }
+            f.owner.publishSupportStatus(old, WifiAwareSupport.Status(false, false, "Synthetic stale service"))
+            runCurrent()
+            advanceTimeBy(499); runCurrent()
+            assertNull(f.owner.getService())
+            advanceTimeBy(1); runCurrent()
+            assertSame(fresh, f.owner.currentOwner())
+            assertEquals(available, f.owner.supportStatus.value)
+            assertTrue(f.owner.supported.value)
+            assertTrue(f.owner.available.value)
+            assertTrue(f.owner.running.value)
+            assertNotNull(f.owner.getService())
+            assertEquals(2, f.factories.get())
+        }
+    }
+
+    @Test fun `fresh factory may return while old factory stop effects still precede fresh start`() = runTest {
+        withFixture { f ->
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val factories = AtomicInteger()
+            val sharedPeers = AtomicReference<String?>("Synthetic before")
+            val events = ConcurrentLinkedQueue<String>()
+            val owner = WifiAwareControllerOwner(WifiAwareControllerPorts<Product>(
+                scope = CoroutineScope(f.job + StandardTestDispatcher(testScheduler)),
+                contextReady = { true }, prepareStart = { true }, restartSupported = { true },
+                factory = {
+                    val number = factories.incrementAndGet()
+                    if (number == 1) { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
+                    Product(number)
+                },
+                start = { it.running = true; sharedPeers.set("Synthetic peer ${it.number}"); events += "start${it.number}" },
+                isRunning = { it.running },
+                requestStop = { it.running = false; sharedPeers.set(null); events += "stop${it.number}" },
+                awaitProductRetirement = { true },
+                published = { events += "publish${it.number}" },
+                clearPeers = { sharedPeers.set(null) }, debugMessage = {}, failure = { f.errors.add(it) }
+            ))
+            val worker = f.worker { owner.setEnabled(true) }
+            try {
+                assertTrue("old factory must enter", entered.await(5, TimeUnit.SECONDS))
+                val fresh = owner.beginOwner()
+                owner.startIfPossible()
+                assertEquals("B factory is admitted without waiting for A", 2, factories.get())
+                assertTrue("B stays inert while A's stop could clear shared peers", events.isEmpty())
+                assertNull(owner.getService())
+                assertFalse(owner.running.value)
+                release.countDown(); f.reap(worker)
+                assertEquals(listOf("stop1", "start2", "publish2"), events.toList())
+                assertEquals("Synthetic peer 2", sharedPeers.get())
+                assertSame(fresh, owner.currentOwner())
+                assertEquals(2, requireNotNull(owner.getService()).number)
+                assertTrue(owner.running.value)
+            } finally { release.countDown(); f.reap(worker) }
         }
     }
 
