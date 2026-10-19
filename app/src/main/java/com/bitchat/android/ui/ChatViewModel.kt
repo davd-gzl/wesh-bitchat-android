@@ -1266,6 +1266,7 @@ class ChatViewModel internal constructor(
         val originalService = mesh
         val originalFacade = originalService as? com.bitchat.android.mesh.UnifiedMeshService
         val originalHolder = originalHolderPanicBinding
+        val originalGossip = PanicOriginalGossipInput.Installed(originalHolder, originalService)
         weshPanicInProgress.value = true
         val seenPanic = com.bitchat.android.services.SeenMessageStore.fenceReceiptAdmissionForPanic()
         if (com.bitchat.android.BuildConfig.WESH_POLICY) {
@@ -1279,7 +1280,7 @@ class ChatViewModel internal constructor(
         com.bitchat.android.services.AppStateStore.fencePrivateConversationAdmissionForPanic()
         PanicResetCoordinator.launchPanic(viewModelScope) {
             try {
-                performPanicClearAllData(seenPanic, originalFacade)
+                performPanicClearAllData(seenPanic, originalFacade, originalGossip)
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -1292,14 +1293,15 @@ class ChatViewModel internal constructor(
 
     private suspend fun performPanicClearAllData(
         seenPanic: com.bitchat.android.services.SeenReceiptAdmission.Token,
-        originalFacade: com.bitchat.android.mesh.UnifiedMeshService?
+        originalFacade: com.bitchat.android.mesh.UnifiedMeshService?,
+        originalGossip: PanicOriginalGossipInput
     ) {
         val draftEpoch = weshDraftStore.epoch
         PanicResetCoordinator.admitDestructivePanicOwners(
             establishIntent = {
                 !com.bitchat.android.BuildConfig.WESH_POLICY || weshDraftStore.establishPanicIntent(draftEpoch)
             },
-            retireOwners = { collectPanicRetirement(originalFacade) },
+            retireOwners = { collectPanicRetirement(originalFacade, originalGossip) },
             eraseOwnedData = { report ->
                 clearPanicDataAfterAdmission(seenPanic, report.facade === PanicOwnerRetirement.Confirmed)
             }

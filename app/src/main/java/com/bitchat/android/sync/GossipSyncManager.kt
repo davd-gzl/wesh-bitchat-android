@@ -9,6 +9,11 @@ import com.bitchat.android.protocol.SpecialRecipients
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
 
+internal sealed interface GossipManagerRootCloseOutcome {
+    class Closed(val receipt: GossipRootCloseReceipt) : GossipManagerRootCloseOutcome
+    data object ForeignBinding : GossipManagerRootCloseOutcome
+}
+
 /**
  * Gossip-based synchronization manager using on-demand GCS filters.
  * Tracks seen public packets (ANNOUNCE, broadcast MESSAGE) and periodically requests sync
@@ -41,6 +46,11 @@ class GossipSyncManager internal constructor(
 
     internal fun hasOriginalWorkOwner(candidate: GossipWorkOwner): Boolean = workOwner === candidate
     internal fun captureJobPanicBinding(): GossipManagerJobBinding = originalJobBinding
+
+    /** Restricts new roots only; accepted children, jobs and direct writers remain owned separately. */
+    internal fun closeJobRootsForPanic(original: GossipManagerJobBinding): GossipManagerRootCloseOutcome =
+        if (original !== originalJobBinding) GossipManagerRootCloseOutcome.ForeignBinding
+        else GossipManagerRootCloseOutcome.Closed(workOwner.closeJobRoots(original))
 
     @Volatile var delegate: Delegate? = null
 
