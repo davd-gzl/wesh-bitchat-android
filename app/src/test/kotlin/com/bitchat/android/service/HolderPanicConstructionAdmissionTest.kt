@@ -410,9 +410,9 @@ class HolderPanicConstructionAdmissionTest {
         is WifiAwareFactoryResult.Created -> result.value
         WifiAwareFactoryResult.RefusedBeforeAllocation -> error("Expected a pre-closure admitted Created product")
     }
-    private fun <T : Any> acquiredValue(result: HolderAcquisitionResult<T>): T = when (result) {
-        is HolderAcquisitionResult.Available -> result.product
-        HolderAcquisitionResult.RefusedBeforeAcquisition -> error("Expected an available synthetic acquisition")
-    }
+}
 
+private fun <T : Any> acquiredValue(result: HolderAcquisitionResult<T>): T = when (result) {
+    is HolderAcquisitionResult.Available -> result.product
+    HolderAcquisitionResult.RefusedBeforeAcquisition -> error("Expected an available synthetic acquisition")
 }
