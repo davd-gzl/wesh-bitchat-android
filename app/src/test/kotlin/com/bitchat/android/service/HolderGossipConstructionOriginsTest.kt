@@ -517,7 +517,7 @@ class HolderGossipConstructionOriginsTest {
             HolderAcquisitionResult.RefusedBeforeAcquisition -> throw AssertionError("Expected ordinary acquisition")
         }
         private fun <T : Any> created(result: WifiAwareFactoryResult<T>): T = when (result) {
-            is WifiAwareFactoryResult.Created -> result.product
+            is WifiAwareFactoryResult.Created -> result.value
             WifiAwareFactoryResult.RefusedBeforeAllocation -> throw AssertionError("Expected accepted original construction")
         }
         private fun returned(row: HolderGossipChildSnapshot<GossipSyncManager>): HolderGossipManagerReference<GossipSyncManager> =
