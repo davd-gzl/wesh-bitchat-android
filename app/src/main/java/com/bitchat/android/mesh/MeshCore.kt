@@ -148,6 +148,11 @@ class MeshCore(
         packetProcessor.shutdown()
     }
 
+    /** The Wi-Fi service teardown uses its original external scope. */
+    internal suspend fun awaitPacketProcessorShutdown() {
+        packetProcessor.awaitShutdown()
+    }
+
     fun processIncoming(
         packet: BitchatPacket,
         peerID: String?,

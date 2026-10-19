@@ -52,7 +52,8 @@ class PacketProcessor(
     private val packetRelayManager = PacketRelayManager(myPeerID)
     
     // Coroutines
-    private val processorScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val processorJob = SupervisorJob()
+    private val processorScope = CoroutineScope(Dispatchers.IO + processorJob)
     
     // Each peer gets its own queue, processed sequentially, so session management never races.
     private class PeerQueue(val channel: Channel<RoutedPacket>) {
@@ -61,6 +62,7 @@ class PacketProcessor(
     }
 
     private val queueLock = Any()
+    private var shutdownRequested = false
     private val queues = LinkedHashMap<String, PeerQueue>()
     private val linkPending = HashMap<String, Int>()
     private var queuedPackets = 0
@@ -92,7 +94,8 @@ class PacketProcessor(
         
         val bytes = queuedSize(routed)
         val link = quotaKey(routed, peerID)
-        val queue = synchronized(queueLock) {
+        val offered = synchronized(queueLock) {
+            // Baseline intentionally omits terminal refusal before queue creation.
             if (queuedPackets >= maxQueuedPackets || queuedBytes + bytes > maxQueuedBytes) return@synchronized null
             if ((linkPending[link] ?: 0) >= perLinkQueueCapacity) return@synchronized null
             val queue = queues[peerID] ?: newQueueLocked(peerID) ?: return@synchronized null
@@ -100,16 +103,12 @@ class PacketProcessor(
             linkPending[link] = (linkPending[link] ?: 0) + 1
             queuedPackets += 1
             queuedBytes += bytes
-            queue
+            // These private channels have no undelivered handler and resume only fixed-IO actors.
+            val sent = queue.channel.trySend(routed).isSuccess
+            if (!sent) release(queue, routed)
+            sent
         }
-        if (queue == null) {
-            droppedPackets.incrementAndGet()
-            return
-        }
-        if (!queue.channel.trySend(routed).isSuccess) {
-            release(queue, routed)
-            droppedPackets.incrementAndGet()
-        }
+        if (offered != true) droppedPackets.incrementAndGet()
     }
 
     /** Quotas follow the link a packet arrived on, never the sender ID it claims. */
@@ -399,6 +398,7 @@ class PacketProcessor(
      */
     fun shutdown() {
         synchronized(queueLock) {
+            shutdownRequested = true
             Log.d(TAG, "Shutting down PacketProcessor and ${queues.size} peer queues")
             queues.values.forEach { it.channel.close() }
             queues.clear()
@@ -409,6 +409,12 @@ class PacketProcessor(
         
         // Cancel the main scope
         processorScope.cancel()
+    }
+
+    /** Only the original external teardown may await after requesting shutdown. */
+    internal suspend fun awaitShutdown() {
+        check(synchronized(queueLock) { shutdownRequested }) { "Shutdown must be requested before awaiting" }
+        processorJob.join()
     }
 }
 
