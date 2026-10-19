@@ -52,6 +52,12 @@ class GossipSyncManager internal constructor(
         if (original !== originalJobBinding) GossipManagerRootCloseOutcome.ForeignBinding
         else GossipManagerRootCloseOutcome.Closed(workOwner.closeJobRoots(original))
 
+    internal fun captureReturnedJobsForCancellation(
+        original: GossipManagerJobBinding,
+        receipt: GossipRootCloseReceipt
+    ): GossipReturnedJobsCapture = if (original !== originalJobBinding) GossipReturnedJobsCapture.ForeignBinding
+        else workOwner.captureReturnedJobsForCancellation(original, receipt)
+
     @Volatile var delegate: Delegate? = null
 
     // Defaults (configurable constants)

@@ -11,6 +11,9 @@ import com.bitchat.android.service.observeHolderOriginalGossipSubset
 import com.bitchat.android.sync.GossipManagerJobBinding
 import com.bitchat.android.sync.GossipManagerRootCloseOutcome
 import com.bitchat.android.sync.GossipRootCloseReceipt
+import com.bitchat.android.sync.GossipReturnedJobsCapture
+import com.bitchat.android.sync.GossipWorkOutcome
+import com.bitchat.android.sync.GossipWorkTicket
 import com.bitchat.android.sync.GossipSyncManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -46,13 +49,44 @@ internal sealed interface PanicGossipRootCloseAttempt {
         val gap: PanicGossipRootCloseGap
     ) : PanicGossipRootCloseAttempt
 }
+internal enum class KnownJobCaptureFailureKind { OrdinaryFailure, CancellationThrown }
+internal sealed interface KnownManagerJobCaptureOutcome {
+    class Captured(val result: GossipReturnedJobsCapture) : KnownManagerJobCaptureOutcome
+    class OperationFailed(val kind: KnownJobCaptureFailureKind) : KnownManagerJobCaptureOutcome
+}
+internal class KnownManagerReturnedJobs(
+    val originalClose: PanicGossipRootCloseAttempt.Closed,
+    val outcome: KnownManagerJobCaptureOutcome
+)
+internal class KnownJobOrigin(
+    val managerSnapshot: KnownManagerReturnedJobs,
+    val tickets: List<GossipWorkTicket>
+)
+internal enum class JobCancellationRequestOutcome {
+    RequestAttempted, OperationFailed, CancellationThrown,
+    SkippedCallerRelated, SkippedCallerRelationshipUnknown, SkippedMissingCaller
+}
+internal class KnownJobCancellationRequest(
+    val originalJob: Job,
+    val origins: List<KnownJobOrigin>,
+    val outcome: JobCancellationRequestOutcome
+)
+internal sealed interface KnownReturnedJobsCancellation {
+    data object NotAttempted : KnownReturnedJobsCancellation
+    class Attempted(
+        val managers: List<KnownManagerReturnedJobs>,
+        val requests: List<KnownJobCancellationRequest>
+    ) : KnownReturnedJobsCancellation
+}
+
 internal sealed interface PanicUnconfirmedEvidence {
     data object NotCollected : PanicUnconfirmedEvidence
     class InvalidInstalledPair(val gap: PanicRetirementGap) : PanicUnconfirmedEvidence
     class InvalidOriginalGossip(val gap: HolderGossipCaptureGap) : PanicUnconfirmedEvidence
     class KnownOriginalGossip(
         val snapshot: HolderGossipSubsetSnapshot<GossipSyncManager>,
-        val attempts: List<PanicGossipRootCloseAttempt>
+        val attempts: List<PanicGossipRootCloseAttempt>,
+        val returnedJobsCancellation: KnownReturnedJobsCancellation = KnownReturnedJobsCancellation.NotAttempted
     ) : PanicUnconfirmedEvidence
 }
 internal sealed interface PanicOwnerRetirement {
@@ -100,7 +134,13 @@ internal suspend fun collectPanicRetirement(
                     PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.OriginalHolderInputUnconfirmed),
                     PanicUnconfirmedEvidence.InvalidOriginalGossip(captured.gap)
                 )
-                is HolderGossipSubsetCapture.Observed -> closeKnownOriginalGossipRoots(captured.snapshot)
+                is HolderGossipSubsetCapture.Observed -> {
+                    val originalInvoker = currentCoroutineContext()[Job]
+                    val closed = closeKnownOriginalGossipRoots(captured.snapshot)
+                    val cancellation = cancelKnownOriginalReturnedJobs(closed, originalInvoker)
+                    currentCoroutineContext().ensureActive()
+                    PanicUnconfirmedEvidence.KnownOriginalGossip(closed.snapshot, closed.attempts, cancellation)
+                }
             }
         }
     }
@@ -143,6 +183,103 @@ private fun closeKnownOriginalGossipRoots(
         }
     }
     return PanicUnconfirmedEvidence.KnownOriginalGossip(snapshot, attempts)
+}
+
+private class CancellationOrigin(
+    val managerSnapshot: KnownManagerReturnedJobs,
+    val tickets: MutableList<GossipWorkTicket> = mutableListOf()
+)
+private class CancellationCandidate(val job: Job) {
+    val origins = mutableListOf<CancellationOrigin>()
+}
+
+/** A finite request pass only. Completion handlers may run synchronously; no join or wait follows. */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+private fun cancelKnownOriginalReturnedJobs(
+    closed: PanicUnconfirmedEvidence.KnownOriginalGossip,
+    originalInvoker: Job?
+): KnownReturnedJobsCancellation.Attempted {
+    var pendingCancellation: CancellationException? = null
+    val managers = closed.attempts.filterIsInstance<PanicGossipRootCloseAttempt.Closed>().map { original ->
+        val outcome = try {
+            KnownManagerJobCaptureOutcome.Captured(
+                original.manager.captureReturnedJobsForCancellation(original.binding, original.receipt)
+            )
+        } catch (cancelled: CancellationException) {
+            if (pendingCancellation == null) pendingCancellation = cancelled
+            KnownManagerJobCaptureOutcome.OperationFailed(KnownJobCaptureFailureKind.CancellationThrown)
+        } catch (_: Exception) {
+            KnownManagerJobCaptureOutcome.OperationFailed(KnownJobCaptureFailureKind.OrdinaryFailure)
+        }
+        KnownManagerReturnedJobs(original, outcome)
+    }
+    val candidates = mutableListOf<CancellationCandidate>()
+    val byJob = java.util.IdentityHashMap<Job, CancellationCandidate>()
+    managers.forEach { manager ->
+        val captured = manager.outcome
+        if (captured is KnownManagerJobCaptureOutcome.Captured) {
+            val result = captured.result
+            if (result is GossipReturnedJobsCapture.Observed) result.snapshot.records.forEach { row ->
+                val returned = row.outcome
+                if (returned is GossipWorkOutcome.Returned) {
+                    val candidate = byJob[returned.job] ?: CancellationCandidate(returned.job).also {
+                        byJob[returned.job] = it
+                        candidates += it
+                    }
+                    val origin = candidate.origins.firstOrNull { it.managerSnapshot === manager }
+                        ?: CancellationOrigin(manager).also { candidate.origins += it }
+                    origin.tickets += row.ticket
+                }
+            }
+        }
+    }
+
+    // Save the caller chain once, before any cancellation handler can cancel or detach it.
+    val callerChain = java.util.IdentityHashMap<Job, Unit>()
+    var relationshipGap: JobCancellationRequestOutcome? = null
+    if (originalInvoker == null) relationshipGap = JobCancellationRequestOutcome.SkippedMissingCaller
+    else try {
+        if (!originalInvoker.isActive) relationshipGap = JobCancellationRequestOutcome.SkippedCallerRelationshipUnknown
+        else {
+            var current: Job? = originalInvoker
+            while (current != null) {
+                if (callerChain.containsKey(current)) {
+                    relationshipGap = JobCancellationRequestOutcome.SkippedCallerRelationshipUnknown
+                    break
+                }
+                callerChain[current] = Unit
+                current = current.parent
+            }
+        }
+    } catch (cancelled: CancellationException) {
+        if (pendingCancellation == null) pendingCancellation = cancelled
+        relationshipGap = JobCancellationRequestOutcome.SkippedCallerRelationshipUnknown
+    } catch (_: Exception) {
+        relationshipGap = JobCancellationRequestOutcome.SkippedCallerRelationshipUnknown
+    }
+
+    val requests = candidates.map { candidate ->
+        val outcome = when {
+            callerChain.containsKey(candidate.job) -> JobCancellationRequestOutcome.SkippedCallerRelated
+            relationshipGap != null -> checkNotNull(relationshipGap)
+            else -> try {
+                candidate.job.cancel()
+                JobCancellationRequestOutcome.RequestAttempted
+            } catch (cancelled: CancellationException) {
+                if (pendingCancellation == null) pendingCancellation = cancelled
+                JobCancellationRequestOutcome.CancellationThrown
+            } catch (_: Exception) {
+                JobCancellationRequestOutcome.OperationFailed
+            }
+        }
+        KnownJobCancellationRequest(
+            candidate.job,
+            candidate.origins.map { KnownJobOrigin(it.managerSnapshot, it.tickets.toList()) },
+            outcome
+        )
+    }
+    pendingCancellation?.let { throw it }
+    return KnownReturnedJobsCancellation.Attempted(managers, requests)
 }
 
 private fun unconfirmedPanicReport(

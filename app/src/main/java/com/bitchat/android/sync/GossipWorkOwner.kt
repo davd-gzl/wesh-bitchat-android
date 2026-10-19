@@ -48,6 +48,19 @@ internal data class GossipWorkSnapshot(
     val outcome: GossipWorkOutcome
 )
 
+/** A finite original observation; neither a sealed frontier nor permission to join. */
+internal sealed interface GossipReturnedJobsSnapshot {
+    val binding: GossipManagerJobBinding
+    val receipt: GossipRootCloseReceipt
+    val roots: List<GossipRootSnapshot>
+    val records: List<GossipWorkSnapshot>
+}
+internal sealed interface GossipReturnedJobsCapture {
+    class Observed(val snapshot: GossipReturnedJobsSnapshot) : GossipReturnedJobsCapture
+    data object ForeignBinding : GossipReturnedJobsCapture
+    data object ForeignCloseReceipt : GossipReturnedJobsCapture
+}
+
 /** Retains original dispatch outcomes; completion and cancellation do not discharge ownership. */
 internal class GossipWorkOwner {
     private class Ticket : GossipWorkTicket
@@ -89,6 +102,26 @@ internal class GossipWorkOwner {
     fun closeJobRoots(binding: GossipManagerJobBinding): GossipRootCloseReceipt = synchronized(monitor) {
         check(binding === association) { "Job root binding does not belong to this owner" }
         rootCloseReceipt ?: CloseReceipt().also { rootCloseReceipt = it }
+    }
+
+    private class ReturnedJobsSnapshot(
+        override val binding: GossipManagerJobBinding,
+        override val receipt: GossipRootCloseReceipt,
+        override val roots: List<GossipRootSnapshot>,
+        override val records: List<GossipWorkSnapshot>
+    ) : GossipReturnedJobsSnapshot
+
+    /** Validate both original identities before copying rows; never invoke a Job under this monitor. */
+    fun captureReturnedJobsForCancellation(
+        binding: GossipManagerJobBinding,
+        receipt: GossipRootCloseReceipt
+    ): GossipReturnedJobsCapture = synchronized(monitor) {
+        if (binding !== association) return@synchronized GossipReturnedJobsCapture.ForeignBinding
+        if (rootCloseReceipt == null || receipt !== rootCloseReceipt) {
+            return@synchronized GossipReturnedJobsCapture.ForeignCloseReceipt
+        }
+        // Both reentrant copies finish in this one transaction. Accepted work may publish later.
+        GossipReturnedJobsCapture.Observed(ReturnedJobsSnapshot(binding, receipt, rootSnapshot(), snapshot()))
     }
 
     fun reserveRoot(binding: GossipManagerJobBinding, kind: GossipRootKind): GossipRootReservation = synchronized(monitor) {
