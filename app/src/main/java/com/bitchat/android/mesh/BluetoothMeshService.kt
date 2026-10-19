@@ -846,15 +846,15 @@ class BluetoothMeshService internal constructor(
             // Stop all components
             com.bitchat.android.service.MeshServiceHolder.stopSharedGossip("BLE")
             connectionManager.stopServices()
-            peerManager.shutdown()
-            fragmentManager.shutdown()
-            securityManager.shutdown()
-            storeForwardManager.shutdown()
-            messageHandler.shutdown()
             packetProcessor.shutdown()
             var awaitFailure: Throwable? = null
             try {
                 packetProcessor.awaitShutdown()
+                peerManager.shutdown()
+                fragmentManager.shutdown()
+                securityManager.shutdown()
+                storeForwardManager.shutdown()
+                messageHandler.shutdown()
             } catch (failure: Throwable) {
                 awaitFailure = failure
                 throw failure
