@@ -90,13 +90,14 @@ internal sealed interface HolderPanicBinding
 private class CapturedHolderPanicBinding(
     val actor: HolderPanicAdmissionActor,
     val subject: HolderPanicSubject,
-    val product: Any
+    val product: Any,
+    val gossipCollector: BoundGossipCollector
 ) : HolderPanicBinding
 private class UnconfirmedHolderPanicBinding(val gap: HolderPanicCaptureGap) : HolderPanicBinding
 
 internal fun captureHolderPanicBinding(actor: HolderPanicAdmissionActor, exactUnified: Any): HolderPanicBinding =
     when (val captured = actor.captureUnifiedPanicSubject(exactUnified)) {
-        is HolderPanicSubjectCapture.Captured -> CapturedHolderPanicBinding(actor, captured.subject, exactUnified)
+        is HolderPanicSubjectCapture.Captured -> CapturedHolderPanicBinding(actor, captured.subject, exactUnified, BoundGossipCollector.Missing)
         is HolderPanicSubjectCapture.Unconfirmed -> UnconfirmedHolderPanicBinding(captured.gap)
     }
 
@@ -107,6 +108,62 @@ internal fun closeHolderPanicBinding(binding: HolderPanicBinding, exactCurrentMe
             HolderConstructionCloseOutcome.Unconfirmed(HolderPanicCaptureGap.ProductMismatch)
         } else binding.actor.closeConstructionAdmission(binding.subject, binding.product)
     }
+
+/** A coherent partial observation, never a closed census or drain acknowledgment. */
+internal data class HolderGossipSubsetSnapshot<G : Any>(
+    val holder: HolderProvenanceSnapshot<G>,
+    val children: List<HolderGossipChildSnapshot<G>>
+)
+internal sealed interface HolderGossipCaptureGap {
+    data object MissingCollector : HolderGossipCaptureGap
+    data object NotClosed : HolderGossipCaptureGap
+    class InvalidSubject(val gap: HolderPanicCaptureGap) : HolderGossipCaptureGap
+}
+internal sealed interface HolderGossipSubsetCapture<out G : Any> {
+    class Observed<G : Any>(val snapshot: HolderGossipSubsetSnapshot<G>) : HolderGossipSubsetCapture<G>
+    class Unconfirmed(val gap: HolderGossipCaptureGap) : HolderGossipSubsetCapture<Nothing>
+}
+
+private interface OriginalGossipCollector {
+    fun observe(subject: HolderPanicSubject, exactUnified: Any): HolderGossipSubsetCapture<GossipSyncManager>
+}
+private class TypedOriginalGossipCollector<B : Any, U : Any>(
+    private val original: MeshServiceHolderOwner<B, U, GossipSyncManager>
+) : OriginalGossipCollector {
+    override fun observe(subject: HolderPanicSubject, exactUnified: Any) =
+        original.observeOriginalGossipSubset(subject, exactUnified)
+}
+private sealed interface BoundGossipCollector {
+    data object Missing : BoundGossipCollector
+    class Installed(val original: OriginalGossipCollector) : BoundGossipCollector
+}
+
+/** The collector and admission actor are the same original concrete owner. */
+internal fun <B : Any, U : Any> captureHolderPanicBindingWithGossip(
+    original: MeshServiceHolderOwner<B, U, GossipSyncManager>,
+    exactUnified: Any
+): HolderPanicBinding = when (val captured = original.captureUnifiedPanicSubject(exactUnified)) {
+    is HolderPanicSubjectCapture.Captured -> CapturedHolderPanicBinding(
+        original, captured.subject, exactUnified,
+        BoundGossipCollector.Installed(TypedOriginalGossipCollector(original))
+    )
+    is HolderPanicSubjectCapture.Unconfirmed -> UnconfirmedHolderPanicBinding(captured.gap)
+}
+
+internal fun observeHolderOriginalGossipSubset(
+    binding: HolderPanicBinding,
+    exactOriginalMesh: Any
+): HolderGossipSubsetCapture<GossipSyncManager> = when (binding) {
+    is UnconfirmedHolderPanicBinding -> HolderGossipSubsetCapture.Unconfirmed(
+        HolderGossipCaptureGap.InvalidSubject(binding.gap)
+    )
+    is CapturedHolderPanicBinding -> if (binding.product !== exactOriginalMesh) {
+        HolderGossipSubsetCapture.Unconfirmed(HolderGossipCaptureGap.InvalidSubject(HolderPanicCaptureGap.ProductMismatch))
+    } else when (val collector = binding.gossipCollector) {
+        BoundGossipCollector.Missing -> HolderGossipSubsetCapture.Unconfirmed(HolderGossipCaptureGap.MissingCollector)
+        is BoundGossipCollector.Installed -> collector.original.observe(binding.subject, binding.product)
+    }
+}
 
 /** External registration never inherits a constructor or its epoch. */
 internal sealed interface HolderManagerProvenance {
@@ -252,6 +309,30 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
 
     fun gossipConstructionSnapshot(): List<HolderGossipChildSnapshot<G>> = synchronized(registryMonitor) {
         gossipChildren.values.map { HolderGossipChildSnapshot(it.ticket, it.source, it.provenance, it.outcome) }
+    }
+
+    /** One RAM-only O(n) view; accepted contexts can still publish later original managers. */
+    fun observeOriginalGossipSubset(
+        subject: HolderPanicSubject,
+        exactUnified: Any
+    ): HolderGossipSubsetCapture<G> = synchronized(registryMonitor) {
+        if (subject !is UnifiedPanicSubject || subject.ownerAnchor !== ownerAnchor) {
+            return@synchronized HolderGossipSubsetCapture.Unconfirmed(
+                HolderGossipCaptureGap.InvalidSubject(HolderPanicCaptureGap.ForeignSubject)
+            )
+        }
+        val record = constructions[subject.context]
+        if (record == null || record.kind != HolderConstructionKind.UNIFIED ||
+            (record.outcome as? HolderConstructionOutcome.Returned)?.product !== exactUnified) {
+            return@synchronized HolderGossipSubsetCapture.Unconfirmed(
+                HolderGossipCaptureGap.InvalidSubject(HolderPanicCaptureGap.InvalidReturnedUnified)
+            )
+        }
+        if (!constructionAdmissionClosed) {
+            return@synchronized HolderGossipSubsetCapture.Unconfirmed(HolderGossipCaptureGap.NotClosed)
+        }
+        // Both reentrant snapshot copies finish in this same transaction, without external calls.
+        HolderGossipSubsetCapture.Observed(HolderGossipSubsetSnapshot(provenanceSnapshot(), gossipConstructionSnapshot()))
     }
 
     /** Pure initial-process provenance; ordinary clear/retry never replaces this value. */

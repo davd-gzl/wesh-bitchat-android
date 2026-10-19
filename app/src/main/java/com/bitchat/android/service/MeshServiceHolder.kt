@@ -40,7 +40,7 @@ object MeshServiceHolder {
     internal fun initialProcessPreparation(): HolderProcessPreparation = owner.initialProcessPreparation()
 
     internal fun captureUnifiedPanicBinding(exactUnified: Any): HolderPanicBinding =
-        captureHolderPanicBinding(owner, exactUnified)
+        captureHolderPanicBindingWithGossip(owner, exactUnified)
 
     internal fun setGossipManager(
         provenance: HolderManagerProvenance,

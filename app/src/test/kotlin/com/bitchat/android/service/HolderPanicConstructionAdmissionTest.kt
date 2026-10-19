@@ -199,7 +199,7 @@ class HolderPanicConstructionAdmissionTest {
             var erases = 0
             val admitted = PanicResetCoordinator.admitDestructivePanicOwners(
                 establishIntent = { true },
-                retireOwners = { collectPanicRetirement(f.facade).also { report = it } },
+                retireOwners = { collectPanicRetirement(f.facade, com.bitchat.android.ui.PanicOriginalGossipInput.MissingCapturedHolder).also { report = it } },
                 eraseOwnedData = { erases++; true }
             )
             assertSame(PanicOwnerRetirement.Confirmed, checkNotNull(report).facade)

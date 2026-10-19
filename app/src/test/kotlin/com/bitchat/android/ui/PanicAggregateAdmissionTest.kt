@@ -58,7 +58,7 @@ class PanicAggregateAdmissionTest {
             var report: PanicRetirementReport? = null
             val admitted = PanicResetCoordinator.admitDestructivePanicOwners(
                 establishIntent = { syntheticIntentPending = true; true },
-                retireOwners = { collectPanicRetirement(f.facade).also { report = it } },
+                retireOwners = { collectPanicRetirement(f.facade, PanicOriginalGossipInput.MissingCapturedHolder).also { report = it } },
                 eraseOwnedData = { erases++; true }
             )
             assertSame("actual facade retirement must succeed", PanicOwnerRetirement.Confirmed, checkNotNull(report).facade)
@@ -78,7 +78,7 @@ class PanicAggregateAdmissionTest {
         var erases = 0
         assertFalse(PanicResetCoordinator.admitDestructivePanicOwners(
             establishIntent = { false },
-            retireOwners = { collections++; collectPanicRetirement(null) },
+            retireOwners = { collections++; collectPanicRetirement(null, PanicOriginalGossipInput.MissingCapturedHolder) },
             eraseOwnedData = { erases++; true }
         ))
         assertEquals(0, collections)
@@ -86,7 +86,7 @@ class PanicAggregateAdmissionTest {
     }
 
     @Test fun `missing captured facade is explicitly unconfirmed without inventing a replacement`() = runTest {
-        val report = collectPanicRetirement(null)
+        val report = collectPanicRetirement(null, PanicOriginalGossipInput.MissingCapturedHolder)
         assertEquals(PanicRetirementGap.MissingCapturedFacade, (report.facade as PanicOwnerRetirement.Unconfirmed).gap)
         assertMissingProducers(report)
         assertFalse(report.confirmed)
@@ -99,7 +99,7 @@ class PanicAggregateAdmissionTest {
             var report: PanicRetirementReport? = null
             assertFalse(PanicResetCoordinator.admitDestructivePanicOwners(
                 establishIntent = { true },
-                retireOwners = { collectPanicRetirement(f.facade).also { report = it } },
+                retireOwners = { collectPanicRetirement(f.facade, PanicOriginalGossipInput.MissingCapturedHolder).also { report = it } },
                 eraseOwnedData = { erases++; true }
             ))
             assertEquals(PanicRetirementGap.FacadeUnconfirmed, (checkNotNull(report).facade as PanicOwnerRetirement.Unconfirmed).gap)
@@ -129,7 +129,7 @@ class PanicAggregateAdmissionTest {
         val request = async {
             PanicResetCoordinator.admitDestructivePanicOwners(
                 establishIntent = { currentCoroutineContext().cancel(); true },
-                retireOwners = { collections++; collectPanicRetirement(null) },
+                retireOwners = { collections++; collectPanicRetirement(null, PanicOriginalGossipInput.MissingCapturedHolder) },
                 eraseOwnedData = { erases++; true }
             )
         }
@@ -147,7 +147,7 @@ class PanicAggregateAdmissionTest {
                 PanicResetCoordinator.admitDestructivePanicOwners(
                     establishIntent = { true },
                     retireOwners = {
-                        collectPanicRetirement(f.facade).also {
+                        collectPanicRetirement(f.facade, PanicOriginalGossipInput.MissingCapturedHolder).also {
                             assertSame(PanicOwnerRetirement.Confirmed, it.facade)
                             reported = true
                             currentCoroutineContext().cancel()
@@ -179,7 +179,7 @@ class PanicAggregateAdmissionTest {
             val request = f.request(async {
                 PanicResetCoordinator.admitDestructivePanicOwners(
                     establishIntent = { true },
-                    retireOwners = { collectPanicRetirement(f.facade).also { reported = true } },
+                    retireOwners = { collectPanicRetirement(f.facade, PanicOriginalGossipInput.MissingCapturedHolder).also { reported = true } },
                     eraseOwnedData = { erases++; true }
                 )
             })
@@ -226,7 +226,7 @@ class PanicAggregateAdmissionTest {
             var erases = 0
             val admitted = PanicResetCoordinator.admitDestructivePanicOwners(
                 establishIntent = { drafts.establishPanicIntent(capturedEpoch) },
-                retireOwners = { collectPanicRetirement(f.facade).also { report = it } },
+                retireOwners = { collectPanicRetirement(f.facade, PanicOriginalGossipInput.MissingCapturedHolder).also { report = it } },
                 eraseOwnedData = { erases++; true }
             )
             assertSame("actual facade retirement must succeed", PanicOwnerRetirement.Confirmed, checkNotNull(report).facade)
