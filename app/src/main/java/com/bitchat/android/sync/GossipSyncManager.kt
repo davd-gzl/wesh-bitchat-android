@@ -58,6 +58,22 @@ class GossipSyncManager internal constructor(
     ): GossipDirectCloseOutcome = if (original !== originalJobBinding) GossipDirectCloseOutcome.ForeignBinding
         else workOwner.closeDirectIngress(original, receipt)
 
+    internal fun captureEndedDirectFrontier(
+        original: GossipManagerJobBinding,
+        rootReceipt: GossipRootCloseReceipt,
+        receipt: GossipDirectCloseReceipt
+    ): GossipDirectEndedCapture = if (original !== originalJobBinding) {
+        GossipDirectEndedCapture.Unconfirmed(GossipDirectFrontierGap.ForeignBinding)
+    } else workOwner.captureEndedDirectFrontier(original, rootReceipt, receipt)
+
+    internal fun validateEndedDirectFrontier(
+        original: GossipManagerJobBinding,
+        rootReceipt: GossipRootCloseReceipt,
+        receipt: GossipDirectCloseReceipt,
+        frontier: GossipDirectEndedFrontier
+    ): Boolean = original === originalJobBinding &&
+        workOwner.validateEndedDirectFrontier(original, rootReceipt, receipt, frontier)
+
     internal fun captureReturnedJobsForCancellation(
         original: GossipManagerJobBinding,
         receipt: GossipRootCloseReceipt

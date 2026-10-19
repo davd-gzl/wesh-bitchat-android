@@ -138,6 +138,18 @@ internal sealed interface GossipDirectSnapshotCapture {
     data object ForeignBinding : GossipDirectSnapshotCapture
 }
 
+/** Authentic ended business-body metadata; never an admission capability or host completion proof. */
+internal sealed interface GossipDirectEndedFrontier
+internal enum class GossipDirectFrontierGap {
+    ForeignBinding, ForeignRootReceipt, ForeignDirectReceipt, NotClosed, ActiveOperation,
+    ProtocolUncertainty, ForeignWitness, FrontierChanged, OperationFailed
+}
+internal sealed interface GossipDirectEndedCapture {
+    class Observed(val frontier: GossipDirectEndedFrontier) : GossipDirectEndedCapture
+    class EmptyValidated(val frontier: GossipDirectEndedFrontier) : GossipDirectEndedCapture
+    class Unconfirmed(val gap: GossipDirectFrontierGap) : GossipDirectEndedCapture
+}
+
 /** Retains original dispatch outcomes; completion and cancellation do not discharge ownership. */
 internal class GossipWorkOwner {
     private class Ticket : GossipWorkTicket
@@ -294,6 +306,65 @@ internal class GossipWorkOwner {
         override val receipt: GossipRootCloseReceipt
     ) : GossipEmptyFrontierValidation
     private val joinAnchor = Any()
+
+    private class EndedDirectFrontier(
+        val anchor: Any,
+        val association: GossipDirectAssociationIdentity,
+        val close: GossipDirectCloseIdentity,
+        val rows: List<GossipDirectOperationRow>
+    ) : GossipDirectEndedFrontier
+    private val directEndedAnchor = Any()
+
+    private fun directEndedGapLocked(
+        binding: GossipManagerJobBinding,
+        rootReceipt: GossipRootCloseReceipt,
+        receipt: GossipDirectCloseReceipt
+    ): GossipDirectFrontierGap? {
+        if (binding !== association) return GossipDirectFrontierGap.ForeignBinding
+        val root = rootCloseReceipt ?: return GossipDirectFrontierGap.NotClosed
+        val closed = directCloseReceipt ?: return GossipDirectFrontierGap.NotClosed
+        if (rootReceipt !== root) return GossipDirectFrontierGap.ForeignRootReceipt
+        if (receipt !== closed) return GossipDirectFrontierGap.ForeignDirectReceipt
+        if (closed.binding !== binding || closed.root !== root) return GossipDirectFrontierGap.ForeignDirectReceipt
+        if (directFaults.isNotEmpty()) return GossipDirectFrontierGap.ProtocolUncertainty
+        if (directOperations.values.any { it.state == GossipDirectBodyState.Admitted }) {
+            return GossipDirectFrontierGap.ActiveOperation
+        }
+        return null
+    }
+
+    /** Copies only owner-free identity tokens and actual terminal business-body rows. */
+    fun captureEndedDirectFrontier(
+        binding: GossipManagerJobBinding,
+        rootReceipt: GossipRootCloseReceipt,
+        receipt: GossipDirectCloseReceipt
+    ): GossipDirectEndedCapture = synchronized(monitor) {
+        val gap = directEndedGapLocked(binding, rootReceipt, receipt)
+        if (gap != null) return@synchronized GossipDirectEndedCapture.Unconfirmed(gap)
+        val frontier = EndedDirectFrontier(directEndedAnchor, directAssociation,
+            checkNotNull(directCloseReceipt).identity, directOperations.values.map {
+                GossipDirectOperationRow(it.identity, it.kind, it.state, it.failure)
+            })
+        if (frontier.rows.isEmpty()) GossipDirectEndedCapture.EmptyValidated(frontier)
+        else GossipDirectEndedCapture.Observed(frontier)
+    }
+
+    /** Every call authenticates the supplied originals and exact private rows, without Job operations. */
+    fun validateEndedDirectFrontier(
+        binding: GossipManagerJobBinding,
+        rootReceipt: GossipRootCloseReceipt,
+        receipt: GossipDirectCloseReceipt,
+        frontier: GossipDirectEndedFrontier
+    ): Boolean = synchronized(monitor) {
+        if (directEndedGapLocked(binding, rootReceipt, receipt) != null) return@synchronized false
+        if (frontier !is EndedDirectFrontier || frontier.anchor !== directEndedAnchor ||
+            frontier.association !== directAssociation || frontier.close !== directCloseReceipt?.identity ||
+            frontier.rows.size != directOperations.size) return@synchronized false
+        directOperations.values.zip(frontier.rows).all { (actual, copied) ->
+            actual.identity === copied.identity && actual.kind == copied.kind &&
+                actual.state == copied.state && actual.failure == copied.failure
+        }
+    }
 
     /** No Job getter or operation runs in the atomic recorded-frontier check. */
     private fun recordedSnapshotGapLocked(
