@@ -14,6 +14,10 @@ import com.bitchat.android.sync.GossipRootCloseReceipt
 import com.bitchat.android.sync.GossipReturnedJobsCapture
 import com.bitchat.android.sync.GossipWorkOutcome
 import com.bitchat.android.sync.GossipWorkTicket
+import com.bitchat.android.sync.GossipRecordedFrontier
+import com.bitchat.android.sync.GossipRecordedFrontierPreparation
+import com.bitchat.android.sync.GossipRecordedFrontierJoinOutcome
+import com.bitchat.android.sync.GossipRecordedJoinGap
 import com.bitchat.android.sync.GossipSyncManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -79,6 +83,22 @@ internal sealed interface KnownReturnedJobsCancellation {
     ) : KnownReturnedJobsCancellation
 }
 
+internal enum class KnownRecordedBatchGap { MissingOrFailedClose, MissingOrFailedCapture, CancellationNotAttempted, UnsafeCancellation }
+internal class KnownRecordedManagerJoin(
+    val original: KnownManagerReturnedJobs,
+    val outcome: GossipRecordedFrontierJoinOutcome
+)
+internal sealed interface KnownRecordedJoinRejection {
+    class Batch(val gap: KnownRecordedBatchGap) : KnownRecordedJoinRejection
+    class Manager(val original: KnownManagerReturnedJobs, val gap: GossipRecordedJoinGap) : KnownRecordedJoinRejection
+}
+internal sealed interface KnownRecordedFrontiersJoin {
+    data object NotAttempted : KnownRecordedFrontiersJoin
+    data object NoKnownRecordedJobs : KnownRecordedFrontiersJoin
+    class Ineligible(val reasons: List<KnownRecordedJoinRejection>) : KnownRecordedFrontiersJoin
+    class Attempted(val managers: List<KnownRecordedManagerJoin>) : KnownRecordedFrontiersJoin
+}
+
 internal sealed interface PanicUnconfirmedEvidence {
     data object NotCollected : PanicUnconfirmedEvidence
     class InvalidInstalledPair(val gap: PanicRetirementGap) : PanicUnconfirmedEvidence
@@ -86,7 +106,8 @@ internal sealed interface PanicUnconfirmedEvidence {
     class KnownOriginalGossip(
         val snapshot: HolderGossipSubsetSnapshot<GossipSyncManager>,
         val attempts: List<PanicGossipRootCloseAttempt>,
-        val returnedJobsCancellation: KnownReturnedJobsCancellation = KnownReturnedJobsCancellation.NotAttempted
+        val returnedJobsCancellation: KnownReturnedJobsCancellation = KnownReturnedJobsCancellation.NotAttempted,
+        val recordedFrontierJoin: KnownRecordedFrontiersJoin = KnownRecordedFrontiersJoin.NotAttempted
     ) : PanicUnconfirmedEvidence
 }
 internal sealed interface PanicOwnerRetirement {
@@ -151,6 +172,76 @@ internal suspend fun collectPanicRetirement(
         else -> PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.FacadeUnconfirmed)
     }
     return unconfirmedPanicReport(facade, evidence)
+}
+
+private class PreparedKnownManager(
+    val original: KnownManagerReturnedJobs,
+    val frontier: GossipRecordedFrontier
+)
+
+/** Joins only a wholly eligible recorded batch after the unchanged cancellation/facade phase. */
+internal suspend fun collectPanicRetirementWithRecordedJobsJoin(
+    originalFacade: UnifiedMeshService?,
+    originalGossip: PanicOriginalGossipInput
+): PanicRetirementReport {
+    val report = collectPanicRetirement(originalFacade, originalGossip)
+    val gossip = report.gossipJobsAndWriters as? PanicOwnerRetirement.Unconfirmed ?: return report
+    val known = gossip.evidence as? PanicUnconfirmedEvidence.KnownOriginalGossip ?: return report
+    val joined = joinKnownRecordedFrontiers(known)
+    currentCoroutineContext().ensureActive()
+    return report.copy(gossipJobsAndWriters = PanicOwnerRetirement.Unconfirmed(gossip.gap,
+        PanicUnconfirmedEvidence.KnownOriginalGossip(known.snapshot, known.attempts,
+            known.returnedJobsCancellation, joined)))
+}
+
+private suspend fun joinKnownRecordedFrontiers(
+    known: PanicUnconfirmedEvidence.KnownOriginalGossip
+): KnownRecordedFrontiersJoin {
+    fun rejected(gap: KnownRecordedBatchGap) = KnownRecordedFrontiersJoin.Ineligible(
+        listOf(KnownRecordedJoinRejection.Batch(gap))
+    )
+    if (known.attempts.any { it !is PanicGossipRootCloseAttempt.Closed }) {
+        return rejected(KnownRecordedBatchGap.MissingOrFailedClose)
+    }
+    val cancellation = known.returnedJobsCancellation as? KnownReturnedJobsCancellation.Attempted
+        ?: return rejected(KnownRecordedBatchGap.CancellationNotAttempted)
+    if (cancellation.managers.size != known.attempts.size || cancellation.managers.zip(known.attempts).any {
+        (observed, original) -> observed.originalClose !== original
+    }) return rejected(KnownRecordedBatchGap.MissingOrFailedCapture)
+    if (cancellation.requests.any { it.outcome != JobCancellationRequestOutcome.RequestAttempted }) {
+        return rejected(KnownRecordedBatchGap.UnsafeCancellation)
+    }
+    val prepared = mutableListOf<PreparedKnownManager>()
+    val reasons = mutableListOf<KnownRecordedJoinRejection>()
+    // No join occurs until every original manager's old cancellation snapshot passes.
+    cancellation.managers.forEach { original ->
+        val captured = original.outcome as? KnownManagerJobCaptureOutcome.Captured
+        val observed = captured?.result as? GossipReturnedJobsCapture.Observed
+        if (observed == null || observed.snapshot.binding !== original.originalClose.binding ||
+            observed.snapshot.receipt !== original.originalClose.receipt) {
+            reasons += KnownRecordedJoinRejection.Batch(KnownRecordedBatchGap.MissingOrFailedCapture)
+        } else {
+            val result = try {
+                original.originalClose.manager.prepareRecordedFrontierJoin(
+                    original.originalClose.binding, original.originalClose.receipt, observed.snapshot)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { GossipRecordedFrontierPreparation.Unconfirmed(GossipRecordedJoinGap.OperationFailed) }
+            when (result) {
+                is GossipRecordedFrontierPreparation.Ready -> prepared += PreparedKnownManager(original, result.frontier)
+                is GossipRecordedFrontierPreparation.Unconfirmed -> reasons += KnownRecordedJoinRejection.Manager(original, result.gap)
+            }
+        }
+    }
+    if (reasons.isNotEmpty()) return KnownRecordedFrontiersJoin.Ineligible(reasons.toList())
+    if (prepared.isEmpty()) return KnownRecordedFrontiersJoin.NoKnownRecordedJobs
+    val outcomes = prepared.map { original ->
+        val result = try {
+            original.original.originalClose.manager.joinPreparedRecordedFrontier(original.frontier)
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { GossipRecordedFrontierJoinOutcome.Unconfirmed(GossipRecordedJoinGap.OperationFailed) }
+        KnownRecordedManagerJoin(original.original, result)
+    }
+    return KnownRecordedFrontiersJoin.Attempted(outcomes)
 }
 
 private fun closeKnownOriginalGossipRoots(
