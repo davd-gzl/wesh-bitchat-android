@@ -52,6 +52,12 @@ class GossipSyncManager internal constructor(
         if (original !== originalJobBinding) GossipManagerRootCloseOutcome.ForeignBinding
         else GossipManagerRootCloseOutcome.Closed(workOwner.closeJobRoots(original))
 
+    internal fun closeDirectIngressForPanic(
+        original: GossipManagerJobBinding,
+        receipt: GossipRootCloseReceipt
+    ): GossipDirectCloseOutcome = if (original !== originalJobBinding) GossipDirectCloseOutcome.ForeignBinding
+        else workOwner.closeDirectIngress(original, receipt)
+
     internal fun captureReturnedJobsForCancellation(
         original: GossipManagerJobBinding,
         receipt: GossipRootCloseReceipt
@@ -165,42 +171,58 @@ class GossipSyncManager internal constructor(
     }
 
     fun onPublicPacketSeen(packet: BitchatPacket) {
-        // Only ANNOUNCE or broadcast MESSAGE
-        val mt = MessageType.fromValue(packet.type)
-        val isBroadcastMessage = (mt == MessageType.MESSAGE && (packet.recipientID == null || packet.recipientID.contentEquals(SpecialRecipients.BROADCAST)))
-        val isAnnouncement = (mt == MessageType.ANNOUNCE)
-        if (!isBroadcastMessage && !isAnnouncement) return
+        val lease = when (val admission = workOwner.reserveDirect(originalJobBinding, GossipDirectOperationKind.PublicPacketSeen)) {
+            is GossipDirectReservation.Accepted -> admission.lease
+            is GossipDirectReservation.Refused, GossipDirectReservation.ForeignBinding -> return
+        }
+        var failureKind: GossipDirectFailureKind? = null
+        try {
+            // Only ANNOUNCE or broadcast MESSAGE
+            val mt = MessageType.fromValue(packet.type)
+            val isBroadcastMessage = (mt == MessageType.MESSAGE && (packet.recipientID == null || packet.recipientID.contentEquals(SpecialRecipients.BROADCAST)))
+            val isAnnouncement = (mt == MessageType.ANNOUNCE)
+            if (!isBroadcastMessage && !isAnnouncement) return
 
-        val idBytes = PacketIdUtil.computeIdBytes(packet)
-        val id = idBytes.joinToString("") { b -> "%02x".format(b) }
+            val idBytes = PacketIdUtil.computeIdBytes(packet)
+            val id = idBytes.joinToString("") { b -> "%02x".format(b) }
 
-        if (isBroadcastMessage) {
-            synchronized(messages) {
-                messages[id] = packet
+            if (isBroadcastMessage) {
+                synchronized(messages) {
+                    messages[id] = packet
+                    // Enforce capacity (remove oldest when exceeded)
+                    val cap = configProvider.seenCapacity().coerceAtLeast(1)
+                    while (messages.size > cap) {
+                        val it = messages.entries.iterator()
+                        if (it.hasNext()) { it.next(); it.remove() } else break
+                    }
+                }
+            } else if (isAnnouncement) {
+                // Ignore stale announcements older than STALE_PEER_TIMEOUT
+                val now = System.currentTimeMillis()
+                val age = now - packet.timestamp.toLong()
+                if (age > com.bitchat.android.util.AppConstants.Mesh.STALE_PEER_TIMEOUT_MS) {
+                    Log.d(TAG, "Ignoring stale ANNOUNCE (age=${age}ms > ${com.bitchat.android.util.AppConstants.Mesh.STALE_PEER_TIMEOUT_MS}ms)")
+                    return
+                }
+                // senderID is fixed-size 8 bytes; map to hex string for key
+                val sender = packet.senderID.joinToString("") { b -> "%02x".format(b) }
+                latestAnnouncementByPeer[sender] = id to packet
                 // Enforce capacity (remove oldest when exceeded)
                 val cap = configProvider.seenCapacity().coerceAtLeast(1)
-                while (messages.size > cap) {
-                    val it = messages.entries.iterator()
+                while (latestAnnouncementByPeer.size > cap) {
+                    val it = latestAnnouncementByPeer.entries.iterator()
                     if (it.hasNext()) { it.next(); it.remove() } else break
                 }
             }
-        } else if (isAnnouncement) {
-            // Ignore stale announcements older than STALE_PEER_TIMEOUT
-            val now = System.currentTimeMillis()
-            val age = now - packet.timestamp.toLong()
-            if (age > com.bitchat.android.util.AppConstants.Mesh.STALE_PEER_TIMEOUT_MS) {
-                Log.d(TAG, "Ignoring stale ANNOUNCE (age=${age}ms > ${com.bitchat.android.util.AppConstants.Mesh.STALE_PEER_TIMEOUT_MS}ms)")
-                return
+        } catch (failure: Throwable) {
+            failureKind = when (failure) {
+                is CancellationException -> GossipDirectFailureKind.CancellationThrown
+                is Exception -> GossipDirectFailureKind.OrdinaryThrow
+                else -> GossipDirectFailureKind.OtherThrowable
             }
-            // senderID is fixed-size 8 bytes; map to hex string for key
-            val sender = packet.senderID.joinToString("") { b -> "%02x".format(b) }
-            latestAnnouncementByPeer[sender] = id to packet
-            // Enforce capacity (remove oldest when exceeded)
-            val cap = configProvider.seenCapacity().coerceAtLeast(1)
-            while (latestAnnouncementByPeer.size > cap) {
-                val it = latestAnnouncementByPeer.entries.iterator()
-                if (it.hasNext()) { it.next(); it.remove() } else break
-            }
+            throw failure
+        } finally {
+            workOwner.noteDirectBodyEnd(lease, failureKind)
         }
     }
 
@@ -251,35 +273,51 @@ class GossipSyncManager internal constructor(
     }
 
     fun handleRequestSync(fromPeerID: String, request: RequestSyncPacket) {
-        // Decode GCS into sorted set for membership checks
-        val sorted = GCSFilter.decodeToSortedSet(request.p, request.m, request.data)
-        fun mightContain(id: ByteArray): Boolean {
-            val v = GCSFilter.h64(id) % request.m
-            val nonZeroV = if (v == 0L) 1L else v
-            return GCSFilter.contains(sorted, nonZeroV)
+        val lease = when (val admission = workOwner.reserveDirect(originalJobBinding, GossipDirectOperationKind.RespondRequestSync)) {
+            is GossipDirectReservation.Accepted -> admission.lease
+            is GossipDirectReservation.Refused, GossipDirectReservation.ForeignBinding -> return
         }
-
-        // 1) Announcements: send latest per peerID if remote doesn't have them
-        for ((_, pair) in latestAnnouncementByPeer.entries) {
-            val (id, pkt) = pair
-            val idBytes = hexToBytes(id)
-            if (!mightContain(idBytes)) {
-                // Send original packet unchanged to requester only (keep local TTL)
-                val toSend = pkt.copy(ttl = com.bitchat.android.util.AppConstants.SYNC_TTL_HOPS)
-                delegate?.sendPacketToPeer(fromPeerID, toSend)
-                Log.d(TAG, "Sent sync announce: Type ${toSend.type} from ${toSend.senderID.toHexString()} to $fromPeerID packet id ${idBytes.toHexString()}")
+        var failureKind: GossipDirectFailureKind? = null
+        try {
+            // Decode GCS into sorted set for membership checks
+            val sorted = GCSFilter.decodeToSortedSet(request.p, request.m, request.data)
+            fun mightContain(id: ByteArray): Boolean {
+                val v = GCSFilter.h64(id) % request.m
+                val nonZeroV = if (v == 0L) 1L else v
+                return GCSFilter.contains(sorted, nonZeroV)
             }
-        }
 
-        // 2) Broadcast messages: send all they lack
-        val toSendMsgs = synchronized(messages) { messages.values.toList() }
-        for (pkt in toSendMsgs) {
-            val idBytes = PacketIdUtil.computeIdBytes(pkt)
-            if (!mightContain(idBytes)) {
-                val toSend = pkt.copy(ttl = com.bitchat.android.util.AppConstants.SYNC_TTL_HOPS)
-                delegate?.sendPacketToPeer(fromPeerID, toSend)
-                Log.d(TAG, "Sent sync message: Type ${toSend.type} to $fromPeerID packet id ${idBytes.toHexString()}")
+            // 1) Announcements: send latest per peerID if remote doesn't have them
+            for ((_, pair) in latestAnnouncementByPeer.entries) {
+                val (id, pkt) = pair
+                val idBytes = hexToBytes(id)
+                if (!mightContain(idBytes)) {
+                    // Send original packet unchanged to requester only (keep local TTL)
+                    val toSend = pkt.copy(ttl = com.bitchat.android.util.AppConstants.SYNC_TTL_HOPS)
+                    delegate?.sendPacketToPeer(fromPeerID, toSend)
+                    Log.d(TAG, "Sent sync announce: Type ${toSend.type} from ${toSend.senderID.toHexString()} to $fromPeerID packet id ${idBytes.toHexString()}")
+                }
             }
+
+            // 2) Broadcast messages: send all they lack
+            val toSendMsgs = synchronized(messages) { messages.values.toList() }
+            for (pkt in toSendMsgs) {
+                val idBytes = PacketIdUtil.computeIdBytes(pkt)
+                if (!mightContain(idBytes)) {
+                    val toSend = pkt.copy(ttl = com.bitchat.android.util.AppConstants.SYNC_TTL_HOPS)
+                    delegate?.sendPacketToPeer(fromPeerID, toSend)
+                    Log.d(TAG, "Sent sync message: Type ${toSend.type} to $fromPeerID packet id ${idBytes.toHexString()}")
+                }
+            }
+        } catch (failure: Throwable) {
+            failureKind = when (failure) {
+                is CancellationException -> GossipDirectFailureKind.CancellationThrown
+                is Exception -> GossipDirectFailureKind.OrdinaryThrow
+                else -> GossipDirectFailureKind.OtherThrowable
+            }
+            throw failure
+        } finally {
+            workOwner.noteDirectBodyEnd(lease, failureKind)
         }
     }
 
