@@ -262,6 +262,8 @@ class GossipSigningRefusalTest {
             override fun seenCapacity() = 8
             override fun gcsMaxBytes() = 128
             override fun gcsTargetFpr() = 0.01
+        }, workOwner = GossipWorkOwner(), jobCreator = { _, _, _ ->
+            error("Signing fixture must never dispatch jobs")
         })
         val sent = mutableListOf<Sent>()
         var onSend: (() -> Unit)? = null

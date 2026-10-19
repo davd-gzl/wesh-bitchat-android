@@ -14,10 +14,12 @@ import java.util.concurrent.ConcurrentHashMap
  * Tracks seen public packets (ANNOUNCE, broadcast MESSAGE) and periodically requests sync
  * from neighbors. Responds to REQUEST_SYNC by sending missing packets.
  */
-class GossipSyncManager(
+class GossipSyncManager internal constructor(
     private val myPeerID: String,
     private val scope: CoroutineScope,
-    private val configProvider: ConfigProvider
+    private val configProvider: ConfigProvider,
+    private val workOwner: GossipWorkOwner,
+    private val jobCreator: GossipJobCreator
 ) {
     interface Delegate {
         fun sendPacket(packet: BitchatPacket)
@@ -51,7 +53,8 @@ class GossipSyncManager(
     private var cleanupJob: Job? = null
     fun start() {
         periodicJob?.cancel()
-        periodicJob = scope.launch(Dispatchers.IO) {
+        val periodicTicket = workOwner.reserve(GossipWorkKind.PERIODIC_SYNC)
+        periodicJob = workOwner.dispatch(periodicTicket, scope, Dispatchers.IO, jobCreator) {
             while (isActive) {
                 try {
                     delay(30_000)
@@ -63,7 +66,8 @@ class GossipSyncManager(
 
         // Start periodic cleanup of stale announcements and messages
         cleanupJob?.cancel()
-        cleanupJob = scope.launch(Dispatchers.IO) {
+        val cleanupTicket = workOwner.reserve(GossipWorkKind.CLEANUP)
+        cleanupJob = workOwner.dispatch(cleanupTicket, scope, Dispatchers.IO, jobCreator) {
             while (isActive) {
                 try {
                     delay(com.bitchat.android.util.AppConstants.Sync.CLEANUP_INTERVAL_MS)
@@ -89,14 +93,16 @@ class GossipSyncManager(
     }
 
     fun scheduleInitialSync(delayMs: Long = 5_000L) {
-        scope.launch(Dispatchers.IO) {
+        val ticket = workOwner.reserve(GossipWorkKind.INITIAL_BROADCAST)
+        workOwner.dispatch(ticket, scope, Dispatchers.IO, jobCreator) {
             delay(delayMs)
             sendRequestSync()
         }
     }
 
     fun scheduleInitialSyncToPeer(peerID: String, delayMs: Long = 5_000L) {
-        scope.launch(Dispatchers.IO) {
+        val ticket = workOwner.reserve(GossipWorkKind.INITIAL_PEER)
+        workOwner.dispatch(ticket, scope, Dispatchers.IO, jobCreator) {
             delay(delayMs)
             sendRequestSyncToPeer(peerID)
         }

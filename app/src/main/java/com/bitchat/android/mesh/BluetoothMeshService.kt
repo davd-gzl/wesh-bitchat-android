@@ -16,6 +16,7 @@ import com.bitchat.android.protocol.MessageType
 import com.bitchat.android.protocol.SpecialRecipients
 import com.bitchat.android.model.RequestSyncPacket
 import com.bitchat.android.sync.GossipSyncManager
+import com.bitchat.android.sync.launchOriginalGossipJob
 import com.bitchat.android.util.toHexString
 import com.bitchat.android.services.VerificationService
 import com.bitchat.android.service.TransportBridgeService
@@ -141,6 +142,8 @@ class BluetoothMeshService internal constructor(
         gossipSyncManager = GossipSyncManager(
             myPeerID = myPeerID,
             scope = serviceScope,
+            workOwner = com.bitchat.android.sync.GossipWorkOwner(),
+            jobCreator = ::launchOriginalGossipJob,
             configProvider = object : GossipSyncManager.ConfigProvider {
                 override fun seenCapacity(): Int = try {
                     com.bitchat.android.ui.debug.DebugPreferenceManager.getSeenPacketCapacity(500)
