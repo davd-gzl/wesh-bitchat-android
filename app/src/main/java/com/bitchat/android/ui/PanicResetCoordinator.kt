@@ -24,6 +24,9 @@ import com.bitchat.android.sync.GossipRecordedFrontierPreparation
 import com.bitchat.android.sync.GossipRecordedFrontierJoinOutcome
 import com.bitchat.android.sync.GossipRecordedJoinGap
 import com.bitchat.android.sync.GossipSyncManager
+import com.bitchat.android.sync.GossipDirectCloseReceipt
+import com.bitchat.android.sync.GossipDirectCloseOutcome
+import com.bitchat.android.sync.GossipDirectIngressSnapshot
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CoroutineScope
@@ -58,6 +61,24 @@ internal sealed interface PanicGossipRootCloseAttempt {
         val gap: PanicGossipRootCloseGap
     ) : PanicGossipRootCloseAttempt
 }
+internal sealed interface KnownDirectIngressClosure {
+    data object NotAttempted : KnownDirectIngressClosure
+    class Attempted(val managers: List<KnownManagerDirectClosure>) : KnownDirectIngressClosure
+}
+internal class KnownManagerDirectClosure(
+    val originalClose: PanicGossipRootCloseAttempt,
+    val outcome: KnownManagerDirectCloseOutcome
+)
+internal sealed interface KnownManagerDirectCloseOutcome {
+    class Closed(
+        val receipt: GossipDirectCloseReceipt,
+        val snapshotAtClose: GossipDirectIngressSnapshot
+    ) : KnownManagerDirectCloseOutcome
+    data object RootNotClosed : KnownManagerDirectCloseOutcome
+    data object ForeignBinding : KnownManagerDirectCloseOutcome
+    data object ForeignRootReceipt : KnownManagerDirectCloseOutcome
+}
+
 internal enum class KnownJobCaptureFailureKind { OrdinaryFailure, CancellationThrown }
 internal sealed interface KnownManagerJobCaptureOutcome {
     class Captured(val result: GossipReturnedJobsCapture) : KnownManagerJobCaptureOutcome
@@ -111,6 +132,7 @@ internal sealed interface PanicUnconfirmedEvidence {
     class KnownOriginalGossip(
         val snapshot: HolderGossipSubsetSnapshot<GossipSyncManager>,
         val attempts: List<PanicGossipRootCloseAttempt>,
+        val directIngressClosure: KnownDirectIngressClosure,
         val returnedJobsCancellation: KnownReturnedJobsCancellation = KnownReturnedJobsCancellation.NotAttempted,
         val recordedFrontierJoin: KnownRecordedFrontiersJoin = KnownRecordedFrontiersJoin.NotAttempted,
         val holderFrontier: HolderGossipCensusCapture<GossipSyncManager>? = null
@@ -164,9 +186,10 @@ internal suspend fun collectPanicRetirement(
                 is HolderGossipSubsetCapture.Observed -> {
                     val originalInvoker = currentCoroutineContext()[Job]
                     val closed = closeKnownOriginalGossipRoots(captured.snapshot)
+                    val direct = closeKnownOriginalDirectIngress(closed.attempts)
                     val cancellation = cancelKnownOriginalReturnedJobs(closed, originalInvoker)
                     currentCoroutineContext().ensureActive()
-                    PanicUnconfirmedEvidence.KnownOriginalGossip(closed.snapshot, closed.attempts, cancellation)
+                    PanicUnconfirmedEvidence.KnownOriginalGossip(closed.snapshot, closed.attempts, direct, cancellation)
                 }
             }
         }
@@ -209,7 +232,7 @@ internal suspend fun collectPanicRetirementWithRecordedJobsJoin(
     } else captured
     return report.copy(gossipJobsAndWriters = PanicOwnerRetirement.Unconfirmed(gossip.gap,
         PanicUnconfirmedEvidence.KnownOriginalGossip(known.snapshot, known.attempts,
-            known.returnedJobsCancellation, joined, current)))
+            known.directIngressClosure, known.returnedJobsCancellation, joined, current)))
 }
 
 private fun sameCoveredManagerIdentities(
@@ -304,8 +327,21 @@ private fun closeKnownOriginalGossipRoots(
             PanicGossipRootCloseAttempt.Unconfirmed(manager, binding, PanicGossipRootCloseGap.OperationFailed)
         }
     }
-    return PanicUnconfirmedEvidence.KnownOriginalGossip(snapshot, attempts)
+    return PanicUnconfirmedEvidence.KnownOriginalGossip(snapshot, attempts, KnownDirectIngressClosure.NotAttempted)
 }
+
+/** Restricts every already-known direct ingress before cancellation or the original facade await. */
+private fun closeKnownOriginalDirectIngress(
+    attempts: List<PanicGossipRootCloseAttempt>
+): KnownDirectIngressClosure.Attempted = KnownDirectIngressClosure.Attempted(attempts.map { original ->
+    val outcome = if (original !is PanicGossipRootCloseAttempt.Closed) KnownManagerDirectCloseOutcome.RootNotClosed
+    else when (val closed = original.manager.closeDirectIngressForPanic(original.binding, original.receipt)) {
+        is GossipDirectCloseOutcome.Closed -> KnownManagerDirectCloseOutcome.Closed(closed.receipt, closed.snapshotAtClose)
+        GossipDirectCloseOutcome.ForeignBinding -> KnownManagerDirectCloseOutcome.ForeignBinding
+        GossipDirectCloseOutcome.ForeignRootReceipt -> KnownManagerDirectCloseOutcome.ForeignRootReceipt
+    }
+    KnownManagerDirectClosure(original, outcome)
+})
 
 private class CancellationOrigin(
     val managerSnapshot: KnownManagerReturnedJobs,

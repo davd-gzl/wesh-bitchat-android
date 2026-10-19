@@ -92,6 +92,52 @@ internal sealed interface GossipRecordedFrontierJoinOutcome {
     class Unconfirmed(val gap: GossipRecordedJoinGap) : GossipRecordedFrontierJoinOutcome
 }
 
+internal enum class GossipDirectOperationKind { PublicPacketSeen, RespondRequestSync }
+internal sealed interface GossipDirectOperationLease
+internal sealed interface GossipDirectCloseReceipt
+internal class GossipDirectAssociationIdentity internal constructor()
+internal class GossipDirectOperationIdentity internal constructor()
+internal class GossipDirectRequestIdentity internal constructor()
+internal class GossipDirectCloseIdentity internal constructor()
+internal enum class GossipDirectBodyState { Admitted, Returned, Threw }
+internal enum class GossipDirectFailureKind { OrdinaryThrow, CancellationThrown, OtherThrowable }
+internal enum class GossipDirectSettlement { Recorded, ForeignLease, RepeatedSettlement }
+internal enum class GossipDirectDecision { Accepted, Refused }
+internal data class GossipDirectOperationRow(
+    val identity: GossipDirectOperationIdentity,
+    val kind: GossipDirectOperationKind,
+    val state: GossipDirectBodyState,
+    val failure: GossipDirectFailureKind?
+)
+internal data class GossipDirectRequestRow(
+    val identity: GossipDirectRequestIdentity,
+    val kind: GossipDirectOperationKind,
+    val decision: GossipDirectDecision,
+    val operation: GossipDirectOperationIdentity?,
+    val close: GossipDirectCloseIdentity?
+)
+internal class GossipDirectIngressSnapshot internal constructor(
+    val association: GossipDirectAssociationIdentity,
+    val close: GossipDirectCloseIdentity?,
+    val requests: List<GossipDirectRequestRow>,
+    val operations: List<GossipDirectOperationRow>,
+    val faults: List<GossipDirectSettlement>
+)
+internal sealed interface GossipDirectReservation {
+    class Accepted(val lease: GossipDirectOperationLease) : GossipDirectReservation
+    class Refused(val receipt: GossipDirectCloseReceipt) : GossipDirectReservation
+    data object ForeignBinding : GossipDirectReservation
+}
+internal sealed interface GossipDirectCloseOutcome {
+    class Closed(val receipt: GossipDirectCloseReceipt, val snapshotAtClose: GossipDirectIngressSnapshot) : GossipDirectCloseOutcome
+    data object ForeignBinding : GossipDirectCloseOutcome
+    data object ForeignRootReceipt : GossipDirectCloseOutcome
+}
+internal sealed interface GossipDirectSnapshotCapture {
+    class Observed(val snapshot: GossipDirectIngressSnapshot) : GossipDirectSnapshotCapture
+    data object ForeignBinding : GossipDirectSnapshotCapture
+}
+
 /** Retains original dispatch outcomes; completion and cancellation do not discharge ownership. */
 internal class GossipWorkOwner {
     private class Ticket : GossipWorkTicket
@@ -116,6 +162,78 @@ internal class GossipWorkOwner {
     private val roots = LinkedHashMap<GossipRootLease, RootRecord>()
     private var association: ManagerBinding? = null
     private var rootCloseReceipt: GossipRootCloseReceipt? = null
+
+    private class DirectLease : GossipDirectOperationLease
+    private class DirectRecord(val kind: GossipDirectOperationKind) {
+        val identity = GossipDirectOperationIdentity()
+        var state = GossipDirectBodyState.Admitted
+        var failure: GossipDirectFailureKind? = null
+    }
+    private class DirectCloseReceipt(
+        val binding: GossipManagerJobBinding,
+        val root: GossipRootCloseReceipt,
+        val identity: GossipDirectCloseIdentity
+    ) : GossipDirectCloseReceipt
+    private val directAssociation = GossipDirectAssociationIdentity()
+    private val directOperations = LinkedHashMap<DirectLease, DirectRecord>()
+    private val directRequests = mutableListOf<GossipDirectRequestRow>()
+    private val directFaults = mutableListOf<GossipDirectSettlement>()
+    private var directCloseReceipt: DirectCloseReceipt? = null
+
+    /** A separate terminal event: root closure alone never closes fresh direct ingress. */
+    fun closeDirectIngress(
+        binding: GossipManagerJobBinding,
+        originalRootReceipt: GossipRootCloseReceipt
+    ): GossipDirectCloseOutcome = synchronized(monitor) {
+        if (binding !== association) return@synchronized GossipDirectCloseOutcome.ForeignBinding
+        if (rootCloseReceipt == null || originalRootReceipt !== rootCloseReceipt) {
+            return@synchronized GossipDirectCloseOutcome.ForeignRootReceipt
+        }
+        val receipt = directCloseReceipt ?: DirectCloseReceipt(binding, originalRootReceipt,
+            GossipDirectCloseIdentity()).also { directCloseReceipt = it }
+        GossipDirectCloseOutcome.Closed(receipt, directSnapshotLocked())
+    }
+
+    fun reserveDirect(binding: GossipManagerJobBinding, kind: GossipDirectOperationKind): GossipDirectReservation =
+        synchronized(monitor) {
+            if (binding !== association) return@synchronized GossipDirectReservation.ForeignBinding
+            // The real close event is recorded; terminal admission is not yet enforced here.
+            val lease = DirectLease()
+            val record = DirectRecord(kind)
+            directOperations[lease] = record
+            directRequests += GossipDirectRequestRow(GossipDirectRequestIdentity(), kind,
+                GossipDirectDecision.Accepted, record.identity, null)
+            GossipDirectReservation.Accepted(lease)
+        }
+
+    /** A throw can follow partial effects; settlement never retains the original Throwable. */
+    fun noteDirectBodyEnd(
+        lease: GossipDirectOperationLease,
+        failure: GossipDirectFailureKind?
+    ): GossipDirectSettlement = synchronized(monitor) {
+        val record = if (lease is DirectLease) directOperations[lease] else null
+        if (record == null) {
+            directFaults += GossipDirectSettlement.ForeignLease
+            return@synchronized GossipDirectSettlement.ForeignLease
+        }
+        if (record.state != GossipDirectBodyState.Admitted) {
+            directFaults += GossipDirectSettlement.RepeatedSettlement
+            return@synchronized GossipDirectSettlement.RepeatedSettlement
+        }
+        record.failure = failure
+        record.state = if (failure == null) GossipDirectBodyState.Returned else GossipDirectBodyState.Threw
+        GossipDirectSettlement.Recorded
+    }
+
+    fun directIngressSnapshot(binding: GossipManagerJobBinding): GossipDirectSnapshotCapture = synchronized(monitor) {
+        if (binding !== association) GossipDirectSnapshotCapture.ForeignBinding
+        else GossipDirectSnapshotCapture.Observed(directSnapshotLocked())
+    }
+
+    private fun directSnapshotLocked() = GossipDirectIngressSnapshot(directAssociation, directCloseReceipt?.identity,
+        directRequests.toList(), directOperations.values.map {
+            GossipDirectOperationRow(it.identity, it.kind, it.state, it.failure)
+        }, directFaults.toList())
 
     fun associateManager(manager: GossipSyncManager): GossipManagerJobBinding {
         check(manager.hasOriginalWorkOwner(this)) { "Manager has a different original work owner" }
