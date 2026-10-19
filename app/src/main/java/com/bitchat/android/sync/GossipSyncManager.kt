@@ -153,8 +153,15 @@ class GossipSyncManager(
             ttl = com.bitchat.android.util.AppConstants.SYNC_TTL_HOPS // neighbors only
         )
         // Sign and broadcast
-        val signed = delegate?.signPacketForBroadcast(packet) ?: packet
-        delegate?.sendPacket(signed)
+        val target = delegate ?: return
+        val signed = try {
+            target.signPacketForBroadcast(packet)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return
+        } ?: return
+        target.sendPacket(signed)
     }
 
     internal fun sendRequestSyncToPeer(peerID: String) {
@@ -170,8 +177,15 @@ class GossipSyncManager(
         )
         Log.d(TAG, "Sending sync request to $peerID (${payload.size} bytes)")
         // Sign and send directly to peer
-        val signed = delegate?.signPacketForBroadcast(packet) ?: packet
-        delegate?.sendPacketToPeer(peerID, signed)
+        val target = delegate ?: return
+        val signed = try {
+            target.signPacketForBroadcast(packet)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return
+        } ?: return
+        target.sendPacketToPeer(peerID, signed)
     }
 
     fun handleRequestSync(fromPeerID: String, request: RequestSyncPacket) {
