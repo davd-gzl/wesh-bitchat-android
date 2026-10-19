@@ -48,6 +48,12 @@ object MeshServiceHolder {
         signer: (BitchatPacket) -> BitchatPacket?
     ) = owner.setGossipManager(provenance, mgr, signer)
 
+    internal fun constructGossipManager(
+        parent: HolderGossipParent,
+        source: HolderGossipSource,
+        creator: () -> GossipSyncManager
+    ): GossipSyncManager = owner.constructGossipManager(parent, source, creator)
+
     fun startSharedGossip(owner: String) = this.owner.startSharedGossip(owner)
     fun stopSharedGossip(owner: String) = this.owner.stopSharedGossip(owner)
 
