@@ -56,14 +56,14 @@ class HolderProcessPreparationTest {
         val original = f.owner.initialProcessPreparation().origin
         val controller = Any()
         var dispatched: HolderWifiConstructionReceipt<Manager>? = null
-        val product = f.owner.constructWifi(original, controller) { context ->
+        val product = createdValue(f.owner.constructWifi(original, controller) { context ->
             dispatched = f.owner.provenanceSnapshot().wifiConstructions.single()
             assertSame(context, checkNotNull(dispatched).context)
             assertSame(HolderConstructionOutcome.Dispatched, checkNotNull(dispatched).outcome)
             assertSame(original, originalOf(checkNotNull(dispatched).entry))
             assertSame(HolderWifiManagerSelection.NotSelected, checkNotNull(dispatched).selection)
             Wifi(context)
-        }
+        })
         val after = f.owner.provenanceSnapshot()
         val receipt = after.wifiConstructions.single()
         assertSame(controller, receipt.controllerOrigin)
@@ -87,12 +87,12 @@ class HolderProcessPreparationTest {
         val legacy = before.constructions.single()
         val registration = before.registrations.single()
         assertSame(HolderEntryProvenance.LegacyUnattributed, legacy.entry.provenance)
-        val product = f.owner.constructWifi(original, Any()) { context ->
+        val product = createdValue(f.owner.constructWifi(original, Any()) { context ->
             f.owner.ensureBluetoothForWifi(context) { error("Existing product must be reused") }
             assertSame(bluetooth, f.owner.meshService)
             assertSame(registration, f.owner.selectManagerForWifi(context))
             Wifi(context)
-        }
+        })
         val after = f.owner.provenanceSnapshot()
         assertEquals(2, after.constructions.size)
         assertSame(legacy.entry, after.constructions.first().entry)
@@ -143,11 +143,11 @@ class HolderProcessPreparationTest {
         val f = HolderFixture()
         val preparation = f.owner.initialProcessPreparation()
         val original = preparation.origin
-        val first = f.owner.constructWifi(original, Any()) { Wifi(it) }
+        val first = createdValue(f.owner.constructWifi(original, Any()) { Wifi(it) })
         val firstReceipt = f.owner.provenanceSnapshot().wifiConstructions.single()
         f.owner.clear()
         assertSame(preparation, f.owner.initialProcessPreparation())
-        val second = f.owner.constructWifi(original, Any()) { Wifi(it) }
+        val second = createdValue(f.owner.constructWifi(original, Any()) { Wifi(it) })
         val failure = IllegalStateException("Synthetic partial constructor failure")
         assertSame(failure, runCatching {
             f.owner.constructWifi<Wifi>(original, Any()) { throw failure }
@@ -196,7 +196,7 @@ class HolderProcessPreparationTest {
         val original = holder.owner.initialProcessPreparation().origin
         withController(HolderInitialBinding.Uninitialized) { f ->
             f.factory = { token, captured ->
-                WifiAwareFactoryResult.Created(holder.owner.constructWifi(captured, token) { Wifi(it) })
+                holder.owner.constructWifi(captured, token) { Wifi(it) }
             }
             val token = f.owner.beginOwner(original)
             f.owner.setEnabled(true)
@@ -221,12 +221,12 @@ class HolderProcessPreparationTest {
             val entered = f.hold()
             val release = f.hold()
             f.factory = { token, captured ->
-                val product = holder.owner.constructWifi(captured, token) { Wifi(it) }
+                val result = holder.owner.constructWifi(captured, token) { Wifi(it) }
                 if (token === firstToken) {
                     entered.countDown()
                     check(release.await(5, TimeUnit.SECONDS)) { "Owned factory was not released" }
                 }
-                WifiAwareFactoryResult.Created(product)
+                result
             }
             val worker = f.worker { f.owner.setEnabled(true) }
             assertTrue("Actual original factory must enter", entered.await(5, TimeUnit.SECONDS))
@@ -269,7 +269,7 @@ class HolderProcessPreparationTest {
         val original = preparation.origin
         withController(HolderInitialBinding.Bound(original)) { f ->
             f.factory = { token, captured ->
-                WifiAwareFactoryResult.Created(holder.owner.constructWifi(captured, token) { Wifi(it) })
+                holder.owner.constructWifi(captured, token) { Wifi(it) }
             }
             val firstToken = f.owner.currentOwner()
             f.owner.setEnabled(true)
@@ -312,6 +312,11 @@ class HolderProcessPreparationTest {
         assertSame(preparation, holder.owner.initialProcessPreparation())
         assertTrue(holder.effects.isEmpty())
         assertTrue(holder.owner.provenanceSnapshot().constructions.isEmpty())
+    }
+
+    private fun <T : Any> createdValue(result: WifiAwareFactoryResult<T>): T = when (result) {
+        is WifiAwareFactoryResult.Created -> result.value
+        WifiAwareFactoryResult.RefusedBeforeAllocation -> error("Expected an actual Created product in the ordinary fixture")
     }
 
     private class Bluetooth(val reusable: Boolean = true)

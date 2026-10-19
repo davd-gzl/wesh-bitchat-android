@@ -2,6 +2,7 @@ package com.bitchat.android.service
 
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.sync.GossipSyncManager
+import com.bitchat.android.wifiaware.WifiAwareFactoryResult
 import org.junit.Assert.*
 import org.junit.Test
 import java.lang.management.ManagementFactory
@@ -30,14 +31,14 @@ class MeshServiceHolderWifiConstructionOriginsTest {
         }
         await(firstEntered, "first factory entry")
         val wifiWorker = f.worker {
-            result.set(f.owner.constructWifi(f.original, controller) { context ->
+            result.set(createdValue(f.owner.constructWifi(f.original, controller) { context ->
                 creatorEntered.countDown()
                 f.owner.ensureBluetoothForWifi(context) { nested ->
                     f.owner.setGossipManager(HolderManagerProvenance.Constructed(nested), manager) { it }
                     second
                 }
                 Wifi(f.owner.selectManagerForWifi(context))
-            })
+            }))
         }
         await(creatorEntered, "Wi-Fi creator must enter before Bluetooth release")
         val during = f.bounded { f.owner.provenanceSnapshot() }
@@ -72,7 +73,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
         val firstManager = Manager()
         val secondManager = Manager()
         val controller = Any()
-        val result = f.owner.constructWifi(f.original, controller) { context ->
+        val result = createdValue(f.owner.constructWifi(f.original, controller) { context ->
             f.owner.ensureBluetoothForWifi(context) { nested ->
                 f.owner.setGossipManager(HolderManagerProvenance.Constructed(nested), firstManager) { it }
                 first
@@ -83,7 +84,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
                 second
             }
             Wifi(f.owner.selectManagerForWifi(context))
-        }
+        })
         val snapshot = f.owner.provenanceSnapshot()
         val wifi = snapshot.wifiConstructions.single()
         val selected = selected(wifi)
@@ -100,11 +101,11 @@ class MeshServiceHolderWifiConstructionOriginsTest {
 
     @Test fun `known absence is selected null rather than an unreached selection`() = withFixture { f ->
         val controller = Any()
-        val result = f.owner.constructWifi(f.original, controller) { context ->
+        val result = createdValue(f.owner.constructWifi(f.original, controller) { context ->
             f.owner.ensureBluetoothForWifi(context) { Bluetooth() }
             assertNull(f.owner.selectManagerForWifi(context))
             Wifi(null)
-        }
+        })
         val after = f.owner.provenanceSnapshot()
         val wifi = after.wifiConstructions.single()
         assertTrue(wifi.selection is HolderWifiManagerSelection.Selected<*>)
@@ -169,7 +170,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
         val outcome = AtomicReference<Result<Wifi>>()
         val worker = f.worker {
             outcome.set(runCatching {
-                f.owner.constructWifi(f.original, controller) { context ->
+                createdValue(f.owner.constructWifi(f.original, controller) { context ->
                     f.owner.ensureBluetoothForWifi(context) { nested ->
                         f.owner.setGossipManager(HolderManagerProvenance.Constructed(nested), manager) { it }
                         Bluetooth()
@@ -179,7 +180,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
                     await(release, "late creator release")
                     if (fail) throw failure
                     Wifi(registration)
-                }
+                })
             })
         }
         await(selected, "actual constructor selection")
@@ -216,7 +217,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
         val originalSigned = packet(1)
         val nextSigned = packet(2)
         var savedDelegate: GossipSyncManager.Delegate? = null
-        val result = f.owner.constructWifi(f.original, Any()) { context ->
+        val result = createdValue(f.owner.constructWifi(f.original, Any()) { context ->
             f.owner.ensureBluetoothForWifi(context) { nested ->
                 f.owner.setGossipManager(HolderManagerProvenance.Constructed(nested), manager) { originalSigned }
                 first
@@ -229,7 +230,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
                 Bluetooth()
             }
             Wifi(registration)
-        }
+        })
         val after = f.owner.provenanceSnapshot()
         assertEquals(2, after.registrations.size)
         assertNotSame(after.registrations[0], after.registrations[1])
@@ -252,14 +253,19 @@ class MeshServiceHolderWifiConstructionOriginsTest {
     }
 
     @Test fun `second selection cannot replace the exact first constructor observation`() = withFixture { f ->
-        val result = f.owner.constructWifi(f.original, Any()) { context ->
+        val result = createdValue(f.owner.constructWifi(f.original, Any()) { context ->
             assertNull(f.owner.selectManagerForWifi(context))
             assertTrue(runCatching { f.owner.selectManagerForWifi(context) }.exceptionOrNull() is IllegalStateException)
             Wifi(null)
-        }
+        })
         val after = f.owner.provenanceSnapshot()
         assertNull(selected(after.wifiConstructions.single()))
         assertSame(result, returned(after.wifiConstructions.single().outcome))
+    }
+
+    private fun <T : Any> createdValue(result: WifiAwareFactoryResult<T>): T = when (result) {
+        is WifiAwareFactoryResult.Created -> result.value
+        WifiAwareFactoryResult.RefusedBeforeAllocation -> error("Expected an actual Created product in the ordinary fixture")
     }
 
     private class Bluetooth { var reusable = true; var stops = 0 }

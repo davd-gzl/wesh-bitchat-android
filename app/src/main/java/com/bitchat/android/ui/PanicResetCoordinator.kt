@@ -56,6 +56,16 @@ internal suspend fun collectPanicRetirement(originalFacade: UnifiedMeshService?)
 
 /** Restart remains provisional until the durable marker and every admission gate commit. */
 internal object PanicResetCoordinator {
+    /** Synchronous restrictive fences; this partial closure never confirms the aggregate holder proof. */
+    fun fenceCapturedPanicOwners(
+        originalFacade: UnifiedMeshService?,
+        holderBinding: com.bitchat.android.service.HolderPanicBinding,
+        exactOriginalMesh: Any
+    ): com.bitchat.android.service.HolderConstructionCloseOutcome {
+        originalFacade?.fenceForPanic()
+        return com.bitchat.android.service.closeHolderPanicBinding(holderBinding, exactOriginalMesh)
+    }
+
     fun launchPanic(scope: CoroutineScope, action: suspend () -> Unit): Job =
         scope.launch(start = CoroutineStart.UNDISPATCHED) { action() }
 
