@@ -69,6 +69,17 @@ object MeshServiceHolder {
         createUnified = { UnifiedMeshService(context.applicationContext, it) }
     )
 
+    internal fun <W : Any> constructWifi(
+        controllerOrigin: com.bitchat.android.wifiaware.WifiAwareOwnerToken,
+        creator: (HolderWifiConstructionContext) -> W
+    ): W = owner.constructWifi(controllerOrigin, creator)
+
+    internal fun ensureBluetoothForWifi(context: Context, construction: HolderWifiConstructionContext) =
+        owner.ensureBluetoothForWifi(construction) { createBluetooth(context, null, it) }
+
+    internal fun selectManagerForWifi(construction: HolderWifiConstructionContext): HolderManagerRegistration<GossipSyncManager>? =
+        owner.selectManagerForWifi(construction)
+
     fun attach(service: BluetoothMeshService) = owner.attach(service)
     fun clear() = owner.clear()
 }

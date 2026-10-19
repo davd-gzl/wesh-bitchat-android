@@ -7,9 +7,10 @@ internal enum class HolderLogLevel { DEBUG, INFO, WARN, ERROR }
 
 /** Opaque provenance, not admission or permission to open a new runtime. */
 internal sealed interface HolderConstructionContext
+internal sealed interface HolderWifiConstructionContext : HolderConstructionContext
 internal class HolderEpoch internal constructor()
 internal class HolderEntryOrigin internal constructor(val epoch: HolderEpoch)
-internal enum class HolderConstructionKind { BLUETOOTH, UNIFIED }
+internal enum class HolderConstructionKind { BLUETOOTH, UNIFIED, WIFI }
 internal sealed interface HolderConstructionOutcome {
     data object Dispatched : HolderConstructionOutcome
     class Returned(val product: Any) : HolderConstructionOutcome
@@ -37,12 +38,27 @@ internal class HolderManagerRegistration<G : Any> internal constructor(
     internal val signer: (BitchatPacket) -> BitchatPacket
 )
 
+/** Selection is recorded at the constructor's separate manager-read step, including known absence. */
+internal sealed interface HolderWifiManagerSelection<out G : Any> {
+    data object NotSelected : HolderWifiManagerSelection<Nothing>
+    class Selected<G : Any>(val registration: HolderManagerRegistration<G>?) : HolderWifiManagerSelection<G>
+}
+
+internal data class HolderWifiConstructionReceipt<G : Any>(
+    val context: HolderWifiConstructionContext,
+    val entry: HolderEntryOrigin,
+    val controllerOrigin: Any,
+    val selection: HolderWifiManagerSelection<G>,
+    val outcome: HolderConstructionOutcome
+)
+
 /** Retained records remain unconfirmed; these observations are not a drain acknowledgment. */
 internal data class HolderProvenanceSnapshot<G : Any>(
     val activeEntryCount: Int,
     val constructions: List<HolderConstructionReceipt>,
     val registrations: List<HolderManagerRegistration<G>>,
-    val externalProducts: List<Any>
+    val externalProducts: List<Any>,
+    val wifiConstructions: List<HolderWifiConstructionReceipt<G>>
 )
 
 /** Required actions; creating the owner does not open a runtime or a platform service. */
@@ -65,6 +81,8 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
 ) {
     // Preserve reentrant constructor -> manager registration under one legacy monitor.
     private val legacyMonitor = Any()
+    // Legacy operations may briefly enter this monitor. Never acquire legacy or invoke ports here.
+    private val registryMonitor = Any()
     @Volatile var meshService: B? = null
         private set
     @Volatile var unifiedMeshService: U? = null
@@ -74,14 +92,17 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     private val epoch = HolderEpoch()
     private val activeEntries = mutableSetOf<HolderEntryOrigin>()
     private class ConstructionContext : HolderConstructionContext
-    private class ConstructionRecord(
+    private class WifiConstructionContext : HolderWifiConstructionContext
+    private class ConstructionRecord<G : Any>(
         val context: HolderConstructionContext,
         val entry: HolderEntryOrigin,
         val kind: HolderConstructionKind,
         val suppliedBluetooth: Any?,
+        val controllerOrigin: Any? = null,
+        var selection: HolderWifiManagerSelection<G> = HolderWifiManagerSelection.NotSelected,
         var outcome: HolderConstructionOutcome = HolderConstructionOutcome.Dispatched
     )
-    private val constructions = linkedMapOf<HolderConstructionContext, ConstructionRecord>()
+    private val constructions = linkedMapOf<HolderConstructionContext, ConstructionRecord<G>>()
     private val registrations = mutableListOf<HolderManagerRegistration<G>>()
     private val externalProducts = java.util.IdentityHashMap<B, Unit>()
     private val activeGossipOwners = mutableSetOf<String>()
@@ -91,19 +112,23 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         manager: G,
         signer: (BitchatPacket) -> BitchatPacket
     ): Unit = synchronized(legacyMonitor) {
-        val entry = when (provenance) {
-            is HolderManagerProvenance.Constructed -> requireNotNull(constructions[provenance.context]) {
-                "Construction context does not belong to this holder"
-            }.entry
-            HolderManagerProvenance.UnattributedExternal -> null
+        val entry = synchronized(registryMonitor) {
+            when (provenance) {
+                is HolderManagerProvenance.Constructed -> requireNotNull(constructions[provenance.context]) {
+                    "Construction context does not belong to this holder"
+                }.entry
+                HolderManagerProvenance.UnattributedExternal -> null
+            }
         }
         val previous = sharedGossipSyncManager
         if (previous !== manager) {
             try { previous?.let(ports.stopGossip) } catch (_: Exception) { }
         }
         val registration = HolderManagerRegistration(manager, provenance, entry, signer)
-        registrations += registration
-        currentRegistration = registration
+        synchronized(registryMonitor) {
+            registrations += registration
+            currentRegistration = registration
+        }
         ports.installGossipDelegate(manager, TransportGossipDelegate(registration, ports.broadcast, ports.sendToPeer))
         if (activeGossipOwners.isNotEmpty()) ports.startGossip(manager)
     }
@@ -180,9 +205,51 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         created
     }
 
+    /** Wi-Fi's original constructor runs without either holder monitor. */
+    fun <W : Any> constructWifi(controllerOrigin: Any, creator: (HolderWifiConstructionContext) -> W): W {
+        val entry = HolderEntryOrigin(epoch)
+        val context = WifiConstructionContext()
+        val record = ConstructionRecord<G>(context, entry, HolderConstructionKind.WIFI, null, controllerOrigin)
+        synchronized(registryMonitor) {
+            activeEntries += entry
+            constructions[context] = record
+        }
+        try {
+            val product = try {
+                creator(context)
+            } catch (failure: Throwable) {
+                synchronized(registryMonitor) { record.outcome = HolderConstructionOutcome.Unknown(HolderConstructionKind.WIFI) }
+                throw failure
+            }
+            synchronized(registryMonitor) { record.outcome = HolderConstructionOutcome.Returned(product) }
+            return product
+        } finally {
+            synchronized(registryMonitor) { activeEntries -= entry }
+        }
+    }
+
+    /** Reuses the caller's entry even if Bluetooth initialization waits on a different factory. */
+    fun ensureBluetoothForWifi(context: HolderWifiConstructionContext, createBluetooth: (HolderConstructionContext) -> B) {
+        val entry = synchronized(registryMonitor) { wifiRecord(context).entry }
+        synchronized(legacyMonitor) { getOrCreateLocked(entry, createBluetooth) }
+    }
+
+    /** One immutable registration read, kept separate from the preceding Bluetooth acquisition. */
+    fun selectManagerForWifi(context: HolderWifiConstructionContext): HolderManagerRegistration<G>? = synchronized(registryMonitor) {
+        val record = wifiRecord(context)
+        check(record.selection === HolderWifiManagerSelection.NotSelected) { "Wi-Fi manager was already selected" }
+        currentRegistration.also { record.selection = HolderWifiManagerSelection.Selected(it) }
+    }
+
+    // Called only while registryMonitor is held; context identity is owner-issued and unforgeable.
+    private fun wifiRecord(context: HolderWifiConstructionContext): ConstructionRecord<G> =
+        requireNotNull(constructions[context]) { "Construction context does not belong to this holder" }.also {
+            check(it.kind == HolderConstructionKind.WIFI) { "Construction context is not Wi-Fi" }
+        }
+
     fun attach(service: B): Unit = synchronized(legacyMonitor) {
         log(HolderLogLevel.DEBUG, "Attaching BluetoothMeshService to holder")
-        externalProducts[service] = Unit
+        synchronized(registryMonitor) { externalProducts[service] = Unit }
         meshService = service
         unifiedMeshService = null
     }
@@ -191,7 +258,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         log(HolderLogLevel.DEBUG, "Clearing BluetoothMeshService from holder")
         try { sharedGossipSyncManager?.let(ports.clearGossip) } catch (_: Exception) { }
         try { sharedGossipSyncManager?.let(ports.stopGossip) } catch (_: Exception) { }
-        currentRegistration = null
+        synchronized(registryMonitor) { currentRegistration = null }
         activeGossipOwners.clear()
         meshService = null
         unifiedMeshService = null
@@ -200,8 +267,8 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     private fun <T> withEntry(action: (HolderEntryOrigin) -> T): T {
         val entry = HolderEntryOrigin(epoch)
         return synchronized(legacyMonitor) {
-            activeEntries += entry
-            try { action(entry) } finally { activeEntries -= entry }
+            synchronized(registryMonitor) { activeEntries += entry }
+            try { action(entry) } finally { synchronized(registryMonitor) { activeEntries -= entry } }
         }
     }
 
@@ -212,25 +279,31 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         factory: (HolderConstructionContext) -> T
     ): T {
         val context = ConstructionContext()
-        val record = ConstructionRecord(context, entry, kind, suppliedBluetooth)
-        constructions[context] = record
+        val record = ConstructionRecord<G>(context, entry, kind, suppliedBluetooth)
+        synchronized(registryMonitor) { constructions[context] = record }
         val product = try {
             factory(context)
         } catch (failure: Throwable) {
-            record.outcome = HolderConstructionOutcome.Unknown(kind)
+            synchronized(registryMonitor) { record.outcome = HolderConstructionOutcome.Unknown(kind) }
             throw failure
         }
         // Record the return before caller logging can trigger the legacy retry.
-        record.outcome = HolderConstructionOutcome.Returned(product)
+        synchronized(registryMonitor) { record.outcome = HolderConstructionOutcome.Returned(product) }
         return product
     }
 
-    fun provenanceSnapshot(): HolderProvenanceSnapshot<G> = synchronized(legacyMonitor) {
+    fun provenanceSnapshot(): HolderProvenanceSnapshot<G> = synchronized(registryMonitor) {
         HolderProvenanceSnapshot(
             activeEntries.size,
             constructions.values.map { HolderConstructionReceipt(it.context, it.entry, it.kind, it.suppliedBluetooth, it.outcome) },
             registrations.toList(),
-            externalProducts.keys.toList()
+            externalProducts.keys.toList(),
+            constructions.values.filter { it.kind == HolderConstructionKind.WIFI }.map {
+                HolderWifiConstructionReceipt(
+                    it.context as HolderWifiConstructionContext, it.entry,
+                    checkNotNull(it.controllerOrigin), it.selection, it.outcome
+                )
+            }
         )
     }
 
