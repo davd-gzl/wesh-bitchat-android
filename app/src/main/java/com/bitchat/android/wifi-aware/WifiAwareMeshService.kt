@@ -168,6 +168,13 @@ class WifiAwareMeshService internal constructor(
                 override fun gcsMaxBytes(): Int = 400
                 override fun gcsTargetFpr(): Double = 0.01
             },
+            recordFallbackGossip = { creator ->
+                com.bitchat.android.service.MeshServiceHolder.constructGossipManager(
+                    com.bitchat.android.service.HolderGossipParent.Constructed(holderConstruction),
+                    com.bitchat.android.service.HolderGossipSource.CORE_FALLBACK,
+                    creator
+                )
+            },
             hooks = MeshCore.Hooks(
                 onMessageReceived = { message -> handleMessageReceived(message) },
                 onAnnounceProcessed = { routed, _ ->

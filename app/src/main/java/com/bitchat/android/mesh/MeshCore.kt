@@ -38,6 +38,7 @@ class MeshCore(
     private val maxTtl: UByte,
     sharedGossipManager: GossipSyncManager?,
     gossipConfigProvider: GossipSyncManager.ConfigProvider,
+    recordFallbackGossip: ((() -> GossipSyncManager) -> GossipSyncManager),
     private val hooks: Hooks = Hooks(),
     // Passed in rather than read from BuildConfig: this file also compiles into the watch module.
     // Defaults to the stricter Wesh policy.
@@ -87,8 +88,10 @@ class MeshCore(
     private val directPeers = ConcurrentHashMap.newKeySet<String>()
 
     val gossipSyncManager: GossipSyncManager =
-        sharedGossipManager ?: GossipSyncManager(myPeerID = myPeerID, scope = scope, configProvider = gossipConfigProvider,
-            workOwner = com.bitchat.android.sync.GossipWorkOwner(), jobCreator = ::launchOriginalGossipJob)
+        sharedGossipManager ?: recordFallbackGossip {
+            GossipSyncManager(myPeerID = myPeerID, scope = scope, configProvider = gossipConfigProvider,
+                workOwner = com.bitchat.android.sync.GossipWorkOwner(), jobCreator = ::launchOriginalGossipJob)
+        }
     private val ownsGossipManager: Boolean = sharedGossipManager == null
 
     var delegate: MeshDelegate? = null

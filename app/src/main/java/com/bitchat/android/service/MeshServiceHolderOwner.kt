@@ -6,6 +6,36 @@ import com.bitchat.android.wifiaware.WifiAwareFactoryResult
 
 internal enum class HolderLogLevel { DEBUG, INFO, WARN, ERROR }
 
+internal enum class HolderGossipSource { BLE_SERVICE, CORE_FALLBACK }
+internal sealed interface HolderGossipParent {
+    class Constructed(val context: HolderConstructionContext) : HolderGossipParent
+    data object Unattributed : HolderGossipParent
+}
+internal sealed interface HolderGossipProvenance {
+    class Constructed(val context: HolderConstructionContext, val entry: HolderEntryOrigin) : HolderGossipProvenance
+    data object Unattributed : HolderGossipProvenance
+}
+internal sealed interface HolderGossipChildTicket
+
+/** Exact original identity and provenance, never admission or a drain acknowledgment. */
+internal sealed interface HolderGossipManagerReference<out G : Any> {
+    val ticket: HolderGossipChildTicket
+    val source: HolderGossipSource
+    val provenance: HolderGossipProvenance
+    val manager: G
+}
+internal sealed interface HolderGossipChildOutcome<out G : Any> {
+    data object Dispatched : HolderGossipChildOutcome<Nothing>
+    class Returned<G : Any>(val original: HolderGossipManagerReference<G>) : HolderGossipChildOutcome<G>
+    data object Unknown : HolderGossipChildOutcome<Nothing>
+}
+internal data class HolderGossipChildSnapshot<G : Any>(
+    val ticket: HolderGossipChildTicket,
+    val source: HolderGossipSource,
+    val provenance: HolderGossipProvenance,
+    val outcome: HolderGossipChildOutcome<G>
+)
+
 internal sealed interface HolderAcquisitionResult<out T : Any> {
     class Available<T : Any>(val product: T) : HolderAcquisitionResult<T>
     data object RefusedBeforeAcquisition : HolderAcquisitionResult<Nothing>
@@ -166,6 +196,63 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     private val registrations = mutableListOf<HolderManagerRegistration<G>>()
     private val externalProducts = java.util.IdentityHashMap<B, Unit>()
     private val activeGossipOwners = mutableSetOf<String>()
+
+    private class GossipChildTicket : HolderGossipChildTicket
+    private class GossipChildRecord<G : Any>(
+        val ticket: HolderGossipChildTicket,
+        val source: HolderGossipSource,
+        val provenance: HolderGossipProvenance,
+        var outcome: HolderGossipChildOutcome<G> = HolderGossipChildOutcome.Dispatched
+    )
+    private class GossipManagerReference<G : Any>(
+        override val ticket: HolderGossipChildTicket,
+        override val source: HolderGossipSource,
+        override val provenance: HolderGossipProvenance,
+        override val manager: G
+    ) : HolderGossipManagerReference<G>
+    private val gossipChildren = linkedMapOf<HolderGossipChildTicket, GossipChildRecord<G>>()
+
+    /** Records the creator only; accepted original contexts remain usable after admission closes. */
+    fun constructGossipManager(
+        parent: HolderGossipParent,
+        source: HolderGossipSource,
+        creator: () -> G
+    ): G {
+        val record = synchronized(registryMonitor) {
+            val provenance = when (parent) {
+                is HolderGossipParent.Constructed -> {
+                    val construction = requireNotNull(constructions[parent.context]) {
+                        "Construction context does not belong to this holder"
+                    }
+                    val expected = when (source) {
+                        HolderGossipSource.BLE_SERVICE -> HolderConstructionKind.BLUETOOTH
+                        HolderGossipSource.CORE_FALLBACK -> HolderConstructionKind.WIFI
+                    }
+                    require(construction.kind == expected) { "Manager source does not match its original construction" }
+                    HolderGossipProvenance.Constructed(parent.context, construction.entry)
+                }
+                HolderGossipParent.Unattributed -> HolderGossipProvenance.Unattributed
+            }
+            val ticket = GossipChildTicket()
+            GossipChildRecord<G>(ticket, source, provenance).also { gossipChildren[ticket] = it }
+        }
+        val manager = try {
+            creator()
+        } catch (failure: Throwable) {
+            synchronized(registryMonitor) { record.outcome = HolderGossipChildOutcome.Unknown }
+            throw failure
+        }
+        synchronized(registryMonitor) {
+            record.outcome = HolderGossipChildOutcome.Returned(
+                GossipManagerReference(record.ticket, record.source, record.provenance, manager)
+            )
+        }
+        return manager
+    }
+
+    fun gossipConstructionSnapshot(): List<HolderGossipChildSnapshot<G>> = synchronized(registryMonitor) {
+        gossipChildren.values.map { HolderGossipChildSnapshot(it.ticket, it.source, it.provenance, it.outcome) }
+    }
 
     /** Pure initial-process provenance; ordinary clear/retry never replaces this value. */
     fun initialProcessPreparation(): HolderProcessPreparation = synchronized(registryMonitor) {

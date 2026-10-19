@@ -139,26 +139,30 @@ class BluetoothMeshService internal constructor(
         }
 
         // Initialize sync manager (needs serviceScope)
-        gossipSyncManager = GossipSyncManager(
-            myPeerID = myPeerID,
-            scope = serviceScope,
-            workOwner = com.bitchat.android.sync.GossipWorkOwner(),
-            jobCreator = ::launchOriginalGossipJob,
-            configProvider = object : GossipSyncManager.ConfigProvider {
-                override fun seenCapacity(): Int = try {
-                    com.bitchat.android.ui.debug.DebugPreferenceManager.getSeenPacketCapacity(500)
-                } catch (_: Exception) { 500 }
+        gossipSyncManager = com.bitchat.android.service.MeshServiceHolder.constructGossipManager(
+            com.bitchat.android.service.HolderGossipParent.Constructed(holderConstruction),
+            com.bitchat.android.service.HolderGossipSource.BLE_SERVICE
+        ) {
+            GossipSyncManager(
+                myPeerID = myPeerID,
+                scope = serviceScope,
+                workOwner = com.bitchat.android.sync.GossipWorkOwner(),
+                jobCreator = ::launchOriginalGossipJob,
+                configProvider = object : GossipSyncManager.ConfigProvider {
+                    override fun seenCapacity(): Int = try {
+                        com.bitchat.android.ui.debug.DebugPreferenceManager.getSeenPacketCapacity(500)
+                    } catch (_: Exception) { 500 }
 
-                override fun gcsMaxBytes(): Int = try {
-                    com.bitchat.android.ui.debug.DebugPreferenceManager.getGcsMaxFilterBytes(400)
-                } catch (_: Exception) { 400 }
+                    override fun gcsMaxBytes(): Int = try {
+                        com.bitchat.android.ui.debug.DebugPreferenceManager.getGcsMaxFilterBytes(400)
+                    } catch (_: Exception) { 400 }
 
-                override fun gcsTargetFpr(): Double = try {
-                    com.bitchat.android.ui.debug.DebugPreferenceManager.getGcsFprPercent(1.0) / 100.0
-                } catch (_: Exception) { 0.01 }
-            }
-        )
-
+                    override fun gcsTargetFpr(): Double = try {
+                        com.bitchat.android.ui.debug.DebugPreferenceManager.getGcsFprPercent(1.0) / 100.0
+                    } catch (_: Exception) { 0.01 }
+                }
+            )
+        }
         com.bitchat.android.service.MeshServiceHolder.setGossipManager(
             com.bitchat.android.service.HolderManagerProvenance.Constructed(holderConstruction), gossipSyncManager
         ) { packet ->
