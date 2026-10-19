@@ -1,5 +1,6 @@
 package com.bitchat.android.ui
 
+import com.bitchat.android.mesh.UnifiedMeshService
 import com.bitchat.android.services.SeenReceiptAdmission
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CoroutineScope
@@ -9,6 +10,44 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+
+internal enum class PanicRetirementGap {
+    MissingCapturedFacade, FacadeUnconfirmed, ProducerNotImplemented
+}
+
+internal sealed interface PanicOwnerRetirement {
+    data object Confirmed : PanicOwnerRetirement
+    class Unconfirmed(val gap: PanicRetirementGap) : PanicOwnerRetirement
+}
+
+/** Required proofs are explicit; admission still follows the facade result. */
+internal data class PanicRetirementReport(
+    val facade: PanicOwnerRetirement,
+    val wifiController: PanicOwnerRetirement,
+    val holderConstructionAndCallbacks: PanicOwnerRetirement,
+    val gossipJobsAndWriters: PanicOwnerRetirement,
+    val transportCoreRadioAndHandlers: PanicOwnerRetirement,
+    val startupAndRemainingSharedKeyUsers: PanicOwnerRetirement
+) {
+    val confirmed: Boolean get() = facade === PanicOwnerRetirement.Confirmed
+}
+
+/** Only the captured facade has a checked producer; the remaining ownership proofs are unavailable. */
+internal suspend fun collectPanicRetirement(originalFacade: UnifiedMeshService?): PanicRetirementReport {
+    val facade = when {
+        originalFacade == null -> PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.MissingCapturedFacade)
+        originalFacade.retireForPanic() -> PanicOwnerRetirement.Confirmed
+        else -> PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.FacadeUnconfirmed)
+    }
+    return PanicRetirementReport(
+        facade = facade,
+        wifiController = PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.ProducerNotImplemented),
+        holderConstructionAndCallbacks = PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.ProducerNotImplemented),
+        gossipJobsAndWriters = PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.ProducerNotImplemented),
+        transportCoreRadioAndHandlers = PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.ProducerNotImplemented),
+        startupAndRemainingSharedKeyUsers = PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.ProducerNotImplemented)
+    )
+}
 
 /** Restart remains provisional until the durable marker and every admission gate commit. */
 internal object PanicResetCoordinator {
@@ -27,6 +66,19 @@ internal object PanicResetCoordinator {
         currentCoroutineContext().ensureActive()
         if (!retired) return false
         return eraseOwnedData(true)
+    }
+
+    suspend fun admitDestructivePanicOwners(
+        establishIntent: suspend () -> Boolean,
+        retireOwners: suspend () -> PanicRetirementReport,
+        eraseOwnedData: suspend (PanicRetirementReport) -> Boolean
+    ): Boolean {
+        var report: PanicRetirementReport? = null
+        return admitDestructivePanic(
+            establishIntent = establishIntent,
+            retireOwner = { retireOwners().also { report = it }.confirmed },
+            eraseOwnedData = { eraseOwnedData(checkNotNull(report)) }
+        )
     }
 
     suspend fun resume(

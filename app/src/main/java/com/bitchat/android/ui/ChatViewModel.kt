@@ -1262,6 +1262,7 @@ class ChatViewModel(
 
     fun panicClearAllData() {
         if (weshPanicInProgress.value) return
+        val originalFacade = mesh as? com.bitchat.android.mesh.UnifiedMeshService
         weshPanicInProgress.value = true
         val seenPanic = com.bitchat.android.services.SeenMessageStore.fenceReceiptAdmissionForPanic()
         if (com.bitchat.android.BuildConfig.WESH_POLICY) {
@@ -1271,11 +1272,11 @@ class ChatViewModel(
         weshDraftStore.fenceForPanic()
         weshPreferences.fenceForPanic()
         com.bitchat.android.net.WeshInternetMode.get(getApplication()).fenceForPanic()
-        (mesh as? com.bitchat.android.mesh.UnifiedMeshService)?.fenceForPanic()
+        originalFacade?.fenceForPanic()
         com.bitchat.android.services.AppStateStore.fencePrivateConversationAdmissionForPanic()
         PanicResetCoordinator.launchPanic(viewModelScope) {
             try {
-                performPanicClearAllData(seenPanic)
+                performPanicClearAllData(seenPanic, originalFacade)
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -1286,14 +1287,19 @@ class ChatViewModel(
         }
     }
 
-    private suspend fun performPanicClearAllData(seenPanic: com.bitchat.android.services.SeenReceiptAdmission.Token) {
+    private suspend fun performPanicClearAllData(
+        seenPanic: com.bitchat.android.services.SeenReceiptAdmission.Token,
+        originalFacade: com.bitchat.android.mesh.UnifiedMeshService?
+    ) {
         val draftEpoch = weshDraftStore.epoch
-        PanicResetCoordinator.admitDestructivePanic(
+        PanicResetCoordinator.admitDestructivePanicOwners(
             establishIntent = {
                 !com.bitchat.android.BuildConfig.WESH_POLICY || weshDraftStore.establishPanicIntent(draftEpoch)
             },
-            retireOwner = { (mesh as? com.bitchat.android.mesh.UnifiedMeshService)?.retireForPanic() ?: false },
-            eraseOwnedData = { retired -> clearPanicDataAfterAdmission(seenPanic, retired) }
+            retireOwners = { collectPanicRetirement(originalFacade) },
+            eraseOwnedData = { report ->
+                clearPanicDataAfterAdmission(seenPanic, report.facade === PanicOwnerRetirement.Confirmed)
+            }
         )
     }
 
