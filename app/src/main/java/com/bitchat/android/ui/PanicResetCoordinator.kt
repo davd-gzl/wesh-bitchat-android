@@ -2,6 +2,11 @@ package com.bitchat.android.ui
 
 import com.bitchat.android.mesh.UnifiedMeshService
 import com.bitchat.android.services.SeenReceiptAdmission
+import com.bitchat.android.service.HolderAdmittedManagerFrontier
+import com.bitchat.android.service.HolderGossipCensusCapture
+import com.bitchat.android.service.HolderCensusGap
+import com.bitchat.android.service.captureHolderAdmittedManagerFrontier
+import com.bitchat.android.service.validateHolderAdmittedManagerFrontier
 import com.bitchat.android.service.HolderGossipCaptureGap
 import com.bitchat.android.service.HolderGossipChildOutcome
 import com.bitchat.android.service.HolderGossipSubsetCapture
@@ -83,7 +88,7 @@ internal sealed interface KnownReturnedJobsCancellation {
     ) : KnownReturnedJobsCancellation
 }
 
-internal enum class KnownRecordedBatchGap { MissingOrFailedClose, MissingOrFailedCapture, CancellationNotAttempted, UnsafeCancellation }
+internal enum class KnownRecordedBatchGap { MissingOrFailedClose, MissingOrFailedCapture, CancellationNotAttempted, UnsafeCancellation, HolderFrontierUnavailable, HolderFrontierChanged, NeedsExplicitCancellationRetry }
 internal class KnownRecordedManagerJoin(
     val original: KnownManagerReturnedJobs,
     val outcome: GossipRecordedFrontierJoinOutcome
@@ -107,7 +112,8 @@ internal sealed interface PanicUnconfirmedEvidence {
         val snapshot: HolderGossipSubsetSnapshot<GossipSyncManager>,
         val attempts: List<PanicGossipRootCloseAttempt>,
         val returnedJobsCancellation: KnownReturnedJobsCancellation = KnownReturnedJobsCancellation.NotAttempted,
-        val recordedFrontierJoin: KnownRecordedFrontiersJoin = KnownRecordedFrontiersJoin.NotAttempted
+        val recordedFrontierJoin: KnownRecordedFrontiersJoin = KnownRecordedFrontiersJoin.NotAttempted,
+        val holderFrontier: HolderGossipCensusCapture<GossipSyncManager>? = null
     ) : PanicUnconfirmedEvidence
 }
 internal sealed interface PanicOwnerRetirement {
@@ -187,15 +193,37 @@ internal suspend fun collectPanicRetirementWithRecordedJobsJoin(
     val report = collectPanicRetirement(originalFacade, originalGossip)
     val gossip = report.gossipJobsAndWriters as? PanicOwnerRetirement.Unconfirmed ?: return report
     val known = gossip.evidence as? PanicUnconfirmedEvidence.KnownOriginalGossip ?: return report
-    val joined = joinKnownRecordedFrontiers(known)
+    val installed = originalGossip as? PanicOriginalGossipInput.Installed ?: return report
+    val captured = captureHolderAdmittedManagerFrontier(installed.binding, installed.exactOriginalMesh)
+    val frontier = (captured as? HolderGossipCensusCapture.Sealed<GossipSyncManager>)?.frontier
+    val joined = when {
+        frontier == null -> KnownRecordedFrontiersJoin.Ineligible(listOf(
+            KnownRecordedJoinRejection.Batch(KnownRecordedBatchGap.HolderFrontierUnavailable)))
+        !sameCoveredManagerIdentities(known, frontier) -> KnownRecordedFrontiersJoin.Ineligible(listOf(
+            KnownRecordedJoinRejection.Batch(KnownRecordedBatchGap.NeedsExplicitCancellationRetry)))
+        else -> joinKnownRecordedFrontiers(known, installed, frontier)
+    }
     currentCoroutineContext().ensureActive()
+    val current = if (frontier != null && !validateHolderAdmittedManagerFrontier(installed.binding, installed.exactOriginalMesh, frontier)) {
+        HolderGossipCensusCapture.Invalid(HolderCensusGap.WitnessChanged)
+    } else captured
     return report.copy(gossipJobsAndWriters = PanicOwnerRetirement.Unconfirmed(gossip.gap,
         PanicUnconfirmedEvidence.KnownOriginalGossip(known.snapshot, known.attempts,
-            known.returnedJobsCancellation, joined)))
+            known.returnedJobsCancellation, joined, current)))
+}
+
+private fun sameCoveredManagerIdentities(
+    known: PanicUnconfirmedEvidence.KnownOriginalGossip, frontier: HolderAdmittedManagerFrontier<GossipSyncManager>
+): Boolean {
+    val managers = frontier.managers
+    if (known.attempts.size != managers.size) return false
+    return managers.all { manager -> known.attempts.count { it.manager === manager } == 1 }
 }
 
 private suspend fun joinKnownRecordedFrontiers(
-    known: PanicUnconfirmedEvidence.KnownOriginalGossip
+    known: PanicUnconfirmedEvidence.KnownOriginalGossip,
+    installed: PanicOriginalGossipInput.Installed,
+    holderFrontier: HolderAdmittedManagerFrontier<GossipSyncManager>
 ): KnownRecordedFrontiersJoin {
     fun rejected(gap: KnownRecordedBatchGap) = KnownRecordedFrontiersJoin.Ineligible(
         listOf(KnownRecordedJoinRejection.Batch(gap))
@@ -233,6 +261,9 @@ private suspend fun joinKnownRecordedFrontiers(
         }
     }
     if (reasons.isNotEmpty()) return KnownRecordedFrontiersJoin.Ineligible(reasons.toList())
+    if (!validateHolderAdmittedManagerFrontier(installed.binding, installed.exactOriginalMesh, holderFrontier)) {
+        return rejected(KnownRecordedBatchGap.HolderFrontierChanged)
+    }
     if (prepared.isEmpty()) return KnownRecordedFrontiersJoin.NoKnownRecordedJobs
     val outcomes = prepared.map { original ->
         val result = try {
