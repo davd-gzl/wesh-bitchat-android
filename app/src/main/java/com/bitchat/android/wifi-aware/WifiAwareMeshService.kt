@@ -577,12 +577,25 @@ class WifiAwareMeshService internal constructor(
             ingressLinks.clear()
 
             meshCore.shutdown()
+            var awaitFailure: Throwable? = null
+            try {
+                meshCore.awaitPacketProcessorShutdown()
+            } catch (failure: Throwable) {
+                awaitFailure = failure
+                throw failure
+            } finally {
+                try {
+                    // Tear down listener threads; this instance is discarded after a full stop.
+                    try { listenerExec.shutdownNow() } catch (_: Exception) { }
 
-            // Tear down listener threads; this instance is discarded after a full stop.
-            try { listenerExec.shutdownNow() } catch (_: Exception) { }
-
-            com.bitchat.android.wifiaware.WifiAwareController.onServiceStopped(controllerOwner, this@WifiAwareMeshService)
-            serviceScope.cancel()
+                    com.bitchat.android.wifiaware.WifiAwareController.onServiceStopped(controllerOwner, this@WifiAwareMeshService)
+                    serviceScope.cancel()
+                } catch (cleanupFailure: Throwable) {
+                    val original = awaitFailure
+                    if (original == null) throw cleanupFailure
+                    if (cleanupFailure !== original) original.addSuppressed(cleanupFailure)
+                }
+            }
         }
     }
 

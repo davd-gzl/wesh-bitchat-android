@@ -852,11 +852,24 @@ class BluetoothMeshService internal constructor(
             storeForwardManager.shutdown()
             messageHandler.shutdown()
             packetProcessor.shutdown()
-            
-            // Mark this instance as terminated and cancel its scope so it won't be reused
-            terminated = true
-            serviceScope.cancel()
-            Log.i(TAG, "BluetoothMeshService terminated and scope cancelled")
+            var awaitFailure: Throwable? = null
+            try {
+                packetProcessor.awaitShutdown()
+            } catch (failure: Throwable) {
+                awaitFailure = failure
+                throw failure
+            } finally {
+                try {
+                    // Mark this instance as terminated and cancel its scope so it won't be reused
+                    terminated = true
+                    serviceScope.cancel()
+                    Log.i(TAG, "BluetoothMeshService terminated and scope cancelled")
+                } catch (cleanupFailure: Throwable) {
+                    val original = awaitFailure
+                    if (original == null) throw cleanupFailure
+                    if (cleanupFailure !== original) original.addSuppressed(cleanupFailure)
+                }
+            }
         }
     }
 
