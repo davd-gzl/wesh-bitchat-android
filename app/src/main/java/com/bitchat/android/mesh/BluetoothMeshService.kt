@@ -159,7 +159,7 @@ class BluetoothMeshService internal constructor(
         com.bitchat.android.service.MeshServiceHolder.setGossipManager(
             com.bitchat.android.service.HolderManagerProvenance.Constructed(holderConstruction), gossipSyncManager
         ) { packet ->
-            signPacketBeforeBroadcast(packet)
+            com.bitchat.android.sync.signGossipPacket(packet, ::applyRouteIfAvailable, encryptionService::signData)
         }
         if (isBleTransportEnabled()) {
             TransportBridgeService.register("BLE", this)
