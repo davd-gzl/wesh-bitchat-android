@@ -202,7 +202,7 @@ class GossipWorkOriginsTest {
     @Test fun foreignAndRepeatedDispatchCannotMutateOriginalOutcomeOrEscapeAnotherJob() = runTest {
         withFixture { f ->
             val foreign = GossipWorkOwner()
-            val ticket = f.owner.reserve(GossipWorkKind.INITIAL_BROADCAST)
+            val ticket = f.reserveTicket(GossipWorkKind.INITIAL_BROADCAST)
             var creatorCalls = 0
             val forbidden: GossipJobCreator = { _, _, _ -> creatorCalls++; error("Unexpected dispatch") }
             assertTrue(runCatching {
@@ -223,7 +223,7 @@ class GossipWorkOriginsTest {
             assertTrue(runCatching {
                 f.owner.dispatch(ticket, f.scope, Dispatchers.IO, forbidden) {}
             }.exceptionOrNull() is IllegalStateException)
-            val unknown = f.owner.reserve(GossipWorkKind.INITIAL_PEER)
+            val unknown = f.reserveTicket(GossipWorkKind.INITIAL_PEER)
             val failure = IllegalStateException("Synthetic creator refusal")
             assertSame(failure, runCatching {
                 f.owner.dispatch(unknown, f.scope, Dispatchers.IO, { _, _, _ -> throw failure }) {}
@@ -288,6 +288,7 @@ class GossipWorkOriginsTest {
         private val gates = mutableListOf<CompletableDeferred<Unit>>()
         private val workers = mutableListOf<Thread>()
         private val errors = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
+        private val manualRoots = mutableListOf<GossipRootLease>()
         var creator: GossipJobCreator = ::launchControlled
         val manager = GossipSyncManager("1122334455667788", scope, object : GossipSyncManager.ConfigProvider {
             override fun seenCapacity() = 8
@@ -305,6 +306,18 @@ class GossipWorkOriginsTest {
             }
             jobs += actual
             return actual
+        }
+
+        fun reserveTicket(kind: GossipWorkKind): GossipWorkTicket {
+            val rootKind = when (kind) {
+                GossipWorkKind.INITIAL_BROADCAST -> GossipRootKind.INITIAL_BROADCAST
+                GossipWorkKind.INITIAL_PEER -> GossipRootKind.INITIAL_PEER
+                else -> error("Direct fixture ticket needs an explicit initial root")
+            }
+            val reservation = owner.reserveRoot(manager.captureJobPanicBinding(), rootKind)
+            check(reservation is GossipRootReservation.Accepted)
+            manualRoots += reservation.lease
+            return owner.reserveChild(reservation.lease, kind)
         }
 
         fun latch() = CountDownLatch(1).also { latches += it }
@@ -332,6 +345,9 @@ class GossipWorkOriginsTest {
             latches.forEach { it.countDown() }
             gates.forEach { it.complete(Unit) }
             var failure: Throwable? = null
+            manualRoots.forEach { lease ->
+                failure = preserveFailure(failure) { owner.finishRoot(lease) }
+            }
             workers.forEach { worker ->
                 failure = preserveFailure(failure) {
                     worker.join(5_000)

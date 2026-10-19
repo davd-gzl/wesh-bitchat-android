@@ -37,6 +37,11 @@ class GossipSyncManager internal constructor(
         private const val TAG = "GossipSyncManager"
     }
 
+    private val originalJobBinding = workOwner.associateManager(this)
+
+    internal fun hasOriginalWorkOwner(candidate: GossipWorkOwner): Boolean = workOwner === candidate
+    internal fun captureJobPanicBinding(): GossipManagerJobBinding = originalJobBinding
+
     @Volatile var delegate: Delegate? = null
 
     // Defaults (configurable constants)
@@ -52,29 +57,37 @@ class GossipSyncManager internal constructor(
     private var periodicJob: Job? = null
     private var cleanupJob: Job? = null
     fun start() {
-        periodicJob?.cancel()
-        val periodicTicket = workOwner.reserve(GossipWorkKind.PERIODIC_SYNC)
-        periodicJob = workOwner.dispatch(periodicTicket, scope, Dispatchers.IO, jobCreator) {
-            while (isActive) {
-                try {
-                    delay(30_000)
-                    sendRequestSync()
-                } catch (e: CancellationException) { throw e }
-                catch (e: Exception) { Log.e(TAG, "Periodic sync error: ${e.message}") }
-            }
+        val root = when (val admission = workOwner.reserveRoot(originalJobBinding, GossipRootKind.START)) {
+            is GossipRootReservation.Accepted -> admission.lease
+            is GossipRootReservation.Refused -> return
         }
-
-        // Start periodic cleanup of stale announcements and messages
-        cleanupJob?.cancel()
-        val cleanupTicket = workOwner.reserve(GossipWorkKind.CLEANUP)
-        cleanupJob = workOwner.dispatch(cleanupTicket, scope, Dispatchers.IO, jobCreator) {
-            while (isActive) {
-                try {
-                    delay(com.bitchat.android.util.AppConstants.Sync.CLEANUP_INTERVAL_MS)
-                    pruneStaleAnnouncements()
-                } catch (e: CancellationException) { throw e }
-                catch (e: Exception) { Log.e(TAG, "Periodic cleanup error: ${e.message}") }
+        try {
+            periodicJob?.cancel()
+            val periodicTicket = workOwner.reserveChild(root, GossipWorkKind.PERIODIC_SYNC)
+            periodicJob = workOwner.dispatch(periodicTicket, scope, Dispatchers.IO, jobCreator) {
+                while (isActive) {
+                    try {
+                        delay(30_000)
+                        sendRequestSync()
+                    } catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { Log.e(TAG, "Periodic sync error: ${e.message}") }
+                }
             }
+
+            // Start periodic cleanup of stale announcements and messages
+            cleanupJob?.cancel()
+            val cleanupTicket = workOwner.reserveChild(root, GossipWorkKind.CLEANUP)
+            cleanupJob = workOwner.dispatch(cleanupTicket, scope, Dispatchers.IO, jobCreator) {
+                while (isActive) {
+                    try {
+                        delay(com.bitchat.android.util.AppConstants.Sync.CLEANUP_INTERVAL_MS)
+                        pruneStaleAnnouncements()
+                    } catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { Log.e(TAG, "Periodic cleanup error: ${e.message}") }
+                }
+            }
+        } finally {
+            workOwner.finishRoot(root)
         }
     }
 
@@ -93,18 +106,34 @@ class GossipSyncManager internal constructor(
     }
 
     fun scheduleInitialSync(delayMs: Long = 5_000L) {
-        val ticket = workOwner.reserve(GossipWorkKind.INITIAL_BROADCAST)
-        workOwner.dispatch(ticket, scope, Dispatchers.IO, jobCreator) {
-            delay(delayMs)
-            sendRequestSync()
+        val root = when (val admission = workOwner.reserveRoot(originalJobBinding, GossipRootKind.INITIAL_BROADCAST)) {
+            is GossipRootReservation.Accepted -> admission.lease
+            is GossipRootReservation.Refused -> return
+        }
+        try {
+            val ticket = workOwner.reserveChild(root, GossipWorkKind.INITIAL_BROADCAST)
+            workOwner.dispatch(ticket, scope, Dispatchers.IO, jobCreator) {
+                delay(delayMs)
+                sendRequestSync()
+            }
+        } finally {
+            workOwner.finishRoot(root)
         }
     }
 
     fun scheduleInitialSyncToPeer(peerID: String, delayMs: Long = 5_000L) {
-        val ticket = workOwner.reserve(GossipWorkKind.INITIAL_PEER)
-        workOwner.dispatch(ticket, scope, Dispatchers.IO, jobCreator) {
-            delay(delayMs)
-            sendRequestSyncToPeer(peerID)
+        val root = when (val admission = workOwner.reserveRoot(originalJobBinding, GossipRootKind.INITIAL_PEER)) {
+            is GossipRootReservation.Accepted -> admission.lease
+            is GossipRootReservation.Refused -> return
+        }
+        try {
+            val ticket = workOwner.reserveChild(root, GossipWorkKind.INITIAL_PEER)
+            workOwner.dispatch(ticket, scope, Dispatchers.IO, jobCreator) {
+                delay(delayMs)
+                sendRequestSyncToPeer(peerID)
+            }
+        } finally {
+            workOwner.finishRoot(root)
         }
     }
 

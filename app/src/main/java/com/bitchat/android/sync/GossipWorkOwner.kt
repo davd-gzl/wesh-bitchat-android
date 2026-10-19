@@ -16,6 +16,23 @@ internal fun launchOriginalGossipJob(
 
 internal enum class GossipWorkKind { PERIODIC_SYNC, CLEANUP, INITIAL_BROADCAST, INITIAL_PEER }
 
+internal sealed interface GossipManagerJobBinding
+internal sealed interface GossipRootLease
+internal sealed interface GossipRootCloseReceipt
+
+internal enum class GossipRootKind { START, INITIAL_BROADCAST, INITIAL_PEER }
+internal enum class GossipRootState { ACTIVE, FINISHED }
+internal class GossipRootIdentity internal constructor()
+internal data class GossipRootSnapshot(
+    val id: GossipRootIdentity,
+    val kind: GossipRootKind,
+    val state: GossipRootState
+)
+internal sealed interface GossipRootReservation {
+    data class Accepted(val lease: GossipRootLease) : GossipRootReservation
+    data class Refused(val receipt: GossipRootCloseReceipt) : GossipRootReservation
+}
+
 internal sealed interface GossipWorkTicket
 
 internal sealed interface GossipWorkOutcome {
@@ -38,13 +55,82 @@ internal class GossipWorkOwner {
         var outcome: GossipWorkOutcome = GossipWorkOutcome.Reserved
     }
 
+    private class ManagerBinding(val manager: GossipSyncManager) : GossipManagerJobBinding
+    private class Lease : GossipRootLease
+    private class CloseReceipt : GossipRootCloseReceipt
+    private class RootRecord(
+        val binding: GossipManagerJobBinding,
+        val kind: GossipRootKind
+    ) {
+        val id = GossipRootIdentity()
+        var state = GossipRootState.ACTIVE
+        val children = mutableListOf<GossipWorkTicket>()
+    }
+
     private val monitor = Any()
     private val records = LinkedHashMap<GossipWorkTicket, Record>()
+    private val roots = LinkedHashMap<GossipRootLease, RootRecord>()
+    private var association: ManagerBinding? = null
+    private var rootCloseReceipt: GossipRootCloseReceipt? = null
 
-    fun reserve(kind: GossipWorkKind): GossipWorkTicket = synchronized(monitor) {
+    fun associateManager(manager: GossipSyncManager): GossipManagerJobBinding {
+        check(manager.hasOriginalWorkOwner(this)) { "Manager has a different original work owner" }
+        return synchronized(monitor) {
+            val original = association
+            if (original != null) {
+                check(original.manager === manager) { "Work owner already belongs to another manager" }
+                original
+            } else {
+                ManagerBinding(manager).also { association = it }
+            }
+        }
+    }
+
+    fun closeJobRoots(binding: GossipManagerJobBinding): GossipRootCloseReceipt = synchronized(monitor) {
+        check(binding === association) { "Job root binding does not belong to this owner" }
+        rootCloseReceipt ?: CloseReceipt().also { rootCloseReceipt = it }
+    }
+
+    fun reserveRoot(binding: GossipManagerJobBinding, kind: GossipRootKind): GossipRootReservation = synchronized(monitor) {
+        check(binding === association) { "Job root binding does not belong to this owner" }
+        val lease = Lease()
+        roots[lease] = RootRecord(binding, kind)
+        GossipRootReservation.Accepted(lease)
+    }
+
+    fun reserveChild(lease: GossipRootLease, kind: GossipWorkKind): GossipWorkTicket = synchronized(monitor) {
+        val root = roots[lease]
+        check(root != null && root.binding === association && root.state == GossipRootState.ACTIVE) {
+            "Job root lease is foreign or finished"
+        }
+        val expected = when (root.kind) {
+            GossipRootKind.START -> when (root.children.size) {
+                0 -> GossipWorkKind.PERIODIC_SYNC
+                1 -> GossipWorkKind.CLEANUP
+                else -> null
+            }
+            GossipRootKind.INITIAL_BROADCAST -> if (root.children.isEmpty()) GossipWorkKind.INITIAL_BROADCAST else null
+            GossipRootKind.INITIAL_PEER -> if (root.children.isEmpty()) GossipWorkKind.INITIAL_PEER else null
+        }
+        check(expected == kind) { "Job root child kind is repeated or out of order" }
         val ticket = Ticket()
         records[ticket] = Record(ticket, kind)
+        root.children += ticket
         ticket
+    }
+
+    fun finishRoot(lease: GossipRootLease) {
+        synchronized(monitor) {
+            val root = roots[lease]
+            check(root != null && root.binding === association && root.state == GossipRootState.ACTIVE) {
+                "Job root lease is foreign or finished"
+            }
+            root.state = GossipRootState.FINISHED
+        }
+    }
+
+    fun rootSnapshot(): List<GossipRootSnapshot> = synchronized(monitor) {
+        roots.values.map { GossipRootSnapshot(it.id, it.kind, it.state) }
     }
 
     fun dispatch(
