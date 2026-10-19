@@ -20,7 +20,7 @@ internal sealed interface PanicOwnerRetirement {
     class Unconfirmed(val gap: PanicRetirementGap) : PanicOwnerRetirement
 }
 
-/** Required proofs are explicit; admission still follows the facade result. */
+/** Destruction requires every reported ownership proof; unavailable producers keep it refused. */
 internal data class PanicRetirementReport(
     val facade: PanicOwnerRetirement,
     val wifiController: PanicOwnerRetirement,
@@ -29,7 +29,12 @@ internal data class PanicRetirementReport(
     val transportCoreRadioAndHandlers: PanicOwnerRetirement,
     val startupAndRemainingSharedKeyUsers: PanicOwnerRetirement
 ) {
-    val confirmed: Boolean get() = facade === PanicOwnerRetirement.Confirmed
+    val confirmed: Boolean get() = facade === PanicOwnerRetirement.Confirmed &&
+        wifiController === PanicOwnerRetirement.Confirmed &&
+        holderConstructionAndCallbacks === PanicOwnerRetirement.Confirmed &&
+        gossipJobsAndWriters === PanicOwnerRetirement.Confirmed &&
+        transportCoreRadioAndHandlers === PanicOwnerRetirement.Confirmed &&
+        startupAndRemainingSharedKeyUsers === PanicOwnerRetirement.Confirmed
 }
 
 /** Only the captured facade has a checked producer; the remaining ownership proofs are unavailable. */

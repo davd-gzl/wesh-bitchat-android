@@ -1,5 +1,6 @@
 package com.bitchat.android.ui
 
+import android.app.Application
 import android.os.Build
 import com.bitchat.android.mesh.MeshDelegate
 import com.bitchat.android.mesh.MeshService
@@ -8,6 +9,10 @@ import com.bitchat.android.mesh.UnifiedMeshPorts
 import com.bitchat.android.mesh.UnifiedMeshService
 import com.bitchat.android.noise.NoiseSession
 import com.bitchat.android.startup.WeshRecoveryGate
+import com.bitchat.android.services.ConversationStorageCipher
+import com.bitchat.android.ui.pave.PavePanicPresentation
+import com.bitchat.android.ui.pave.pavePanicPresentation
+import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -29,16 +34,20 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /** Real facade/collector/coordinator with owned RAM ports; no platform service or storage graph. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [Build.VERSION_CODES.P], manifest = Config.NONE)
+@Config(application = Application::class, sdk = [Build.VERSION_CODES.P], manifest = Config.NONE)
 @OptIn(ExperimentalCoroutinesApi::class)
 class PanicAggregateAdmissionTest {
+    @get:Rule val directory = TemporaryFolder()
+
     @Test fun `actual facade success cannot authorize destruction with missing required owners`() = runTest {
         withFixture { f ->
             f.facade.startServices()
@@ -187,6 +196,127 @@ class PanicAggregateAdmissionTest {
             assertTrue(f.ownerJob.isCompleted)
             assertEquals(0, erases)
         }
+    }
+
+    @Test fun `actual unconfirmed owners retain checked intent and recovery presentation without erasure`() = runTest {
+        withFixture { f ->
+            val root = directory.newFolder()
+            val opaque = byteArrayOf(17, 31, 47, 61)
+            val ciphertext = File(root, "wesh-drafts-v1.bin").apply { writeBytes(opaque) }
+            var cipherCalls = 0
+            val cipher = object : ConversationStorageCipher {
+                override fun encrypt(plaintext: ByteArray, associatedData: ByteArray): ByteArray {
+                    cipherCalls++
+                    error("Unexpected synthetic encrypt")
+                }
+                override fun decrypt(envelope: ByteArray, associatedData: ByteArray): ByteArray {
+                    cipherCalls++
+                    error("Unexpected synthetic decrypt")
+                }
+                override fun destroyKey() { cipherCalls++ }
+            }
+            val backend = EncryptedWeshDraftBackend(root, cipher)
+            val drafts = WeshDraftStore(backend, backgroundScope, StandardTestDispatcher(testScheduler))
+            val recovery = WeshRecoveryGate().apply { requireRecovery() }
+            drafts.fenceForPanic()
+            val capturedEpoch = drafts.epoch
+            f.facade.startServices()
+            runCurrent()
+            var report: PanicRetirementReport? = null
+            var erases = 0
+            val admitted = PanicResetCoordinator.admitDestructivePanicOwners(
+                establishIntent = { drafts.establishPanicIntent(capturedEpoch) },
+                retireOwners = { collectPanicRetirement(f.facade).also { report = it } },
+                eraseOwnedData = { erases++; true }
+            )
+            assertSame("actual facade retirement must succeed", PanicOwnerRetirement.Confirmed, checkNotNull(report).facade)
+            assertTrue("actual owned facade job must complete", f.ownerJob.isCompleted)
+            assertEquals("missing required owners must prevent the entire destructive thunk", 0, erases)
+            assertFalse(admitted)
+            assertMissingProducers(checkNotNull(report))
+            assertTrue(EncryptedWeshDraftBackend.hasPendingWipe(root))
+            assertArrayEquals(opaque, ciphertext.readBytes())
+            assertEquals(0, cipherCalls)
+            assertEquals(0, f.transport.erasures)
+            assertEquals(WeshDraftStore.Persistence.WipeRequired, drafts.persistence.value)
+            assertFalse(drafts.save(capturedEpoch, "public", "Synthetic refused edit"))
+            assertTrue(recovery.recoveryRequired.value)
+            assertFalse(recovery.allowsTransport(prepared = true))
+            val coldGate = WeshRecoveryGate()
+            if (EncryptedWeshDraftBackend.hasPendingWipe(root)) coldGate.requireRecovery()
+            assertTrue(coldGate.recoveryRequired.value)
+            assertFalse(coldGate.allowsTransport(prepared = true))
+            assertEquals(PavePanicPresentation.RecoveryRequired,
+                pavePanicPresentation(false, recovery.recoveryRequired.value, true))
+            assertEquals(PavePanicPresentation.RecoveryRequired,
+                pavePanicPresentation(false, coldGate.recoveryRequired.value, true))
+            assertEquals(PavePanicPresentation.Erasing,
+                pavePanicPresentation(true, recovery.recoveryRequired.value, true))
+        }
+    }
+
+    @Test fun `each mandatory unconfirmed owner refuses the entire destructive thunk`() = runTest {
+        val confirmed = PanicRetirementReport(
+            facade = PanicOwnerRetirement.Confirmed,
+            wifiController = PanicOwnerRetirement.Confirmed,
+            holderConstructionAndCallbacks = PanicOwnerRetirement.Confirmed,
+            gossipJobsAndWriters = PanicOwnerRetirement.Confirmed,
+            transportCoreRadioAndHandlers = PanicOwnerRetirement.Confirmed,
+            startupAndRemainingSharedKeyUsers = PanicOwnerRetirement.Confirmed
+        )
+        val unavailable = PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.ProducerNotImplemented)
+        val cases = listOf(
+            "facade" to confirmed.copy(facade = PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.FacadeUnconfirmed)),
+            "wifiController" to confirmed.copy(wifiController = unavailable),
+            "holderConstructionAndCallbacks" to confirmed.copy(holderConstructionAndCallbacks = unavailable),
+            "gossipJobsAndWriters" to confirmed.copy(gossipJobsAndWriters = unavailable),
+            "transportCoreRadioAndHandlers" to confirmed.copy(transportCoreRadioAndHandlers = unavailable),
+            "startupAndRemainingSharedKeyUsers" to confirmed.copy(startupAndRemainingSharedKeyUsers = unavailable)
+        )
+        data class Outcome(val label: String, val admitted: Boolean, val reports: Int, val erases: Int)
+        val outcomes = cases.map { (label, report) ->
+            var reports = 0
+            var erases = 0
+            val admitted = PanicResetCoordinator.admitDestructivePanicOwners(
+                establishIntent = { true },
+                retireOwners = { reports++; report },
+                eraseOwnedData = { erases++; true }
+            )
+            Outcome(label, admitted, reports, erases)
+        }
+        outcomes.forEach {
+            assertFalse(it.label, it.admitted)
+            assertEquals(it.label, 1, it.reports)
+            assertEquals(it.label, 0, it.erases)
+        }
+    }
+
+    @Test fun `synthetic complete report reaches eraser once and preserves its false result`() = runTest {
+        val report = PanicRetirementReport(
+            facade = PanicOwnerRetirement.Confirmed,
+            wifiController = PanicOwnerRetirement.Confirmed,
+            holderConstructionAndCallbacks = PanicOwnerRetirement.Confirmed,
+            gossipJobsAndWriters = PanicOwnerRetirement.Confirmed,
+            transportCoreRadioAndHandlers = PanicOwnerRetirement.Confirmed,
+            startupAndRemainingSharedKeyUsers = PanicOwnerRetirement.Confirmed
+        )
+        val order = mutableListOf<String>()
+        var reports = 0
+        var erases = 0
+        val admitted = PanicResetCoordinator.admitDestructivePanicOwners(
+            establishIntent = { order += "intent"; true },
+            retireOwners = { order += "report"; reports++; report },
+            eraseOwnedData = { actual ->
+                order += "erase"
+                erases++
+                assertSame(report, actual)
+                false
+            }
+        )
+        assertFalse(admitted)
+        assertEquals(listOf("intent", "report", "erase"), order)
+        assertEquals(1, reports)
+        assertEquals(1, erases)
     }
 
     private class Fixture(scope: TestScope, profile: Flow<Pair<Long, Boolean>>?) {
