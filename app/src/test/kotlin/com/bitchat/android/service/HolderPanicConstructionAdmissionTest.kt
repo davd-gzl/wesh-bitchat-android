@@ -94,7 +94,7 @@ class HolderPanicConstructionAdmissionTest {
             })
             assertEquals(HolderPanicCaptureGap.NoUniqueReturnedUnified, captureGap(f.holder.captureUnifiedPanicSubject(unfinished)))
             f.holder.clear()
-            assertSame(f.facade, f.holder.getUnifiedOrCreate({ InertMesh() }) { f.facade })
+            assertSame(f.facade, acquiredValue(f.holder.getUnifiedOrCreate({ InertMesh() }) { f.facade }))
             assertEquals(HolderPanicCaptureGap.AmbiguousReturnedUnified, captureGap(f.holder.captureUnifiedPanicSubject(f.facade)))
             val ambiguous = captureHolderPanicBinding(f.holder, f.facade)
             assertEquals(HolderPanicCaptureGap.AmbiguousReturnedUnified,
@@ -107,7 +107,7 @@ class HolderPanicConstructionAdmissionTest {
             val original = f.holder.provenanceSnapshot().constructions.single { it.kind == HolderConstructionKind.UNIFIED }
             f.holder.clear()
             val replacement = Any()
-            assertSame(replacement, f.holder.getUnifiedOrCreate({ InertMesh() }) { replacement })
+            assertSame(replacement, acquiredValue(f.holder.getUnifiedOrCreate({ InertMesh() }) { replacement }))
             assertClosed(PanicResetCoordinator.fenceCapturedPanicOwners(f.facade, f.binding, f.facade))
             assertSame(replacement, f.holder.unifiedMeshService)
             val retained = f.holder.provenanceSnapshot().constructions.single { it.context === original.context }
@@ -288,13 +288,13 @@ class HolderPanicConstructionAdmissionTest {
             broadcast = {}, sendToPeer = { _, _ -> }, log = { _, _ -> }
         ))
         val original = holder.initialProcessPreparation().origin
-        val facade = holder.getUnifiedOrCreate({ transport }) {
+        val facade = acquiredValue(holder.getUnifiedOrCreate({ transport }) {
             UnifiedMeshService(transport, UnifiedMeshPorts(
                 scope = CoroutineScope(facadeJob + StandardTestDispatcher(scope.testScheduler)),
                 announcementProfile = MutableStateFlow(60_000L to false), hasAnnouncementRecipients = { false },
                 currentWifi = { null }, startWifi = {}, stopWifi = {}, bleEnabled = { true }, disableBle = {}, currentNpub = { null }
             ))
-        } as UnifiedMeshService
+        }) as UnifiedMeshService
         val binding = captureHolderPanicBinding(holder, facade)
         val creators = AtomicInteger()
         val factoryResults = CopyOnWriteArrayList<WifiAwareFactoryResult<Wifi>>()
@@ -410,4 +410,9 @@ class HolderPanicConstructionAdmissionTest {
         is WifiAwareFactoryResult.Created -> result.value
         WifiAwareFactoryResult.RefusedBeforeAllocation -> error("Expected a pre-closure admitted Created product")
     }
+    private fun <T : Any> acquiredValue(result: HolderAcquisitionResult<T>): T = when (result) {
+        is HolderAcquisitionResult.Available -> result.product
+        HolderAcquisitionResult.RefusedBeforeAcquisition -> error("Expected an available synthetic acquisition")
+    }
+
 }

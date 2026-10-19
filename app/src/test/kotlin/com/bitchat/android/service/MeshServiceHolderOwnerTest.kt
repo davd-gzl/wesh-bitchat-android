@@ -26,8 +26,8 @@ class MeshServiceHolderOwnerTest {
 
     @Test fun `healthy reuse ignores a later call scoped factory`() = withFixture { f ->
         val first = Bluetooth()
-        assertSame(first, f.owner.getOrCreate { first })
-        assertSame(first, f.owner.getOrCreate { error("A healthy product must be reused") })
+        assertSame(first, acquiredValue(f.owner.getOrCreate { first }))
+        assertSame(first, acquiredValue(f.owner.getOrCreate { error("A healthy product must be reused") }))
         assertSame(first, f.owner.meshService)
         assertEquals(listOf("probe"), f.actions())
     }
@@ -37,11 +37,11 @@ class MeshServiceHolderOwnerTest {
         val facade = Unified(old)
         f.owner.getUnifiedOrCreate({ old }, { facade })
         val fresh = Bluetooth()
-        assertSame(fresh, f.owner.getOrCreate { fresh })
+        assertSame(fresh, acquiredValue(f.owner.getOrCreate { fresh }))
         assertEquals(1, old.stops)
         assertSame(fresh, f.owner.meshService)
         assertNull(f.owner.unifiedMeshService)
-        val replacement = f.owner.getUnifiedOrCreate({ error("Must reuse fresh Bluetooth") }, { Unified(it) })
+        val replacement = acquiredValue(f.owner.getUnifiedOrCreate({ error("Must reuse fresh Bluetooth") }, { Unified(it) }))
         assertSame(fresh, replacement.bluetooth)
         assertNotSame(facade, replacement)
     }
@@ -52,7 +52,7 @@ class MeshServiceHolderOwnerTest {
         val failure = IllegalStateException("Synthetic probe failure")
         f.onProbe = { throw failure }
         val fresh = Bluetooth()
-        assertSame(fresh, f.owner.getOrCreate { fresh })
+        assertSame(fresh, acquiredValue(f.owner.getOrCreate { fresh }))
         assertEquals(0, old.stops)
         assertSame(fresh, f.owner.meshService)
     }
@@ -64,11 +64,11 @@ class MeshServiceHolderOwnerTest {
         val observations = mutableListOf<Any>()
         val fresh = Bluetooth()
         val calls = AtomicInteger()
-        assertSame(fresh, f.owner.getOrCreate {
+        assertSame(fresh, acquiredValue(f.owner.getOrCreate {
             observations += suppliedDependency
             if (calls.incrementAndGet() == 1) error("Synthetic first replacement failure")
             fresh
-        })
+        }))
         assertEquals(2, calls.get())
         assertEquals(2, observations.size)
         observations.forEach { assertSame(suppliedDependency, it) }
@@ -87,7 +87,7 @@ class MeshServiceHolderOwnerTest {
 
     @Test fun `failed fallback leaves both original cache identities intact`() = withFixture { f ->
         val old = Bluetooth().also { it.reusable = false }
-        val originalFacade = f.owner.getUnifiedOrCreate({ old }, { Unified(it) })
+        val originalFacade = acquiredValue(f.owner.getUnifiedOrCreate({ old }, { Unified(it) }))
         val failure = IllegalStateException("Synthetic replacement failure")
         val calls = AtomicInteger()
         assertSame(failure, runCatching { f.owner.getOrCreate { calls.incrementAndGet(); throw failure } }.exceptionOrNull())
@@ -101,15 +101,15 @@ class MeshServiceHolderOwnerTest {
         f.owner.getOrCreate { old }
         f.onBluetoothStop = { error("Synthetic stop failure") }
         val fresh = Bluetooth()
-        assertSame(fresh, f.owner.getOrCreate { fresh })
+        assertSame(fresh, acquiredValue(f.owner.getOrCreate { fresh }))
         assertEquals(1, old.stops)
         assertSame(fresh, f.owner.meshService)
     }
 
     @Test fun `unified reuse refreshes the same facade without constructing another`() = withFixture { f ->
         val bluetooth = Bluetooth()
-        val facade = f.owner.getUnifiedOrCreate({ bluetooth }, { Unified(it) })
-        assertSame(facade, f.owner.getUnifiedOrCreate({ error("Must reuse Bluetooth") }, { error("Must reuse facade") }))
+        val facade = acquiredValue(f.owner.getUnifiedOrCreate({ bluetooth }, { Unified(it) }))
+        assertSame(facade, acquiredValue(f.owner.getUnifiedOrCreate({ error("Must reuse Bluetooth") }, { error("Must reuse facade") })))
         assertSame(bluetooth, facade.bluetooth)
         assertEquals(1, facade.refreshes)
         assertSame(facade, f.owner.unifiedMeshService)
@@ -121,13 +121,13 @@ class MeshServiceHolderOwnerTest {
         assertSame(failure, runCatching { f.owner.getUnifiedOrCreate({ bluetooth }, { throw failure }) }.exceptionOrNull())
         assertSame(bluetooth, f.owner.meshService)
         assertNull(f.owner.unifiedMeshService)
-        val facade = f.owner.getUnifiedOrCreate({ error("Must reuse supplied Bluetooth") }, { Unified(it) })
+        val facade = acquiredValue(f.owner.getUnifiedOrCreate({ error("Must reuse supplied Bluetooth") }, { Unified(it) }))
         assertSame(bluetooth, facade.bluetooth)
     }
 
     @Test fun `unified refresh failure propagates without replacing cached products`() = withFixture { f ->
         val bluetooth = Bluetooth()
-        val facade = f.owner.getUnifiedOrCreate({ bluetooth }, { Unified(it) })
+        val facade = acquiredValue(f.owner.getUnifiedOrCreate({ bluetooth }, { Unified(it) }))
         val failure = IllegalStateException("Synthetic refresh failure")
         f.onRefresh = { throw failure }
         assertSame(failure, runCatching { f.owner.getUnifiedOrCreate({ error("Unexpected factory") }, { error("Unexpected facade") }) }.exceptionOrNull())
@@ -286,14 +286,14 @@ class MeshServiceHolderOwnerTest {
         val product = Bluetooth()
         val results = ConcurrentLinkedQueue<Bluetooth>()
         val first = f.worker {
-            results += f.owner.getOrCreate { construction ->
+            results += acquiredValue(f.owner.getOrCreate { construction ->
                 calls.incrementAndGet()
                 f.owner.setGossipManager(HolderManagerProvenance.Constructed(construction), manager) { it }
                 f.owner.startSharedGossip("Synthetic nested owner")
                 entered.countDown()
                 check(release.await(5, TimeUnit.SECONDS)) { "Held synthetic factory was not released" }
                 product
-            }
+            })
         }
         try {
             assertTrue("first factory entered after reentrant registration", entered.await(5, TimeUnit.SECONDS))
@@ -301,7 +301,7 @@ class MeshServiceHolderOwnerTest {
             assertEquals(1, manager.starts)
             val second = f.worker {
                 secondEntered.countDown()
-                try { results += f.owner.getOrCreate { calls.incrementAndGet(); Bluetooth() } }
+                try { results += acquiredValue(f.owner.getOrCreate { calls.incrementAndGet(); Bluetooth() }) }
                 finally { secondFinished.countDown() }
             }
             assertTrue("second owned caller started", secondEntered.await(5, TimeUnit.SECONDS))
@@ -397,4 +397,9 @@ class MeshServiceHolderOwnerTest {
         type = 1u, senderID = ByteArray(8) { value.toByte() }, timestamp = 1uL,
         payload = byteArrayOf(value.toByte()), ttl = 1u
     )
+    private fun <T : Any> acquiredValue(result: HolderAcquisitionResult<T>): T = when (result) {
+        is HolderAcquisitionResult.Available -> result.product
+        HolderAcquisitionResult.RefusedBeforeAcquisition -> error("Expected an available synthetic acquisition")
+    }
+
 }

@@ -1396,13 +1396,18 @@ class ChatViewModel internal constructor(
         MeshServiceHolder.clear()
 
         // Create fresh mesh service with new identity (keys were regenerated in clearAllCryptographicData)
-        val freshMeshService = MeshServiceHolder.getOrCreate(getApplication())
-        val freshUnifiedMeshService = MeshServiceHolder.getUnifiedOrCreate(getApplication())
-
-        // Replace our reference and set up the new service
-        meshService = freshMeshService
-        unifiedMeshService = freshUnifiedMeshService
-        mesh.delegate = this
+        val acquired = com.bitchat.android.service.makeHolderRuntimePairAction(
+            acquireBluetooth = { MeshServiceHolder.getOrCreate(getApplication()) },
+            acquireUnified = { MeshServiceHolder.getUnifiedOrCreate(getApplication()) },
+            available = { freshMeshService, freshUnifiedMeshService ->
+                // Replace our reference and set up the new service
+                meshService = freshMeshService
+                unifiedMeshService = freshUnifiedMeshService
+                mesh.delegate = this
+            },
+            refused = { }
+        )()
+        if (!acquired) return false
 
         // A failed identity reset must not remove the durable panic marker.
         if (com.bitchat.android.BuildConfig.WESH_POLICY) {

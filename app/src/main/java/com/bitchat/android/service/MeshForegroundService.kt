@@ -251,7 +251,16 @@ class MeshForegroundService : Service() {
                     return@launch
                 }
                 com.bitchat.android.wifiaware.WifiAwareController.startIfPossible()
-                MeshServiceHolder.getUnifiedOrCreate(applicationContext).startServices()
+                dispatchHolderAcquisition(
+                    acquire = { MeshServiceHolder.getUnifiedOrCreate(applicationContext) },
+                    available = { it.startServices() },
+                    refused = {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        isInForeground = false
+                        clearMeshNotifications()
+                        stopSelf()
+                    }
+                )
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (_: Exception) {

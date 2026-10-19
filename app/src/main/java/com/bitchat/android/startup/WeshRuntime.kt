@@ -49,8 +49,14 @@ internal object WeshRuntime {
                 EncryptionService(app)
             }
             withContext(Dispatchers.Main.immediate) {
-                MeshServiceHolder.getUnifiedOrCreate(app, encryption)
-                Unit
+                com.bitchat.android.service.dispatchHolderAcquisition(
+                    acquire = { MeshServiceHolder.getUnifiedOrCreate(app, encryption) },
+                    available = { Unit },
+                    refused = {
+                        gate.requireRecovery()
+                        error("Secure startup unavailable")
+                    }
+                )
             }
         }.also { coordinator = it }
     }
