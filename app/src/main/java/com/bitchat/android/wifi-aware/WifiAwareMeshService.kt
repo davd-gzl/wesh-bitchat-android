@@ -576,10 +576,9 @@ class WifiAwareMeshService internal constructor(
             discoveredTimestamps.clear()
             ingressLinks.clear()
 
-            meshCore.shutdown()
             var awaitFailure: Throwable? = null
             try {
-                meshCore.awaitPacketProcessorShutdown()
+                meshCore.shutdownAndJoin()
             } catch (failure: Throwable) {
                 awaitFailure = failure
                 throw failure
