@@ -93,6 +93,8 @@ internal class GossipWorkOwner {
 
     fun reserveRoot(binding: GossipManagerJobBinding, kind: GossipRootKind): GossipRootReservation = synchronized(monitor) {
         check(binding === association) { "Job root binding does not belong to this owner" }
+        val closed = rootCloseReceipt
+        if (closed != null) return@synchronized GossipRootReservation.Refused(closed)
         val lease = Lease()
         roots[lease] = RootRecord(binding, kind)
         GossipRootReservation.Accepted(lease)
