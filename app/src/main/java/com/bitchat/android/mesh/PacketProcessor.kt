@@ -95,7 +95,7 @@ class PacketProcessor(
         val bytes = queuedSize(routed)
         val link = quotaKey(routed, peerID)
         val offered = synchronized(queueLock) {
-            // Baseline intentionally omits terminal refusal before queue creation.
+            if (shutdownRequested) return@synchronized null
             if (queuedPackets >= maxQueuedPackets || queuedBytes + bytes > maxQueuedBytes) return@synchronized null
             if ((linkPending[link] ?: 0) >= perLinkQueueCapacity) return@synchronized null
             val queue = queues[peerID] ?: newQueueLocked(peerID) ?: return@synchronized null
