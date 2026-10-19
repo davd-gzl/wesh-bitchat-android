@@ -14,14 +14,15 @@ object WifiAwareController {
     private const val TAG = "WifiAwareController"
     private var appContext: Context? = null
     private var awareReceiverRegistered = false
-    private val owner: WifiAwareControllerOwner<WifiAwareMeshService> = WifiAwareControllerOwner(WifiAwareControllerPorts(
+    private val owner: WifiAwareControllerOwner<WifiAwareMeshService, com.bitchat.android.service.HolderOrigin> = WifiAwareControllerOwner(
+        HolderInitialBinding.Uninitialized, WifiAwareControllerPorts(
         scope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
         contextReady = { appContext != null },
         prepareStart = ::prepareStart,
         restartSupported = { origin -> appContext?.let { refreshSupportStatus(it, origin).supported } ?: true },
-        factory = { origin ->
+        factory = { origin, original ->
             WifiAwareFactoryResult.Created(
-                com.bitchat.android.service.MeshServiceHolder.constructWifi(origin) { construction ->
+                com.bitchat.android.service.MeshServiceHolder.constructWifi(original, origin) { construction ->
                     WifiAwareMeshService(checkNotNull(appContext), origin, construction)
                 }
             )
@@ -31,7 +32,7 @@ object WifiAwareController {
         requestStop = { it.stopServices() },
         // stopServices returns Unit before its children/executors finish; it is not a checked acknowledgment.
         awaitProductRetirement = { false },
-        published = { com.bitchat.android.service.MeshServiceHolder.unifiedMeshService?.refreshDelegates() },
+        published = { _, _ -> com.bitchat.android.service.MeshServiceHolder.unifiedMeshService?.refreshDelegates() },
         clearPeers = { com.bitchat.android.services.AppStateStore.clearTransportPeers("WIFI") },
         debugMessage = { message ->
             com.bitchat.android.ui.debug.DebugSettingsManager.getInstance().addDebugMessage(
@@ -49,9 +50,9 @@ object WifiAwareController {
     val knownPeers = owner.knownPeers
     val discoveredPeers = owner.discoveredPeers
 
-    fun initialize(context: Context, enabledByDefault: Boolean) {
+    internal fun initialize(context: Context, enabledByDefault: Boolean, original: com.bitchat.android.service.HolderOrigin) {
         appContext = context.applicationContext
-        val origin = owner.beginOwner()
+        val origin = owner.beginOwner(original)
         val status = refreshSupportStatus(appContext!!, origin)
         if (status.supported) registerAwareStateReceiver(appContext!!)
         else Log.i(TAG, "Wi-Fi Aware unsupported: ${status.reason}")

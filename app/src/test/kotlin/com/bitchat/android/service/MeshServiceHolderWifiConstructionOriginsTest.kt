@@ -30,7 +30,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
         }
         await(firstEntered, "first factory entry")
         val wifiWorker = f.worker {
-            result.set(f.owner.constructWifi(controller) { context ->
+            result.set(f.owner.constructWifi(f.original, controller) { context ->
                 creatorEntered.countDown()
                 f.owner.ensureBluetoothForWifi(context) { nested ->
                     f.owner.setGossipManager(HolderManagerProvenance.Constructed(nested), manager) { it }
@@ -72,7 +72,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
         val firstManager = Manager()
         val secondManager = Manager()
         val controller = Any()
-        val result = f.owner.constructWifi(controller) { context ->
+        val result = f.owner.constructWifi(f.original, controller) { context ->
             f.owner.ensureBluetoothForWifi(context) { nested ->
                 f.owner.setGossipManager(HolderManagerProvenance.Constructed(nested), firstManager) { it }
                 first
@@ -100,7 +100,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
 
     @Test fun `known absence is selected null rather than an unreached selection`() = withFixture { f ->
         val controller = Any()
-        val result = f.owner.constructWifi(controller) { context ->
+        val result = f.owner.constructWifi(f.original, controller) { context ->
             f.owner.ensureBluetoothForWifi(context) { Bluetooth() }
             assertNull(f.owner.selectManagerForWifi(context))
             Wifi(null)
@@ -118,7 +118,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
         val controller = Any()
         val failure = IllegalStateException("Synthetic constructor failure")
         assertSame(failure, runCatching {
-            f.owner.constructWifi<Wifi>(controller) { throw failure }
+            f.owner.constructWifi<Wifi>(f.original, controller) { throw failure }
         }.exceptionOrNull())
         val after = f.owner.provenanceSnapshot()
         val wifi = after.wifiConstructions.single()
@@ -134,7 +134,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
         val controller = Any()
         var registration: HolderManagerRegistration<Manager>? = null
         assertSame(failure, runCatching {
-            f.owner.constructWifi<Wifi>(controller) { context ->
+            f.owner.constructWifi<Wifi>(f.original, controller) { context ->
                 f.owner.ensureBluetoothForWifi(context) { nested ->
                     f.owner.setGossipManager(HolderManagerProvenance.Constructed(nested), manager) { it }
                     Bluetooth()
@@ -169,7 +169,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
         val outcome = AtomicReference<Result<Wifi>>()
         val worker = f.worker {
             outcome.set(runCatching {
-                f.owner.constructWifi(controller) { context ->
+                f.owner.constructWifi(f.original, controller) { context ->
                     f.owner.ensureBluetoothForWifi(context) { nested ->
                         f.owner.setGossipManager(HolderManagerProvenance.Constructed(nested), manager) { it }
                         Bluetooth()
@@ -216,7 +216,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
         val originalSigned = packet(1)
         val nextSigned = packet(2)
         var savedDelegate: GossipSyncManager.Delegate? = null
-        val result = f.owner.constructWifi(Any()) { context ->
+        val result = f.owner.constructWifi(f.original, Any()) { context ->
             f.owner.ensureBluetoothForWifi(context) { nested ->
                 f.owner.setGossipManager(HolderManagerProvenance.Constructed(nested), manager) { originalSigned }
                 first
@@ -242,7 +242,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
     @Test fun `foreign Wi-Fi context is rejected before any nested factory or selection effect`() = withFixture { f ->
         val other = Fixture()
         lateinit var foreign: HolderWifiConstructionContext
-        other.owner.constructWifi(Any()) { context -> foreign = context; Wifi(null) }
+        other.owner.constructWifi(other.original, Any()) { context -> foreign = context; Wifi(null) }
         var factories = 0
         assertTrue(runCatching { f.owner.ensureBluetoothForWifi(foreign) { factories++; Bluetooth() } }.exceptionOrNull() is IllegalArgumentException)
         assertTrue(runCatching { f.owner.selectManagerForWifi(foreign) }.exceptionOrNull() is IllegalArgumentException)
@@ -252,7 +252,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
     }
 
     @Test fun `second selection cannot replace the exact first constructor observation`() = withFixture { f ->
-        val result = f.owner.constructWifi(Any()) { context ->
+        val result = f.owner.constructWifi(f.original, Any()) { context ->
             assertNull(f.owner.selectManagerForWifi(context))
             assertTrue(runCatching { f.owner.selectManagerForWifi(context) }.exceptionOrNull() is IllegalStateException)
             Wifi(null)
@@ -286,6 +286,7 @@ class MeshServiceHolderWifiConstructionOriginsTest {
             installGossipDelegate = { manager, delegate -> manager.delegate = delegate },
             broadcast = {}, sendToPeer = { _, _ -> }, log = { _, _ -> }
         ))
+        val original = owner.initialProcessPreparation().origin
         fun hold(): CountDownLatch = CountDownLatch(1).also { holds += it }
         fun releaseAll() { holds.forEach { it.countDown() } }
         fun worker(action: () -> Unit): Worker {
