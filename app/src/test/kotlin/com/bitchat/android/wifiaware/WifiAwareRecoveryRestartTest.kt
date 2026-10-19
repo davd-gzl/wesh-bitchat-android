@@ -253,7 +253,7 @@ class WifiAwareRecoveryRestartTest {
             contextReady = { true },
             prepareStart = { true },
             restartSupported = { true },
-            factory = { _: WifiAwareOwnerToken -> factories++; Product() },
+            factory = { _: WifiAwareOwnerToken -> factories++; WifiAwareFactoryResult.Created(Product()) },
             start = { product ->
                 starts++
                 if (product.recovering) startsDuringRecovery++ else product.running = true

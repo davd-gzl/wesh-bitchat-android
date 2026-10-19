@@ -23,13 +23,19 @@ internal data class WifiAwareControllerRetirement(
     val capturedProductsAcknowledged: Boolean
 )
 
+/** A known refusal has no product; an opaque constructor failure still throws. */
+internal sealed interface WifiAwareFactoryResult<out S : Any> {
+    data class Created<S : Any>(val value: S) : WifiAwareFactoryResult<S>
+    data object RefusedBeforeAllocation : WifiAwareFactoryResult<Nothing>
+}
+
 /** Constructing these ports performs no platform lookup or service initialization. */
 internal data class WifiAwareControllerPorts<S : Any>(
     val scope: CoroutineScope,
     val contextReady: () -> Boolean,
     val prepareStart: (WifiAwareOwnerToken) -> Boolean,
     val restartSupported: (WifiAwareOwnerToken) -> Boolean,
-    val factory: (WifiAwareOwnerToken) -> S,
+    val factory: (WifiAwareOwnerToken) -> WifiAwareFactoryResult<S>,
     val start: (S) -> Unit,
     val isRunning: (S) -> Boolean,
     val requestStop: (S) -> Unit,
@@ -269,8 +275,11 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
             if (!ports.contextReady() || !ports.prepareStart(origin) ||
                 !synchronized(lifecycleLock) { mayStart(admission) }) return
             try {
-                val product = reusable ?: Product(ports.factory(origin)).also {
-                    synchronized(lifecycleLock) { admission.owner.products[it.value] = it }
+                val product = reusable ?: when (val result = ports.factory(origin)) {
+                    is WifiAwareFactoryResult.Created -> Product(result.value).also {
+                        synchronized(lifecycleLock) { admission.owner.products[it.value] = it }
+                    }
+                    WifiAwareFactoryResult.RefusedBeforeAllocation -> return
                 }
                 retained = !finishCandidate(Candidate(admission, product))
             } catch (failure: Throwable) {
