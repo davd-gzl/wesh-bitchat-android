@@ -349,7 +349,9 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         if (context != null && construction == null) refuse(kind, HolderContextOperationGap.ForeignContext, context)
         if (expected != null && construction?.kind != expected) refuse(kind, HolderContextOperationGap.WrongContextKind, context)
         if (context == null && constructionAdmissionClosed) refuse(kind, HolderContextOperationGap.UnattributedAfterClose, null)
-        // Parent outcome is retained but does not yet restrict constructed-context admission.
+        if (constructionAdmissionClosed && construction != null && construction.outcome !== HolderConstructionOutcome.Dispatched) {
+            refuse(kind, HolderContextOperationGap.EndedContextAfterClose, context)
+        }
         return OperationRecord(OperationIdentity(), kind, context, construction?.entry).also { operations += it; changed() }
     }
     private fun finish(operation: OperationRecord, completed: Boolean, input: InputRecord<G>? = null, failure: HolderOperationFailureKind? = null) = synchronized(registryMonitor) {
