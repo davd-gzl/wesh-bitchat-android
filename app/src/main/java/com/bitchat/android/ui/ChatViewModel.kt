@@ -1301,7 +1301,7 @@ class ChatViewModel internal constructor(
             establishIntent = {
                 !com.bitchat.android.BuildConfig.WESH_POLICY || weshDraftStore.establishPanicIntent(draftEpoch)
             },
-            retireOwners = { collectPanicRetirement(originalFacade, originalGossip) },
+            retireOwners = { collectPanicRetirementWithRecordedJobsJoin(originalFacade, originalGossip) },
             eraseOwnedData = { report ->
                 clearPanicDataAfterAdmission(seenPanic, report.facade === PanicOwnerRetirement.Confirmed)
             }

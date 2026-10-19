@@ -58,6 +58,17 @@ class GossipSyncManager internal constructor(
     ): GossipReturnedJobsCapture = if (original !== originalJobBinding) GossipReturnedJobsCapture.ForeignBinding
         else workOwner.captureReturnedJobsForCancellation(original, receipt)
 
+    internal suspend fun prepareRecordedFrontierJoin(
+        original: GossipManagerJobBinding,
+        receipt: GossipRootCloseReceipt,
+        snapshot: GossipReturnedJobsSnapshot
+    ): GossipRecordedFrontierPreparation = if (original !== originalJobBinding) {
+        GossipRecordedFrontierPreparation.Unconfirmed(GossipRecordedJoinGap.ForeignBinding)
+    } else workOwner.prepareRecordedFrontierJoin(original, receipt, snapshot)
+
+    internal suspend fun joinPreparedRecordedFrontier(frontier: GossipRecordedFrontier): GossipRecordedFrontierJoinOutcome =
+        workOwner.joinPreparedRecordedFrontier(frontier)
+
     @Volatile var delegate: Delegate? = null
 
     // Defaults (configurable constants)

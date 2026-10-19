@@ -1,6 +1,9 @@
 package com.bitchat.android.sync
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.coroutines.CoroutineContext
@@ -59,6 +62,34 @@ internal sealed interface GossipReturnedJobsCapture {
     class Observed(val snapshot: GossipReturnedJobsSnapshot) : GossipReturnedJobsCapture
     data object ForeignBinding : GossipReturnedJobsCapture
     data object ForeignCloseReceipt : GossipReturnedJobsCapture
+}
+
+/** Caller-local preparation; it is never report evidence or new admission authority. */
+internal sealed interface GossipRecordedFrontier {
+    val originalSnapshot: GossipReturnedJobsSnapshot
+}
+internal enum class GossipRecordedJoinGap {
+    ForeignBinding, ForeignReceipt, ForeignSnapshot, SnapshotMismatch, ActiveRoot,
+    ReservedTicket, DispatchingTicket, UnknownTicket, MissingCaller, CallerUninspectable,
+    CallerRelated, ForeignPreparation, WrongJoinCaller, OperationFailed
+}
+internal sealed interface GossipRecordedFrontierPreparation {
+    class Ready(val frontier: GossipRecordedFrontier) : GossipRecordedFrontierPreparation
+    class Unconfirmed(val gap: GossipRecordedJoinGap) : GossipRecordedFrontierPreparation
+}
+internal sealed interface GossipRecordedJobsJoined {
+    val originalSnapshot: GossipReturnedJobsSnapshot
+    val joinedJobs: List<Job>
+}
+internal sealed interface GossipEmptyFrontierValidation {
+    val originalSnapshot: GossipReturnedJobsSnapshot
+    val binding: GossipManagerJobBinding
+    val receipt: GossipRootCloseReceipt
+}
+internal sealed interface GossipRecordedFrontierJoinOutcome {
+    class Joined(val witness: GossipRecordedJobsJoined) : GossipRecordedFrontierJoinOutcome
+    class EmptyFrontierValidated(val witness: GossipEmptyFrontierValidation) : GossipRecordedFrontierJoinOutcome
+    class Unconfirmed(val gap: GossipRecordedJoinGap) : GossipRecordedFrontierJoinOutcome
 }
 
 /** Retains original dispatch outcomes; completion and cancellation do not discharge ownership. */
@@ -122,6 +153,136 @@ internal class GossipWorkOwner {
         }
         // Both reentrant copies finish in this one transaction. Accepted work may publish later.
         GossipReturnedJobsCapture.Observed(ReturnedJobsSnapshot(binding, receipt, rootSnapshot(), snapshot()))
+    }
+
+    private class PreparedFrontier(
+        val anchor: Any,
+        override val originalSnapshot: ReturnedJobsSnapshot,
+        val caller: Job,
+        val jobs: List<Job>
+    ) : GossipRecordedFrontier
+    private class JoinedRecordedJobs(
+        override val originalSnapshot: GossipReturnedJobsSnapshot,
+        override val joinedJobs: List<Job>
+    ) : GossipRecordedJobsJoined
+    private class ValidatedEmptyFrontier(
+        override val originalSnapshot: GossipReturnedJobsSnapshot,
+        override val binding: GossipManagerJobBinding,
+        override val receipt: GossipRootCloseReceipt
+    ) : GossipEmptyFrontierValidation
+    private val joinAnchor = Any()
+
+    /** No Job getter or operation runs in the atomic recorded-frontier check. */
+    private fun recordedSnapshotGapLocked(
+        binding: GossipManagerJobBinding,
+        receipt: GossipRootCloseReceipt,
+        snapshot: GossipReturnedJobsSnapshot
+    ): GossipRecordedJoinGap? {
+        if (binding !== association) return GossipRecordedJoinGap.ForeignBinding
+        if (rootCloseReceipt == null || receipt !== rootCloseReceipt) return GossipRecordedJoinGap.ForeignReceipt
+        if (snapshot !is ReturnedJobsSnapshot || snapshot.binding !== binding || snapshot.receipt !== receipt) {
+            return GossipRecordedJoinGap.ForeignSnapshot
+        }
+        if (roots.size != snapshot.roots.size || records.size != snapshot.records.size) {
+            return GossipRecordedJoinGap.SnapshotMismatch
+        }
+        roots.values.zip(snapshot.roots).forEach { (actual, observed) ->
+            if (actual.id !== observed.id || actual.kind != observed.kind || actual.state != observed.state) {
+                return GossipRecordedJoinGap.SnapshotMismatch
+            }
+            if (observed.state != GossipRootState.FINISHED) return GossipRecordedJoinGap.ActiveRoot
+        }
+        records.values.zip(snapshot.records).forEach { (actual, observed) ->
+            if (actual.ticket !== observed.ticket || actual.kind != observed.kind) return GossipRecordedJoinGap.SnapshotMismatch
+            val returned = when (val outcome = observed.outcome) {
+                GossipWorkOutcome.Reserved -> return GossipRecordedJoinGap.ReservedTicket
+                GossipWorkOutcome.Dispatching -> return GossipRecordedJoinGap.DispatchingTicket
+                GossipWorkOutcome.Unknown -> return GossipRecordedJoinGap.UnknownTicket
+                is GossipWorkOutcome.Returned -> outcome
+            }
+            val current = actual.outcome as? GossipWorkOutcome.Returned
+            if (current == null || current.job !== returned.job) return GossipRecordedJoinGap.SnapshotMismatch
+        }
+        return null
+    }
+
+    /** Prepare all known managers before joining any; incomplete old observations are not refreshed. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    suspend fun prepareRecordedFrontierJoin(
+        binding: GossipManagerJobBinding,
+        receipt: GossipRootCloseReceipt,
+        snapshot: GossipReturnedJobsSnapshot
+    ): GossipRecordedFrontierPreparation {
+        val original = synchronized(monitor) {
+            val gap = recordedSnapshotGapLocked(binding, receipt, snapshot)
+            if (gap != null) return GossipRecordedFrontierPreparation.Unconfirmed(gap)
+            snapshot as ReturnedJobsSnapshot
+        }
+        val context = currentCoroutineContext()
+        val caller = context[Job] ?: return GossipRecordedFrontierPreparation.Unconfirmed(GossipRecordedJoinGap.MissingCaller)
+        context.ensureActive()
+        val chain = java.util.IdentityHashMap<Job, Unit>()
+        try {
+            var current: Job? = caller
+            while (current != null) {
+                if (chain.containsKey(current)) {
+                    return GossipRecordedFrontierPreparation.Unconfirmed(GossipRecordedJoinGap.CallerUninspectable)
+                }
+                chain[current] = Unit
+                current = current.parent
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return GossipRecordedFrontierPreparation.Unconfirmed(GossipRecordedJoinGap.CallerUninspectable)
+        }
+        context.ensureActive()
+        return synchronized(monitor) {
+            val gap = recordedSnapshotGapLocked(binding, receipt, original)
+            if (gap != null) return@synchronized GossipRecordedFrontierPreparation.Unconfirmed(gap)
+            val seen = java.util.IdentityHashMap<Job, Unit>()
+            val jobs = original.records.map { (it.outcome as GossipWorkOutcome.Returned).job }.filter {
+                if (seen.containsKey(it)) false else { seen[it] = Unit; true }
+            }
+            if (jobs.any { chain.containsKey(it) }) {
+                GossipRecordedFrontierPreparation.Unconfirmed(GossipRecordedJoinGap.CallerRelated)
+            } else GossipRecordedFrontierPreparation.Ready(PreparedFrontier(joinAnchor, original, caller, jobs))
+        }
+    }
+
+    /** Actual inline same-Job joins; the private caller-bearing preparation never enters a witness. */
+    suspend fun joinPreparedRecordedFrontier(frontier: GossipRecordedFrontier): GossipRecordedFrontierJoinOutcome {
+        if (frontier !is PreparedFrontier || frontier.anchor !== joinAnchor) {
+            return GossipRecordedFrontierJoinOutcome.Unconfirmed(GossipRecordedJoinGap.ForeignPreparation)
+        }
+        val context = currentCoroutineContext()
+        if (context[Job] !== frontier.caller) {
+            return GossipRecordedFrontierJoinOutcome.Unconfirmed(GossipRecordedJoinGap.WrongJoinCaller)
+        }
+        context.ensureActive()
+        synchronized(monitor) {
+            val gap = recordedSnapshotGapLocked(frontier.originalSnapshot.binding, frontier.originalSnapshot.receipt,
+                frontier.originalSnapshot)
+            if (gap != null) return GossipRecordedFrontierJoinOutcome.Unconfirmed(gap)
+        }
+        try {
+            frontier.jobs.forEach { it.join() }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return GossipRecordedFrontierJoinOutcome.Unconfirmed(GossipRecordedJoinGap.OperationFailed)
+        }
+        context.ensureActive()
+        return synchronized(monitor) {
+            val original = frontier.originalSnapshot
+            val gap = recordedSnapshotGapLocked(original.binding, original.receipt, original)
+            if (gap != null) return@synchronized GossipRecordedFrontierJoinOutcome.Unconfirmed(gap)
+            if (frontier.jobs.isEmpty()) {
+                GossipRecordedFrontierJoinOutcome.EmptyFrontierValidated(
+                    ValidatedEmptyFrontier(original, original.binding, original.receipt)
+                )
+            } else GossipRecordedFrontierJoinOutcome.Joined(JoinedRecordedJobs(original, frontier.jobs.toList()))
+        }
     }
 
     fun reserveRoot(binding: GossipManagerJobBinding, kind: GossipRootKind): GossipRootReservation = synchronized(monitor) {
