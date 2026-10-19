@@ -302,6 +302,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
             require(original is InitialOrigin && original.ownerAnchor === ownerAnchor) {
                 "Preparation origin does not belong to this holder"
             }
+            if (constructionAdmissionClosed) return WifiAwareFactoryResult.RefusedBeforeAllocation
             activeEntries += entry
             constructions[context] = record
         }
