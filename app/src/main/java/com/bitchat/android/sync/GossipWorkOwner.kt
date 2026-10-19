@@ -197,7 +197,12 @@ internal class GossipWorkOwner {
     fun reserveDirect(binding: GossipManagerJobBinding, kind: GossipDirectOperationKind): GossipDirectReservation =
         synchronized(monitor) {
             if (binding !== association) return@synchronized GossipDirectReservation.ForeignBinding
-            // The real close event is recorded; terminal admission is not yet enforced here.
+            val closed = directCloseReceipt
+            if (closed != null) {
+                directRequests += GossipDirectRequestRow(GossipDirectRequestIdentity(), kind,
+                    GossipDirectDecision.Refused, null, closed.identity)
+                return@synchronized GossipDirectReservation.Refused(closed)
+            }
             val lease = DirectLease()
             val record = DirectRecord(kind)
             directOperations[lease] = record
