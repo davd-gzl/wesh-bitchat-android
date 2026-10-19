@@ -35,7 +35,7 @@ internal class HolderManagerRegistration<G : Any> internal constructor(
     val manager: G,
     val provenance: HolderManagerProvenance,
     val entry: HolderEntryOrigin?,
-    internal val signer: (BitchatPacket) -> BitchatPacket
+    internal val signer: (BitchatPacket) -> BitchatPacket?
 )
 
 /** Selection is recorded at the constructor's separate manager-read step, including known absence. */
@@ -110,7 +110,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     fun setGossipManager(
         provenance: HolderManagerProvenance,
         manager: G,
-        signer: (BitchatPacket) -> BitchatPacket
+        signer: (BitchatPacket) -> BitchatPacket?
     ): Unit = synchronized(legacyMonitor) {
         val entry = synchronized(registryMonitor) {
             when (provenance) {
@@ -151,7 +151,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     ) : GossipSyncManager.Delegate {
         override fun sendPacket(packet: BitchatPacket) = broadcast(packet)
         override fun sendPacketToPeer(peerID: String, packet: BitchatPacket) = sendToPeer(peerID, packet)
-        override fun signPacketForBroadcast(packet: BitchatPacket): BitchatPacket = registration.signer(packet)
+        override fun signPacketForBroadcast(packet: BitchatPacket): BitchatPacket? = registration.signer(packet)
     }
 
     /** Factory closures are call-scoped so prepared dependencies cannot become singleton state. */

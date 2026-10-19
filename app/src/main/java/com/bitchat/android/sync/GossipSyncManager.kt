@@ -22,7 +22,7 @@ class GossipSyncManager(
     interface Delegate {
         fun sendPacket(packet: BitchatPacket)
         fun sendPacketToPeer(peerID: String, packet: BitchatPacket)
-        fun signPacketForBroadcast(packet: BitchatPacket): BitchatPacket
+        fun signPacketForBroadcast(packet: BitchatPacket): BitchatPacket?
     }
 
     interface ConfigProvider {
@@ -35,7 +35,7 @@ class GossipSyncManager(
         private const val TAG = "GossipSyncManager"
     }
 
-    var delegate: Delegate? = null
+    @Volatile var delegate: Delegate? = null
 
     // Defaults (configurable constants)
     private val defaultMaxBytes = SyncDefaults.DEFAULT_FILTER_BYTES
@@ -142,7 +142,7 @@ class GossipSyncManager(
         }
     }
 
-    private fun sendRequestSync() {
+    internal fun sendRequestSync() {
         val payload = buildGcsPayload()
 
         val packet = BitchatPacket(
@@ -157,7 +157,7 @@ class GossipSyncManager(
         delegate?.sendPacket(signed)
     }
 
-    private fun sendRequestSyncToPeer(peerID: String) {
+    internal fun sendRequestSyncToPeer(peerID: String) {
         val payload = buildGcsPayload()
 
         val packet = BitchatPacket(

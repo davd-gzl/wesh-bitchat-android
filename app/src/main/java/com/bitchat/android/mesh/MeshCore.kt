@@ -109,8 +109,8 @@ class MeshCore(
                     TransportBridgeService.sendToPeer(transport.id, peerID, packet)
                 }
 
-                override fun signPacketForBroadcast(packet: BitchatPacket): BitchatPacket {
-                    return signPacketBeforeBroadcast(packet)
+                override fun signPacketForBroadcast(packet: BitchatPacket): BitchatPacket? {
+                    return com.bitchat.android.sync.signGossipPacket(packet, ::applyRouteIfAvailable, encryptionService::signData)
                 }
             }
         }
