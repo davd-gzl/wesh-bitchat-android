@@ -16,7 +16,7 @@ class MeshServiceHolderConstructionOriginsTest {
         val product = Bluetooth()
         val manager = Manager()
         lateinit var context: HolderConstructionContext
-        assertSame(product, f.owner.getOrCreate { origin ->
+        assertSame(product, acquiredValue(f.owner.getOrCreate { origin ->
             context = origin
             val during = f.owner.provenanceSnapshot()
             assertEquals(1, during.activeEntryCount)
@@ -25,7 +25,7 @@ class MeshServiceHolderConstructionOriginsTest {
             assertSame(HolderConstructionOutcome.Dispatched, receipt.outcome)
             f.owner.setGossipManager(HolderManagerProvenance.Constructed(origin), manager) { it }
             product
-        })
+        }))
         val after = f.owner.provenanceSnapshot()
         assertEquals(0, after.activeEntryCount)
         val receipt = after.constructions.single()
@@ -41,7 +41,7 @@ class MeshServiceHolderConstructionOriginsTest {
         val f = Fixture()
         val bluetooth = Bluetooth()
         val facade = Unified(bluetooth)
-        assertSame(facade, f.owner.getUnifiedOrCreate({ bluetooth }) { supplied ->
+        assertSame(facade, acquiredValue(f.owner.getUnifiedOrCreate({ bluetooth }) { supplied ->
             assertSame(bluetooth, supplied)
             val during = f.owner.provenanceSnapshot()
             assertEquals(1, during.activeEntryCount)
@@ -55,7 +55,7 @@ class MeshServiceHolderConstructionOriginsTest {
             assertNotSame(ble.context, unified.context)
             assertSame(HolderConstructionOutcome.Dispatched, unified.outcome)
             facade
-        })
+        }))
         val after = f.owner.provenanceSnapshot()
         assertSame(facade, returned(after.constructions[1]))
         assertEquals(0, after.activeEntryCount)
@@ -92,7 +92,7 @@ class MeshServiceHolderConstructionOriginsTest {
         val after = f.owner.provenanceSnapshot()
         assertSame(facade, returned(after.constructions[1]))
         assertSame(facade, f.owner.unifiedMeshService)
-        assertSame(facade, f.owner.getUnifiedOrCreate({ error("Must reuse Bluetooth") }) { error("Must reuse facade") })
+        assertSame(facade, acquiredValue(f.owner.getUnifiedOrCreate({ error("Must reuse Bluetooth") }) { error("Must reuse facade") }))
         assertEquals(2, f.owner.provenanceSnapshot().constructions.size)
         assertEquals(0, after.activeEntryCount)
     }
@@ -106,7 +106,7 @@ class MeshServiceHolderConstructionOriginsTest {
         val replacement = Bluetooth()
         val failure = IllegalStateException("Synthetic partial constructor failure")
         var calls = 0
-        assertSame(replacement, f.owner.getOrCreate { context ->
+        assertSame(replacement, acquiredValue(f.owner.getOrCreate { context ->
             calls++
             if (calls == 1) {
                 f.owner.setGossipManager(HolderManagerProvenance.Constructed(context), partial) { it }
@@ -114,7 +114,7 @@ class MeshServiceHolderConstructionOriginsTest {
             }
             f.owner.setGossipManager(HolderManagerProvenance.Constructed(context), next) { it }
             replacement
-        })
+        }))
         assertEquals(2, calls)
         assertEquals(1, original.stops)
         val beforeClear = f.owner.provenanceSnapshot()
@@ -157,12 +157,12 @@ class MeshServiceHolderConstructionOriginsTest {
                 throw IllegalStateException("Synthetic post-return log failure")
             }
         }
-        assertSame(second, f.owner.getOrCreate { context ->
+        assertSame(second, acquiredValue(f.owner.getOrCreate { context ->
             calls++
             val manager = if (calls == 1) firstManager else secondManager
             f.owner.setGossipManager(HolderManagerProvenance.Constructed(context), manager) { it }
             if (calls == 1) first else second
-        })
+        }))
         assertTrue(sawReturnedAtLog)
         assertEquals(2, calls)
         val after = f.owner.provenanceSnapshot()
@@ -306,7 +306,7 @@ class MeshServiceHolderConstructionOriginsTest {
         f.owner.getOrCreate { product }
         val first = f.owner.provenanceSnapshot().constructions.single()
         repeat(100) {
-            assertSame(product, f.owner.getOrCreate { error("Cached reuse cannot dispatch a factory") })
+            assertSame(product, acquiredValue(f.owner.getOrCreate { error("Cached reuse cannot dispatch a factory") }))
             assertEquals(0, f.owner.provenanceSnapshot().activeEntryCount)
         }
         val after = f.owner.provenanceSnapshot()
@@ -362,4 +362,9 @@ class MeshServiceHolderConstructionOriginsTest {
         type = 1u, senderID = ByteArray(8) { value.toByte() }, timestamp = 1uL,
         payload = byteArrayOf(value.toByte()), ttl = 1u
     )
+    private fun <T : Any> acquiredValue(result: HolderAcquisitionResult<T>): T = when (result) {
+        is HolderAcquisitionResult.Available -> result.product
+        HolderAcquisitionResult.RefusedBeforeAcquisition -> error("Expected an available synthetic acquisition")
+    }
+
 }

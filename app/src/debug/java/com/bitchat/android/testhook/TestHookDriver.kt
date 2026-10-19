@@ -37,42 +37,46 @@ object TestHookDriver {
 
     suspend fun execute(context: Context, cmd: String, intent: Intent): JSONObject {
         Log.d(TAG, "execute cmd=$cmd")
-        val result = when (cmd) {
-            "ping" -> ok(cmd).put("pong", true).put("package", context.packageName)
-            "start" -> start(context)
-            "stop" -> stop(context)
-            "whoami" -> whoami(context)
-            "set_nickname" -> setNickname(context, intent.requiredString("name"))
-            "scan" -> scan(context, intent)
-            "peers" -> peers(context)
-            "connect" -> connect(intent.requiredString("peer"), intent)
-            "handshake" -> handshake(context, intent.requiredString("peer"), intent)
-            "session" -> session(context, intent.requiredString("peer"))
-            "announce" -> announce(context)
-            "broadcast_msg" -> broadcastMsg(context, intent.requiredString("content"))
-            "dm_send" -> dmSend(context, intent.requiredString("peer"), intent.requiredString("content"), intent.getStringExtra("msg_id"))
-            "dm_recv" -> dmRecv(context, intent)
-            "msg_recv" -> msgRecv(context, intent)
-            "favorite_set" -> favoriteSet(
-                context,
-                intent.requiredString("peer"),
-                intent.getBooleanExtra("enabled", true)
-            )
-            "favorite_status" -> favoriteStatus(context, intent.requiredString("peer"))
-            "verification_set" -> verificationSet(
-                context,
-                intent.requiredString("peer"),
-                intent.getBooleanExtra("enabled", true)
-            )
-            "verification_status" -> verificationStatus(context, intent.requiredString("peer"))
-            "raw_send" -> rawSend(context, intent)
-            "ble" -> setBle(intent.getBooleanExtra("enabled", true))
-            "inject_peers" -> injectPeers(intent.getStringExtra("peers"))
-            "state" -> state(context)
-            "clear_results" -> clearResults(context)
-            else -> err(cmd, "unknown command: $cmd")
+        return try {
+            val result = when (cmd) {
+                "ping" -> ok(cmd).put("pong", true).put("package", context.packageName)
+                "start" -> start(context)
+                "stop" -> stop(context)
+                "whoami" -> whoami(context)
+                "set_nickname" -> setNickname(context, intent.requiredString("name"))
+                "scan" -> scan(context, intent)
+                "peers" -> peers(context)
+                "connect" -> connect(intent.requiredString("peer"), intent)
+                "handshake" -> handshake(context, intent.requiredString("peer"), intent)
+                "session" -> session(context, intent.requiredString("peer"))
+                "announce" -> announce(context)
+                "broadcast_msg" -> broadcastMsg(context, intent.requiredString("content"))
+                "dm_send" -> dmSend(context, intent.requiredString("peer"), intent.requiredString("content"), intent.getStringExtra("msg_id"))
+                "dm_recv" -> dmRecv(context, intent)
+                "msg_recv" -> msgRecv(context, intent)
+                "favorite_set" -> favoriteSet(
+                    context,
+                    intent.requiredString("peer"),
+                    intent.getBooleanExtra("enabled", true)
+                )
+                "favorite_status" -> favoriteStatus(context, intent.requiredString("peer"))
+                "verification_set" -> verificationSet(
+                    context,
+                    intent.requiredString("peer"),
+                    intent.getBooleanExtra("enabled", true)
+                )
+                "verification_status" -> verificationStatus(context, intent.requiredString("peer"))
+                "raw_send" -> rawSend(context, intent)
+                "ble" -> setBle(intent.getBooleanExtra("enabled", true))
+                "inject_peers" -> injectPeers(intent.getStringExtra("peers"))
+                "state" -> state(context)
+                "clear_results" -> clearResults(context)
+                else -> err(cmd, "unknown command: $cmd")
+            }
+            result.put("cmd", cmd)
+        } catch (_: HolderAcquisitionRefused) {
+            err(cmd, "Mesh runtime unavailable")
         }
-        return result.put("cmd", cmd)
     }
 
     // MARK: - Lifecycle
@@ -393,7 +397,12 @@ object TestHookDriver {
 
     // MARK: - Helpers
 
-    private fun mesh(context: Context): MeshService = MeshServiceHolder.getUnifiedOrCreate(context)
+    private class HolderAcquisitionRefused : RuntimeException()
+
+    private fun mesh(context: Context): MeshService = when (val result = MeshServiceHolder.getUnifiedOrCreate(context)) {
+        is com.bitchat.android.service.HolderAcquisitionResult.Available -> result.product
+        com.bitchat.android.service.HolderAcquisitionResult.RefusedBeforeAcquisition -> throw HolderAcquisitionRefused()
+    }
 
     private fun peerInfosJson(mesh: MeshService, peerIds: List<String>): JSONArray {
         val nicknames = mesh.getPeerNicknames()

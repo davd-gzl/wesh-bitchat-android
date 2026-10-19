@@ -79,10 +79,10 @@ class HolderProcessPreparationTest {
         val f = HolderFixture()
         val original = f.owner.initialProcessPreparation().origin
         val manager = Manager()
-        val bluetooth = f.owner.getOrCreate { context ->
+        val bluetooth = acquiredValue(f.owner.getOrCreate { context ->
             f.owner.setGossipManager(HolderManagerProvenance.Constructed(context), manager) { it }
             Bluetooth()
-        }
+        })
         val before = f.owner.provenanceSnapshot()
         val legacy = before.constructions.single()
         val registration = before.registrations.single()
@@ -403,4 +403,9 @@ class HolderProcessPreparationTest {
     }
 
     private fun originalOf(entry: HolderEntryOrigin) = (entry.provenance as HolderEntryProvenance.Original).origin
+    private fun <T : Any> acquiredValue(result: HolderAcquisitionResult<T>): T = when (result) {
+        is HolderAcquisitionResult.Available -> result.product
+        HolderAcquisitionResult.RefusedBeforeAcquisition -> error("Expected an available synthetic acquisition")
+    }
+
 }

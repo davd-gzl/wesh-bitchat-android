@@ -61,15 +61,15 @@ object MeshServiceHolder {
         BluetoothMeshService(context.applicationContext, holderConstruction = construction)
     }
 
-    fun getOrCreate(
+    internal fun getOrCreate(
         context: Context,
         preparedEncryption: com.bitchat.android.crypto.EncryptionService? = null
-    ): BluetoothMeshService = owner.getOrCreate { createBluetooth(context, preparedEncryption, it) }
+    ): HolderAcquisitionResult<BluetoothMeshService> = owner.getOrCreate { createBluetooth(context, preparedEncryption, it) }
 
-    fun getUnifiedOrCreate(
+    internal fun getUnifiedOrCreate(
         context: Context,
         preparedEncryption: com.bitchat.android.crypto.EncryptionService? = null
-    ): UnifiedMeshService = owner.getUnifiedOrCreate(
+    ): HolderAcquisitionResult<UnifiedMeshService> = owner.getUnifiedOrCreate(
         createBluetooth = { createBluetooth(context, preparedEncryption, it) },
         createUnified = { UnifiedMeshService(context.applicationContext, it) }
     )

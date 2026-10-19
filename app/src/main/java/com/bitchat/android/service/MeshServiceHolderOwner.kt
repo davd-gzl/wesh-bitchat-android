@@ -6,6 +6,11 @@ import com.bitchat.android.wifiaware.WifiAwareFactoryResult
 
 internal enum class HolderLogLevel { DEBUG, INFO, WARN, ERROR }
 
+internal sealed interface HolderAcquisitionResult<out T : Any> {
+    class Available<T : Any>(val product: T) : HolderAcquisitionResult<T>
+    data object RefusedBeforeAcquisition : HolderAcquisitionResult<Nothing>
+}
+
 /** Opaque provenance, not admission or permission to open a new runtime. */
 internal sealed interface HolderConstructionContext
 internal sealed interface HolderWifiConstructionContext : HolderConstructionContext
@@ -243,7 +248,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     }
 
     /** Factory closures are call-scoped so prepared dependencies cannot become singleton state. */
-    fun getOrCreate(createBluetooth: (HolderConstructionContext) -> B): B = withEntry { entry ->
+    fun getOrCreate(createBluetooth: (HolderConstructionContext) -> B): HolderAcquisitionResult<B> = withEntry { entry ->
         getOrCreateLocked(entry, createBluetooth)
     }
 
@@ -280,7 +285,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         return created
     }
 
-    fun getUnifiedOrCreate(createBluetooth: (HolderConstructionContext) -> B, createUnified: (B) -> U): U = withEntry { entry ->
+    fun getUnifiedOrCreate(createBluetooth: (HolderConstructionContext) -> B, createUnified: (B) -> U): HolderAcquisitionResult<U> = withEntry { entry ->
         val bluetooth = getOrCreateLocked(entry, createBluetooth)
         val existing = unifiedMeshService
         if (existing != null) {
@@ -356,11 +361,13 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         unifiedMeshService = null
     }
 
-    private fun <T> withEntry(action: (HolderEntryOrigin) -> T): T {
+    private fun <T : Any> withEntry(action: (HolderEntryOrigin) -> T): HolderAcquisitionResult<T> {
         val entry = HolderEntryOrigin(epoch, HolderEntryProvenance.LegacyUnattributed)
-        return synchronized(legacyMonitor) {
-            synchronized(registryMonitor) { activeEntries += entry }
-            try { action(entry) } finally { synchronized(registryMonitor) { activeEntries -= entry } }
+        synchronized(registryMonitor) { activeEntries += entry }
+        return try {
+            synchronized(legacyMonitor) { HolderAcquisitionResult.Available(action(entry)) }
+        } finally {
+            synchronized(registryMonitor) { activeEntries -= entry }
         }
     }
 
