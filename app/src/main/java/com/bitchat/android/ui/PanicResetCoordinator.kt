@@ -27,6 +27,9 @@ import com.bitchat.android.sync.GossipSyncManager
 import com.bitchat.android.sync.GossipDirectCloseReceipt
 import com.bitchat.android.sync.GossipDirectCloseOutcome
 import com.bitchat.android.sync.GossipDirectIngressSnapshot
+import com.bitchat.android.sync.GossipDirectEndedCapture
+import com.bitchat.android.sync.GossipDirectEndedFrontier
+import com.bitchat.android.sync.GossipDirectFrontierGap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CoroutineScope
@@ -77,6 +80,21 @@ internal sealed interface KnownManagerDirectCloseOutcome {
     data object RootNotClosed : KnownManagerDirectCloseOutcome
     data object ForeignBinding : KnownManagerDirectCloseOutcome
     data object ForeignRootReceipt : KnownManagerDirectCloseOutcome
+}
+
+internal enum class KnownDirectEndBatchGap { MissingOrFailedClose, ClosureMismatch }
+internal sealed interface KnownDirectEndRejection {
+    class Batch(val gap: KnownDirectEndBatchGap) : KnownDirectEndRejection
+    class Manager(val original: KnownManagerDirectClosure, val gap: GossipDirectFrontierGap) : KnownDirectEndRejection
+}
+internal class KnownManagerDirectEnd(
+    val original: KnownManagerDirectClosure,
+    val frontier: GossipDirectEndedFrontier
+)
+internal sealed interface KnownDirectBodiesEnd {
+    data object NotAttempted : KnownDirectBodiesEnd
+    class Ineligible(val reasons: List<KnownDirectEndRejection>) : KnownDirectBodiesEnd
+    class Observed(val managers: List<KnownManagerDirectEnd>) : KnownDirectBodiesEnd
 }
 
 internal enum class KnownJobCaptureFailureKind { OrdinaryFailure, CancellationThrown }
@@ -135,7 +153,8 @@ internal sealed interface PanicUnconfirmedEvidence {
         val directIngressClosure: KnownDirectIngressClosure,
         val returnedJobsCancellation: KnownReturnedJobsCancellation = KnownReturnedJobsCancellation.NotAttempted,
         val recordedFrontierJoin: KnownRecordedFrontiersJoin = KnownRecordedFrontiersJoin.NotAttempted,
-        val holderFrontier: HolderGossipCensusCapture<GossipSyncManager>? = null
+        val holderFrontier: HolderGossipCensusCapture<GossipSyncManager>? = null,
+        val directBodiesEnd: KnownDirectBodiesEnd = KnownDirectBodiesEnd.NotAttempted
     ) : PanicUnconfirmedEvidence
 }
 internal sealed interface PanicOwnerRetirement {
@@ -214,6 +233,13 @@ internal suspend fun collectPanicRetirementWithRecordedJobsJoin(
     originalGossip: PanicOriginalGossipInput
 ): PanicRetirementReport {
     val report = collectPanicRetirement(originalFacade, originalGossip)
+    return collectRecordedGossipPhase(report, originalGossip)
+}
+
+private suspend fun collectRecordedGossipPhase(
+    report: PanicRetirementReport,
+    originalGossip: PanicOriginalGossipInput
+): PanicRetirementReport {
     val gossip = report.gossipJobsAndWriters as? PanicOwnerRetirement.Unconfirmed ?: return report
     val known = gossip.evidence as? PanicUnconfirmedEvidence.KnownOriginalGossip ?: return report
     val installed = originalGossip as? PanicOriginalGossipInput.Installed ?: return report
@@ -232,7 +258,83 @@ internal suspend fun collectPanicRetirementWithRecordedJobsJoin(
     } else captured
     return report.copy(gossipJobsAndWriters = PanicOwnerRetirement.Unconfirmed(gossip.gap,
         PanicUnconfirmedEvidence.KnownOriginalGossip(known.snapshot, known.attempts,
-            known.directIngressClosure, known.returnedJobsCancellation, joined, current)))
+            known.directIngressClosure, known.returnedJobsCancellation, joined, current, known.directBodiesEnd)))
+}
+
+/** Observes actual direct body endpoints; every unavailable aggregate proof stays unconfirmed. */
+internal suspend fun collectPanicRetirementWithEndedDirectFrontiers(
+    originalFacade: UnifiedMeshService?,
+    originalGossip: PanicOriginalGossipInput
+): PanicRetirementReport {
+    val report = collectPanicRetirement(originalFacade, originalGossip)
+    val gossip = report.gossipJobsAndWriters as? PanicOwnerRetirement.Unconfirmed ?: return report
+    val known = gossip.evidence as? PanicUnconfirmedEvidence.KnownOriginalGossip ?: return report
+    if (originalGossip !is PanicOriginalGossipInput.Installed) return report
+    val observed = validateKnownDirectEnds(captureKnownDirectEnds(known))
+    val prepared = withDirectEnds(report, observed)
+    // Baseline: truthful direct gaps are retained, but the whole-batch eligibility gate is absent.
+    val joined = collectRecordedGossipPhase(prepared, originalGossip)
+    currentCoroutineContext().ensureActive()
+    return withDirectEnds(joined, validateKnownDirectEnds(observed))
+}
+
+private fun captureKnownDirectEnds(known: PanicUnconfirmedEvidence.KnownOriginalGossip): KnownDirectBodiesEnd {
+    val direct = known.directIngressClosure as? KnownDirectIngressClosure.Attempted
+        ?: return KnownDirectBodiesEnd.Ineligible(listOf(
+            KnownDirectEndRejection.Batch(KnownDirectEndBatchGap.MissingOrFailedClose)))
+    if (direct.managers.size != known.attempts.size || direct.managers.zip(known.attempts).any {
+        (actual, original) -> actual.originalClose !== original
+    }) return KnownDirectBodiesEnd.Ineligible(listOf(
+        KnownDirectEndRejection.Batch(KnownDirectEndBatchGap.ClosureMismatch)))
+    val ended = mutableListOf<KnownManagerDirectEnd>()
+    val reasons = mutableListOf<KnownDirectEndRejection>()
+    direct.managers.forEach { original ->
+        val root = original.originalClose as? PanicGossipRootCloseAttempt.Closed
+        val closed = original.outcome as? KnownManagerDirectCloseOutcome.Closed
+        if (root == null || closed == null) {
+            reasons += KnownDirectEndRejection.Batch(KnownDirectEndBatchGap.MissingOrFailedClose)
+        } else {
+            val result = try {
+                root.manager.captureEndedDirectFrontier(root.binding, root.receipt, closed.receipt)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { GossipDirectEndedCapture.Unconfirmed(GossipDirectFrontierGap.OperationFailed) }
+            when (result) {
+                is GossipDirectEndedCapture.Observed -> ended += KnownManagerDirectEnd(original, result.frontier)
+                is GossipDirectEndedCapture.EmptyValidated -> ended += KnownManagerDirectEnd(original, result.frontier)
+                is GossipDirectEndedCapture.Unconfirmed -> reasons += KnownDirectEndRejection.Manager(original, result.gap)
+            }
+        }
+    }
+    return if (reasons.isEmpty()) KnownDirectBodiesEnd.Observed(ended.toList())
+        else KnownDirectBodiesEnd.Ineligible(reasons.toList())
+}
+
+private fun validateKnownDirectEnds(observed: KnownDirectBodiesEnd): KnownDirectBodiesEnd {
+    if (observed !is KnownDirectBodiesEnd.Observed) return observed
+    val reasons = mutableListOf<KnownDirectEndRejection>()
+    observed.managers.forEach { original ->
+        val root = original.original.originalClose as PanicGossipRootCloseAttempt.Closed
+        val closed = original.original.outcome as KnownManagerDirectCloseOutcome.Closed
+        val valid = try {
+            root.manager.validateEndedDirectFrontier(root.binding, root.receipt, closed.receipt, original.frontier)
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            reasons += KnownDirectEndRejection.Manager(original.original, GossipDirectFrontierGap.OperationFailed)
+            false
+        }
+        if (!valid && reasons.none { it is KnownDirectEndRejection.Manager && it.original === original.original }) {
+            reasons += KnownDirectEndRejection.Manager(original.original, GossipDirectFrontierGap.FrontierChanged)
+        }
+    }
+    return if (reasons.isEmpty()) observed else KnownDirectBodiesEnd.Ineligible(reasons.toList())
+}
+
+private fun withDirectEnds(report: PanicRetirementReport, observed: KnownDirectBodiesEnd): PanicRetirementReport {
+    val gossip = report.gossipJobsAndWriters as PanicOwnerRetirement.Unconfirmed
+    val known = gossip.evidence as PanicUnconfirmedEvidence.KnownOriginalGossip
+    return report.copy(gossipJobsAndWriters = PanicOwnerRetirement.Unconfirmed(gossip.gap,
+        PanicUnconfirmedEvidence.KnownOriginalGossip(known.snapshot, known.attempts, known.directIngressClosure,
+            known.returnedJobsCancellation, known.recordedFrontierJoin, known.holderFrontier, observed)))
 }
 
 private fun sameCoveredManagerIdentities(
