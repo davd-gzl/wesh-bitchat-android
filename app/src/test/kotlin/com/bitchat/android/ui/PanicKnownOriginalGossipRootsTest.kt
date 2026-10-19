@@ -304,35 +304,50 @@ class PanicKnownOriginalGossipRootsTest {
         }
     }
 
-    @Test fun acceptedLateManagerRemainsOutsideEarlierSubset() = runTest {
-        withFixture { f ->
-            f.fence()
-            val firstReport = f.collect()
-            val first = known(firstReport)
-            val late = f.child(f.bluetoothContext, HolderGossipSource.BLE_SERVICE)
-            assertFalse(f.isClosed(late))
-            late.manager.scheduleInitialSync(0)
-            f.joinJobs()
-            val before = late.launches.get()
-            val secondReport = f.collect()
-            f.joinJobs()
-            f.assertHealthy()
-            assertEquals(1, before)
-            assertTrue(f.isClosed(late))
-            late.manager.start()
-            late.manager.scheduleInitialSync(0)
-            late.manager.scheduleInitialSyncToPeer("2233445566778899", 0)
-            assertEquals(before, late.launches.get())
-            assertEquals(1, first.snapshot.children.size)
-            assertEquals(1, first.attempts.size)
-            val second = known(secondReport)
-            assertEquals(2, second.snapshot.children.size)
-            assertEquals(2, second.attempts.size)
-            assertEquals(0, second.snapshot.holder.activeEntryCount)
-            assertSame(first.snapshot.children.single().ticket, second.snapshot.children.first().ticket)
-            assertMissingProofs(firstReport)
-            assertMissingProofs(secondReport)
+    @Test fun completedContextCannotPublishNewManagerAfterPanicClose() = runTest {
+        var retained: Fixture? = null
+        var primary: Throwable? = null
+        var postconditions: (() -> Unit)? = null
+        try {
+            withFixture { f ->
+                retained = f
+                check(f.holder.provenanceSnapshot().constructions.any {
+                    it.context === f.bluetoothContext && it.outcome is HolderConstructionOutcome.Returned
+                }) { "Actual original BLE constructor must have returned" }
+                f.fence()
+                val firstReport = f.collect()
+                f.joinJobs()
+                check(f.facadeJob.isCompleted) { "Actual original facade retirement must finish" }
+                val before = f.holder.gossipConstructionSnapshot()
+                var creatorCalls = 0
+                val requested = runCatching {
+                    f.holder.constructGossipManager(HolderGossipParent.Constructed(f.bluetoothContext), HolderGossipSource.BLE_SERVICE) {
+                        creatorCalls++
+                        f.manager().manager
+                    }
+                }
+                val count = creatorCalls
+                val after = f.holder.gossipConstructionSnapshot()
+                f.assertHealthy()
+                postconditions = {
+                    assertEquals("Ended original context must refuse before creator effects", 0, count)
+                    val refused = requested.exceptionOrNull() as HolderContextOperationRefusal
+                    assertEquals(HolderContextOperationKind.ManagerCreator, refused.operation)
+                    assertEquals(HolderContextOperationGap.EndedContextAfterClose, refused.gap)
+                    assertEquals(before.size, after.size)
+                    assertSame(before.single().ticket, after.single().ticket)
+                    assertMissingProofs(firstReport)
+                }
+            }
+        } catch (failure: Throwable) { primary = failure }
+        finally {
+            try { retained?.reapOwnedForCompletedContextContract() } catch (failure: Throwable) {
+                val original = primary
+                if (original == null) primary = failure else if (original !== failure) original.addSuppressed(failure)
+            }
         }
+        primary?.let { throw it }
+        checkNotNull(postconditions).invoke()
     }
 
     private class Managed(val manager: GossipSyncManager, val work: GossipWorkOwner, val launches: AtomicInteger)
@@ -436,6 +451,47 @@ class PanicKnownOriginalGossipRootsTest {
                 errors.drop(1).forEach { if (it !== failure && it !== failure.cause) failure.addSuppressed(it) }
                 throw failure
             }
+        }
+
+        suspend fun reapOwnedForCompletedContextContract() = withContext(NonCancellable) {
+            var primary: Throwable? = null
+            fun cleanup(action: () -> Unit) {
+                try { action() } catch (failure: Throwable) {
+                    val original = primary
+                    if (original == null) primary = failure else if (original !== failure) original.addSuppressed(failure)
+                }
+            }
+            gates.forEach { gate -> cleanup { gate.countDown() } }
+            workers.forEach { worker ->
+                cleanup {
+                    var boundedFailure: Throwable? = null
+                    try { worker.join(WAIT_MS) } catch (failure: Throwable) { boundedFailure = failure }
+                    if (worker.isAlive) {
+                        val guard = boundedFailure ?: AssertionError("Owned worker exceeded its first completion bound")
+                        try { worker.interrupt(); worker.join(WAIT_MS); assertFalse("Owned worker must be reaped", worker.isAlive) }
+                        catch (failure: Throwable) { if (guard !== failure) guard.addSuppressed(failure) }
+                        boundedFailure = guard
+                    }
+                    boundedFailure?.let { throw it }
+                }
+                while (true) {
+                    try { worker.join(); break } catch (failure: Throwable) { cleanup { throw failure } }
+                }
+            }
+            val allJobs = jobs.toList() + gossipJob + facadeJob
+            allJobs.forEach { job -> cleanup { job.cancel() } }
+            allJobs.forEach { job ->
+                try { withTimeout(WAIT_MS) { job.join() } } catch (failure: Throwable) {
+                    val original = primary
+                    if (original == null) primary = failure else if (original !== failure) original.addSuppressed(failure)
+                }
+                cleanup { job.cancel() }
+                while (true) {
+                    try { job.join(); break } catch (failure: Throwable) { cleanup { throw failure } }
+                }
+            }
+            cleanup { assertHealthy() }
+            primary?.let { throw it }
         }
 
         suspend fun close() = withContext(NonCancellable) {

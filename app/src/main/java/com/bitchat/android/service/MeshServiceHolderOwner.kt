@@ -124,14 +124,60 @@ internal sealed interface HolderGossipSubsetCapture<out G : Any> {
     class Unconfirmed(val gap: HolderGossipCaptureGap) : HolderGossipSubsetCapture<Nothing>
 }
 
+internal enum class HolderContextOperationKind { ManagerCreator, BluetoothEnsure, ManagerRegistration, ExternalAttach }
+internal enum class HolderContextOperationGap { ForeignContext, WrongContextKind, EndedContextAfterClose, UnattributedAfterClose }
+internal sealed class HolderContextOperationRefusal protected constructor(
+    val operation: HolderContextOperationKind,
+    val gap: HolderContextOperationGap
+) : IllegalArgumentException("Holder context operation refused: $operation/$gap")
+internal enum class HolderOperationFailureKind { OrdinaryThrow, CancellationThrown, PolicyRefusal, Protocol }
+internal enum class HolderRegistrationMatchGap { ExternalProvenance, ParentUnavailable, NoReturnedChild, ContextOrEntryMismatch, SourceKindMismatch }
+internal class HolderRegistrationMismatch<G : Any>(val registration: HolderManagerRegistration<G>, val gap: HolderRegistrationMatchGap)
+internal enum class HolderContextOperationState { Admitted, Completed, Unknown, DeniedBeforeHelperEffects }
+internal sealed interface HolderContextOperationIdentity
+internal class HolderContextOperationSnapshot(
+    val identity: HolderContextOperationIdentity,
+    val kind: HolderContextOperationKind,
+    val context: HolderConstructionContext?,
+    val entry: HolderEntryOrigin?,
+    val state: HolderContextOperationState, val failure: HolderOperationFailureKind?
+)
+internal class HolderRetainedInputSnapshot<G : Any>(
+    val manager: G?, val product: Any?, val context: HolderConstructionContext?,
+    val state: HolderContextOperationState, val assignedRegistration: HolderManagerRegistration<G>?,
+    val operation: HolderContextOperationIdentity?, val entry: HolderEntryOrigin?, val refusal: HolderContextOperationGap?
+)
+internal enum class HolderCensusGap {
+    InvalidSubject, NotClosed, ActiveEntry, DispatchedConstruction, UnknownConstruction,
+    PendingOperation, UnknownOperation, UnattributedChild, UnknownChild, ExternalInput,
+    RefusedAllocatedInput, UnmatchedConstructedRegistration, PropagationUnverified,
+    MissingCollector, WitnessChanged
+}
+/** Original admitted identities only; never a writer/drain acknowledgment or admission permit. */
+internal sealed interface HolderAdmittedManagerFrontier<out G : Any> { val managers: List<G> }
+internal sealed interface HolderGossipCensusCapture<out G : Any> {
+    class Sealed<G : Any>(val frontier: HolderAdmittedManagerFrontier<G>) : HolderGossipCensusCapture<G>
+    class Partial<G : Any>(
+        val snapshot: HolderGossipSubsetSnapshot<G>,
+        val gaps: List<HolderCensusGap>, val operations: List<HolderContextOperationSnapshot>,
+        val retainedInputs: List<HolderRetainedInputSnapshot<G>>, val registrationGaps: List<HolderRegistrationMismatch<G>>
+    ) : HolderGossipCensusCapture<G>
+    class Invalid(val gap: HolderCensusGap) : HolderGossipCensusCapture<Nothing>
+}
+
 private interface OriginalGossipCollector {
     fun observe(subject: HolderPanicSubject, exactUnified: Any): HolderGossipSubsetCapture<GossipSyncManager>
+    fun frontier(subject: HolderPanicSubject, exactUnified: Any): HolderGossipCensusCapture<GossipSyncManager>
+    fun validate(subject: HolderPanicSubject, exactUnified: Any, frontier: HolderAdmittedManagerFrontier<GossipSyncManager>): Boolean
 }
 private class TypedOriginalGossipCollector<B : Any, U : Any>(
     private val original: MeshServiceHolderOwner<B, U, GossipSyncManager>
 ) : OriginalGossipCollector {
     override fun observe(subject: HolderPanicSubject, exactUnified: Any) =
         original.observeOriginalGossipSubset(subject, exactUnified)
+    override fun frontier(subject: HolderPanicSubject, exactUnified: Any) = original.captureAdmittedManagerFrontier(subject, exactUnified)
+    override fun validate(subject: HolderPanicSubject, exactUnified: Any, frontier: HolderAdmittedManagerFrontier<GossipSyncManager>) =
+        original.validateAdmittedManagerFrontier(subject, exactUnified, frontier)
 }
 private sealed interface BoundGossipCollector {
     data object Missing : BoundGossipCollector
@@ -162,6 +208,27 @@ internal fun observeHolderOriginalGossipSubset(
     } else when (val collector = binding.gossipCollector) {
         BoundGossipCollector.Missing -> HolderGossipSubsetCapture.Unconfirmed(HolderGossipCaptureGap.MissingCollector)
         is BoundGossipCollector.Installed -> collector.original.observe(binding.subject, binding.product)
+    }
+}
+
+internal fun captureHolderAdmittedManagerFrontier(binding: HolderPanicBinding, exactOriginalMesh: Any): HolderGossipCensusCapture<GossipSyncManager> =
+    when (binding) {
+        is UnconfirmedHolderPanicBinding -> HolderGossipCensusCapture.Invalid(HolderCensusGap.InvalidSubject)
+        is CapturedHolderPanicBinding -> if (binding.product !== exactOriginalMesh) {
+            HolderGossipCensusCapture.Invalid(HolderCensusGap.InvalidSubject)
+        } else when (val collector = binding.gossipCollector) {
+            BoundGossipCollector.Missing -> HolderGossipCensusCapture.Invalid(HolderCensusGap.MissingCollector)
+            is BoundGossipCollector.Installed -> collector.original.frontier(binding.subject, binding.product)
+        }
+    }
+
+internal fun validateHolderAdmittedManagerFrontier(
+    binding: HolderPanicBinding, exactOriginalMesh: Any, frontier: HolderAdmittedManagerFrontier<GossipSyncManager>
+): Boolean = when (binding) {
+    is UnconfirmedHolderPanicBinding -> false
+    is CapturedHolderPanicBinding -> binding.product === exactOriginalMesh && when (val collector = binding.gossipCollector) {
+        BoundGossipCollector.Missing -> false
+        is BoundGossipCollector.Installed -> collector.original.validate(binding.subject, binding.product, frontier)
     }
 }
 
@@ -225,6 +292,77 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     // Legacy operations may enter this RAM-only monitor. Never acquire legacy or invoke ports here.
     private val registryMonitor = Any()
     private val ownerAnchor = Any()
+    private var censusRevision = Any()
+    private var propagationUnverified = false
+    private class OperationIdentity : HolderContextOperationIdentity
+    private class OperationRecord(
+        val identity: OperationIdentity, val kind: HolderContextOperationKind,
+        val context: HolderConstructionContext?, val entry: HolderEntryOrigin?,
+        var state: HolderContextOperationState = HolderContextOperationState.Admitted,
+        var failure: HolderOperationFailureKind? = null
+    )
+    private class InputRecord<G : Any>(
+        val manager: G?, val product: Any?, val context: HolderConstructionContext?,
+        var state: HolderContextOperationState = HolderContextOperationState.Admitted,
+        var registration: HolderManagerRegistration<G>? = null,
+        var operation: HolderContextOperationIdentity? = null,
+        var entry: HolderEntryOrigin? = null,
+        var refusal: HolderContextOperationGap? = null
+    )
+    private class ContextRefusal(kind: HolderContextOperationKind, gap: HolderContextOperationGap) : HolderContextOperationRefusal(kind, gap)
+    private val operations = mutableListOf<OperationRecord>()
+    private val retainedInputs = mutableListOf<InputRecord<G>>()
+    private class AdmittedFrontier<G : Any>(
+        val anchor: Any, val subject: HolderPanicSubject, val product: Any, val revision: Any,
+        val rows: List<Any>, managers: List<G>
+    ) : HolderAdmittedManagerFrontier<G> {
+        private val originalManagers = managers.toList()
+        override val managers: List<G> get() = originalManagers.toList()
+    }
+    // All identities originate in private stored records; no generic equals/getter is invoked.
+    private fun censusRows(): List<Any> = buildList {
+        constructions.values.forEach { add(it.context) }
+        gossipChildren.values.forEach { add(it.ticket) }
+        registrations.forEach { add(it) }
+        operations.forEach { add(it.identity) }
+        retainedInputs.forEach { add(it) }
+    }
+    private fun changed() { censusRevision = Any() }
+    private fun failureKind(failure: Throwable) = when (failure) {
+        is HolderContextOperationRefusal -> HolderOperationFailureKind.PolicyRefusal
+        is java.util.concurrent.CancellationException -> HolderOperationFailureKind.CancellationThrown
+        else -> HolderOperationFailureKind.OrdinaryThrow
+    }
+    private fun constructionFor(context: HolderConstructionContext): ConstructionRecord<G>? =
+        constructions.values.firstOrNull { it.context === context }
+    private fun notePolicySignal() = synchronized(registryMonitor) { propagationUnverified = true; changed() }
+    // Called only under the RAM monitor, before any helper effect or legacy wait.
+    private fun refuse(kind: HolderContextOperationKind, gap: HolderContextOperationGap, context: HolderConstructionContext?): Nothing {
+        if (activeEntries.isNotEmpty() || constructions.values.any { it.outcome === HolderConstructionOutcome.Dispatched } ||
+            operations.any { it.state == HolderContextOperationState.Admitted }) propagationUnverified = true
+        operations += OperationRecord(OperationIdentity(), kind, context, null, HolderContextOperationState.DeniedBeforeHelperEffects)
+        changed()
+        throw ContextRefusal(kind, gap)
+    }
+    private fun admit(kind: HolderContextOperationKind, context: HolderConstructionContext?, expected: HolderConstructionKind? = null): OperationRecord {
+        val construction = if (context == null) null else constructionFor(context)
+        if (context != null && construction == null) refuse(kind, HolderContextOperationGap.ForeignContext, context)
+        if (expected != null && construction?.kind != expected) refuse(kind, HolderContextOperationGap.WrongContextKind, context)
+        if (context == null && constructionAdmissionClosed) refuse(kind, HolderContextOperationGap.UnattributedAfterClose, null)
+        // Parent outcome is retained but does not yet restrict constructed-context admission.
+        return OperationRecord(OperationIdentity(), kind, context, construction?.entry).also { operations += it; changed() }
+    }
+    private fun finish(operation: OperationRecord, completed: Boolean, input: InputRecord<G>? = null, failure: HolderOperationFailureKind? = null) = synchronized(registryMonitor) {
+        if (operation.state != HolderContextOperationState.Admitted) {
+            propagationUnverified = true
+            operation.failure = HolderOperationFailureKind.Protocol
+        } else {
+            operation.state = if (completed) HolderContextOperationState.Completed else HolderContextOperationState.Unknown
+            operation.failure = if (completed) null else failure ?: HolderOperationFailureKind.OrdinaryThrow
+            input?.state = operation.state
+        }
+        changed()
+    }
     private class InitialOrigin(val ownerAnchor: Any) : HolderOrigin
     private class InitialPreparation(override val origin: HolderOrigin) : HolderProcessPreparation
     private var preparation: HolderProcessPreparation? = null
@@ -259,7 +397,8 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         val ticket: HolderGossipChildTicket,
         val source: HolderGossipSource,
         val provenance: HolderGossipProvenance,
-        var outcome: HolderGossipChildOutcome<G> = HolderGossipChildOutcome.Dispatched
+        var outcome: HolderGossipChildOutcome<G> = HolderGossipChildOutcome.Dispatched,
+        var returnedManager: G? = null
     )
     private class GossipManagerReference<G : Any>(
         override val ticket: HolderGossipChildTicket,
@@ -269,40 +408,30 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     ) : HolderGossipManagerReference<G>
     private val gossipChildren = linkedMapOf<HolderGossipChildTicket, GossipChildRecord<G>>()
 
-    /** Records the creator only; accepted original contexts remain usable after admission closes. */
-    fun constructGossipManager(
-        parent: HolderGossipParent,
-        source: HolderGossipSource,
-        creator: () -> G
-    ): G {
-        val record = synchronized(registryMonitor) {
-            val provenance = when (parent) {
-                is HolderGossipParent.Constructed -> {
-                    val construction = requireNotNull(constructions[parent.context]) {
-                        "Construction context does not belong to this holder"
-                    }
-                    val expected = when (source) {
-                        HolderGossipSource.BLE_SERVICE -> HolderConstructionKind.BLUETOOTH
-                        HolderGossipSource.CORE_FALLBACK -> HolderConstructionKind.WIFI
-                    }
-                    require(construction.kind == expected) { "Manager source does not match its original construction" }
-                    HolderGossipProvenance.Constructed(parent.context, construction.entry)
-                }
-                HolderGossipParent.Unattributed -> HolderGossipProvenance.Unattributed
-            }
+    /** Records actual creator effects; operation admission remains independent of parent return. */
+    fun constructGossipManager(parent: HolderGossipParent, source: HolderGossipSource, creator: () -> G): G {
+        val (operation, record) = synchronized(registryMonitor) {
+            val expected = if (source == HolderGossipSource.BLE_SERVICE) HolderConstructionKind.BLUETOOTH else HolderConstructionKind.WIFI
+            val context = (parent as? HolderGossipParent.Constructed)?.context
+            val operation = admit(HolderContextOperationKind.ManagerCreator, context, if (context == null) null else expected)
+            val provenance = if (context == null) HolderGossipProvenance.Unattributed
+                else HolderGossipProvenance.Constructed(context, checkNotNull(operation.entry))
             val ticket = GossipChildTicket()
-            GossipChildRecord<G>(ticket, source, provenance).also { gossipChildren[ticket] = it }
+            val child = GossipChildRecord<G>(ticket, source, provenance)
+            gossipChildren[ticket] = child
+            changed()
+            operation to child
         }
-        val manager = try {
-            creator()
-        } catch (failure: Throwable) {
-            synchronized(registryMonitor) { record.outcome = HolderGossipChildOutcome.Unknown }
+        val manager = try { creator() } catch (failure: Throwable) {
+            synchronized(registryMonitor) { record.outcome = HolderGossipChildOutcome.Unknown; changed() }
+            finish(operation, false, failure = failureKind(failure))
             throw failure
         }
         synchronized(registryMonitor) {
-            record.outcome = HolderGossipChildOutcome.Returned(
-                GossipManagerReference(record.ticket, record.source, record.provenance, manager)
-            )
+            record.returnedManager = manager
+            record.outcome = HolderGossipChildOutcome.Returned(GossipManagerReference(record.ticket, record.source, record.provenance, manager))
+            operation.state = HolderContextOperationState.Completed
+            changed()
         }
         return manager
     }
@@ -321,7 +450,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
                 HolderGossipCaptureGap.InvalidSubject(HolderPanicCaptureGap.ForeignSubject)
             )
         }
-        val record = constructions[subject.context]
+        val record = constructionFor(subject.context)
         if (record == null || record.kind != HolderConstructionKind.UNIFIED ||
             (record.outcome as? HolderConstructionOutcome.Returned)?.product !== exactUnified) {
             return@synchronized HolderGossipSubsetCapture.Unconfirmed(
@@ -359,39 +488,48 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
             if (subject !is UnifiedPanicSubject || subject.ownerAnchor !== ownerAnchor) {
                 return@synchronized HolderConstructionCloseOutcome.Unconfirmed(HolderPanicCaptureGap.ForeignSubject)
             }
-            val record = constructions[subject.context]
+            val record = constructionFor(subject.context)
             if (record == null || record.kind != HolderConstructionKind.UNIFIED ||
                 (record.outcome as? HolderConstructionOutcome.Returned)?.product !== exactUnified) {
                 return@synchronized HolderConstructionCloseOutcome.Unconfirmed(HolderPanicCaptureGap.InvalidReturnedUnified)
             }
-            if (!constructionAdmissionClosed) constructionAdmissionClosed = true
+            if (!constructionAdmissionClosed) { constructionAdmissionClosed = true; changed() }
             HolderConstructionCloseOutcome.ClosedForConstruction
         }
 
-    fun setGossipManager(
-        provenance: HolderManagerProvenance,
-        manager: G,
-        signer: (BitchatPacket) -> BitchatPacket?
-    ): Unit = synchronized(legacyMonitor) {
-        val entry = synchronized(registryMonitor) {
-            when (provenance) {
-                is HolderManagerProvenance.Constructed -> requireNotNull(constructions[provenance.context]) {
-                    "Construction context does not belong to this holder"
-                }.entry
-                HolderManagerProvenance.UnattributedExternal -> null
+    fun setGossipManager(provenance: HolderManagerProvenance, manager: G, signer: (BitchatPacket) -> BitchatPacket?) {
+        val input = InputRecord(manager, null, (provenance as? HolderManagerProvenance.Constructed)?.context)
+        val operation = synchronized(registryMonitor) {
+            retainedInputs += input; changed()
+            try { admit(HolderContextOperationKind.ManagerRegistration, input.context).also { input.operation = it.identity; input.entry = it.entry } }
+            catch (failure: Throwable) { input.state = HolderContextOperationState.DeniedBeforeHelperEffects; input.refusal = (failure as? HolderContextOperationRefusal)?.gap; changed(); throw failure }
+        }
+        var completed = false
+        var failureCategory: HolderOperationFailureKind? = null
+        try {
+            synchronized(legacyMonitor) {
+                val previous = sharedGossipSyncManager
+                if (previous !== manager) {
+                    try { previous?.let(ports.stopGossip) }
+                    catch (_: HolderContextOperationRefusal) { notePolicySignal() }
+                    catch (_: Exception) { }
+                }
+                val registration = HolderManagerRegistration(manager, provenance, operation.entry, signer)
+                synchronized(registryMonitor) {
+                    registrations += registration
+                    currentRegistration = registration
+                    input.registration = registration
+                    changed()
+                }
+                ports.installGossipDelegate(manager, TransportGossipDelegate(registration, ports.broadcast, ports.sendToPeer))
+                if (activeGossipOwners.isNotEmpty()) ports.startGossip(manager)
             }
-        }
-        val previous = sharedGossipSyncManager
-        if (previous !== manager) {
-            try { previous?.let(ports.stopGossip) } catch (_: Exception) { }
-        }
-        val registration = HolderManagerRegistration(manager, provenance, entry, signer)
-        synchronized(registryMonitor) {
-            registrations += registration
-            currentRegistration = registration
-        }
-        ports.installGossipDelegate(manager, TransportGossipDelegate(registration, ports.broadcast, ports.sendToPeer))
-        if (activeGossipOwners.isNotEmpty()) ports.startGossip(manager)
+            completed = true
+        } catch (failure: Throwable) {
+            failureCategory = failureKind(failure)
+            if (failure is HolderContextOperationRefusal) notePolicySignal()
+            throw failure
+        } finally { finish(operation, completed, input, failureCategory) }
     }
 
     fun startSharedGossip(owner: String): Unit = synchronized(legacyMonitor) {
@@ -429,7 +567,9 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
                     existing
                 } else {
                     log(HolderLogLevel.WARN, "Existing BluetoothMeshService not reusable; replacing with a fresh instance")
-                    try { ports.stopBluetooth(existing) } catch (e: Exception) {
+                    try { ports.stopBluetooth(existing) }
+                    catch (refused: HolderContextOperationRefusal) { notePolicySignal(); throw refused }
+                    catch (e: Exception) {
                         log(HolderLogLevel.WARN, "Error while stopping non-reusable instance: ${e.message}")
                     }
                     val created = construct(entry, HolderConstructionKind.BLUETOOTH) { createBluetooth(it) }
@@ -438,7 +578,8 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
                     unifiedMeshService = null
                     created
                 }
-            } catch (e: Exception) {
+            } catch (refused: HolderContextOperationRefusal) { notePolicySignal(); throw refused }
+            catch (e: Exception) {
                 log(HolderLogLevel.ERROR, "Error checking service reusability; creating new instance: ${e.message}")
                 val created = construct(entry, HolderConstructionKind.BLUETOOTH) { createBluetooth(it) }
                 meshService = created
@@ -478,52 +619,79 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
             if (constructionAdmissionClosed) return WifiAwareFactoryResult.RefusedBeforeAllocation
             activeEntries += entry
             constructions[context] = record
+            changed()
         }
         try {
             val product = try {
                 creator(context)
             } catch (failure: Throwable) {
-                synchronized(registryMonitor) { record.outcome = HolderConstructionOutcome.Unknown(HolderConstructionKind.WIFI) }
+                synchronized(registryMonitor) { record.outcome = HolderConstructionOutcome.Unknown(HolderConstructionKind.WIFI); changed() }
                 throw failure
             }
-            synchronized(registryMonitor) { record.outcome = HolderConstructionOutcome.Returned(product) }
+            synchronized(registryMonitor) { record.outcome = HolderConstructionOutcome.Returned(product); changed() }
             return WifiAwareFactoryResult.Created(product)
         } finally {
-            synchronized(registryMonitor) { activeEntries -= entry }
+            synchronized(registryMonitor) { activeEntries -= entry; changed() }
         }
     }
 
     /** Reuses the caller's entry even if Bluetooth initialization waits on a different factory. */
     fun ensureBluetoothForWifi(context: HolderWifiConstructionContext, createBluetooth: (HolderConstructionContext) -> B) {
-        val entry = synchronized(registryMonitor) { wifiRecord(context).entry }
-        synchronized(legacyMonitor) { getOrCreateLocked(entry, createBluetooth) }
+        val operation = synchronized(registryMonitor) { admit(HolderContextOperationKind.BluetoothEnsure, context, HolderConstructionKind.WIFI) }
+        var completed = false
+        var failureCategory: HolderOperationFailureKind? = null
+        try {
+            synchronized(legacyMonitor) { getOrCreateLocked(checkNotNull(operation.entry), createBluetooth) }
+            completed = true
+        } catch (failure: Throwable) {
+            failureCategory = failureKind(failure)
+            if (failure is HolderContextOperationRefusal) notePolicySignal()
+            throw failure
+        } finally { finish(operation, completed, failure = failureCategory) }
     }
 
     /** One immutable registration read, kept separate from the preceding Bluetooth acquisition. */
     fun selectManagerForWifi(context: HolderWifiConstructionContext): HolderManagerRegistration<G>? = synchronized(registryMonitor) {
         val record = wifiRecord(context)
         check(record.selection === HolderWifiManagerSelection.NotSelected) { "Wi-Fi manager was already selected" }
-        currentRegistration.also { record.selection = HolderWifiManagerSelection.Selected(it) }
+        currentRegistration.also { record.selection = HolderWifiManagerSelection.Selected(it); changed() }
     }
 
     // Called only while registryMonitor is held; context identity is owner-issued and unforgeable.
     private fun wifiRecord(context: HolderWifiConstructionContext): ConstructionRecord<G> =
-        requireNotNull(constructions[context]) { "Construction context does not belong to this holder" }.also {
+        requireNotNull(constructionFor(context)) { "Construction context does not belong to this holder" }.also {
             check(it.kind == HolderConstructionKind.WIFI) { "Construction context is not Wi-Fi" }
         }
 
-    fun attach(service: B): Unit = synchronized(legacyMonitor) {
-        log(HolderLogLevel.DEBUG, "Attaching BluetoothMeshService to holder")
-        synchronized(registryMonitor) { externalProducts[service] = Unit }
-        meshService = service
-        unifiedMeshService = null
+    fun attach(service: B) {
+        val input = InputRecord<G>(null, service, null)
+        val operation = synchronized(registryMonitor) {
+            retainedInputs += input; changed()
+            try { admit(HolderContextOperationKind.ExternalAttach, null).also { input.operation = it.identity } }
+            catch (failure: Throwable) { input.state = HolderContextOperationState.DeniedBeforeHelperEffects; input.refusal = (failure as? HolderContextOperationRefusal)?.gap; changed(); throw failure }
+        }
+        var completed = false
+        var failureCategory: HolderOperationFailureKind? = null
+        try {
+            synchronized(legacyMonitor) {
+                log(HolderLogLevel.DEBUG, "Attaching BluetoothMeshService to holder")
+                synchronized(registryMonitor) { externalProducts[service] = Unit; changed() }
+                meshService = service
+                unifiedMeshService = null
+            }
+            completed = true
+        } catch (failure: Throwable) {
+            failureCategory = failureKind(failure)
+            if (failure is HolderContextOperationRefusal) notePolicySignal()
+            throw failure
+        } finally { finish(operation, completed, input, failureCategory) }
     }
 
     fun clear(): Unit = synchronized(legacyMonitor) {
         log(HolderLogLevel.DEBUG, "Clearing BluetoothMeshService from holder")
-        try { sharedGossipSyncManager?.let(ports.clearGossip) } catch (_: Exception) { }
-        try { sharedGossipSyncManager?.let(ports.stopGossip) } catch (_: Exception) { }
-        synchronized(registryMonitor) { currentRegistration = null }
+        try { sharedGossipSyncManager?.let(ports.clearGossip) } catch (_: HolderContextOperationRefusal) { notePolicySignal() } catch (_: Exception) { }
+        try { sharedGossipSyncManager?.let(ports.stopGossip) } catch (_: HolderContextOperationRefusal) { notePolicySignal() } catch (_: Exception) { }
+        synchronized(registryMonitor) { currentRegistration = null; changed() }
         activeGossipOwners.clear()
         meshService = null
         unifiedMeshService = null
@@ -534,11 +702,12 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         synchronized(registryMonitor) {
             if (constructionAdmissionClosed) return HolderAcquisitionResult.RefusedBeforeAcquisition
             activeEntries += entry
+            changed()
         }
         return try {
             synchronized(legacyMonitor) { HolderAcquisitionResult.Available(action(entry)) }
         } finally {
-            synchronized(registryMonitor) { activeEntries -= entry }
+            synchronized(registryMonitor) { activeEntries -= entry; changed() }
         }
     }
 
@@ -550,16 +719,81 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     ): T {
         val context = ConstructionContext()
         val record = ConstructionRecord<G>(context, entry, kind, suppliedBluetooth)
-        synchronized(registryMonitor) { constructions[context] = record }
+        synchronized(registryMonitor) { constructions[context] = record; changed() }
         val product = try {
             factory(context)
         } catch (failure: Throwable) {
-            synchronized(registryMonitor) { record.outcome = HolderConstructionOutcome.Unknown(kind) }
+            synchronized(registryMonitor) { record.outcome = HolderConstructionOutcome.Unknown(kind); changed() }
             throw failure
         }
         // Record the return before caller logging can trigger the legacy retry.
-        synchronized(registryMonitor) { record.outcome = HolderConstructionOutcome.Returned(product) }
+        synchronized(registryMonitor) { record.outcome = HolderConstructionOutcome.Returned(product); changed() }
         return product
+    }
+
+    /** One atomic, fail-fast view of admitted identities, not all writers or a drain. */
+    fun captureAdmittedManagerFrontier(subject: HolderPanicSubject, exactUnified: Any): HolderGossipCensusCapture<G> = synchronized(registryMonitor) {
+        if (subject !is UnifiedPanicSubject || subject.ownerAnchor !== ownerAnchor) {
+            return@synchronized HolderGossipCensusCapture.Invalid(HolderCensusGap.InvalidSubject)
+        }
+        val original = constructionFor(subject.context)
+        if (original == null || original.kind != HolderConstructionKind.UNIFIED ||
+            (original.outcome as? HolderConstructionOutcome.Returned)?.product !== exactUnified ||
+            constructions.values.count { it.kind == HolderConstructionKind.UNIFIED &&
+                (it.outcome as? HolderConstructionOutcome.Returned)?.product === exactUnified } != 1) {
+            return@synchronized HolderGossipCensusCapture.Invalid(HolderCensusGap.InvalidSubject)
+        }
+        val gaps = mutableListOf<HolderCensusGap>()
+        if (!constructionAdmissionClosed) gaps += HolderCensusGap.NotClosed
+        if (activeEntries.isNotEmpty()) gaps += HolderCensusGap.ActiveEntry
+        if (constructions.values.any { it.outcome === HolderConstructionOutcome.Dispatched }) gaps += HolderCensusGap.DispatchedConstruction
+        if (constructions.values.any { it.outcome is HolderConstructionOutcome.Unknown }) gaps += HolderCensusGap.UnknownConstruction
+        if (operations.any { it.state == HolderContextOperationState.Admitted }) gaps += HolderCensusGap.PendingOperation
+        if (operations.any { it.state == HolderContextOperationState.Unknown }) gaps += HolderCensusGap.UnknownOperation
+        if (propagationUnverified) gaps += HolderCensusGap.PropagationUnverified
+        if (externalProducts.isNotEmpty() || retainedInputs.any { it.product != null }) gaps += HolderCensusGap.ExternalInput
+        if (retainedInputs.any { it.state == HolderContextOperationState.DeniedBeforeHelperEffects }) gaps += HolderCensusGap.RefusedAllocatedInput
+        if (gossipChildren.values.any { it.provenance === HolderGossipProvenance.Unattributed }) gaps += HolderCensusGap.UnattributedChild
+        if (gossipChildren.values.any { it.outcome !is HolderGossipChildOutcome.Returned }) gaps += HolderCensusGap.UnknownChild
+        val seen = java.util.IdentityHashMap<G, Unit>()
+        val managers = mutableListOf<G>()
+        gossipChildren.values.forEach { child -> child.returnedManager?.let { if (seen.put(it, Unit) == null) managers += it } }
+        val registrationGaps = mutableListOf<HolderRegistrationMismatch<G>>()
+        registrations.forEach { registration ->
+            if (seen.put(registration.manager, Unit) == null) managers += registration.manager
+            val provenance = registration.provenance as? HolderManagerProvenance.Constructed
+            val parent = provenance?.let { constructionFor(it.context) }
+            val parentKind = parent?.kind
+            val children = gossipChildren.values.filter { it.returnedManager === registration.manager && it.outcome is HolderGossipChildOutcome.Returned }
+            val origins = if (provenance == null || parent == null) emptyList() else children.filter {
+                val origin = it.provenance as? HolderGossipProvenance.Constructed
+                origin != null && origin.context === provenance.context && origin.entry === parent.entry && registration.entry === parent.entry
+            }
+            val mismatch = when {
+                provenance == null -> HolderRegistrationMatchGap.ExternalProvenance
+                parent?.outcome !is HolderConstructionOutcome.Returned -> HolderRegistrationMatchGap.ParentUnavailable
+                children.isEmpty() -> HolderRegistrationMatchGap.NoReturnedChild
+                origins.isEmpty() -> HolderRegistrationMatchGap.ContextOrEntryMismatch
+                origins.none { (parentKind == HolderConstructionKind.BLUETOOTH && it.source == HolderGossipSource.BLE_SERVICE) ||
+                    (parentKind == HolderConstructionKind.WIFI && it.source == HolderGossipSource.CORE_FALLBACK) } -> HolderRegistrationMatchGap.SourceKindMismatch
+                else -> null
+            }
+            if (mismatch != null) { gaps += HolderCensusGap.UnmatchedConstructedRegistration; registrationGaps += HolderRegistrationMismatch(registration, mismatch) }
+        }
+        if (gaps.isNotEmpty()) HolderGossipCensusCapture.Partial(
+            HolderGossipSubsetSnapshot(provenanceSnapshot(), gossipConstructionSnapshot()), gaps.toList(),
+            operations.map { HolderContextOperationSnapshot(it.identity, it.kind, it.context, it.entry, it.state, it.failure) },
+            retainedInputs.map { HolderRetainedInputSnapshot(it.manager, it.product, it.context, it.state, it.registration, it.operation, it.entry, it.refusal) }, registrationGaps.toList())
+        else HolderGossipCensusCapture.Sealed(AdmittedFrontier(ownerAnchor, subject, exactUnified, censusRevision, censusRows(), managers.toList()))
+    }
+
+    fun validateAdmittedManagerFrontier(subject: HolderPanicSubject, exactUnified: Any, frontier: HolderAdmittedManagerFrontier<G>): Boolean = synchronized(registryMonitor) {
+        if (frontier !is AdmittedFrontier<*> || frontier.anchor !== ownerAnchor || frontier.subject !== subject ||
+            frontier.product !== exactUnified || frontier.revision !== censusRevision || !constructionAdmissionClosed) false
+        else {
+            val rows = censusRows()
+            rows.size == frontier.rows.size && rows.indices.all { rows[it] === frontier.rows[it] }
+        }
     }
 
     fun provenanceSnapshot(): HolderProvenanceSnapshot<G> = synchronized(registryMonitor) {
