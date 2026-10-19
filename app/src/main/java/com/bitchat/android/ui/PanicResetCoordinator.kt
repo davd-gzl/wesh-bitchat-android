@@ -272,7 +272,10 @@ internal suspend fun collectPanicRetirementWithEndedDirectFrontiers(
     if (originalGossip !is PanicOriginalGossipInput.Installed) return report
     val observed = validateKnownDirectEnds(captureKnownDirectEnds(known))
     val prepared = withDirectEnds(report, observed)
-    // Baseline: truthful direct gaps are retained, but the whole-batch eligibility gate is absent.
+    if (observed is KnownDirectBodiesEnd.Ineligible) {
+        currentCoroutineContext().ensureActive()
+        return prepared
+    }
     val joined = collectRecordedGossipPhase(prepared, originalGossip)
     currentCoroutineContext().ensureActive()
     return withDirectEnds(joined, validateKnownDirectEnds(observed))
