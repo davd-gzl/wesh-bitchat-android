@@ -39,6 +39,9 @@ object MeshServiceHolder {
 
     internal fun initialProcessPreparation(): HolderProcessPreparation = owner.initialProcessPreparation()
 
+    internal fun captureUnifiedPanicBinding(exactUnified: Any): HolderPanicBinding =
+        captureHolderPanicBinding(owner, exactUnified)
+
     internal fun setGossipManager(
         provenance: HolderManagerProvenance,
         mgr: GossipSyncManager,
@@ -75,7 +78,7 @@ object MeshServiceHolder {
         original: HolderOrigin,
         controllerOrigin: com.bitchat.android.wifiaware.WifiAwareOwnerToken,
         creator: (HolderWifiConstructionContext) -> W
-    ): W = owner.constructWifi(original, controllerOrigin, creator)
+    ): com.bitchat.android.wifiaware.WifiAwareFactoryResult<W> = owner.constructWifi(original, controllerOrigin, creator)
 
     internal fun ensureBluetoothForWifi(context: Context, construction: HolderWifiConstructionContext) =
         owner.ensureBluetoothForWifi(construction) { createBluetooth(context, null, it) }

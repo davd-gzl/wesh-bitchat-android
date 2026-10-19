@@ -64,7 +64,8 @@ class MainActivity : OrientationAwareActivity() {
         object : ViewModelProvider.Factory {
             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
                 @Suppress("UNCHECKED_CAST")
-                return ChatViewModel(application, meshService, unifiedMeshService) as T
+                return ChatViewModel(application, meshService, unifiedMeshService,
+                    com.bitchat.android.service.MeshServiceHolder.captureUnifiedPanicBinding(unifiedMeshService)) as T
             }
         }
     }

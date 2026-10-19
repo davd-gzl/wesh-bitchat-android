@@ -49,10 +49,11 @@ private data class ConversationLiveIdentityState(
  * Refactored ChatViewModel - Main coordinator for bitchat functionality
  * Delegates specific responsibilities to specialized managers while maintaining 100% iOS compatibility
  */
-class ChatViewModel(
+class ChatViewModel internal constructor(
     application: Application,
     initialMeshService: BluetoothMeshService,
-    initialUnifiedMeshService: MeshService
+    initialUnifiedMeshService: MeshService,
+    private val originalHolderPanicBinding: com.bitchat.android.service.HolderPanicBinding
 ) : AndroidViewModel(application), BluetoothMeshDelegate {
 
     // Made var to support mesh service replacement after panic clear
@@ -1262,7 +1263,9 @@ class ChatViewModel(
 
     fun panicClearAllData() {
         if (weshPanicInProgress.value) return
-        val originalFacade = mesh as? com.bitchat.android.mesh.UnifiedMeshService
+        val originalService = mesh
+        val originalFacade = originalService as? com.bitchat.android.mesh.UnifiedMeshService
+        val originalHolder = originalHolderPanicBinding
         weshPanicInProgress.value = true
         val seenPanic = com.bitchat.android.services.SeenMessageStore.fenceReceiptAdmissionForPanic()
         if (com.bitchat.android.BuildConfig.WESH_POLICY) {
@@ -1272,7 +1275,7 @@ class ChatViewModel(
         weshDraftStore.fenceForPanic()
         weshPreferences.fenceForPanic()
         com.bitchat.android.net.WeshInternetMode.get(getApplication()).fenceForPanic()
-        originalFacade?.fenceForPanic()
+        PanicResetCoordinator.fenceCapturedPanicOwners(originalFacade, originalHolder, originalService)
         com.bitchat.android.services.AppStateStore.fencePrivateConversationAdmissionForPanic()
         PanicResetCoordinator.launchPanic(viewModelScope) {
             try {

@@ -2,6 +2,7 @@ package com.bitchat.android.service
 
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.sync.GossipSyncManager
+import com.bitchat.android.wifiaware.WifiAwareFactoryResult
 
 internal enum class HolderLogLevel { DEBUG, INFO, WARN, ERROR }
 
@@ -30,6 +31,47 @@ internal data class HolderConstructionReceipt(
     val suppliedBluetooth: Any?,
     val outcome: HolderConstructionOutcome
 )
+
+/** Restrictive ownership identity; never allocation authority or a checked drain. */
+internal sealed interface HolderPanicSubject
+internal enum class HolderPanicCaptureGap {
+    NoUniqueReturnedUnified, AmbiguousReturnedUnified, ForeignSubject, InvalidReturnedUnified, ProductMismatch
+}
+internal sealed interface HolderPanicSubjectCapture {
+    class Captured(val subject: HolderPanicSubject) : HolderPanicSubjectCapture
+    class Unconfirmed(val gap: HolderPanicCaptureGap) : HolderPanicSubjectCapture
+}
+internal sealed interface HolderConstructionCloseOutcome {
+    data object ClosedForConstruction : HolderConstructionCloseOutcome
+    class Unconfirmed(val gap: HolderPanicCaptureGap) : HolderConstructionCloseOutcome
+}
+internal interface HolderPanicAdmissionActor {
+    fun captureUnifiedPanicSubject(exactUnified: Any): HolderPanicSubjectCapture
+    fun closeConstructionAdmission(subject: HolderPanicSubject, exactUnified: Any): HolderConstructionCloseOutcome
+}
+
+/** The actor and exact original product are supplied before a ViewModel can request panic. */
+internal sealed interface HolderPanicBinding
+private class CapturedHolderPanicBinding(
+    val actor: HolderPanicAdmissionActor,
+    val subject: HolderPanicSubject,
+    val product: Any
+) : HolderPanicBinding
+private class UnconfirmedHolderPanicBinding(val gap: HolderPanicCaptureGap) : HolderPanicBinding
+
+internal fun captureHolderPanicBinding(actor: HolderPanicAdmissionActor, exactUnified: Any): HolderPanicBinding =
+    when (val captured = actor.captureUnifiedPanicSubject(exactUnified)) {
+        is HolderPanicSubjectCapture.Captured -> CapturedHolderPanicBinding(actor, captured.subject, exactUnified)
+        is HolderPanicSubjectCapture.Unconfirmed -> UnconfirmedHolderPanicBinding(captured.gap)
+    }
+
+internal fun closeHolderPanicBinding(binding: HolderPanicBinding, exactCurrentMesh: Any): HolderConstructionCloseOutcome =
+    when (binding) {
+        is UnconfirmedHolderPanicBinding -> HolderConstructionCloseOutcome.Unconfirmed(binding.gap)
+        is CapturedHolderPanicBinding -> if (binding.product !== exactCurrentMesh) {
+            HolderConstructionCloseOutcome.Unconfirmed(HolderPanicCaptureGap.ProductMismatch)
+        } else binding.actor.closeConstructionAdmission(binding.subject, binding.product)
+    }
 
 /** External registration never inherits a constructor or its epoch. */
 internal sealed interface HolderManagerProvenance {
@@ -85,15 +127,17 @@ internal data class MeshServiceHolderPorts<B : Any, U : Any, G : Any>(
 /** Existing holder serialization and cache behavior, independent of platform construction. */
 internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     private val ports: MeshServiceHolderPorts<B, U, G>
-) {
+) : HolderPanicAdmissionActor {
     // Preserve reentrant constructor -> manager registration under one legacy monitor.
     private val legacyMonitor = Any()
-    // Legacy operations may briefly enter this monitor. Never acquire legacy or invoke ports here.
+    // Legacy operations may enter this RAM-only monitor. Never acquire legacy or invoke ports here.
     private val registryMonitor = Any()
     private val ownerAnchor = Any()
     private class InitialOrigin(val ownerAnchor: Any) : HolderOrigin
     private class InitialPreparation(override val origin: HolderOrigin) : HolderProcessPreparation
     private var preparation: HolderProcessPreparation? = null
+    private class UnifiedPanicSubject(val ownerAnchor: Any, val context: HolderConstructionContext) : HolderPanicSubject
+    private var constructionAdmissionClosed = false
     @Volatile var meshService: B? = null
         private set
     @Volatile var unifiedMeshService: U? = null
@@ -122,6 +166,34 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     fun initialProcessPreparation(): HolderProcessPreparation = synchronized(registryMonitor) {
         preparation ?: InitialPreparation(InitialOrigin(ownerAnchor)).also { preparation = it }
     }
+
+    /** RAM-only O(n) scan over retained, unbounded records; no cache or current-origin inference. */
+    override fun captureUnifiedPanicSubject(exactUnified: Any): HolderPanicSubjectCapture = synchronized(registryMonitor) {
+        val matches = constructions.values.filter {
+            it.kind == HolderConstructionKind.UNIFIED &&
+                (it.outcome as? HolderConstructionOutcome.Returned)?.product === exactUnified
+        }
+        when (matches.size) {
+            0 -> HolderPanicSubjectCapture.Unconfirmed(HolderPanicCaptureGap.NoUniqueReturnedUnified)
+            1 -> HolderPanicSubjectCapture.Captured(UnifiedPanicSubject(ownerAnchor, matches.single().context))
+            else -> HolderPanicSubjectCapture.Unconfirmed(HolderPanicCaptureGap.AmbiguousReturnedUnified)
+        }
+    }
+
+    /** Partial process admission closure only; accepted calls, callbacks and all drain proofs remain separate. */
+    override fun closeConstructionAdmission(subject: HolderPanicSubject, exactUnified: Any): HolderConstructionCloseOutcome =
+        synchronized(registryMonitor) {
+            if (subject !is UnifiedPanicSubject || subject.ownerAnchor !== ownerAnchor) {
+                return@synchronized HolderConstructionCloseOutcome.Unconfirmed(HolderPanicCaptureGap.ForeignSubject)
+            }
+            val record = constructions[subject.context]
+            if (record == null || record.kind != HolderConstructionKind.UNIFIED ||
+                (record.outcome as? HolderConstructionOutcome.Returned)?.product !== exactUnified) {
+                return@synchronized HolderConstructionCloseOutcome.Unconfirmed(HolderPanicCaptureGap.InvalidReturnedUnified)
+            }
+            if (!constructionAdmissionClosed) constructionAdmissionClosed = true
+            HolderConstructionCloseOutcome.ClosedForConstruction
+        }
 
     fun setGossipManager(
         provenance: HolderManagerProvenance,
@@ -222,7 +294,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     }
 
     /** Wi-Fi's original constructor runs without either holder monitor. */
-    fun <W : Any> constructWifi(original: HolderOrigin, controllerOrigin: Any, creator: (HolderWifiConstructionContext) -> W): W {
+    fun <W : Any> constructWifi(original: HolderOrigin, controllerOrigin: Any, creator: (HolderWifiConstructionContext) -> W): WifiAwareFactoryResult<W> {
         val entry = HolderEntryOrigin(epoch, HolderEntryProvenance.Original(original))
         val context = WifiConstructionContext()
         val record = ConstructionRecord<G>(context, entry, HolderConstructionKind.WIFI, null, controllerOrigin)
@@ -241,7 +313,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
                 throw failure
             }
             synchronized(registryMonitor) { record.outcome = HolderConstructionOutcome.Returned(product) }
-            return product
+            return WifiAwareFactoryResult.Created(product)
         } finally {
             synchronized(registryMonitor) { activeEntries -= entry }
         }
