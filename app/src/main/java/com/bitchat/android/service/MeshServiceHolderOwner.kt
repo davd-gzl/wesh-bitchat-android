@@ -363,7 +363,10 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
 
     private fun <T : Any> withEntry(action: (HolderEntryOrigin) -> T): HolderAcquisitionResult<T> {
         val entry = HolderEntryOrigin(epoch, HolderEntryProvenance.LegacyUnattributed)
-        synchronized(registryMonitor) { activeEntries += entry }
+        synchronized(registryMonitor) {
+            if (constructionAdmissionClosed) return HolderAcquisitionResult.RefusedBeforeAcquisition
+            activeEntries += entry
+        }
         return try {
             synchronized(legacyMonitor) { HolderAcquisitionResult.Available(action(entry)) }
         } finally {
