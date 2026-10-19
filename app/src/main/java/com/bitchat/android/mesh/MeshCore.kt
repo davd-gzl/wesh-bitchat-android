@@ -140,12 +140,22 @@ class MeshCore(
 
     fun shutdown() {
         directPeers.clear()
+        shutdownComponents()
+        packetProcessor.shutdown()
+    }
+
+    private fun shutdownComponents() {
         peerManager.shutdown()
         fragmentManager.shutdown()
         securityManager.shutdown()
         storeForwardManager.shutdown()
         messageHandler.shutdown()
-        packetProcessor.shutdown()
+    }
+
+    /** Only the original external Wi-Fi teardown may suspend here. */
+    internal suspend fun shutdownAndJoin() {
+        shutdown()
+        packetProcessor.awaitShutdown()
     }
 
     /** The Wi-Fi service teardown uses its original external scope. */
