@@ -581,7 +581,7 @@ class WifiAwareControllerOwnerTest {
                 factory = {
                     val number = factories.incrementAndGet()
                     if (number == 1) { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
-                    Product(number)
+                    WifiAwareFactoryResult.Created(Product(number))
                 },
                 start = { it.running = true; sharedPeers.set("Synthetic peer ${it.number}"); events += "start${it.number}" },
                 isRunning = { it.running },
@@ -645,7 +645,7 @@ class WifiAwareControllerOwnerTest {
             factory = { origin ->
                 val number = factories.incrementAndGet()
                 onFactory?.invoke(number, origin)
-                Product(number)
+                WifiAwareFactoryResult.Created(Product(number))
             },
             start = { it.running = shouldRun(it); events += "start" },
             isRunning = { probe(it) },

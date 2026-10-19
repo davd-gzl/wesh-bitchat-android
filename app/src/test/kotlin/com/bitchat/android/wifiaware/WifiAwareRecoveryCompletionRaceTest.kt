@@ -183,7 +183,7 @@ class WifiAwareRecoveryCompletionRaceTest {
             contextReady = { true },
             prepareStart = { preparations.incrementAndGet(); allowed },
             restartSupported = { true },
-            factory = { _: WifiAwareOwnerToken -> factories.incrementAndGet(); Product() },
+            factory = { _: WifiAwareOwnerToken -> factories.incrementAndGet(); WifiAwareFactoryResult.Created(Product()) },
             start = { starts.incrementAndGet(); it.running = true },
             isRunning = { product ->
                 val sample = product.running
