@@ -60,7 +60,11 @@ import java.util.concurrent.atomic.AtomicLong
  * - MessageHandler: Message type processing and relay logic
  * - PacketProcessor: Incoming packet routing
  */
-class WifiAwareMeshService(private val context: Context, private val controllerOwner: WifiAwareOwnerToken) : MeshService, TransportBridgeService.TransportLayer {
+class WifiAwareMeshService internal constructor(
+    private val context: Context,
+    private val controllerOwner: WifiAwareOwnerToken,
+    private val holderConstruction: com.bitchat.android.service.HolderWifiConstructionContext
+) : MeshService, TransportBridgeService.TransportLayer {
 
     companion object {
         private const val TAG = "WifiAwareMeshService"
@@ -141,8 +145,8 @@ class WifiAwareMeshService(private val context: Context, private val controllerO
         com.bitchat.android.services.IncomingMessageAdmission.install(context)
         // Ensure BluetoothMeshService is initialized so we share its GossipSyncManager
         // This avoids race conditions and ensures a single gossip source/delegate
-        com.bitchat.android.service.MeshServiceHolder.getOrCreate(context)
-        val shared = com.bitchat.android.service.MeshServiceHolder.sharedGossipSyncManager
+        com.bitchat.android.service.MeshServiceHolder.ensureBluetoothForWifi(context, holderConstruction)
+        val shared = com.bitchat.android.service.MeshServiceHolder.selectManagerForWifi(holderConstruction)?.manager
         encryptionService.onSessionEstablished = { peerID ->
             Log.d(TAG, "Wi-Fi Aware Noise session established with ${peerID.take(8)}")
             try {

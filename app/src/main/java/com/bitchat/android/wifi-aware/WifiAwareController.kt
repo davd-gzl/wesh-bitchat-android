@@ -19,7 +19,11 @@ object WifiAwareController {
         contextReady = { appContext != null },
         prepareStart = ::prepareStart,
         restartSupported = { origin -> appContext?.let { refreshSupportStatus(it, origin).supported } ?: true },
-        factory = { origin -> WifiAwareMeshService(checkNotNull(appContext), origin) },
+        factory = { origin ->
+            com.bitchat.android.service.MeshServiceHolder.constructWifi(origin) { construction ->
+                WifiAwareMeshService(checkNotNull(appContext), origin, construction)
+            }
+        },
         start = { it.startServices() },
         isRunning = { it.isRunning() },
         requestStop = { it.stopServices() },
