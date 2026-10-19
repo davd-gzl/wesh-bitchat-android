@@ -9,7 +9,14 @@ internal enum class HolderLogLevel { DEBUG, INFO, WARN, ERROR }
 internal sealed interface HolderConstructionContext
 internal sealed interface HolderWifiConstructionContext : HolderConstructionContext
 internal class HolderEpoch internal constructor()
-internal class HolderEntryOrigin internal constructor(val epoch: HolderEpoch)
+/** Original process provenance is independent of the legacy construction epoch. */
+internal sealed interface HolderOrigin
+internal sealed interface HolderProcessPreparation { val origin: HolderOrigin }
+internal sealed interface HolderEntryProvenance {
+    class Original(val origin: HolderOrigin) : HolderEntryProvenance
+    data object LegacyUnattributed : HolderEntryProvenance
+}
+internal class HolderEntryOrigin internal constructor(val epoch: HolderEpoch, val provenance: HolderEntryProvenance)
 internal enum class HolderConstructionKind { BLUETOOTH, UNIFIED, WIFI }
 internal sealed interface HolderConstructionOutcome {
     data object Dispatched : HolderConstructionOutcome
@@ -83,6 +90,10 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     private val legacyMonitor = Any()
     // Legacy operations may briefly enter this monitor. Never acquire legacy or invoke ports here.
     private val registryMonitor = Any()
+    private val ownerAnchor = Any()
+    private class InitialOrigin(val ownerAnchor: Any) : HolderOrigin
+    private class InitialPreparation(override val origin: HolderOrigin) : HolderProcessPreparation
+    private var preparation: HolderProcessPreparation? = null
     @Volatile var meshService: B? = null
         private set
     @Volatile var unifiedMeshService: U? = null
@@ -106,6 +117,11 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     private val registrations = mutableListOf<HolderManagerRegistration<G>>()
     private val externalProducts = java.util.IdentityHashMap<B, Unit>()
     private val activeGossipOwners = mutableSetOf<String>()
+
+    /** Pure initial-process provenance; ordinary clear/retry never replaces this value. */
+    fun initialProcessPreparation(): HolderProcessPreparation = synchronized(registryMonitor) {
+        preparation ?: InitialPreparation(InitialOrigin(ownerAnchor)).also { preparation = it }
+    }
 
     fun setGossipManager(
         provenance: HolderManagerProvenance,
@@ -206,11 +222,14 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     }
 
     /** Wi-Fi's original constructor runs without either holder monitor. */
-    fun <W : Any> constructWifi(controllerOrigin: Any, creator: (HolderWifiConstructionContext) -> W): W {
-        val entry = HolderEntryOrigin(epoch)
+    fun <W : Any> constructWifi(original: HolderOrigin, controllerOrigin: Any, creator: (HolderWifiConstructionContext) -> W): W {
+        val entry = HolderEntryOrigin(epoch, HolderEntryProvenance.Original(original))
         val context = WifiConstructionContext()
         val record = ConstructionRecord<G>(context, entry, HolderConstructionKind.WIFI, null, controllerOrigin)
         synchronized(registryMonitor) {
+            require(original is InitialOrigin && original.ownerAnchor === ownerAnchor) {
+                "Preparation origin does not belong to this holder"
+            }
             activeEntries += entry
             constructions[context] = record
         }
@@ -265,7 +284,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     }
 
     private fun <T> withEntry(action: (HolderEntryOrigin) -> T): T {
-        val entry = HolderEntryOrigin(epoch)
+        val entry = HolderEntryOrigin(epoch, HolderEntryProvenance.LegacyUnattributed)
         return synchronized(legacyMonitor) {
             synchronized(registryMonitor) { activeEntries += entry }
             try { action(entry) } finally { synchronized(registryMonitor) { activeEntries -= entry } }

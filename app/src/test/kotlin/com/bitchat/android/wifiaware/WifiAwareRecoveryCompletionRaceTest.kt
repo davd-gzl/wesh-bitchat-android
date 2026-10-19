@@ -168,6 +168,7 @@ class WifiAwareRecoveryCompletionRaceTest {
 
     private class Fixture(scope: TestScope) {
         val job = SupervisorJob()
+        val original = Any()
         val starts = AtomicInteger()
         val factories = AtomicInteger()
         val preparations = AtomicInteger()
@@ -178,12 +179,12 @@ class WifiAwareRecoveryCompletionRaceTest {
         private val gates = mutableListOf<ProbeGate>()
         @Volatile var allowed = true
         @Volatile private var nextProbe: ProbeGate? = null
-        val owner = WifiAwareControllerOwner(WifiAwareControllerPorts(
+        val owner = WifiAwareControllerOwner(HolderInitialBinding.Bound(original), WifiAwareControllerPorts(
             scope = CoroutineScope(job + StandardTestDispatcher(scope.testScheduler)),
             contextReady = { true },
             prepareStart = { preparations.incrementAndGet(); allowed },
             restartSupported = { true },
-            factory = { _: WifiAwareOwnerToken -> factories.incrementAndGet(); WifiAwareFactoryResult.Created(Product()) },
+            factory = { _: WifiAwareOwnerToken, _: Any -> factories.incrementAndGet(); WifiAwareFactoryResult.Created(Product()) },
             start = { starts.incrementAndGet(); it.running = true },
             isRunning = { product ->
                 val sample = product.running
@@ -196,7 +197,7 @@ class WifiAwareRecoveryCompletionRaceTest {
             },
             requestStop = { stops.incrementAndGet(); it.running = false },
             awaitProductRetirement = { acknowledgments.incrementAndGet(); false },
-            published = {},
+            published = { _, _ -> },
             clearPeers = {},
             debugMessage = {},
             failure = { errors.add(it) }

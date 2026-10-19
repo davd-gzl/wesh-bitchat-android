@@ -37,6 +37,8 @@ object MeshServiceHolder {
     val meshService: BluetoothMeshService? get() = owner.meshService
     val unifiedMeshService: UnifiedMeshService? get() = owner.unifiedMeshService
 
+    internal fun initialProcessPreparation(): HolderProcessPreparation = owner.initialProcessPreparation()
+
     internal fun setGossipManager(
         provenance: HolderManagerProvenance,
         mgr: GossipSyncManager,
@@ -70,9 +72,10 @@ object MeshServiceHolder {
     )
 
     internal fun <W : Any> constructWifi(
+        original: HolderOrigin,
         controllerOrigin: com.bitchat.android.wifiaware.WifiAwareOwnerToken,
         creator: (HolderWifiConstructionContext) -> W
-    ): W = owner.constructWifi(controllerOrigin, creator)
+    ): W = owner.constructWifi(original, controllerOrigin, creator)
 
     internal fun ensureBluetoothForWifi(context: Context, construction: HolderWifiConstructionContext) =
         owner.ensureBluetoothForWifi(construction) { createBluetooth(context, null, it) }

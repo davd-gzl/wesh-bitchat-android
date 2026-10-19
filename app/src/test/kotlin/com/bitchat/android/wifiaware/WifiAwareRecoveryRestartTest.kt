@@ -86,7 +86,7 @@ class WifiAwareRecoveryRestartTest {
             f.owner.setEnabled(true)
             val oldOrigin = f.owner.currentOwner()
             val old = requireNotNull(f.owner.getService())
-            val currentOrigin = f.owner.beginOwner()
+            val currentOrigin = f.owner.beginOwner(f.original)
             f.owner.startIfPossible()
             val previous = requireNotNull(f.owner.getService())
             f.owner.onServiceRecoveryCleanupFinished(oldOrigin, old)
@@ -239,6 +239,7 @@ class WifiAwareRecoveryRestartTest {
 
     private class Fixture(scope: TestScope) {
         val job = SupervisorJob()
+        val original = Any()
         val errors = mutableListOf<Throwable>()
         var factories = 0
         var starts = 0
@@ -248,12 +249,12 @@ class WifiAwareRecoveryRestartTest {
         var acknowledgments = 0
         var peerClears = 0
         var peerSentinel: String? = null
-        val owner = WifiAwareControllerOwner(WifiAwareControllerPorts(
+        val owner = WifiAwareControllerOwner(HolderInitialBinding.Bound(original), WifiAwareControllerPorts(
             scope = CoroutineScope(job + StandardTestDispatcher(scope.testScheduler)),
             contextReady = { true },
             prepareStart = { true },
             restartSupported = { true },
-            factory = { _: WifiAwareOwnerToken -> factories++; WifiAwareFactoryResult.Created(Product()) },
+            factory = { _: WifiAwareOwnerToken, _: Any -> factories++; WifiAwareFactoryResult.Created(Product()) },
             start = { product ->
                 starts++
                 if (product.recovering) startsDuringRecovery++ else product.running = true
@@ -261,7 +262,7 @@ class WifiAwareRecoveryRestartTest {
             isRunning = { it.running },
             requestStop = { it.running = false; stops++ },
             awaitProductRetirement = { acknowledgments++; false },
-            published = { publications++; peerSentinel = "synthetic-live" },
+            published = { _, _ -> publications++; peerSentinel = "synthetic-live" },
             clearPeers = { peerClears++; peerSentinel = null },
             debugMessage = {},
             failure = { errors.add(it) }

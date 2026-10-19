@@ -120,6 +120,7 @@ class WifiAwareFactoryOutcomeTest {
 
     private class Fixture(scope: TestScope) {
         val job = SupervisorJob()
+        val original = Any()
         var factory: (WifiAwareOwnerToken) -> WifiAwareFactoryResult<Product> = {
             error("Each synthetic control must explicitly supply a factory outcome")
         }
@@ -131,17 +132,17 @@ class WifiAwareFactoryOutcomeTest {
         val stopped = mutableListOf<Product>()
         val awaited = mutableListOf<Product>()
         val failures = mutableListOf<Throwable>()
-        val owner = WifiAwareControllerOwner(WifiAwareControllerPorts<Product>(
+        val owner = WifiAwareControllerOwner(HolderInitialBinding.Bound(original), WifiAwareControllerPorts<Product, Any>(
             scope = CoroutineScope(job + StandardTestDispatcher(scope.testScheduler)),
             contextReady = { true },
             prepareStart = { preparations++; true },
             restartSupported = { true },
-            factory = { origin -> factoryOrigins += origin; factory(origin) },
+            factory = { origin, _ -> factoryOrigins += origin; factory(origin) },
             start = { product -> product.running = true; started += product },
             isRunning = { it.running },
             requestStop = { product -> product.running = false; stopped += product },
             awaitProductRetirement = { product -> awaited += product; false },
-            published = { published += it },
+            published = { it, _ -> published += it },
             clearPeers = {}, debugMessage = {}, failure = { failures += it }
         ))
         suspend fun close() = withContext(NonCancellable) {

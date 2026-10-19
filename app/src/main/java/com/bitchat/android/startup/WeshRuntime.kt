@@ -27,6 +27,7 @@ internal object WeshRuntime {
     @Synchronized
     fun get(context: Context): StartupCoordinator<Unit> = coordinator ?: run {
         val app = context.applicationContext as BitchatApplication
+        val original = app.requireOriginalPreparation().origin
         StartupCoordinator(processScope) {
             val encryption = withContext(Dispatchers.IO) {
                 val pendingWipe = try {
@@ -39,7 +40,7 @@ internal object WeshRuntime {
                     gate.requireRecovery()
                     error("Draft wipe requires explicit recovery")
                 }
-                app.initializeRuntime()
+                app.initializeRuntime(original)
                 SecureIdentityStateManager(app) // Opens and caches the shared encrypted store.
                 WeshContactStore.get(app)
                 ConversationListPreferences.getInstance(app)

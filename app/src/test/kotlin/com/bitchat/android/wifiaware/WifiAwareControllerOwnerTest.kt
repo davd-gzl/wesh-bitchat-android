@@ -83,7 +83,7 @@ class WifiAwareControllerOwnerTest {
             f.owner.setEnabled(true)
             val old = f.owner.currentOwner()
             f.owner.retireForPanic()
-            f.owner.beginOwner()
+            f.owner.beginOwner(f.original)
             val before = f.factories.get()
             f.owner.restartIfStillEnabled(old, 10)
             runCurrent()
@@ -112,7 +112,7 @@ class WifiAwareControllerOwnerTest {
             try {
                 assertTrue("first synthetic factory must enter", enteredA.await(5, TimeUnit.SECONDS))
                 f.owner.stop()
-                f.owner.beginOwner()
+                f.owner.beginOwner(f.original)
                 val next = f.worker { f.owner.startIfPossible() }
                 second = next
                 assertTrue("second synthetic factory must enter", enteredB.await(5, TimeUnit.SECONDS))
@@ -131,7 +131,7 @@ class WifiAwareControllerOwnerTest {
     @Test fun `old debug callback cannot replace a new owner snapshot`() = runTest {
         withFixture { f ->
             val old = f.owner.currentOwner()
-            val fresh = f.owner.beginOwner()
+            val fresh = f.owner.beginOwner(f.original)
             f.owner.publishDebugSnapshot(fresh, mapOf("synthetic-new" to "synthetic-link"),
                 mapOf("synthetic-new" to "Synthetic new"), setOf("synthetic-new"))
             f.owner.publishDebugSnapshot(old, mapOf("synthetic-old" to "synthetic-link"),
@@ -145,7 +145,7 @@ class WifiAwareControllerOwnerTest {
     @Test fun `old support result cannot overwrite a new owner status`() = runTest {
         withFixture { f ->
             val old = f.owner.currentOwner()
-            val fresh = f.owner.beginOwner()
+            val fresh = f.owner.beginOwner(f.original)
             val current = WifiAwareSupport.Status(true, true)
             f.owner.publishSupportStatus(fresh, current)
             f.owner.publishSupportStatus(old, WifiAwareSupport.Status(false, false, "Synthetic old status"))
@@ -161,7 +161,7 @@ class WifiAwareControllerOwnerTest {
             val old = requireNotNull(f.owner.getService())
             val origin = f.owner.currentOwner()
             f.owner.retireForPanic()
-            f.owner.beginOwner()
+            f.owner.beginOwner(f.original)
             f.owner.startIfPossible()
             val fresh = requireNotNull(f.owner.getService())
             val clears = f.peerClears.get()
@@ -174,7 +174,7 @@ class WifiAwareControllerOwnerTest {
 
     @Test fun `current owner support and debug callbacks still publish`() = runTest {
         withFixture { f ->
-            val origin = f.owner.beginOwner()
+            val origin = f.owner.beginOwner(f.original)
             val status = WifiAwareSupport.Status(true, false, "Synthetic temporary state")
             f.owner.publishSupportStatus(origin, status)
             f.owner.publishDebugSnapshot(origin, mapOf("synthetic" to "synthetic-link"),
@@ -550,7 +550,7 @@ class WifiAwareControllerOwnerTest {
             f.owner.setEnabled(true)
             val old = f.owner.currentOwner()
             f.owner.retireForPanic()
-            val fresh = f.owner.beginOwner()
+            val fresh = f.owner.beginOwner(f.original)
             val available = WifiAwareSupport.Status(true, true)
             f.owner.environmentChanged { available }
             f.owner.publishSupportStatus(old, WifiAwareSupport.Status(false, false, "Synthetic stale service"))
@@ -575,10 +575,10 @@ class WifiAwareControllerOwnerTest {
             val factories = AtomicInteger()
             val sharedPeers = AtomicReference<String?>("Synthetic before")
             val events = ConcurrentLinkedQueue<String>()
-            val owner = WifiAwareControllerOwner(WifiAwareControllerPorts<Product>(
+            val owner = WifiAwareControllerOwner(HolderInitialBinding.Bound(f.original), WifiAwareControllerPorts<Product, Any>(
                 scope = CoroutineScope(f.job + StandardTestDispatcher(testScheduler)),
                 contextReady = { true }, prepareStart = { true }, restartSupported = { true },
-                factory = {
+                factory = { _, _ ->
                     val number = factories.incrementAndGet()
                     if (number == 1) { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
                     WifiAwareFactoryResult.Created(Product(number))
@@ -587,13 +587,13 @@ class WifiAwareControllerOwnerTest {
                 isRunning = { it.running },
                 requestStop = { it.running = false; sharedPeers.set(null); events += "stop${it.number}" },
                 awaitProductRetirement = { true },
-                published = { events += "publish${it.number}" },
+                published = { it, _ -> events += "publish${it.number}" },
                 clearPeers = { sharedPeers.set(null) }, debugMessage = {}, failure = { f.errors.add(it) }
             ))
             val worker = f.worker { owner.setEnabled(true) }
             try {
                 assertTrue("old factory must enter", entered.await(5, TimeUnit.SECONDS))
-                val fresh = owner.beginOwner()
+                val fresh = owner.beginOwner(f.original)
                 owner.startIfPossible()
                 assertEquals("B factory is admitted without waiting for A", 2, factories.get())
                 assertTrue("B stays inert while A's stop could clear shared peers", events.isEmpty())
@@ -620,6 +620,7 @@ class WifiAwareControllerOwnerTest {
 
     private class Fixture(scope: TestScope) {
         val job = SupervisorJob()
+        val original = Any()
         val factories = AtomicInteger()
         val preparations = AtomicInteger()
         val stopRequests = AtomicInteger()
@@ -637,12 +638,12 @@ class WifiAwareControllerOwnerTest {
         var onClearPeers: () -> Unit = {}
         var onPublished: (Product) -> Unit = {}
         var beforeRunningPublication: (Boolean) -> Unit = {}
-        val owner: WifiAwareControllerOwner<Product> = WifiAwareControllerOwner(WifiAwareControllerPorts(
+        val owner: WifiAwareControllerOwner<Product, Any> = WifiAwareControllerOwner(HolderInitialBinding.Bound(original), WifiAwareControllerPorts(
             scope = CoroutineScope(job + StandardTestDispatcher(scope.testScheduler)),
             contextReady = { contextReady },
             prepareStart = { preparations.incrementAndGet(); allowed },
             restartSupported = { true },
-            factory = { origin ->
+            factory = { origin, _ ->
                 val number = factories.incrementAndGet()
                 onFactory?.invoke(number, origin)
                 WifiAwareFactoryResult.Created(Product(number))
@@ -651,7 +652,7 @@ class WifiAwareControllerOwnerTest {
             isRunning = { probe(it) },
             requestStop = { it.running = false; stopRequests.incrementAndGet(); events += "stop" },
             awaitProductRetirement = { acknowledgments.incrementAndGet(); acknowledge(it) },
-            published = { published.add(it); events += "publish"; onPublished(it) },
+            published = { it, _ -> published.add(it); events += "publish"; onPublished(it) },
             clearPeers = { onClearPeers(); peerClears.incrementAndGet() },
             debugMessage = { events += "debug" },
             failure = { errors.add(it) },

@@ -29,18 +29,24 @@ internal sealed interface WifiAwareFactoryResult<out S : Any> {
     data object RefusedBeforeAllocation : WifiAwareFactoryResult<Nothing>
 }
 
+/** Only explicit initialization supplies original Holder provenance. */
+internal sealed interface HolderInitialBinding<out H : Any> {
+    data object Uninitialized : HolderInitialBinding<Nothing>
+    class Bound<H : Any>(val original: H) : HolderInitialBinding<H>
+}
+
 /** Constructing these ports performs no platform lookup or service initialization. */
-internal data class WifiAwareControllerPorts<S : Any>(
+internal data class WifiAwareControllerPorts<S : Any, H : Any>(
     val scope: CoroutineScope,
     val contextReady: () -> Boolean,
     val prepareStart: (WifiAwareOwnerToken) -> Boolean,
     val restartSupported: (WifiAwareOwnerToken) -> Boolean,
-    val factory: (WifiAwareOwnerToken) -> WifiAwareFactoryResult<S>,
+    val factory: (WifiAwareOwnerToken, H) -> WifiAwareFactoryResult<S>,
     val start: (S) -> Unit,
     val isRunning: (S) -> Boolean,
     val requestStop: (S) -> Unit,
     val awaitProductRetirement: suspend (S) -> Boolean,
-    val published: (S) -> Unit,
+    val published: (S, H) -> Unit,
     val clearPeers: () -> Unit,
     val debugMessage: (String) -> Unit,
     val failure: (Throwable) -> Unit,
@@ -50,20 +56,23 @@ internal data class WifiAwareControllerPorts<S : Any>(
 )
 
 /** The singleton's actual lifecycle algorithm, with RAM state and injected platform actions. */
-internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareControllerPorts<S>) {
-    private class Lifetime<S : Any>(val token: WifiAwareOwnerToken = WifiAwareOwnerToken()) {
+internal class WifiAwareControllerOwner<S : Any, H : Any>(
+    initialBinding: HolderInitialBinding<H>,
+    private val ports: WifiAwareControllerPorts<S, H>
+) {
+    private class Lifetime<S : Any, H : Any>(val binding: HolderInitialBinding<H>, val token: WifiAwareOwnerToken = WifiAwareOwnerToken()) {
         var retired = false
-        var starting: Admission<S>? = null
+        var starting: Admission<S, H>? = null
         var calls = 0
         var idle: CompletableDeferred<Unit>? = null
         var accountingFailed = false
         val products = IdentityHashMap<S, Product<S>>()
-        var restart: Restart<S>? = null
-        val restarts = mutableSetOf<Restart<S>>()
+        var restart: Restart<S, H>? = null
+        val restarts = mutableSetOf<Restart<S, H>>()
         var retirement: CompletableDeferred<WifiAwareControllerRetirement>? = null
         var confirmed = false
     }
-    private class Admission<S : Any>(val owner: Lifetime<S>, val reusable: Product<S>?, val revision: Long) {
+    private class Admission<S : Any, H : Any>(val owner: Lifetime<S, H>, val original: H, val reusable: Product<S>?, val revision: Long) {
         var released = false
     }
     private class Product<S : Any>(val value: S) {
@@ -71,23 +80,23 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
         // Failed preparation and unrelated publications do not invalidate liveness samples.
         var startDispatch = 0L
     }
-    private class Restart<S : Any>(val owner: Lifetime<S>) {
+    private class Restart<S : Any, H : Any>(val owner: Lifetime<S, H>) {
         val ready = CompletableDeferred<Job?>()
         var requested = true
     }
-    private data class Cleanup<S : Any>(val owner: Lifetime<S>, val product: Product<S>?,
+    private data class Cleanup<S : Any, H : Any>(val owner: Lifetime<S, H>, val product: Product<S>?,
         val requestProductStop: Boolean, val observedStop: CompletableDeferred<Boolean>?)
-    private data class Candidate<S : Any>(val admission: Admission<S>, val product: Product<S>, val running: Boolean? = null)
-    private data class Retirement<S : Any>(val owner: Lifetime<S>,
+    private data class Candidate<S : Any, H : Any>(val admission: Admission<S, H>, val product: Product<S>, val running: Boolean? = null)
+    private data class Retirement<S : Any, H : Any>(val owner: Lifetime<S, H>,
         val result: CompletableDeferred<WifiAwareControllerRetirement>, val leader: Boolean)
     private data class DebugSnapshot(val connected: Map<String, String> = emptyMap(),
         val known: Map<String, String> = emptyMap(), val discovered: Set<String> = emptySet())
 
     private val lifecycleLock = Any()
     @Volatile private var service: S? = null
-    @Volatile private var current = Lifetime<S>()
+    @Volatile private var current = Lifetime<S, H>(initialBinding)
     private val lifetimes = mutableListOf(current)
-    private var serviceOwner: Lifetime<S>? = null
+    private var serviceOwner: Lifetime<S, H>? = null
     private var stateRevision = 0L
     private var enabledState = false
     private var runningState = false
@@ -95,7 +104,7 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
     private var debugState = DebugSnapshot()
     private var cleanupCount = 0
     private var pendingStart: WifiAwareOwnerToken? = null
-    private val pendingCandidates = mutableListOf<Candidate<S>>()
+    private val pendingCandidates = mutableListOf<Candidate<S, H>>()
     private var replayingCandidates = false
     private var replayRequested = false
     private val hotspotHolds = AtomicInteger(0)
@@ -119,8 +128,8 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
     val discoveredPeers = _discoveredPeers.asStateFlow()
 
     /** A RAM lifetime change is not authorization that other transport/key owners have drained. */
-    fun beginOwner(): WifiAwareOwnerToken {
-        val fresh = Lifetime<S>()
+    fun beginOwner(original: H): WifiAwareOwnerToken {
+        val fresh = Lifetime<S, H>(HolderInitialBinding.Bound(original))
         val cleanup = synchronized(lifecycleLock) {
             val old = current
             // Reserve cleanup before publishing B, so synchronous A stop effects
@@ -147,11 +156,11 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
     /** Identity-only volatile RAM read: no locks, factories, callbacks or platform calls. */
     fun getService(): S? = service
 
-    private fun active(owner: Lifetime<S>): Boolean = current === owner && !owner.retired
-    private fun addCall(owner: Lifetime<S>) {
+    private fun active(owner: Lifetime<S, H>): Boolean = current === owner && !owner.retired
+    private fun addCall(owner: Lifetime<S, H>) {
         if (owner.calls++ == 0) owner.idle = CompletableDeferred()
     }
-    private fun releaseCall(owner: Lifetime<S>) {
+    private fun releaseCall(owner: Lifetime<S, H>) {
         val idle = synchronized(lifecycleLock) {
             check(owner.calls > 0)
             if (--owner.calls == 0) owner.idle.also { owner.idle = null } else null
@@ -159,7 +168,7 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
         idle?.complete(Unit)
         if (idle != null) replayCandidates()
     }
-    private fun releaseAdmission(admission: Admission<S>) {
+    private fun releaseAdmission(admission: Admission<S, H>) {
         val released = synchronized(lifecycleLock) {
             if (admission.released) false else {
                 admission.released = true
@@ -211,7 +220,7 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
         if (accepted) try { ports.debugMessage(message) } catch (_: Exception) { }
     }
 
-    private fun debugMessage(owner: Lifetime<S>, message: String) {
+    private fun debugMessage(owner: Lifetime<S, H>, message: String) {
         if (synchronized(lifecycleLock) { active(owner) }) {
             try { ports.debugMessage(message) } catch (_: Exception) { }
         }
@@ -249,7 +258,7 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
 
     fun startIfPossible() = startIfPossible(current.token)
 
-    private fun mayStart(admission: Admission<S>): Boolean = active(admission.owner) && enabledState && !isHeldForHotspot()
+    private fun mayStart(admission: Admission<S, H>): Boolean = active(admission.owner) && enabledState && !isHeldForHotspot()
 
     private fun startIfPossible(origin: WifiAwareOwnerToken) {
         val admission = synchronized(lifecycleLock) {
@@ -257,8 +266,12 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
             if (!active(owner) || owner.token !== origin || !enabledState || isHeldForHotspot()) return
             if (cleanupCount != 0) { pendingStart = origin; return }
             if (owner.starting != null) return
+            val original = when (val binding = owner.binding) {
+                is HolderInitialBinding.Bound -> binding.original
+                HolderInitialBinding.Uninitialized -> return
+            }
             val reusable = service?.let { owner.products[it] }
-            Admission(owner, reusable, stateRevision).also { owner.starting = it; addCall(owner) }
+            Admission(owner, original, reusable, stateRevision).also { owner.starting = it; addCall(owner) }
         }
         var retained = false
         val reusable = admission.reusable
@@ -275,7 +288,7 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
             if (!ports.contextReady() || !ports.prepareStart(origin) ||
                 !synchronized(lifecycleLock) { mayStart(admission) }) return
             try {
-                val product = reusable ?: when (val result = ports.factory(origin)) {
+                val product = reusable ?: when (val result = ports.factory(origin, admission.original)) {
                     is WifiAwareFactoryResult.Created -> Product(result.value).also {
                         synchronized(lifecycleLock) { admission.owner.products[it.value] = it }
                     }
@@ -294,11 +307,11 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
         } finally { if (!retained) releaseAdmission(admission) }
     }
 
-    private fun hasOlderCalls(owner: Lifetime<S>): Boolean =
+    private fun hasOlderCalls(owner: Lifetime<S, H>): Boolean =
         lifetimes.takeWhile { it !== owner }.any { it.calls != 0 }
 
     /** Returns false only when the product and admission remain retained for nonblocking replay. */
-    private fun finishCandidate(candidate: Candidate<S>): Boolean {
+    private fun finishCandidate(candidate: Candidate<S, H>): Boolean {
         val proceed = synchronized(lifecycleLock) {
             if (!mayStart(candidate.admission)) false
             else {
@@ -342,7 +355,7 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
                 mayStart(candidate.admission) && service === candidate.product.value
             }
             if (currentProduct) {
-                try { ports.published(candidate.product.value) } catch (_: Exception) { }
+                try { ports.published(candidate.product.value, candidate.admission.original) } catch (_: Exception) { }
                 synchronized(lifecycleLock) { if (active(candidate.admission.owner)) lastBlockedReason = null }
                 debugMessage(candidate.admission.owner, "Wi‑Fi Aware started")
             }
@@ -350,7 +363,7 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
         return true
     }
 
-    private fun discardCandidate(candidate: Candidate<S>) {
+    private fun discardCandidate(candidate: Candidate<S, H>) {
         synchronized(lifecycleLock) {
             if (service === candidate.product.value && serviceOwner === candidate.admission.owner) {
                 service = null; serviceOwner = null; runningState = false; stateRevision++
@@ -393,8 +406,8 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
     }
 
     /** Called only under the RAM monitor; all effects happen in runCleanup. */
-    private fun reserveCleanup(owner: Lifetime<S>, clearWhenEmpty: Boolean = true,
-        requestProductStop: Boolean = true): Cleanup<S>? {
+    private fun reserveCleanup(owner: Lifetime<S, H>, clearWhenEmpty: Boolean = true,
+        requestProductStop: Boolean = true): Cleanup<S, H>? {
         if (serviceOwner !== owner && (!clearWhenEmpty || current !== owner)) return null
         cleanupCount++
         addCall(owner)
@@ -408,7 +421,7 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
         return Cleanup(owner, old, requestProductStop, observedStop)
     }
 
-    private fun stopLifetime(owner: Lifetime<S>, allowRetired: Boolean = false) {
+    private fun stopLifetime(owner: Lifetime<S, H>, allowRetired: Boolean = false) {
         val cleanup = synchronized(lifecycleLock) {
             if (owner.retired && !allowRetired) return
             reserveCleanup(owner)
@@ -416,7 +429,7 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
         runCleanup(cleanup)
     }
 
-    private fun runCleanup(cleanup: Cleanup<S>) {
+    private fun runCleanup(cleanup: Cleanup<S, H>) {
         try {
             cleanup.observedStop?.complete(true)
             publishRunning()
@@ -504,7 +517,7 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
         }
     }
 
-    private suspend fun drainLifetime(owner: Lifetime<S>): WifiAwareControllerRetirement {
+    private suspend fun drainLifetime(owner: Lifetime<S, H>): WifiAwareControllerRetirement {
         val restarts = synchronized(lifecycleLock) { owner.restarts.toList() }
         val jobs = restarts.map { it.ready.await() }
         jobs.forEach { it?.cancel() }
@@ -596,7 +609,7 @@ internal class WifiAwareControllerOwner<S : Any>(private val ports: WifiAwareCon
         }
     }
 
-    private fun restartNeeded(restart: Restart<S>): Boolean = synchronized(lifecycleLock) {
+    private fun restartNeeded(restart: Restart<S, H>): Boolean = synchronized(lifecycleLock) {
         active(restart.owner) && enabledState && !runningState
     }
 }
