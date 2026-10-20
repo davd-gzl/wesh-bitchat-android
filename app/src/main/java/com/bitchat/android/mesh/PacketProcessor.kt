@@ -100,6 +100,14 @@ internal suspend fun validateOriginalProcessorPreparation(preparation: OriginalP
         prepared.original.processor.originalShutdownRequested(prepared.original)
 }
 
+/** Returns only after the same original root join; the preparation stays bound to this caller. */
+internal suspend fun awaitOriginalProcessor(preparation: OriginalProcessorAwaitPreparation): Boolean {
+    if (!validateOriginalProcessorPreparation(preparation)) return false
+    val prepared = preparation as? PreparedProcessorAwait ?: return false
+    prepared.original.processor.awaitShutdown()
+    return validateOriginalProcessorPreparation(preparation)
+}
+
 /**
  * Processes incoming packets and routes them to appropriate handlers
  * 
