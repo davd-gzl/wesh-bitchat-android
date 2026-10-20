@@ -49,12 +49,35 @@ object WifiAwareController {
     val discoveredPeers = owner.discoveredPeers
 
     internal fun initialize(context: Context, enabledByDefault: Boolean, original: com.bitchat.android.service.HolderOrigin) {
-        appContext = context.applicationContext
-        val origin = owner.beginOwner(original)
-        val status = refreshSupportStatus(appContext!!, origin)
-        if (status.supported) registerAwareStateReceiver(appContext!!)
-        else Log.i(TAG, "Wi-Fi Aware unsupported: ${status.reason}")
-        setEnabled(enabledByDefault)
+        val participant = owner.originalParticipant(original) { it.originalHostBinding }
+        val attachment = com.bitchat.android.service.MeshServiceHolder.attachOriginalWifiController(original, participant)
+        if (attachment !is com.bitchat.android.service.HolderWifiInitializationAdmissionResult.Accepted) {
+            if (attachment === com.bitchat.android.service.HolderWifiInitializationAdmissionResult.RefusedOriginalClosed) participant.fence()
+            return
+        }
+        var ticket: ControllerInitializationTicket? = null
+        var outcome = WifiInitializationOutcome.UnknownFailure
+        try {
+            when (val admission = owner.admitOriginalInitialization(participant)) {
+                is ControllerInitializationAdmission.Accepted -> ticket = admission.ticket
+                is ControllerInitializationAdmission.Refused -> { outcome = WifiInitializationOutcome.RefusedByController; return }
+                ControllerInitializationAdmission.Invalid -> return
+            }
+            appContext = context.applicationContext
+            val origin = when (val begun = owner.beginOriginalOwner(participant, checkNotNull(ticket))) {
+                is WifiControllerBeginResult.Begun -> begun.token
+                is WifiControllerBeginResult.Refused -> { outcome = WifiInitializationOutcome.RefusedByController; return }
+                WifiControllerBeginResult.Invalid -> return
+            }
+            val status = refreshSupportStatus(appContext!!, origin)
+            if (status.supported) registerAwareStateReceiver(appContext!!)
+            else Log.i(TAG, "Wi-Fi Aware unsupported: ${status.reason}")
+            setEnabled(enabledByDefault)
+            outcome = WifiInitializationOutcome.Begun
+        } finally {
+            ticket?.let { owner.finishOriginalInitialization(it, outcome) }
+            com.bitchat.android.service.MeshServiceHolder.finishWifiInitialization(attachment.ticket, outcome)
+        }
     }
 
     internal fun publishDebugSnapshot(origin: WifiAwareOwnerToken, connected: Map<String, String>,

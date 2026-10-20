@@ -55,6 +55,34 @@ internal data class WifiAwareControllerPorts<S : Any, H : Any>(
     val beforeRunningPublication: (Boolean) -> Unit = {}
 )
 
+internal sealed interface OriginalWifiControllerParticipant {
+    fun fence(): WifiTerminalReceipt
+    fun observe(): WifiControllerOriginalView
+    fun validate(view: WifiControllerOriginalView): Boolean
+    fun requestRestartCancellation(view: WifiControllerOriginalView, caller: WifiHostCaller): List<Throwable>
+    suspend fun awaitRestarts(view: WifiControllerOriginalView, caller: WifiHostCaller): Boolean
+}
+internal class WifiControllerProduct(val product: Any, val token: WifiAwareOwnerToken, val host: OriginalWifiHostBinding?)
+internal sealed interface WifiControllerOriginalView {
+    val products: List<WifiControllerProduct>
+    val gaps: List<WifiHostGap>
+}
+internal sealed interface ControllerInitializationTicket
+internal sealed interface ControllerInitializationAdmission {
+    class Accepted(val ticket: ControllerInitializationTicket) : ControllerInitializationAdmission
+    class Refused(val receipt: WifiTerminalReceipt) : ControllerInitializationAdmission
+    data object Invalid : ControllerInitializationAdmission
+}
+internal sealed interface WifiControllerBeginResult {
+    class Begun(val token: WifiAwareOwnerToken) : WifiControllerBeginResult
+    class Refused(val receipt: WifiTerminalReceipt) : WifiControllerBeginResult
+    data object Invalid : WifiControllerBeginResult
+}
+internal enum class WifiInitializationOutcome { Begun, RefusedByController, UnknownFailure }
+internal class OriginalWifiControllerClosed : IllegalStateException("Original Wi-Fi controller is closed")
+internal fun originalWifiParticipantOrigin(participant: OriginalWifiControllerParticipant): Any? =
+    WifiAwareControllerOwner.participantOrigin(participant)
+
 /** The singleton's actual lifecycle algorithm, with RAM state and injected platform actions. */
 internal class WifiAwareControllerOwner<S : Any, H : Any>(
     initialBinding: HolderInitialBinding<H>,
@@ -69,6 +97,7 @@ internal class WifiAwareControllerOwner<S : Any, H : Any>(
         val products = IdentityHashMap<S, Product<S>>()
         var restart: Restart<S, H>? = null
         val restarts = mutableSetOf<Restart<S, H>>()
+        val originalRestarts = mutableListOf<Restart<S, H>>()
         var retirement: CompletableDeferred<WifiAwareControllerRetirement>? = null
         var confirmed = false
     }
@@ -83,6 +112,8 @@ internal class WifiAwareControllerOwner<S : Any, H : Any>(
     private class Restart<S : Any, H : Any>(val owner: Lifetime<S, H>) {
         val ready = CompletableDeferred<Job?>()
         var requested = true
+        @Volatile var published: Job? = null
+        var publicationFailed = false
     }
     private data class Cleanup<S : Any, H : Any>(val owner: Lifetime<S, H>, val product: Product<S>?,
         val requestProductStop: Boolean, val observedStop: CompletableDeferred<Boolean>?)
@@ -93,6 +124,165 @@ internal class WifiAwareControllerOwner<S : Any, H : Any>(
         val known: Map<String, String> = emptyMap(), val discovered: Set<String> = emptySet())
 
     private val lifecycleLock = Any()
+    companion object {
+        internal fun participantOrigin(participant: OriginalWifiControllerParticipant): Any? =
+            (participant as? Participant<*, *>)?.original
+    }
+    private class ControllerReceipt : WifiTerminalReceipt
+    private class Initialization<S : Any, H : Any>(val participant: Participant<S, H>) : ControllerInitializationTicket {
+        var token: WifiAwareOwnerToken? = null
+        var ended = false
+        var outcome: WifiInitializationOutcome? = null
+    }
+    private class ControllerView<S : Any, H : Any>(
+        val participant: Participant<S, H>, val revision: Long,
+        val lifetimes: List<Lifetime<S, H>>, val restarts: List<Restart<S, H>>,
+        val stopRecords: List<Pair<Product<S>, CompletableDeferred<Boolean>?>>,
+        products: List<WifiControllerProduct>, gaps: List<WifiHostGap>
+    ) : WifiControllerOriginalView {
+        private val originalProducts = products.toList()
+        private val originalGaps = gaps.toList()
+        override val products: List<WifiControllerProduct> get() = originalProducts.toList()
+        override val gaps: List<WifiHostGap> get() = originalGaps.toList()
+    }
+    private class Participant<S : Any, H : Any>(
+        val owner: WifiAwareControllerOwner<S, H>, val original: H,
+        val hostOf: (S) -> OriginalWifiHostBinding?
+    ) : OriginalWifiControllerParticipant {
+        var terminal: ControllerReceipt? = null
+        override fun fence(): WifiTerminalReceipt = owner.fenceOriginal(this)
+        override fun observe(): WifiControllerOriginalView = owner.observeOriginal(this)
+        override fun validate(view: WifiControllerOriginalView): Boolean = owner.validateOriginal(this, view)
+        override fun requestRestartCancellation(view: WifiControllerOriginalView, caller: WifiHostCaller): List<Throwable> =
+            owner.requestRestartCancellation(this, view, caller)
+        override suspend fun awaitRestarts(view: WifiControllerOriginalView, caller: WifiHostCaller): Boolean =
+            owner.awaitRestarts(this, view, caller)
+    }
+    private val originalParticipants = mutableListOf<Participant<S, H>>()
+    private val originalInitializations = mutableListOf<Initialization<S, H>>()
+    private val lostOriginalHistory = IdentityHashMap<H, Unit>()
+    private fun originalOf(owner: Lifetime<S, H>): H? = when (val binding = owner.binding) {
+        is HolderInitialBinding.Bound -> binding.original
+        HolderInitialBinding.Uninitialized -> null
+    }
+    private fun pinned(owner: Lifetime<S, H>): Boolean = originalParticipants.any { it.original === originalOf(owner) }
+    private fun recordPruned(owner: Lifetime<S, H>): Boolean {
+        originalOf(owner)?.let { lostOriginalHistory[it] = Unit }
+        return true
+    }
+    fun originalParticipant(original: H, hostOf: (S) -> OriginalWifiHostBinding?): OriginalWifiControllerParticipant = synchronized(lifecycleLock) {
+        originalParticipants.firstOrNull { it.original === original }
+            ?: Participant(this, original, hostOf).also { originalParticipants += it; stateRevision++ }
+    }
+    private fun matching(participant: Participant<S, H>): List<Lifetime<S, H>> =
+        lifetimes.filter { originalOf(it) === participant.original }
+    private fun fenceOriginal(participant: Participant<S, H>): WifiTerminalReceipt = synchronized(lifecycleLock) {
+        participant.terminal?.let { return it }
+        ControllerReceipt().also { receipt ->
+            participant.terminal = receipt
+            matching(participant).forEach { owner ->
+                owner.retired = true
+                owner.starting = null
+                if (pendingStart === owner.token) pendingStart = null
+            }
+            stateRevision++
+        }
+    }
+    fun admitOriginalInitialization(participant: OriginalWifiControllerParticipant): ControllerInitializationAdmission = synchronized(lifecycleLock) {
+        val original = originalParticipants.firstOrNull { it === participant } ?: return ControllerInitializationAdmission.Invalid
+        original.terminal?.let { return ControllerInitializationAdmission.Refused(it) }
+        ControllerInitializationAdmission.Accepted(Initialization(original).also { originalInitializations += it; stateRevision++ })
+    }
+    fun beginOriginalOwner(participant: OriginalWifiControllerParticipant, ticket: ControllerInitializationTicket): WifiControllerBeginResult {
+        val original = synchronized(lifecycleLock) { originalParticipants.firstOrNull { it === participant } }
+            ?: return WifiControllerBeginResult.Invalid
+        val token = beginOwnerChecked(original.original, ticket) ?: return synchronized(lifecycleLock) {
+            original.terminal?.let { WifiControllerBeginResult.Refused(it) } ?: WifiControllerBeginResult.Invalid
+        }
+        return WifiControllerBeginResult.Begun(token)
+    }
+    fun finishOriginalInitialization(ticket: ControllerInitializationTicket, outcome: WifiInitializationOutcome) = synchronized(lifecycleLock) {
+        val admitted = originalInitializations.firstOrNull { it === ticket } ?: return@synchronized
+        if (admitted.ended || (outcome == WifiInitializationOutcome.Begun && admitted.token == null)) {
+            admitted.outcome = WifiInitializationOutcome.UnknownFailure
+        } else admitted.outcome = outcome
+        admitted.ended = true
+        stateRevision++
+    }
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private fun observeOriginal(participant: Participant<S, H>): WifiControllerOriginalView {
+        val captured = synchronized(lifecycleLock) {
+            val owners = matching(participant)
+            val gaps = mutableListOf<WifiHostGap>()
+            if (participant.terminal == null || lostOriginalHistory.containsKey(participant.original) ||
+                originalInitializations.any { it.participant === participant && (!it.ended || it.outcome == WifiInitializationOutcome.UnknownFailure) } ||
+                owners.any { it.calls != 0 || it.accountingFailed || it.starting != null } ||
+                pendingCandidates.any { candidate -> owners.any { it === candidate.admission.owner } } || cleanupCount != 0) gaps += WifiHostGap.ControllerUnsettled
+            val restarts = owners.flatMap { it.originalRestarts }
+            if (restarts.any { it.published == null || it.publicationFailed }) gaps += WifiHostGap.PendingPublication
+            Triple(stateRevision, owners.toList(), Pair(restarts.toList(), gaps.toList()))
+        }
+        // Real product mapping and Job state reads are deliberately outside lifecycle RAM.
+        val jobs = captured.third.first
+        val gaps = captured.third.second.toMutableList()
+        if (jobs.any { it.published?.isCompleted != true }) gaps += WifiHostGap.ControllerUnsettled
+        val values = synchronized(lifecycleLock) { captured.second.flatMap { owner ->
+            owner.products.values.map { Triple(it, owner.token, it.stop) }
+        } }
+        val stops = values.map { it.first to it.third }
+        // These old stop acknowledgments remain request-return metadata, not host-body proof.
+        // Their unknown/false outcomes cannot disappear when a late product is no longer current.
+        stops.forEach { (_, stop) ->
+            if (stop != null && (!stop.isCompleted || runCatching { stop.getCompleted() }.getOrDefault(false) != true)) {
+                gaps += WifiHostGap.ControllerUnsettled
+            }
+        }
+        val products = values.map { (product, token, _) -> WifiControllerProduct(product.value, token, participant.hostOf(product.value)) }
+        if (products.any { it.host == null }) gaps += WifiHostGap.MissingHost
+        return ControllerView(participant, captured.first, captured.second, jobs, stops, products, gaps.distinct())
+    }
+    private fun validateOriginal(participant: Participant<S, H>, view: WifiControllerOriginalView): Boolean {
+        val issued = view as? ControllerView<*, *> ?: return false
+        return synchronized(lifecycleLock) {
+            issued.participant === participant && issued.revision == stateRevision && participant.terminal != null &&
+                issued.gaps.isEmpty() && matching(participant).size == issued.lifetimes.size &&
+                matching(participant).all { owner -> issued.lifetimes.any { it === owner } } &&
+                !lostOriginalHistory.containsKey(participant.original) &&
+                matching(participant).all { it.calls == 0 && !it.accountingFailed && it.starting == null } &&
+                originalInitializations.none { it.participant === participant && (!it.ended || it.outcome == WifiInitializationOutcome.UnknownFailure) } &&
+                pendingCandidates.none { candidate -> matching(participant).any { it === candidate.admission.owner } } &&
+                issued.stopRecords.all { (product, stop) -> product.stop === stop } &&
+                matching(participant).sumOf { it.products.size } == issued.products.size &&
+                matching(participant).all { owner -> owner.products.values.all { product ->
+                    issued.products.any { it.product === product.value && it.token === owner.token }
+                } } && cleanupCount == 0
+        }
+    }
+    private fun requestRestartCancellation(participant: Participant<S, H>, view: WifiControllerOriginalView,
+        caller: WifiHostCaller): List<Throwable> {
+        val issued = view as? ControllerView<*, *> ?: return emptyList()
+        if (issued.participant !== participant) return emptyList()
+        val failures = mutableListOf<Throwable>()
+        issued.restarts.forEach { record ->
+            val job = record.published
+            if (job != null && originalWifiCallerGap(caller, job) == null) {
+                try { job.cancel() } catch (failure: Throwable) { failures += failure }
+            }
+        }
+        return failures
+    }
+    private suspend fun awaitRestarts(participant: Participant<S, H>, view: WifiControllerOriginalView,
+        caller: WifiHostCaller): Boolean {
+        val issued = view as? ControllerView<*, *> ?: return false
+        if (issued.participant !== participant || !validateOriginalWifiCaller(caller)) return false
+        for (record in issued.restarts) {
+            val job = record.published ?: return false
+            if (originalWifiCallerGap(caller, job) != null) return false
+            job.join()
+        }
+        return validateOriginal(participant, view) && validateOriginalWifiCaller(caller)
+    }
+
     @Volatile private var service: S? = null
     @Volatile private var current = Lifetime<S, H>(initialBinding)
     private val lifetimes = mutableListOf(current)
@@ -128,9 +318,19 @@ internal class WifiAwareControllerOwner<S : Any, H : Any>(
     val discoveredPeers = _discoveredPeers.asStateFlow()
 
     /** A RAM lifetime change is not authorization that other transport/key owners have drained. */
-    fun beginOwner(original: H): WifiAwareOwnerToken {
+    fun beginOwner(original: H): WifiAwareOwnerToken =
+        beginOwnerChecked(original, null) ?: throw OriginalWifiControllerClosed()
+
+    private fun beginOwnerChecked(original: H, ticket: ControllerInitializationTicket?): WifiAwareOwnerToken? {
         val fresh = Lifetime<S, H>(HolderInitialBinding.Bound(original))
         val cleanup = synchronized(lifecycleLock) {
+            val participant = originalParticipants.firstOrNull { it.original === original }
+            if (participant?.terminal != null) return null
+            if (ticket != null) {
+                val admission = originalInitializations.firstOrNull { it === ticket } ?: return null
+                if (admission.participant !== participant || admission.ended || admission.token != null) return null
+                admission.token = fresh.token
+            }
             val old = current
             // Reserve cleanup before publishing B, so synchronous A stop effects
             // cannot race a B start. A's still-held factory remains separate debt.
@@ -143,8 +343,8 @@ internal class WifiAwareControllerOwner<S : Any, H : Any>(
             stateRevision++
             current = fresh
             lifetimes += fresh
-            lifetimes.removeAll { it !== fresh && it.calls == 0 && it.restarts.isEmpty() &&
-                (it.confirmed || (it.products.isEmpty() && !it.accountingFailed && it.retirement == null)) }
+            lifetimes.removeAll { !pinned(it) && it !== fresh && it.calls == 0 && it.restarts.isEmpty() &&
+                (it.confirmed || (it.products.isEmpty() && !it.accountingFailed && it.retirement == null)) && recordPruned(it) }
             reserved
         }
         if (cleanup != null) runCleanup(cleanup) else publishDebug()
@@ -511,7 +711,7 @@ internal class WifiAwareControllerOwner<S : Any, H : Any>(
                 retirement.result.await()
             }
             synchronized(lifecycleLock) {
-                lifetimes.removeAll { it !== current && it.confirmed && it.calls == 0 && it.restarts.isEmpty() }
+                lifetimes.removeAll { !pinned(it) && it !== current && it.confirmed && it.calls == 0 && it.restarts.isEmpty() && recordPruned(it) }
             }
             WifiAwareControllerRetirement(results.all { it.admittedStartsDrained }, results.all { it.capturedProductsAcknowledged })
         }
@@ -570,7 +770,7 @@ internal class WifiAwareControllerOwner<S : Any, H : Any>(
             val owner = current
             if (!active(owner) || owner.token !== origin || !enabledState) return
             owner.restart?.let { it.requested = true; return }
-            Restart(owner).also { owner.restart = it; owner.restarts += it }
+            Restart(owner).also { owner.restart = it; owner.restarts += it; owner.originalRestarts += it }
         }
         try {
             val job = ports.scope.launch(start = CoroutineStart.LAZY) {
@@ -587,8 +787,10 @@ internal class WifiAwareControllerOwner<S : Any, H : Any>(
                     }
                 } while (synchronized(lifecycleLock) { restart.requested } && restartNeeded(restart))
             }
+            synchronized(lifecycleLock) { restart.published = job }
             job.invokeOnCompletion { cause ->
                 val retry = synchronized(lifecycleLock) {
+                    if (!pinned(restart.owner)) { originalOf(restart.owner)?.let { lostOriginalHistory[it] = Unit }; restart.owner.originalRestarts.remove(restart) }
                     restart.owner.restarts.remove(restart)
                     if (restart.owner.restart === restart) restart.owner.restart = null
                     cause == null && restart.requested && active(restart.owner) && enabledState && !runningState
@@ -601,6 +803,8 @@ internal class WifiAwareControllerOwner<S : Any, H : Any>(
         } catch (failure: Throwable) {
             synchronized(lifecycleLock) {
                 restart.owner.accountingFailed = true
+                restart.publicationFailed = true
+                if (!pinned(restart.owner)) { originalOf(restart.owner)?.let { lostOriginalHistory[it] = Unit }; restart.owner.originalRestarts.remove(restart) }
                 restart.owner.restarts.remove(restart)
                 if (restart.owner.restart === restart) restart.owner.restart = null
             }

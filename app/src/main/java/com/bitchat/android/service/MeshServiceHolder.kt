@@ -64,6 +64,16 @@ object MeshServiceHolder {
         construction: HolderWifiConstructionContext, creator: () -> com.bitchat.android.mesh.StoreForwardManager
     ): com.bitchat.android.mesh.StoreForwardManager = owner.constructWifiStoreForward(construction, creator)
 
+    internal fun attachOriginalWifiController(original: HolderOrigin,
+        participant: com.bitchat.android.wifiaware.OriginalWifiControllerParticipant) = owner.attachOriginalWifiController(original, participant)
+
+    internal fun finishWifiInitialization(ticket: HolderWifiInitializationTicket,
+        outcome: com.bitchat.android.wifiaware.WifiInitializationOutcome) = owner.finishWifiInitialization(ticket, outcome)
+
+    internal fun constructWifiHost(context: HolderWifiConstructionContext,
+        creator: () -> com.bitchat.android.wifiaware.OriginalWifiHostOwner): com.bitchat.android.wifiaware.OriginalWifiHostOwner =
+        owner.constructWifiHost(context, creator)
+
     internal fun constructGossipManager(
         parent: HolderGossipParent,
         source: HolderGossipSource,
