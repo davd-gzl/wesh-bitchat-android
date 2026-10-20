@@ -92,13 +92,14 @@ private class CapturedHolderPanicBinding(
     val subject: HolderPanicSubject,
     val product: Any,
     val gossipCollector: BoundGossipCollector,
-    val processorCollector: BoundProcessorCollector
+    val processorCollector: BoundProcessorCollector,
+    val storeForwardCollector: BoundStoreForwardCollector
 ) : HolderPanicBinding
 private class UnconfirmedHolderPanicBinding(val gap: HolderPanicCaptureGap) : HolderPanicBinding
 
 internal fun captureHolderPanicBinding(actor: HolderPanicAdmissionActor, exactUnified: Any): HolderPanicBinding =
     when (val captured = actor.captureUnifiedPanicSubject(exactUnified)) {
-        is HolderPanicSubjectCapture.Captured -> CapturedHolderPanicBinding(actor, captured.subject, exactUnified, BoundGossipCollector.Missing, BoundProcessorCollector.Missing)
+        is HolderPanicSubjectCapture.Captured -> CapturedHolderPanicBinding(actor, captured.subject, exactUnified, BoundGossipCollector.Missing, BoundProcessorCollector.Missing, BoundStoreForwardCollector.Missing)
         is HolderPanicSubjectCapture.Unconfirmed -> UnconfirmedHolderPanicBinding(captured.gap)
     }
 
@@ -125,7 +126,7 @@ internal sealed interface HolderGossipSubsetCapture<out G : Any> {
     class Unconfirmed(val gap: HolderGossipCaptureGap) : HolderGossipSubsetCapture<Nothing>
 }
 
-internal enum class HolderContextOperationKind { ManagerCreator, BluetoothEnsure, ManagerRegistration, ExternalAttach, PacketProcessorCreator }
+internal enum class HolderContextOperationKind { ManagerCreator, BluetoothEnsure, ManagerRegistration, ExternalAttach, PacketProcessorCreator, StoreForwardCreator }
 internal enum class HolderContextOperationGap { ForeignContext, WrongContextKind, EndedContextAfterClose, UnattributedAfterClose }
 internal sealed class HolderContextOperationRefusal protected constructor(
     val operation: HolderContextOperationKind,
@@ -193,7 +194,8 @@ internal fun <B : Any, U : Any> captureHolderPanicBindingWithGossip(
     is HolderPanicSubjectCapture.Captured -> CapturedHolderPanicBinding(
         original, captured.subject, exactUnified,
         BoundGossipCollector.Installed(TypedOriginalGossipCollector(original)),
-        BoundProcessorCollector.Installed(TypedOriginalProcessorCollector(original))
+        BoundProcessorCollector.Installed(TypedOriginalProcessorCollector(original)),
+        BoundStoreForwardCollector.Installed(TypedOriginalStoreForwardCollector(original))
     )
     is HolderPanicSubjectCapture.Unconfirmed -> UnconfirmedHolderPanicBinding(captured.gap)
 }
@@ -316,6 +318,71 @@ internal fun validateHolderOriginalBluetoothAndCoreProcessors(
     is CapturedHolderPanicBinding -> binding.product === product && when (val collector = binding.processorCollector) {
         BoundProcessorCollector.Missing -> false
         is BoundProcessorCollector.Installed -> collector.original.validateBluetoothAndCore(binding.subject, product, batch)
+    }
+}
+
+/** Distinct StoreForward custody; old processor batches confer no Store authority. */
+internal sealed interface HolderStoreForwardChildIdentity
+internal sealed interface HolderStoreForwardParentIdentity
+internal enum class HolderStoreForwardSource { BluetoothService, WifiCore }
+internal enum class HolderStoreForwardState { Dispatched, Returned, Unknown }
+internal enum class HolderStoreForwardGap {
+    MissingCollector, MissingStoreForward, UnknownStoreForward, DuplicateStoreForward, ParentMismatch, WitnessChanged
+}
+internal data class HolderStoreForwardRow(
+    val child: HolderStoreForwardChildIdentity, val parent: HolderStoreForwardParentIdentity,
+    val root: com.bitchat.android.mesh.OriginalStoreForwardRootIdentity?, val state: HolderStoreForwardState,
+    val source: HolderStoreForwardSource
+)
+internal sealed interface HolderProcessorStoreForwardBatch {
+    val processorBatch: HolderProcessorBatch
+    val storeForwardRoots: List<com.bitchat.android.mesh.OriginalStoreForwardBinding>
+    val storeForwardRows: List<HolderStoreForwardRow>
+    val storeForwardGaps: List<HolderStoreForwardGap>
+}
+internal sealed interface HolderProcessorStoreForwardFailure {
+    class Processor(val gap: HolderProcessorGap) : HolderProcessorStoreForwardFailure
+    class StoreForward(val gap: HolderStoreForwardGap) : HolderProcessorStoreForwardFailure
+}
+internal sealed interface HolderProcessorStoreForwardCapture {
+    class Observed(val batch: HolderProcessorStoreForwardBatch) : HolderProcessorStoreForwardCapture
+    class Invalid(val failure: HolderProcessorStoreForwardFailure) : HolderProcessorStoreForwardCapture
+}
+private interface OriginalStoreForwardCollector {
+    fun capture(subject: HolderPanicSubject, product: Any): HolderProcessorStoreForwardCapture
+    fun validate(subject: HolderPanicSubject, product: Any, batch: HolderProcessorStoreForwardBatch): Boolean
+}
+private class TypedOriginalStoreForwardCollector<B : Any, U : Any, G : Any>(
+    private val original: MeshServiceHolderOwner<B, U, G>
+) : OriginalStoreForwardCollector {
+    override fun capture(subject: HolderPanicSubject, product: Any) = original.captureOriginalProcessorStoreForwardUnion(subject, product)
+    override fun validate(subject: HolderPanicSubject, product: Any, batch: HolderProcessorStoreForwardBatch) =
+        original.validateOriginalProcessorStoreForwardUnion(subject, product, batch)
+}
+private sealed interface BoundStoreForwardCollector {
+    data object Missing : BoundStoreForwardCollector
+    class Installed(val original: OriginalStoreForwardCollector) : BoundStoreForwardCollector
+}
+internal fun captureHolderOriginalProcessorStoreForwardUnion(
+    binding: HolderPanicBinding, exactProduct: Any
+): HolderProcessorStoreForwardCapture = when (binding) {
+    is UnconfirmedHolderPanicBinding -> HolderProcessorStoreForwardCapture.Invalid(
+        HolderProcessorStoreForwardFailure.Processor(HolderProcessorGap.InvalidSubject))
+    is CapturedHolderPanicBinding -> if (binding.product !== exactProduct) HolderProcessorStoreForwardCapture.Invalid(
+        HolderProcessorStoreForwardFailure.Processor(HolderProcessorGap.InvalidSubject))
+    else when (val collector = binding.storeForwardCollector) {
+        BoundStoreForwardCollector.Missing -> HolderProcessorStoreForwardCapture.Invalid(
+            HolderProcessorStoreForwardFailure.StoreForward(HolderStoreForwardGap.MissingCollector))
+        is BoundStoreForwardCollector.Installed -> collector.original.capture(binding.subject, exactProduct)
+    }
+}
+internal fun validateHolderOriginalProcessorStoreForwardUnion(
+    binding: HolderPanicBinding, exactProduct: Any, batch: HolderProcessorStoreForwardBatch
+): Boolean = when (binding) {
+    is UnconfirmedHolderPanicBinding -> false
+    is CapturedHolderPanicBinding -> binding.product === exactProduct && when (val collector = binding.storeForwardCollector) {
+        BoundStoreForwardCollector.Missing -> false
+        is BoundStoreForwardCollector.Installed -> collector.original.validate(binding.subject, exactProduct, batch)
     }
 }
 
@@ -474,6 +541,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         val suppliedBluetooth: Any?,
         val controllerOrigin: Any? = null,
         val processorParent: HolderProcessorParentIdentity = ProcessorParentIdentity(),
+        val storeForwardParent: HolderStoreForwardParentIdentity = StoreForwardParentIdentity(),
         var selection: HolderWifiManagerSelection<G> = HolderWifiManagerSelection.NotSelected,
         var outcome: HolderConstructionOutcome = HolderConstructionOutcome.Dispatched
     )
@@ -569,6 +637,119 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         }
         return allocated
     }
+
+    private class StoreForwardChildIdentity : HolderStoreForwardChildIdentity
+    private class StoreForwardParentIdentity : HolderStoreForwardParentIdentity
+    private class StoreForwardChild(
+        val identity: HolderStoreForwardChildIdentity, val context: HolderConstructionContext,
+        val entry: HolderEntryOrigin, val parent: HolderStoreForwardParentIdentity,
+        val source: HolderStoreForwardSource,
+        var state: HolderStoreForwardState = HolderStoreForwardState.Dispatched,
+        var allocated: com.bitchat.android.mesh.StoreForwardManager? = null,
+        var binding: com.bitchat.android.mesh.OriginalStoreForwardBinding? = null,
+        var rootIdentity: com.bitchat.android.mesh.OriginalStoreForwardRootIdentity? = null
+    )
+    private val storeForwardChildren = mutableListOf<StoreForwardChild>()
+    private class ProcessorStoreForwardBatch(
+        val anchor: Any, val subject: HolderPanicSubject, val product: Any, val revision: Any,
+        override val processorBatch: HolderProcessorBatch,
+        roots: List<com.bitchat.android.mesh.OriginalStoreForwardBinding>,
+        rows: List<HolderStoreForwardRow>, gaps: List<HolderStoreForwardGap>
+    ) : HolderProcessorStoreForwardBatch {
+        private val originalRoots = roots.toList()
+        private val originalRows = rows.toList()
+        private val originalGaps = gaps.toList()
+        val eligible = processorBatch.gaps.isEmpty() && originalGaps.isEmpty()
+        override val storeForwardRoots get() = originalRoots.toList()
+        override val storeForwardRows get() = originalRows.toList()
+        override val storeForwardGaps get() = originalGaps.toList()
+    }
+
+    /** No registry monitor surrounds allocation or the manager-owned immutable binding read. */
+    fun constructBluetoothStoreForward(
+        context: HolderConstructionContext, creator: () -> com.bitchat.android.mesh.StoreForwardManager
+    ): com.bitchat.android.mesh.StoreForwardManager = constructStoreForward(
+        context, HolderConstructionKind.BLUETOOTH, HolderStoreForwardSource.BluetoothService, creator)
+
+    fun constructWifiStoreForward(
+        context: HolderWifiConstructionContext, creator: () -> com.bitchat.android.mesh.StoreForwardManager
+    ): com.bitchat.android.mesh.StoreForwardManager = constructStoreForward(
+        context, HolderConstructionKind.WIFI, HolderStoreForwardSource.WifiCore, creator)
+
+    private fun constructStoreForward(
+        context: HolderConstructionContext, expected: HolderConstructionKind, source: HolderStoreForwardSource,
+        creator: () -> com.bitchat.android.mesh.StoreForwardManager
+    ): com.bitchat.android.mesh.StoreForwardManager {
+        val (operation, child) = synchronized(registryMonitor) {
+            val operation = admit(HolderContextOperationKind.StoreForwardCreator, context, expected)
+            val parent = checkNotNull(constructionFor(context))
+            val child = StoreForwardChild(StoreForwardChildIdentity(), context, checkNotNull(operation.entry), parent.storeForwardParent, source)
+            storeForwardChildren += child
+            changed()
+            operation to child
+        }
+        val allocated = try { creator() } catch (failure: Throwable) {
+            synchronized(registryMonitor) { child.state = HolderStoreForwardState.Unknown; changed() }
+            finish(operation, false, failure = failureKind(failure))
+            throw failure
+        }
+        synchronized(registryMonitor) { child.allocated = allocated; changed() }
+        val binding = try { allocated.captureOriginalStoreForwardBinding() } catch (failure: Throwable) {
+            synchronized(registryMonitor) { child.state = HolderStoreForwardState.Unknown; changed() }
+            finish(operation, false, failure = failureKind(failure))
+            throw failure
+        }
+        val identity = binding.identity
+        synchronized(registryMonitor) {
+            child.binding = binding
+            child.rootIdentity = identity
+            child.state = HolderStoreForwardState.Returned
+            operation.state = HolderContextOperationState.Completed
+            changed()
+        }
+        return allocated
+    }
+
+    /** One reentrant JVM monitor observation; stored identities only, never an endpoint getter. */
+    fun captureOriginalProcessorStoreForwardUnion(subject: HolderPanicSubject, product: Any): HolderProcessorStoreForwardCapture =
+        synchronized(registryMonitor) {
+            val pp = when (val captured = captureOriginalProcessors(subject, product, HolderProcessorScope.BluetoothAndCore)) {
+                is HolderProcessorCapture.Invalid -> return@synchronized HolderProcessorStoreForwardCapture.Invalid(
+                    HolderProcessorStoreForwardFailure.Processor(captured.gap))
+                is HolderProcessorCapture.Observed -> captured.batch
+            }
+            val roots = mutableListOf<com.bitchat.android.mesh.OriginalStoreForwardBinding>()
+            val seen = java.util.IdentityHashMap<com.bitchat.android.mesh.OriginalStoreForwardBinding, Unit>()
+            val gaps = mutableListOf<HolderStoreForwardGap>()
+            storeForwardChildren.forEach { child ->
+                val parent = constructionFor(child.context)
+                val expected = if (child.source == HolderStoreForwardSource.BluetoothService) HolderConstructionKind.BLUETOOTH else HolderConstructionKind.WIFI
+                if (parent == null || parent.kind != expected || parent.entry !== child.entry ||
+                    parent.storeForwardParent !== child.parent) gaps += HolderStoreForwardGap.ParentMismatch
+                if (child.state != HolderStoreForwardState.Returned || child.binding == null || child.rootIdentity == null) {
+                    gaps += HolderStoreForwardGap.UnknownStoreForward
+                }
+                child.binding?.let { binding ->
+                    if (seen.put(binding, Unit) == null) roots += binding else gaps += HolderStoreForwardGap.DuplicateStoreForward
+                }
+            }
+            constructions.values.filter { it.kind == HolderConstructionKind.BLUETOOTH || it.kind == HolderConstructionKind.WIFI }.forEach { parent ->
+                val source = if (parent.kind == HolderConstructionKind.BLUETOOTH) HolderStoreForwardSource.BluetoothService else HolderStoreForwardSource.WifiCore
+                val count = storeForwardChildren.count { it.context === parent.context && it.entry === parent.entry && it.source == source &&
+                    it.state == HolderStoreForwardState.Returned && it.binding != null }
+                if (count != 1) gaps += if (count > 1) HolderStoreForwardGap.DuplicateStoreForward else HolderStoreForwardGap.MissingStoreForward
+            }
+            if (roots.isEmpty()) gaps += HolderStoreForwardGap.MissingStoreForward
+            HolderProcessorStoreForwardCapture.Observed(ProcessorStoreForwardBatch(ownerAnchor, subject, product, censusRevision, pp,
+                roots, storeForwardChildren.map { HolderStoreForwardRow(it.identity, it.parent, it.rootIdentity, it.state, it.source) }, gaps.distinct()))
+        }
+
+    fun validateOriginalProcessorStoreForwardUnion(subject: HolderPanicSubject, product: Any, batch: HolderProcessorStoreForwardBatch): Boolean =
+        synchronized(registryMonitor) {
+            batch is ProcessorStoreForwardBatch && batch.anchor === ownerAnchor && batch.subject === subject &&
+                batch.product === product && batch.revision === censusRevision && batch.eligible &&
+                validateOriginalProcessors(subject, product, batch.processorBatch, HolderProcessorScope.BluetoothAndCore)
+        }
 
     /** The old entry point observes only original Bluetooth processor children. */
     fun captureOriginalBluetoothProcessors(subject: HolderPanicSubject, product: Any): HolderProcessorCapture =

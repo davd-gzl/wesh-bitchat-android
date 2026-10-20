@@ -8,6 +8,114 @@ import kotlinx.coroutines.*
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
+/** Authentic original StoreForward identity, never a report-restorable Job handle. */
+internal sealed interface OriginalStoreForwardRootIdentity
+internal sealed interface OriginalStoreForwardBinding { val identity: OriginalStoreForwardRootIdentity }
+private class StoreForwardRootIdentity : OriginalStoreForwardRootIdentity
+private class StoreForwardRootBinding(val manager: StoreForwardManager, val root: Job) : OriginalStoreForwardBinding {
+    override val identity: OriginalStoreForwardRootIdentity = StoreForwardRootIdentity()
+    private val requestLock = Any()
+    private var requested = false
+    fun requested(): Boolean = synchronized(requestLock) { requested }
+    fun request() {
+        synchronized(requestLock) { requested = true }
+        // Cancellation handlers run outside the request lock and Holder/controller monitors.
+        root.cancel()
+    }
+}
+internal enum class OriginalStoreForwardGap {
+    MissingCaller, UninspectableCaller, CallerRelated, ForeignBinding, RequestUnavailable, ChangedCaller
+}
+internal sealed interface OriginalStoreForwardCaller { val gap: OriginalStoreForwardGap? }
+private class ActiveStoreForwardCaller(val invoking: Job, val chain: List<Job>) : OriginalStoreForwardCaller {
+    override val gap: OriginalStoreForwardGap? = null
+}
+private class UnconfirmedStoreForwardCaller(override val gap: OriginalStoreForwardGap) : OriginalStoreForwardCaller
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+internal suspend fun captureOriginalStoreForwardCaller(): OriginalStoreForwardCaller {
+    val context = currentCoroutineContext()
+    context.ensureActive()
+    val invoking = context[Job] ?: return UnconfirmedStoreForwardCaller(OriginalStoreForwardGap.MissingCaller)
+    val chain = mutableListOf<Job>()
+    val seen = java.util.IdentityHashMap<Job, Unit>()
+    try {
+        var current: Job? = invoking
+        while (current != null) {
+            if (!current.isActive || seen.put(current, Unit) != null) {
+                return UnconfirmedStoreForwardCaller(OriginalStoreForwardGap.UninspectableCaller)
+            }
+            chain += current
+            current = current.parent
+        }
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { return UnconfirmedStoreForwardCaller(OriginalStoreForwardGap.UninspectableCaller) }
+    context.ensureActive()
+    return ActiveStoreForwardCaller(invoking, chain.toList())
+}
+
+internal fun originalStoreForwardRelationshipGap(
+    binding: OriginalStoreForwardBinding, caller: OriginalStoreForwardCaller
+): OriginalStoreForwardGap? {
+    val original = binding as? StoreForwardRootBinding ?: return OriginalStoreForwardGap.ForeignBinding
+    val active = caller as? ActiveStoreForwardCaller ?: return caller.gap ?: OriginalStoreForwardGap.UninspectableCaller
+    return if (active.chain.any { it === original.root }) OriginalStoreForwardGap.CallerRelated else null
+}
+
+internal fun originalStoreForwardShutdownRequested(binding: OriginalStoreForwardBinding): Boolean {
+    val original = binding as? StoreForwardRootBinding ?: return false
+    return original.manager.captureOriginalStoreForwardBinding() === binding && original.requested()
+}
+
+/** Terminal cancellation request only: no cache clear and no completion acknowledgment. */
+internal fun requestOriginalStoreForwardShutdown(binding: OriginalStoreForwardBinding): Boolean {
+    val original = binding as? StoreForwardRootBinding ?: return false
+    if (original.manager.captureOriginalStoreForwardBinding() !== binding) return false
+    original.request()
+    return original.requested()
+}
+
+internal sealed interface OriginalStoreForwardAwaitPreparation
+private class PreparedStoreForwardAwait(
+    val original: StoreForwardRootBinding, val caller: ActiveStoreForwardCaller
+) : OriginalStoreForwardAwaitPreparation
+internal sealed interface OriginalStoreForwardPreparation {
+    class Ready(val preparation: OriginalStoreForwardAwaitPreparation) : OriginalStoreForwardPreparation
+    class Unconfirmed(val gap: OriginalStoreForwardGap) : OriginalStoreForwardPreparation
+}
+internal suspend fun prepareOriginalStoreForwardAwait(
+    binding: OriginalStoreForwardBinding, caller: OriginalStoreForwardCaller
+): OriginalStoreForwardPreparation {
+    val context = currentCoroutineContext()
+    context.ensureActive()
+    val gap = originalStoreForwardRelationshipGap(binding, caller)
+    if (gap != null) return OriginalStoreForwardPreparation.Unconfirmed(gap)
+    val active = caller as? ActiveStoreForwardCaller
+        ?: return OriginalStoreForwardPreparation.Unconfirmed(OriginalStoreForwardGap.UninspectableCaller)
+    if (context[Job] !== active.invoking) return OriginalStoreForwardPreparation.Unconfirmed(OriginalStoreForwardGap.ChangedCaller)
+    val original = binding as? StoreForwardRootBinding
+        ?: return OriginalStoreForwardPreparation.Unconfirmed(OriginalStoreForwardGap.ForeignBinding)
+    if (!originalStoreForwardShutdownRequested(binding) || !original.root.isCancelled) {
+        return OriginalStoreForwardPreparation.Unconfirmed(OriginalStoreForwardGap.RequestUnavailable)
+    }
+    return OriginalStoreForwardPreparation.Ready(PreparedStoreForwardAwait(original, active))
+}
+internal suspend fun validateOriginalStoreForwardPreparation(preparation: OriginalStoreForwardAwaitPreparation): Boolean {
+    val context = currentCoroutineContext()
+    context.ensureActive()
+    val prepared = preparation as? PreparedStoreForwardAwait ?: return false
+    return context[Job] === prepared.caller.invoking &&
+        originalStoreForwardRelationshipGap(prepared.original, prepared.caller) == null &&
+        originalStoreForwardShutdownRequested(prepared.original) && prepared.original.root.isCancelled
+}
+/** Returns only after the same immutable original root, retaining the original invoking identity. */
+internal suspend fun awaitOriginalStoreForward(preparation: OriginalStoreForwardAwaitPreparation): Boolean {
+    if (!validateOriginalStoreForwardPreparation(preparation)) return false
+    val prepared = preparation as? PreparedStoreForwardAwait ?: return false
+    prepared.original.root.join()
+    return validateOriginalStoreForwardPreparation(preparation)
+}
+
 /**
  * Manages store-and-forward messaging for offline peers
  * Extracted from BluetoothMeshService for better separation of concerns
@@ -42,7 +150,10 @@ class StoreForwardManager {
     var delegate: StoreForwardManagerDelegate? = null
     
     // Coroutines
-    private val managerScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val managerJob = SupervisorJob()
+    private val managerScope = CoroutineScope(Dispatchers.IO + managerJob)
+    private val originalStoreForwardBinding = StoreForwardRootBinding(this, managerJob)
+    internal fun captureOriginalStoreForwardBinding(): OriginalStoreForwardBinding = originalStoreForwardBinding
     
     init {
         startPeriodicCleanup()
