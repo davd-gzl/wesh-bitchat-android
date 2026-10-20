@@ -78,7 +78,7 @@ class BluetoothMeshService internal constructor(
         )
     }
     private val securityManager = SecurityManager(encryptionService, myPeerID)
-    private val storeForwardManager = StoreForwardManager()
+    private val storeForwardManager = com.bitchat.android.service.MeshServiceHolder.constructBluetoothStoreForward(holderConstruction) { StoreForwardManager() }
     private val messageHandler = MessageHandler(myPeerID, context.applicationContext)
 
     private fun admissionFingerprint(peerID: String): String? =

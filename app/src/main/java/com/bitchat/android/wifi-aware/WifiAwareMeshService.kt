@@ -175,6 +175,9 @@ class WifiAwareMeshService internal constructor(
                     creator
                 )
             },
+            recordStoreForwardManager = { creator ->
+                com.bitchat.android.service.MeshServiceHolder.constructWifiStoreForward(holderConstruction, creator)
+            },
             recordPacketProcessor = { creator ->
                 com.bitchat.android.service.MeshServiceHolder.constructWifiProcessor(holderConstruction, creator)
             },

@@ -440,6 +440,7 @@ class PanicOriginalCoreProcessorsTest {
                         override fun gcsTargetFpr() = 0.01
                     },
                     recordFallbackGossip = { _ -> error("Shared inert manager must prevent fallback") },
+                    recordStoreForwardManager = { creator -> creator() },
                     recordPacketProcessor = { creator ->
                         holder.constructWifiProcessor(context, creator).also { record.installProcessor(it); processors += it }
                     },

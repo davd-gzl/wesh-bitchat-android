@@ -160,7 +160,25 @@ internal data class PanicOriginalProcessorEvidence(
     val awaitReturnedRoots: List<com.bitchat.android.mesh.OriginalProcessorRootIdentity>
 )
 
+internal data class PanicStoreForwardRequest(
+    val root: com.bitchat.android.mesh.OriginalStoreForwardRootIdentity,
+    val status: PanicProcessorRequestStatus
+)
+internal enum class PanicStoreForwardBatchStatus { Ineligible, NeedsExplicitRetry, RequestedNotAwaited, AwaitReturned }
+internal data class PanicOriginalStoreForwardEvidence(
+    val status: PanicStoreForwardBatchStatus,
+    val rows: List<com.bitchat.android.service.HolderStoreForwardRow>,
+    val requests: List<PanicStoreForwardRequest>,
+    val holderGaps: List<com.bitchat.android.service.HolderStoreForwardGap>,
+    val callerGaps: List<com.bitchat.android.mesh.OriginalStoreForwardGap>,
+    val awaitReturnedRoots: List<com.bitchat.android.mesh.OriginalStoreForwardRootIdentity>
+)
+
 internal sealed interface PanicUnconfirmedEvidence {
+    class OriginalProcessorStoreForwardUnion(
+        val processorObservation: PanicOriginalProcessorEvidence,
+        val storeForwardObservation: PanicOriginalStoreForwardEvidence
+    ) : PanicUnconfirmedEvidence
     class OriginalBluetoothProcessors(val observation: PanicOriginalProcessorEvidence) : PanicUnconfirmedEvidence
     class OriginalBluetoothAndCoreProcessors(val observation: PanicOriginalProcessorEvidence) : PanicUnconfirmedEvidence
     data object NotCollected : PanicUnconfirmedEvidence
@@ -281,16 +299,23 @@ private suspend fun collectRecordedGossipPhase(
 }
 
 private enum class PanicProcessorScope { BluetoothOnly, BluetoothAndCore }
+private enum class StoreForwardCollection { NotRequestedLegacy, RequiredOriginalUnion }
 
 /** Compatibility entry point for the original Bluetooth-only scope. */
 internal suspend fun collectPanicRetirementWithOriginalBluetoothProcessors(
     originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput
-): PanicRetirementReport = collectOriginalProcessors(originalFacade, originalGossip, PanicProcessorScope.BluetoothOnly)
+): PanicRetirementReport = collectOriginalProcessors(originalFacade, originalGossip, PanicProcessorScope.BluetoothOnly, StoreForwardCollection.NotRequestedLegacy)
 
 /** All known safe original Bluetooth and Core roots are requested before any processor await. */
 internal suspend fun collectPanicRetirementWithOriginalBluetoothAndCoreProcessors(
     originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput
-): PanicRetirementReport = collectOriginalProcessors(originalFacade, originalGossip, PanicProcessorScope.BluetoothAndCore)
+): PanicRetirementReport = collectOriginalProcessors(originalFacade, originalGossip, PanicProcessorScope.BluetoothAndCore, StoreForwardCollection.NotRequestedLegacy)
+
+/** Required original StoreForward authority is distinct from the two old processor scopes. */
+internal suspend fun collectPanicRetirementWithOriginalProcessorStoreForwardUnion(
+    originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput
+): PanicRetirementReport = collectOriginalProcessors(originalFacade, originalGossip,
+    PanicProcessorScope.BluetoothAndCore, StoreForwardCollection.RequiredOriginalUnion)
 
 private fun captureOriginalProcessors(
     scope: PanicProcessorScope, binding: com.bitchat.android.service.HolderPanicBinding, product: Any
@@ -308,12 +333,17 @@ private fun validateOriginalProcessors(
 }
 
 private suspend fun collectOriginalProcessors(
-    originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput, scope: PanicProcessorScope
+    originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput, scope: PanicProcessorScope,
+    storeCollection: StoreForwardCollection
 ): PanicRetirementReport {
     val installed = originalGossip as? PanicOriginalGossipInput.Installed
+    val requireStore = storeCollection == StoreForwardCollection.RequiredOriginalUnion
+    var storeEvidence = PanicOriginalStoreForwardEvidence(PanicStoreForwardBatchStatus.Ineligible,
+        emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
     fun withEvidence(report: PanicRetirementReport, evidence: PanicOriginalProcessorEvidence) = report.copy(
         transportCoreRadioAndHandlers = PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.ProducerNotImplemented,
-            when (scope) {
+            if (requireStore) PanicUnconfirmedEvidence.OriginalProcessorStoreForwardUnion(evidence, storeEvidence)
+            else when (scope) {
                 PanicProcessorScope.BluetoothOnly -> PanicUnconfirmedEvidence.OriginalBluetoothProcessors(evidence)
                 PanicProcessorScope.BluetoothAndCore -> PanicUnconfirmedEvidence.OriginalBluetoothAndCoreProcessors(evidence)
             }))
@@ -322,7 +352,23 @@ private suspend fun collectOriginalProcessors(
         val report = collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
         return withEvidence(report, empty(if (installed == null) PanicProcessorBatchStatus.MissingInput else PanicProcessorBatchStatus.InvalidInput))
     }
-    val first = captureOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh)
+    val firstUnion = if (requireStore) com.bitchat.android.service.captureHolderOriginalProcessorStoreForwardUnion(
+        installed.binding, installed.exactOriginalMesh) else null
+    val originalUnion = (firstUnion as? com.bitchat.android.service.HolderProcessorStoreForwardCapture.Observed)?.batch
+    val first = if (!requireStore) captureOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh)
+        else when (firstUnion) {
+            is com.bitchat.android.service.HolderProcessorStoreForwardCapture.Observed ->
+                com.bitchat.android.service.HolderProcessorCapture.Observed(firstUnion.batch.processorBatch)
+            is com.bitchat.android.service.HolderProcessorStoreForwardCapture.Invalid -> when (val failure = firstUnion.failure) {
+                is com.bitchat.android.service.HolderProcessorStoreForwardFailure.Processor ->
+                    com.bitchat.android.service.HolderProcessorCapture.Invalid(failure.gap)
+                is com.bitchat.android.service.HolderProcessorStoreForwardFailure.StoreForward -> {
+                    storeEvidence = storeEvidence.copy(holderGaps = listOf(failure.gap))
+                    com.bitchat.android.service.HolderProcessorCapture.Invalid(com.bitchat.android.service.HolderProcessorGap.MissingCollector)
+                }
+            }
+            null -> error("Required StoreForward capture must be performed")
+        }
     val original = (first as? com.bitchat.android.service.HolderProcessorCapture.Observed)?.batch
     if (original == null) {
         val report = collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
@@ -331,6 +377,10 @@ private suspend fun collectOriginalProcessors(
     }
     // Snapshot active caller ancestry before any cancellation can detach its original links.
     val caller = com.bitchat.android.mesh.captureOriginalProcessorCaller()
+    val storeCaller = if (requireStore) com.bitchat.android.mesh.captureOriginalStoreForwardCaller() else null
+    val storeRequests = mutableListOf<PanicStoreForwardRequest>()
+    val storesRequested = mutableListOf<com.bitchat.android.mesh.OriginalStoreForwardBinding>()
+    val storeCallerGaps = mutableListOf<com.bitchat.android.mesh.OriginalStoreForwardGap>()
     val requests = mutableListOf<PanicProcessorRequest>()
     val requested = mutableListOf<com.bitchat.android.mesh.OriginalProcessorBinding>()
     val awaitReturnedRoots = mutableListOf<com.bitchat.android.mesh.OriginalProcessorRootIdentity>()
@@ -348,6 +398,19 @@ private suspend fun collectOriginalProcessors(
             } else callerGaps += com.bitchat.android.mesh.OriginalProcessorGap.RequestUnavailable
         } catch (failure: Throwable) { failures += failure }
     }
+    // Both original active caller chains were captured before the first cancellation.
+    originalUnion?.storeForwardRoots?.forEach { binding ->
+        val gap = com.bitchat.android.mesh.originalStoreForwardRelationshipGap(binding, checkNotNull(storeCaller))
+        if (gap != null) {
+            storeCallerGaps += gap
+            storeRequests += PanicStoreForwardRequest(binding.identity, PanicProcessorRequestStatus.UnsafeCaller)
+        } else try {
+            if (com.bitchat.android.mesh.requestOriginalStoreForwardShutdown(binding)) {
+                storesRequested += binding
+                storeRequests += PanicStoreForwardRequest(binding.identity, PanicProcessorRequestStatus.RequestReturned)
+            } else storeCallerGaps += com.bitchat.android.mesh.OriginalStoreForwardGap.RequestUnavailable
+        } catch (failure: Throwable) { failures += failure }
+    }
     try { currentCoroutineContext().ensureActive() }
     catch (cancelled: CancellationException) { failures += cancelled }
     if (failures.isNotEmpty()) {
@@ -360,11 +423,55 @@ private suspend fun collectOriginalProcessors(
     currentCoroutineContext().ensureActive()
     val report = collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
     currentCoroutineContext().ensureActive()
-    val second = captureOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh)
+    val secondUnion = if (requireStore) com.bitchat.android.service.captureHolderOriginalProcessorStoreForwardUnion(
+        installed.binding, installed.exactOriginalMesh) else null
+    val readyUnion = (secondUnion as? com.bitchat.android.service.HolderProcessorStoreForwardCapture.Observed)?.batch
+    val second = if (!requireStore) captureOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh)
+        else when (secondUnion) {
+            is com.bitchat.android.service.HolderProcessorStoreForwardCapture.Observed ->
+                com.bitchat.android.service.HolderProcessorCapture.Observed(secondUnion.batch.processorBatch)
+            is com.bitchat.android.service.HolderProcessorStoreForwardCapture.Invalid -> when (val failure = secondUnion.failure) {
+                is com.bitchat.android.service.HolderProcessorStoreForwardFailure.Processor ->
+                    com.bitchat.android.service.HolderProcessorCapture.Invalid(failure.gap)
+                is com.bitchat.android.service.HolderProcessorStoreForwardFailure.StoreForward ->
+                    com.bitchat.android.service.HolderProcessorCapture.Invalid(com.bitchat.android.service.HolderProcessorGap.MissingCollector)
+            }
+            null -> error("Required StoreForward recapture must be performed")
+        }
     val ready = (second as? com.bitchat.android.service.HolderProcessorCapture.Observed)?.batch
     var status = PanicProcessorBatchStatus.Ineligible
     val gaps = (ready?.gaps ?: listOf((second as com.bitchat.android.service.HolderProcessorCapture.Invalid).gap)).toMutableList()
-    if (report.facade === PanicOwnerRetirement.Confirmed && ready != null && gaps.isEmpty() && callerGaps.isEmpty()) {
+    var storeStatus = PanicStoreForwardBatchStatus.Ineligible
+    val storeGaps = (readyUnion?.storeForwardGaps ?: originalUnion?.storeForwardGaps ?: emptyList()).toMutableList()
+    val storePreparations = mutableListOf<com.bitchat.android.mesh.OriginalStoreForwardAwaitPreparation>()
+    var storeEligible = !requireStore
+    if (requireStore && readyUnion != null && gaps.isEmpty() && storeGaps.isEmpty() &&
+        callerGaps.isEmpty() && storeCallerGaps.isEmpty()) {
+        val roots = readyUnion.storeForwardRoots
+        if (roots.size != storesRequested.size || roots.any { root -> storesRequested.count { it === root } != 1 }) {
+            storeStatus = PanicStoreForwardBatchStatus.NeedsExplicitRetry
+        } else {
+            roots.forEach { root ->
+                when (val prepared = com.bitchat.android.mesh.prepareOriginalStoreForwardAwait(root, checkNotNull(storeCaller))) {
+                    is com.bitchat.android.mesh.OriginalStoreForwardPreparation.Ready -> storePreparations += prepared.preparation
+                    is com.bitchat.android.mesh.OriginalStoreForwardPreparation.Unconfirmed -> storeCallerGaps += prepared.gap
+                }
+            }
+            var valid = storeCallerGaps.isEmpty() && storePreparations.size == roots.size
+            storePreparations.forEach { if (!com.bitchat.android.mesh.validateOriginalStoreForwardPreparation(it)) valid = false }
+            storeEligible = valid && com.bitchat.android.service.validateHolderOriginalProcessorStoreForwardUnion(
+                installed.binding, installed.exactOriginalMesh, readyUnion)
+        }
+    }
+    suspend fun wholeUnionStillValid(): Boolean {
+        if (!requireStore) return true
+        if (!storeEligible || readyUnion == null || !com.bitchat.android.service.validateHolderOriginalProcessorStoreForwardUnion(
+                installed.binding, installed.exactOriginalMesh, readyUnion)) return false
+        storePreparations.forEach { if (!com.bitchat.android.mesh.validateOriginalStoreForwardPreparation(it)) return false }
+        return true
+    }
+    // All Store and processor preparations must be valid before even the first processor wait.
+    if (report.facade === PanicOwnerRetirement.Confirmed && ready != null && gaps.isEmpty() && callerGaps.isEmpty() && storeEligible) {
         val roots = ready.roots
         if (roots.size != requested.size || roots.any { root -> requested.count { it === root } != 1 }) {
             status = PanicProcessorBatchStatus.NeedsExplicitRetry
@@ -378,18 +485,22 @@ private suspend fun collectOriginalProcessors(
             }
             var valid = callerGaps.isEmpty() && preparations.size == roots.size
             preparations.forEach { if (!com.bitchat.android.mesh.validateOriginalProcessorPreparation(it)) valid = false }
-            if (valid && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready)) {
+            if (valid && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) && wholeUnionStillValid()) {
                 var allReturned = true
                 for ((index, preparation) in preparations.withIndex()) {
-                    if (!validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) ||
+                    if (!wholeUnionStillValid() || !validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) ||
                         !com.bitchat.android.mesh.awaitOriginalProcessor(preparation)) {
                         allReturned = false
                         break
                     }
                     awaitReturnedRoots += roots[index].identity
                 }
-                if (allReturned && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready)) {
+                if (allReturned && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) && wholeUnionStillValid()) {
                     status = PanicProcessorBatchStatus.AwaitReturned
+                    if (requireStore) {
+                        // Deliberate failing-first baseline: Store roots are prepared but not awaited.
+                        storeStatus = PanicStoreForwardBatchStatus.RequestedNotAwaited
+                    }
                 }
             }
         }
@@ -400,6 +511,15 @@ private suspend fun collectOriginalProcessors(
         gaps += com.bitchat.android.service.HolderProcessorGap.WitnessChanged
         status = PanicProcessorBatchStatus.Ineligible
     }
+    if (readyUnion != null && gaps.isEmpty() && storeGaps.isEmpty() &&
+        !com.bitchat.android.service.validateHolderOriginalProcessorStoreForwardUnion(installed.binding, installed.exactOriginalMesh, readyUnion)) {
+        storeGaps += com.bitchat.android.service.HolderStoreForwardGap.WitnessChanged
+        storeStatus = PanicStoreForwardBatchStatus.Ineligible
+        status = PanicProcessorBatchStatus.Ineligible
+    }
+    storeEvidence = PanicOriginalStoreForwardEvidence(storeStatus,
+        readyUnion?.storeForwardRows ?: originalUnion?.storeForwardRows ?: emptyList(), storeRequests.toList(),
+        storeGaps.toList(), storeCallerGaps.toList(), emptyList())
     return withEvidence(report, PanicOriginalProcessorEvidence(status, ready?.rows ?: original.rows,
         requests.toList(), gaps.toList(), callerGaps.toList(), awaitReturnedRoots.toList()))
 }
