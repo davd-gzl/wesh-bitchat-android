@@ -7,6 +7,114 @@ import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
+/** Authentic original Peer identity, never a report-restorable Job handle. */
+internal sealed interface OriginalPeerRootIdentity
+internal sealed interface OriginalPeerBinding { val identity: OriginalPeerRootIdentity }
+private class PeerRootIdentity : OriginalPeerRootIdentity
+private class PeerRootBinding(val manager: PeerManager, val root: Job) : OriginalPeerBinding {
+    override val identity: OriginalPeerRootIdentity = PeerRootIdentity()
+    private val requestLock = Any()
+    private var requested = false
+    fun requested(): Boolean = synchronized(requestLock) { requested }
+    fun request() {
+        synchronized(requestLock) { requested = true }
+        // Cancellation handlers run outside the request lock and Holder/controller monitors.
+        root.cancel()
+    }
+}
+internal enum class OriginalPeerGap {
+    MissingCaller, UninspectableCaller, CallerRelated, ForeignBinding, RequestUnavailable, ChangedCaller
+}
+internal sealed interface OriginalPeerCaller { val gap: OriginalPeerGap? }
+private class ActivePeerCaller(val invoking: Job, val chain: List<Job>) : OriginalPeerCaller {
+    override val gap: OriginalPeerGap? = null
+}
+private class UnconfirmedPeerCaller(override val gap: OriginalPeerGap) : OriginalPeerCaller
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+internal suspend fun captureOriginalPeerCaller(): OriginalPeerCaller {
+    val context = currentCoroutineContext()
+    context.ensureActive()
+    val invoking = context[Job] ?: return UnconfirmedPeerCaller(OriginalPeerGap.MissingCaller)
+    val chain = mutableListOf<Job>()
+    val seen = java.util.IdentityHashMap<Job, Unit>()
+    try {
+        var current: Job? = invoking
+        while (current != null) {
+            if (!current.isActive || seen.put(current, Unit) != null) {
+                return UnconfirmedPeerCaller(OriginalPeerGap.UninspectableCaller)
+            }
+            chain += current
+            current = current.parent
+        }
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { return UnconfirmedPeerCaller(OriginalPeerGap.UninspectableCaller) }
+    context.ensureActive()
+    return ActivePeerCaller(invoking, chain.toList())
+}
+
+internal fun originalPeerRelationshipGap(
+    binding: OriginalPeerBinding, caller: OriginalPeerCaller
+): OriginalPeerGap? {
+    val original = binding as? PeerRootBinding ?: return OriginalPeerGap.ForeignBinding
+    val active = caller as? ActivePeerCaller ?: return caller.gap ?: OriginalPeerGap.UninspectableCaller
+    return if (active.chain.any { it === original.root }) OriginalPeerGap.CallerRelated else null
+}
+
+internal fun originalPeerShutdownRequested(binding: OriginalPeerBinding): Boolean {
+    val original = binding as? PeerRootBinding ?: return false
+    return original.manager.captureOriginalPeerBinding() === binding && original.requested()
+}
+
+/** Terminal cancellation request only: no cache clear and no completion acknowledgment. */
+internal fun requestOriginalPeerShutdown(binding: OriginalPeerBinding): Boolean {
+    val original = binding as? PeerRootBinding ?: return false
+    if (original.manager.captureOriginalPeerBinding() !== binding) return false
+    original.request()
+    return original.requested()
+}
+
+internal sealed interface OriginalPeerAwaitPreparation
+private class PreparedPeerAwait(
+    val original: PeerRootBinding, val caller: ActivePeerCaller
+) : OriginalPeerAwaitPreparation
+internal sealed interface OriginalPeerPreparation {
+    class Ready(val preparation: OriginalPeerAwaitPreparation) : OriginalPeerPreparation
+    class Unconfirmed(val gap: OriginalPeerGap) : OriginalPeerPreparation
+}
+internal suspend fun prepareOriginalPeerAwait(
+    binding: OriginalPeerBinding, caller: OriginalPeerCaller
+): OriginalPeerPreparation {
+    val context = currentCoroutineContext()
+    context.ensureActive()
+    val gap = originalPeerRelationshipGap(binding, caller)
+    if (gap != null) return OriginalPeerPreparation.Unconfirmed(gap)
+    val active = caller as? ActivePeerCaller
+        ?: return OriginalPeerPreparation.Unconfirmed(OriginalPeerGap.UninspectableCaller)
+    if (context[Job] !== active.invoking) return OriginalPeerPreparation.Unconfirmed(OriginalPeerGap.ChangedCaller)
+    val original = binding as? PeerRootBinding
+        ?: return OriginalPeerPreparation.Unconfirmed(OriginalPeerGap.ForeignBinding)
+    if (!originalPeerShutdownRequested(binding) || !original.root.isCancelled) {
+        return OriginalPeerPreparation.Unconfirmed(OriginalPeerGap.RequestUnavailable)
+    }
+    return OriginalPeerPreparation.Ready(PreparedPeerAwait(original, active))
+}
+internal suspend fun validateOriginalPeerPreparation(preparation: OriginalPeerAwaitPreparation): Boolean {
+    val context = currentCoroutineContext()
+    context.ensureActive()
+    val prepared = preparation as? PreparedPeerAwait ?: return false
+    return context[Job] === prepared.caller.invoking &&
+        originalPeerRelationshipGap(prepared.original, prepared.caller) == null &&
+        originalPeerShutdownRequested(prepared.original) && prepared.original.root.isCancelled
+}
+/** Returns only after the same immutable original root, retaining the original invoking identity. */
+internal suspend fun awaitOriginalPeer(preparation: OriginalPeerAwaitPreparation): Boolean {
+    if (!validateOriginalPeerPreparation(preparation)) return false
+    val prepared = preparation as? PreparedPeerAwait ?: return false
+    prepared.original.root.join()
+    return validateOriginalPeerPreparation(preparation)
+}
+
 /**
  * Peer information structure with verification status
  * Compatible with iOS PeerInfo structure
@@ -107,7 +215,10 @@ class PeerManager {
     var isPeerDirectlyConnected: ((String) -> Boolean)? = null
 
     // Coroutines
-    private val managerScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val managerJob = SupervisorJob()
+    private val managerScope = CoroutineScope(Dispatchers.IO + managerJob)
+    private val originalPeerBinding = PeerRootBinding(this, managerJob)
+    internal fun captureOriginalPeerBinding(): OriginalPeerBinding = originalPeerBinding
     
     init {
         startPeriodicCleanup()

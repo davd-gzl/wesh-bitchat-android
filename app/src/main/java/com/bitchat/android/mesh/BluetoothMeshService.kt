@@ -55,7 +55,7 @@ class BluetoothMeshService internal constructor(
 
     // My peer identification - derived from persisted Noise identity fingerprint (first 16 hex chars)
     val myPeerID: String = encryptionService.getIdentityFingerprint().take(16)
-    private val peerManager = PeerManager()
+    private val peerManager = com.bitchat.android.service.MeshServiceHolder.constructBluetoothPeer(holderConstruction) { PeerManager() }
     private val fragmentManager = FragmentManager(myPeerID)
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val readReceiptRetrySender = RetryingControlPacketSender(serviceScope)
