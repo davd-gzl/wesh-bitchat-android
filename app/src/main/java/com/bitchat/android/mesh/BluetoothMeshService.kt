@@ -97,7 +97,7 @@ class BluetoothMeshService internal constructor(
         )
     } else null
     internal val connectionManager = BluetoothConnectionManager(context, myPeerID, fragmentManager) // Made internal for access
-    private val packetProcessor = PacketProcessor(myPeerID)
+    private val packetProcessor = com.bitchat.android.service.MeshServiceHolder.constructBluetoothProcessor(holderConstruction) { PacketProcessor(myPeerID) }
     private lateinit var gossipSyncManager: GossipSyncManager
     // Service-level notification manager for background (no-UI) DMs
     private val serviceNotificationManager = com.bitchat.android.ui.NotificationManager(

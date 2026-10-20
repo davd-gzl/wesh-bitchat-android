@@ -48,6 +48,10 @@ object MeshServiceHolder {
         signer: (BitchatPacket) -> BitchatPacket?
     ) = owner.setGossipManager(provenance, mgr, signer)
 
+    internal fun constructBluetoothProcessor(
+        construction: HolderConstructionContext, creator: () -> com.bitchat.android.mesh.PacketProcessor
+    ): com.bitchat.android.mesh.PacketProcessor = owner.constructBluetoothProcessor(construction, creator)
+
     internal fun constructGossipManager(
         parent: HolderGossipParent,
         source: HolderGossipSource,

@@ -143,7 +143,25 @@ internal sealed interface KnownRecordedFrontiersJoin {
     class Attempted(val managers: List<KnownRecordedManagerJoin>) : KnownRecordedFrontiersJoin
 }
 
+internal enum class PanicProcessorRequestStatus { RequestReturned, UnsafeCaller }
+internal data class PanicProcessorRequest(
+    val root: com.bitchat.android.mesh.OriginalProcessorRootIdentity,
+    val status: PanicProcessorRequestStatus
+)
+internal enum class PanicProcessorBatchStatus {
+    MissingInput, InvalidInput, Ineligible, NeedsExplicitRetry, RequestedNotAwaited
+}
+internal data class PanicOriginalProcessorEvidence(
+    val status: PanicProcessorBatchStatus,
+    val rows: List<com.bitchat.android.service.HolderProcessorRow>,
+    val requests: List<PanicProcessorRequest>,
+    val holderGaps: List<com.bitchat.android.service.HolderProcessorGap>,
+    val callerGaps: List<com.bitchat.android.mesh.OriginalProcessorGap>,
+    val awaitReturnedRoots: List<com.bitchat.android.mesh.OriginalProcessorRootIdentity>
+)
+
 internal sealed interface PanicUnconfirmedEvidence {
+    class OriginalBluetoothProcessors(val observation: PanicOriginalProcessorEvidence) : PanicUnconfirmedEvidence
     data object NotCollected : PanicUnconfirmedEvidence
     class InvalidInstalledPair(val gap: PanicRetirementGap) : PanicUnconfirmedEvidence
     class InvalidOriginalGossip(val gap: HolderGossipCaptureGap) : PanicUnconfirmedEvidence
@@ -259,6 +277,90 @@ private suspend fun collectRecordedGossipPhase(
     return report.copy(gossipJobsAndWriters = PanicOwnerRetirement.Unconfirmed(gossip.gap,
         PanicUnconfirmedEvidence.KnownOriginalGossip(known.snapshot, known.attempts,
             known.directIngressClosure, known.returnedJobsCancellation, joined, current, known.directBodiesEnd)))
+}
+
+/** Requests known original BLE roots before the unchanged old phase; no aggregate proof is promoted. */
+internal suspend fun collectPanicRetirementWithOriginalBluetoothProcessors(
+    originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput
+): PanicRetirementReport {
+    val installed = originalGossip as? PanicOriginalGossipInput.Installed
+    fun withEvidence(report: PanicRetirementReport, evidence: PanicOriginalProcessorEvidence) = report.copy(
+        transportCoreRadioAndHandlers = PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.ProducerNotImplemented,
+            PanicUnconfirmedEvidence.OriginalBluetoothProcessors(evidence)))
+    fun empty(status: PanicProcessorBatchStatus) = PanicOriginalProcessorEvidence(status, emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+    if (installed == null || originalFacade == null || installed.exactOriginalMesh !== originalFacade) {
+        val report = collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
+        return withEvidence(report, empty(if (installed == null) PanicProcessorBatchStatus.MissingInput else PanicProcessorBatchStatus.InvalidInput))
+    }
+    val first = com.bitchat.android.service.captureHolderOriginalBluetoothProcessors(installed.binding, installed.exactOriginalMesh)
+    val original = (first as? com.bitchat.android.service.HolderProcessorCapture.Observed)?.batch
+    if (original == null) {
+        val report = collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
+        return withEvidence(report, empty(PanicProcessorBatchStatus.InvalidInput).copy(holderGaps = listOf(
+            (first as com.bitchat.android.service.HolderProcessorCapture.Invalid).gap)))
+    }
+    // Snapshot active caller ancestry before any cancellation can detach its original links.
+    val caller = com.bitchat.android.mesh.captureOriginalProcessorCaller()
+    val requests = mutableListOf<PanicProcessorRequest>()
+    val requested = mutableListOf<com.bitchat.android.mesh.OriginalProcessorBinding>()
+    val callerGaps = mutableListOf<com.bitchat.android.mesh.OriginalProcessorGap>()
+    val failures = mutableListOf<Throwable>()
+    original.roots.forEach { binding ->
+        val gap = com.bitchat.android.mesh.originalProcessorRelationshipGap(binding, caller)
+        if (gap != null) {
+            callerGaps += gap
+            requests += PanicProcessorRequest(binding.identity, PanicProcessorRequestStatus.UnsafeCaller)
+        } else try {
+            if (com.bitchat.android.mesh.requestOriginalProcessorShutdown(binding)) {
+                requested += binding
+                requests += PanicProcessorRequest(binding.identity, PanicProcessorRequestStatus.RequestReturned)
+            } else callerGaps += com.bitchat.android.mesh.OriginalProcessorGap.RequestUnavailable
+        } catch (failure: Throwable) { failures += failure }
+    }
+    try { currentCoroutineContext().ensureActive() }
+    catch (cancelled: CancellationException) { failures += cancelled }
+    if (failures.isNotEmpty()) {
+        val primary = failures.firstOrNull { it is CancellationException } ?: failures.first()
+        val seen = java.util.IdentityHashMap<Throwable, Unit>()
+        seen[primary] = Unit
+        failures.forEach { if (seen.put(it, Unit) == null) primary.addSuppressed(it) }
+        throw primary
+    }
+    currentCoroutineContext().ensureActive()
+    val report = collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
+    currentCoroutineContext().ensureActive()
+    val second = com.bitchat.android.service.captureHolderOriginalBluetoothProcessors(installed.binding, installed.exactOriginalMesh)
+    val ready = (second as? com.bitchat.android.service.HolderProcessorCapture.Observed)?.batch
+    var status = PanicProcessorBatchStatus.Ineligible
+    val gaps = (ready?.gaps ?: listOf((second as com.bitchat.android.service.HolderProcessorCapture.Invalid).gap)).toMutableList()
+    if (report.facade === PanicOwnerRetirement.Confirmed && ready != null && gaps.isEmpty() && callerGaps.isEmpty()) {
+        val roots = ready.roots
+        if (roots.size != requested.size || roots.any { root -> requested.count { it === root } != 1 }) {
+            status = PanicProcessorBatchStatus.NeedsExplicitRetry
+        } else {
+            val preparations = mutableListOf<com.bitchat.android.mesh.OriginalProcessorAwaitPreparation>()
+            roots.forEach { root ->
+                when (val prepared = com.bitchat.android.mesh.prepareOriginalProcessorAwait(root, caller)) {
+                    is com.bitchat.android.mesh.OriginalProcessorPreparation.Ready -> preparations += prepared.preparation
+                    is com.bitchat.android.mesh.OriginalProcessorPreparation.Unconfirmed -> callerGaps += prepared.gap
+                }
+            }
+            var valid = callerGaps.isEmpty() && preparations.size == roots.size
+            preparations.forEach { if (!com.bitchat.android.mesh.validateOriginalProcessorPreparation(it)) valid = false }
+            if (valid && com.bitchat.android.service.validateHolderOriginalBluetoothProcessors(installed.binding, installed.exactOriginalMesh, ready)) {
+                // Baseline intentionally stops at authentic preparation, without awaiting any root.
+                status = PanicProcessorBatchStatus.RequestedNotAwaited
+            }
+        }
+    }
+    currentCoroutineContext().ensureActive()
+    if (ready != null && gaps.isEmpty() &&
+        !com.bitchat.android.service.validateHolderOriginalBluetoothProcessors(installed.binding, installed.exactOriginalMesh, ready)) {
+        gaps += com.bitchat.android.service.HolderProcessorGap.WitnessChanged
+        status = PanicProcessorBatchStatus.Ineligible
+    }
+    return withEvidence(report, PanicOriginalProcessorEvidence(status, ready?.rows ?: original.rows,
+        requests.toList(), gaps.toList(), callerGaps.toList(), emptyList()))
 }
 
 /** Observes actual direct body endpoints; every unavailable aggregate proof stays unconfirmed. */
