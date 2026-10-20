@@ -14,7 +14,6 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestCoroutineScheduler
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.junit.Assert.*
 import org.junit.Test
@@ -371,7 +370,8 @@ class PanicOriginalWifiHostsTest {
     }
     private class Fixture {
         private val dispatcher = UnconfinedTestDispatcher(TestCoroutineScheduler())
-        private val mainScope = TestScope(dispatcher)
+        private val mainRoot = SupervisorJob()
+        private val mainScope = CoroutineScope(dispatcher + dispatcher.scheduler + mainRoot + CoroutineExceptionHandler { _, failure -> errors += failure })
         private val jobs = CopyOnWriteArrayList<Job>()
         private val workers = CopyOnWriteArrayList<Thread>()
         private val gates = CopyOnWriteArrayList<CountDownLatch>()
