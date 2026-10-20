@@ -45,6 +45,7 @@ class PanicOriginalBluetoothProcessorsTest {
             val entered = CompletableDeferred<Unit>()
             val release = f.deferredGate()
             val child = AtomicReference<Job>()
+            val published = CompletableDeferred<Unit>()
             val callbackReturned = AtomicBoolean(false)
             f.validation = {
                 runBlocking {
@@ -54,6 +55,7 @@ class PanicOriginalBluetoothProcessorsTest {
                     }
                     f.own(actual)
                     child.set(actual)
+                    published.complete(Unit)
                     actual.join()
                 }
                 callbackReturned.set(true)
@@ -61,6 +63,7 @@ class PanicOriginalBluetoothProcessorsTest {
             }
             f.initialProcessor.processPacket(packet())
             f.ready(entered)
+            f.ready(published)
             check(checkNotNull(child.get()).isActive && !callbackReturned.get())
             f.retireOriginalFacade()
             val call = f.launchCollector()
