@@ -91,13 +91,14 @@ private class CapturedHolderPanicBinding(
     val actor: HolderPanicAdmissionActor,
     val subject: HolderPanicSubject,
     val product: Any,
-    val gossipCollector: BoundGossipCollector
+    val gossipCollector: BoundGossipCollector,
+    val processorCollector: BoundProcessorCollector
 ) : HolderPanicBinding
 private class UnconfirmedHolderPanicBinding(val gap: HolderPanicCaptureGap) : HolderPanicBinding
 
 internal fun captureHolderPanicBinding(actor: HolderPanicAdmissionActor, exactUnified: Any): HolderPanicBinding =
     when (val captured = actor.captureUnifiedPanicSubject(exactUnified)) {
-        is HolderPanicSubjectCapture.Captured -> CapturedHolderPanicBinding(actor, captured.subject, exactUnified, BoundGossipCollector.Missing)
+        is HolderPanicSubjectCapture.Captured -> CapturedHolderPanicBinding(actor, captured.subject, exactUnified, BoundGossipCollector.Missing, BoundProcessorCollector.Missing)
         is HolderPanicSubjectCapture.Unconfirmed -> UnconfirmedHolderPanicBinding(captured.gap)
     }
 
@@ -124,7 +125,7 @@ internal sealed interface HolderGossipSubsetCapture<out G : Any> {
     class Unconfirmed(val gap: HolderGossipCaptureGap) : HolderGossipSubsetCapture<Nothing>
 }
 
-internal enum class HolderContextOperationKind { ManagerCreator, BluetoothEnsure, ManagerRegistration, ExternalAttach }
+internal enum class HolderContextOperationKind { ManagerCreator, BluetoothEnsure, ManagerRegistration, ExternalAttach, PacketProcessorCreator }
 internal enum class HolderContextOperationGap { ForeignContext, WrongContextKind, EndedContextAfterClose, UnattributedAfterClose }
 internal sealed class HolderContextOperationRefusal protected constructor(
     val operation: HolderContextOperationKind,
@@ -191,7 +192,8 @@ internal fun <B : Any, U : Any> captureHolderPanicBindingWithGossip(
 ): HolderPanicBinding = when (val captured = original.captureUnifiedPanicSubject(exactUnified)) {
     is HolderPanicSubjectCapture.Captured -> CapturedHolderPanicBinding(
         original, captured.subject, exactUnified,
-        BoundGossipCollector.Installed(TypedOriginalGossipCollector(original))
+        BoundGossipCollector.Installed(TypedOriginalGossipCollector(original)),
+        BoundProcessorCollector.Installed(TypedOriginalProcessorCollector(original))
     )
     is HolderPanicSubjectCapture.Unconfirmed -> UnconfirmedHolderPanicBinding(captured.gap)
 }
@@ -229,6 +231,63 @@ internal fun validateHolderAdmittedManagerFrontier(
     is CapturedHolderPanicBinding -> binding.product === exactOriginalMesh && when (val collector = binding.gossipCollector) {
         BoundGossipCollector.Missing -> false
         is BoundGossipCollector.Installed -> collector.original.validate(binding.subject, binding.product, frontier)
+    }
+}
+
+/** Scalar evidence has no participant, caller, Job, product or preparation capability. */
+internal sealed interface HolderProcessorChildIdentity
+internal sealed interface HolderProcessorParentIdentity
+internal enum class HolderProcessorState { Dispatched, Returned, Unknown }
+internal enum class HolderProcessorGap {
+    InvalidSubject, MissingCollector, NotClosed, ActiveEntry, DispatchedParent, UnknownParent,
+    PendingOperation, UnknownOperation, PropagationUnverified, ExternalInput, RefusedAllocatedInput,
+    MissingProcessor, UnknownProcessor, DuplicateProcessor, ParentMismatch, WitnessChanged
+}
+internal data class HolderProcessorRow(
+    val child: HolderProcessorChildIdentity, val parent: HolderProcessorParentIdentity,
+    val root: com.bitchat.android.mesh.OriginalProcessorRootIdentity?, val state: HolderProcessorState
+)
+/** Call-scoped authority; never stored in a retirement report or restored from scalar rows. */
+internal sealed interface HolderProcessorBatch {
+    val roots: List<com.bitchat.android.mesh.OriginalProcessorBinding>
+    val rows: List<HolderProcessorRow>
+    val gaps: List<HolderProcessorGap>
+}
+internal sealed interface HolderProcessorCapture {
+    class Observed(val batch: HolderProcessorBatch) : HolderProcessorCapture
+    class Invalid(val gap: HolderProcessorGap) : HolderProcessorCapture
+}
+private interface OriginalProcessorCollector {
+    fun capture(subject: HolderPanicSubject, product: Any): HolderProcessorCapture
+    fun validate(subject: HolderPanicSubject, product: Any, batch: HolderProcessorBatch): Boolean
+}
+private class TypedOriginalProcessorCollector<B : Any, U : Any, G : Any>(
+    private val original: MeshServiceHolderOwner<B, U, G>
+) : OriginalProcessorCollector {
+    override fun capture(subject: HolderPanicSubject, product: Any) = original.captureOriginalBluetoothProcessors(subject, product)
+    override fun validate(subject: HolderPanicSubject, product: Any, batch: HolderProcessorBatch) =
+        original.validateOriginalBluetoothProcessors(subject, product, batch)
+}
+private sealed interface BoundProcessorCollector {
+    data object Missing : BoundProcessorCollector
+    class Installed(val original: OriginalProcessorCollector) : BoundProcessorCollector
+}
+internal fun captureHolderOriginalBluetoothProcessors(binding: HolderPanicBinding, product: Any): HolderProcessorCapture =
+    when (binding) {
+        is UnconfirmedHolderPanicBinding -> HolderProcessorCapture.Invalid(HolderProcessorGap.InvalidSubject)
+        is CapturedHolderPanicBinding -> if (binding.product !== product) HolderProcessorCapture.Invalid(HolderProcessorGap.InvalidSubject)
+        else when (val collector = binding.processorCollector) {
+            BoundProcessorCollector.Missing -> HolderProcessorCapture.Invalid(HolderProcessorGap.MissingCollector)
+            is BoundProcessorCollector.Installed -> collector.original.capture(binding.subject, product)
+        }
+    }
+internal fun validateHolderOriginalBluetoothProcessors(
+    binding: HolderPanicBinding, product: Any, batch: HolderProcessorBatch
+): Boolean = when (binding) {
+    is UnconfirmedHolderPanicBinding -> false
+    is CapturedHolderPanicBinding -> binding.product === product && when (val collector = binding.processorCollector) {
+        BoundProcessorCollector.Missing -> false
+        is BoundProcessorCollector.Installed -> collector.original.validate(binding.subject, product, batch)
     }
 }
 
@@ -386,6 +445,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         val kind: HolderConstructionKind,
         val suppliedBluetooth: Any?,
         val controllerOrigin: Any? = null,
+        val processorParent: HolderProcessorParentIdentity = ProcessorParentIdentity(),
         var selection: HolderWifiManagerSelection<G> = HolderWifiManagerSelection.NotSelected,
         var outcome: HolderConstructionOutcome = HolderConstructionOutcome.Dispatched
     )
@@ -409,6 +469,117 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         override val manager: G
     ) : HolderGossipManagerReference<G>
     private val gossipChildren = linkedMapOf<HolderGossipChildTicket, GossipChildRecord<G>>()
+
+    private class ProcessorChildIdentity : HolderProcessorChildIdentity
+    private class ProcessorParentIdentity : HolderProcessorParentIdentity
+    private class ProcessorChild(
+        val identity: HolderProcessorChildIdentity, val context: HolderConstructionContext,
+        val entry: HolderEntryOrigin, val parent: HolderProcessorParentIdentity,
+        var state: HolderProcessorState = HolderProcessorState.Dispatched,
+        var allocated: com.bitchat.android.mesh.PacketProcessor? = null,
+        var binding: com.bitchat.android.mesh.OriginalProcessorBinding? = null,
+        var rootIdentity: com.bitchat.android.mesh.OriginalProcessorRootIdentity? = null
+    )
+    private val processorChildren = mutableListOf<ProcessorChild>()
+    private class ProcessorBatch(
+        val anchor: Any, val subject: HolderPanicSubject, val product: Any, val revision: Any,
+        private val bindings: List<com.bitchat.android.mesh.OriginalProcessorBinding>,
+        rows: List<HolderProcessorRow>, gaps: List<HolderProcessorGap>
+    ) : HolderProcessorBatch {
+        private val originalRows = rows.toList()
+        private val originalGaps = gaps.toList()
+        val eligible: Boolean = originalGaps.isEmpty()
+        override val roots: List<com.bitchat.android.mesh.OriginalProcessorBinding> get() = bindings.toList()
+        override val rows: List<HolderProcessorRow> get() = originalRows.toList()
+        override val gaps: List<HolderProcessorGap> get() = originalGaps.toList()
+    }
+
+    /** Registry admission only; inherited constructor serialization remains unchanged. */
+    fun constructBluetoothProcessor(
+        context: HolderConstructionContext, creator: () -> com.bitchat.android.mesh.PacketProcessor
+    ): com.bitchat.android.mesh.PacketProcessor {
+        val (operation, child) = synchronized(registryMonitor) {
+            val operation = admit(HolderContextOperationKind.PacketProcessorCreator, context, HolderConstructionKind.BLUETOOTH)
+            val parent = checkNotNull(constructionFor(context))
+            val child = ProcessorChild(ProcessorChildIdentity(), context, checkNotNull(operation.entry), parent.processorParent)
+            processorChildren += child
+            changed()
+            operation to child
+        }
+        // No registry lock surrounds allocation or the processor-owned opaque identity read.
+        val allocated = try { creator() } catch (failure: Throwable) {
+            synchronized(registryMonitor) { child.state = HolderProcessorState.Unknown; changed() }
+            finish(operation, false, failure = failureKind(failure))
+            throw failure
+        }
+        synchronized(registryMonitor) { child.allocated = allocated; changed() }
+        val binding = try { allocated.captureOriginalProcessorBinding() } catch (failure: Throwable) {
+            synchronized(registryMonitor) { child.state = HolderProcessorState.Unknown; changed() }
+            finish(operation, false, failure = failureKind(failure))
+            throw failure
+        }
+        val identity = binding.identity
+        synchronized(registryMonitor) {
+            child.binding = binding
+            child.rootIdentity = identity
+            child.state = HolderProcessorState.Returned
+            operation.state = HolderContextOperationState.Completed
+            changed()
+        }
+        return allocated
+    }
+
+    /** One fail-fast BLE-only view. Wi-Fi/Core and escaped host roots remain unbound. */
+    fun captureOriginalBluetoothProcessors(subject: HolderPanicSubject, product: Any): HolderProcessorCapture = synchronized(registryMonitor) {
+        if (subject !is UnifiedPanicSubject || subject.ownerAnchor !== ownerAnchor) {
+            return@synchronized HolderProcessorCapture.Invalid(HolderProcessorGap.InvalidSubject)
+        }
+        val unified = constructionFor(subject.context)
+        if (unified == null || unified.kind != HolderConstructionKind.UNIFIED ||
+            (unified.outcome as? HolderConstructionOutcome.Returned)?.product !== product ||
+            constructions.values.count { it.kind == HolderConstructionKind.UNIFIED &&
+                (it.outcome as? HolderConstructionOutcome.Returned)?.product === product } != 1) {
+            return@synchronized HolderProcessorCapture.Invalid(HolderProcessorGap.InvalidSubject)
+        }
+        if (!constructionAdmissionClosed) return@synchronized HolderProcessorCapture.Invalid(HolderProcessorGap.NotClosed)
+        val gaps = mutableListOf<HolderProcessorGap>()
+        if (activeEntries.isNotEmpty()) gaps += HolderProcessorGap.ActiveEntry
+        if (constructions.values.any { it.outcome === HolderConstructionOutcome.Dispatched }) gaps += HolderProcessorGap.DispatchedParent
+        if (constructions.values.any { it.outcome is HolderConstructionOutcome.Unknown }) gaps += HolderProcessorGap.UnknownParent
+        if (operations.any { it.state == HolderContextOperationState.Admitted }) gaps += HolderProcessorGap.PendingOperation
+        if (operations.any { it.state == HolderContextOperationState.Unknown }) gaps += HolderProcessorGap.UnknownOperation
+        if (propagationUnverified) gaps += HolderProcessorGap.PropagationUnverified
+        if (externalProducts.isNotEmpty() || retainedInputs.any { it.product != null }) gaps += HolderProcessorGap.ExternalInput
+        if (retainedInputs.any { it.state == HolderContextOperationState.DeniedBeforeHelperEffects }) gaps += HolderProcessorGap.RefusedAllocatedInput
+        val roots = mutableListOf<com.bitchat.android.mesh.OriginalProcessorBinding>()
+        val seen = java.util.IdentityHashMap<com.bitchat.android.mesh.OriginalProcessorBinding, Unit>()
+        processorChildren.forEach { child ->
+            val parent = constructionFor(child.context)
+            if (parent == null || parent.kind != HolderConstructionKind.BLUETOOTH || parent.entry !== child.entry ||
+                parent.processorParent !== child.parent) gaps += HolderProcessorGap.ParentMismatch
+            if (child.state != HolderProcessorState.Returned || child.binding == null || child.rootIdentity == null) gaps += HolderProcessorGap.UnknownProcessor
+            child.binding?.let { binding ->
+                if (seen.put(binding, Unit) == null) roots += binding else gaps += HolderProcessorGap.DuplicateProcessor
+            }
+        }
+        val bluetooth = constructions.values.filter { it.kind == HolderConstructionKind.BLUETOOTH }
+        bluetooth.forEach { parent ->
+            if (processorChildren.count { it.context === parent.context && it.entry === parent.entry &&
+                    it.state == HolderProcessorState.Returned && it.binding != null } != 1) gaps += HolderProcessorGap.MissingProcessor
+        }
+        if (bluetooth.none { (it.outcome as? HolderConstructionOutcome.Returned)?.product === unified.suppliedBluetooth }) {
+            gaps += HolderProcessorGap.ParentMismatch
+        }
+        if (roots.isEmpty()) gaps += HolderProcessorGap.MissingProcessor
+        HolderProcessorCapture.Observed(ProcessorBatch(ownerAnchor, subject, product, censusRevision, roots.toList(),
+            processorChildren.map { HolderProcessorRow(it.identity, it.parent, it.rootIdentity, it.state) }, gaps.distinct()))
+    }
+
+    fun validateOriginalBluetoothProcessors(subject: HolderPanicSubject, product: Any, batch: HolderProcessorBatch): Boolean =
+        synchronized(registryMonitor) {
+            batch is ProcessorBatch && batch.anchor === ownerAnchor && batch.subject === subject &&
+                batch.product === product && batch.revision === censusRevision && batch.eligible && constructionAdmissionClosed
+        }
 
     /** Records actual creator effects; operation admission remains independent of parent return. */
     fun constructGossipManager(parent: HolderGossipParent, source: HolderGossipSource, creator: () -> G): G {
