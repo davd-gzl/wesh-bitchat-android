@@ -329,6 +329,7 @@ private class WifiCollectionFrame(
     private var inheritedPhase = WifiInheritedPhase.NotCollected
     private val awaitedStops = mutableListOf<WifiStopIdentity>()
     private val cancelled = mutableListOf<WifiHostIdentity>()
+    private val joined = mutableListOf<WifiHostIdentity>()
     private var status = WifiHostBatchStatus.Ineligible
 
     fun requestEarly() {
@@ -374,7 +375,7 @@ private class WifiCollectionFrame(
         val captured = current
         val rows = requested.mapNotNull { binding -> wifiHostOwner(binding)?.observation(binding) }
         return report.copy(originalWifiHosts = PanicOriginalWifiEvidence(status, rows,
-            requested.map { it.identity }, cancelled.toList(), emptyList(),
+            requested.map { it.identity }, cancelled.toList(), joined.toList(),
             (requestGaps + (captured?.gaps ?: emptyList())).distinct(), inheritedPhase, awaitedStops.toList()))
     }
     fun notCollected(): PanicRetirementReport = scoped(unconfirmedPanicReport(
@@ -443,8 +444,15 @@ private class WifiCollectionFrame(
         preparations.forEach { (binding, preparation) ->
             if (wifiHostOwner(binding)?.validatePrepared(preparation) != true) return scoped(report)
         }
-        // Baseline: all genuine preparation and cancellation above returned; original-host joins are deliberately absent.
-        status = if (preparations.isEmpty()) WifiHostBatchStatus.EmptyValidated else WifiHostBatchStatus.RequestedNotAwaited
+        for ((binding, preparation) in preparations) {
+            if (!stillValid() || wifiHostOwner(binding)?.awaitPreparedHost(preparation) != true) return scoped(report)
+            joined += binding.identity
+        }
+        preparations.forEach { (binding, preparation) ->
+            if (wifiHostOwner(binding)?.validatePrepared(preparation) != true) return scoped(report)
+        }
+        if (!stillValid()) return scoped(report)
+        status = if (preparations.isEmpty()) WifiHostBatchStatus.EmptyValidated else WifiHostBatchStatus.AwaitReturned
         return scoped(report)
     }
 }
