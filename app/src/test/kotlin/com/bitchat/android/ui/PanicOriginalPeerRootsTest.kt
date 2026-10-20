@@ -761,7 +761,7 @@ class PanicOriginalPeerRootsTest {
             check(report.transportCoreRadioAndHandlers is PanicOwnerRetirement.Unconfirmed)
             check(report.startupAndRemainingSharedKeyUsers is PanicOwnerRetirement.Unconfirmed)
         }
-        fun requestFlags() = Triple(processors.map { originalProcessorShutdownRequested(it.captureOriginalProcessorBinding()) },
+        fun requestFlags() = Triple(processors.map { it.originalShutdownRequested(it.captureOriginalProcessorBinding()) },
             stores.map { originalStoreForwardShutdownRequested(it.captureOriginalStoreForwardBinding()) },
             peers.map { originalPeerShutdownRequested(it.captureOriginalPeerBinding()) })
         fun threadGate() = CountDownLatch(1).also { gates += it }
