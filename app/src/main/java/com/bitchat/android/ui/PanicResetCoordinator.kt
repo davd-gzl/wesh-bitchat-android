@@ -149,7 +149,7 @@ internal data class PanicProcessorRequest(
     val status: PanicProcessorRequestStatus
 )
 internal enum class PanicProcessorBatchStatus {
-    MissingInput, InvalidInput, Ineligible, NeedsExplicitRetry, RequestedNotAwaited
+    MissingInput, InvalidInput, Ineligible, NeedsExplicitRetry, RequestedNotAwaited, AwaitReturned
 }
 internal data class PanicOriginalProcessorEvidence(
     val status: PanicProcessorBatchStatus,
@@ -303,6 +303,7 @@ internal suspend fun collectPanicRetirementWithOriginalBluetoothProcessors(
     val caller = com.bitchat.android.mesh.captureOriginalProcessorCaller()
     val requests = mutableListOf<PanicProcessorRequest>()
     val requested = mutableListOf<com.bitchat.android.mesh.OriginalProcessorBinding>()
+    val awaitReturnedRoots = mutableListOf<com.bitchat.android.mesh.OriginalProcessorRootIdentity>()
     val callerGaps = mutableListOf<com.bitchat.android.mesh.OriginalProcessorGap>()
     val failures = mutableListOf<Throwable>()
     original.roots.forEach { binding ->
@@ -348,8 +349,18 @@ internal suspend fun collectPanicRetirementWithOriginalBluetoothProcessors(
             var valid = callerGaps.isEmpty() && preparations.size == roots.size
             preparations.forEach { if (!com.bitchat.android.mesh.validateOriginalProcessorPreparation(it)) valid = false }
             if (valid && com.bitchat.android.service.validateHolderOriginalBluetoothProcessors(installed.binding, installed.exactOriginalMesh, ready)) {
-                // Baseline intentionally stops at authentic preparation, without awaiting any root.
-                status = PanicProcessorBatchStatus.RequestedNotAwaited
+                var allReturned = true
+                for ((index, preparation) in preparations.withIndex()) {
+                    if (!com.bitchat.android.service.validateHolderOriginalBluetoothProcessors(installed.binding, installed.exactOriginalMesh, ready) ||
+                        !com.bitchat.android.mesh.awaitOriginalProcessor(preparation)) {
+                        allReturned = false
+                        break
+                    }
+                    awaitReturnedRoots += roots[index].identity
+                }
+                if (allReturned && com.bitchat.android.service.validateHolderOriginalBluetoothProcessors(installed.binding, installed.exactOriginalMesh, ready)) {
+                    status = PanicProcessorBatchStatus.AwaitReturned
+                }
             }
         }
     }
@@ -360,7 +371,7 @@ internal suspend fun collectPanicRetirementWithOriginalBluetoothProcessors(
         status = PanicProcessorBatchStatus.Ineligible
     }
     return withEvidence(report, PanicOriginalProcessorEvidence(status, ready?.rows ?: original.rows,
-        requests.toList(), gaps.toList(), callerGaps.toList(), emptyList()))
+        requests.toList(), gaps.toList(), callerGaps.toList(), awaitReturnedRoots.toList()))
 }
 
 /** Observes actual direct body endpoints; every unavailable aggregate proof stays unconfirmed. */
