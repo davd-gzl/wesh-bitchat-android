@@ -52,6 +52,10 @@ object MeshServiceHolder {
         construction: HolderConstructionContext, creator: () -> com.bitchat.android.mesh.PacketProcessor
     ): com.bitchat.android.mesh.PacketProcessor = owner.constructBluetoothProcessor(construction, creator)
 
+    internal fun constructWifiProcessor(
+        construction: HolderWifiConstructionContext, creator: () -> com.bitchat.android.mesh.PacketProcessor
+    ): com.bitchat.android.mesh.PacketProcessor = owner.constructWifiProcessor(construction, creator)
+
     internal fun constructGossipManager(
         parent: HolderGossipParent,
         source: HolderGossipSource,

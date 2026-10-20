@@ -39,6 +39,7 @@ class MeshCore(
     sharedGossipManager: GossipSyncManager?,
     gossipConfigProvider: GossipSyncManager.ConfigProvider,
     recordFallbackGossip: ((() -> GossipSyncManager) -> GossipSyncManager),
+    recordPacketProcessor: ((() -> PacketProcessor) -> PacketProcessor),
     private val hooks: Hooks = Hooks(),
     // Passed in rather than read from BuildConfig: this file also compiles into the watch module.
     // Defaults to the stricter Wesh policy.
@@ -84,7 +85,7 @@ class MeshCore(
     private val messageHandler = MessageHandler(myPeerID, context.applicationContext).apply {
         applyInboundPolicy(weshLocalOnly)
     }
-    private val packetProcessor = PacketProcessor(myPeerID)
+    private val packetProcessor = recordPacketProcessor { PacketProcessor(myPeerID) }
     private val directPeers = ConcurrentHashMap.newKeySet<String>()
 
     val gossipSyncManager: GossipSyncManager =

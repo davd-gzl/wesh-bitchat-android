@@ -162,6 +162,7 @@ internal data class PanicOriginalProcessorEvidence(
 
 internal sealed interface PanicUnconfirmedEvidence {
     class OriginalBluetoothProcessors(val observation: PanicOriginalProcessorEvidence) : PanicUnconfirmedEvidence
+    class OriginalBluetoothAndCoreProcessors(val observation: PanicOriginalProcessorEvidence) : PanicUnconfirmedEvidence
     data object NotCollected : PanicUnconfirmedEvidence
     class InvalidInstalledPair(val gap: PanicRetirementGap) : PanicUnconfirmedEvidence
     class InvalidOriginalGossip(val gap: HolderGossipCaptureGap) : PanicUnconfirmedEvidence
@@ -279,20 +280,49 @@ private suspend fun collectRecordedGossipPhase(
             known.directIngressClosure, known.returnedJobsCancellation, joined, current, known.directBodiesEnd)))
 }
 
-/** Requests known original BLE roots before the unchanged old phase; no aggregate proof is promoted. */
+private enum class PanicProcessorScope { BluetoothOnly, BluetoothAndCore }
+
+/** Compatibility entry point for the original Bluetooth-only scope. */
 internal suspend fun collectPanicRetirementWithOriginalBluetoothProcessors(
     originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput
+): PanicRetirementReport = collectOriginalProcessors(originalFacade, originalGossip, PanicProcessorScope.BluetoothOnly)
+
+/** All known safe original Bluetooth and Core roots are requested before any processor await. */
+internal suspend fun collectPanicRetirementWithOriginalBluetoothAndCoreProcessors(
+    originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput
+): PanicRetirementReport = collectOriginalProcessors(originalFacade, originalGossip, PanicProcessorScope.BluetoothAndCore)
+
+private fun captureOriginalProcessors(
+    scope: PanicProcessorScope, binding: com.bitchat.android.service.HolderPanicBinding, product: Any
+): com.bitchat.android.service.HolderProcessorCapture = when (scope) {
+    PanicProcessorScope.BluetoothOnly -> com.bitchat.android.service.captureHolderOriginalBluetoothProcessors(binding, product)
+    PanicProcessorScope.BluetoothAndCore -> com.bitchat.android.service.captureHolderOriginalBluetoothAndCoreProcessors(binding, product)
+}
+
+private fun validateOriginalProcessors(
+    scope: PanicProcessorScope, binding: com.bitchat.android.service.HolderPanicBinding,
+    product: Any, batch: com.bitchat.android.service.HolderProcessorBatch
+): Boolean = when (scope) {
+    PanicProcessorScope.BluetoothOnly -> com.bitchat.android.service.validateHolderOriginalBluetoothProcessors(binding, product, batch)
+    PanicProcessorScope.BluetoothAndCore -> com.bitchat.android.service.validateHolderOriginalBluetoothAndCoreProcessors(binding, product, batch)
+}
+
+private suspend fun collectOriginalProcessors(
+    originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput, scope: PanicProcessorScope
 ): PanicRetirementReport {
     val installed = originalGossip as? PanicOriginalGossipInput.Installed
     fun withEvidence(report: PanicRetirementReport, evidence: PanicOriginalProcessorEvidence) = report.copy(
         transportCoreRadioAndHandlers = PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.ProducerNotImplemented,
-            PanicUnconfirmedEvidence.OriginalBluetoothProcessors(evidence)))
+            when (scope) {
+                PanicProcessorScope.BluetoothOnly -> PanicUnconfirmedEvidence.OriginalBluetoothProcessors(evidence)
+                PanicProcessorScope.BluetoothAndCore -> PanicUnconfirmedEvidence.OriginalBluetoothAndCoreProcessors(evidence)
+            }))
     fun empty(status: PanicProcessorBatchStatus) = PanicOriginalProcessorEvidence(status, emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
     if (installed == null || originalFacade == null || installed.exactOriginalMesh !== originalFacade) {
         val report = collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
         return withEvidence(report, empty(if (installed == null) PanicProcessorBatchStatus.MissingInput else PanicProcessorBatchStatus.InvalidInput))
     }
-    val first = com.bitchat.android.service.captureHolderOriginalBluetoothProcessors(installed.binding, installed.exactOriginalMesh)
+    val first = captureOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh)
     val original = (first as? com.bitchat.android.service.HolderProcessorCapture.Observed)?.batch
     if (original == null) {
         val report = collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
@@ -330,7 +360,7 @@ internal suspend fun collectPanicRetirementWithOriginalBluetoothProcessors(
     currentCoroutineContext().ensureActive()
     val report = collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
     currentCoroutineContext().ensureActive()
-    val second = com.bitchat.android.service.captureHolderOriginalBluetoothProcessors(installed.binding, installed.exactOriginalMesh)
+    val second = captureOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh)
     val ready = (second as? com.bitchat.android.service.HolderProcessorCapture.Observed)?.batch
     var status = PanicProcessorBatchStatus.Ineligible
     val gaps = (ready?.gaps ?: listOf((second as com.bitchat.android.service.HolderProcessorCapture.Invalid).gap)).toMutableList()
@@ -348,25 +378,35 @@ internal suspend fun collectPanicRetirementWithOriginalBluetoothProcessors(
             }
             var valid = callerGaps.isEmpty() && preparations.size == roots.size
             preparations.forEach { if (!com.bitchat.android.mesh.validateOriginalProcessorPreparation(it)) valid = false }
-            if (valid && com.bitchat.android.service.validateHolderOriginalBluetoothProcessors(installed.binding, installed.exactOriginalMesh, ready)) {
-                var allReturned = true
+            if (valid && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready)) {
+                var allProcessed = true
+                var coreAwaitOmitted = false
                 for ((index, preparation) in preparations.withIndex()) {
-                    if (!com.bitchat.android.service.validateHolderOriginalBluetoothProcessors(installed.binding, installed.exactOriginalMesh, ready) ||
-                        !com.bitchat.android.mesh.awaitOriginalProcessor(preparation)) {
-                        allReturned = false
+                    if (!validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready)) {
+                        allProcessed = false
                         break
                     }
-                    awaitReturnedRoots += roots[index].identity
+                    val source = ready.rows.single { it.root === roots[index].identity }.source
+                    if (source == com.bitchat.android.service.HolderProcessorSource.WifiCore) {
+                        // Baseline: the actual Core await is not performed; no return identity is recorded.
+                        coreAwaitOmitted = true
+                    } else {
+                        if (!com.bitchat.android.mesh.awaitOriginalProcessor(preparation)) {
+                            allProcessed = false
+                            break
+                        }
+                        awaitReturnedRoots += roots[index].identity
+                    }
                 }
-                if (allReturned && com.bitchat.android.service.validateHolderOriginalBluetoothProcessors(installed.binding, installed.exactOriginalMesh, ready)) {
-                    status = PanicProcessorBatchStatus.AwaitReturned
+                if (allProcessed && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready)) {
+                    status = if (coreAwaitOmitted) PanicProcessorBatchStatus.RequestedNotAwaited else PanicProcessorBatchStatus.AwaitReturned
                 }
             }
         }
     }
     currentCoroutineContext().ensureActive()
     if (ready != null && gaps.isEmpty() &&
-        !com.bitchat.android.service.validateHolderOriginalBluetoothProcessors(installed.binding, installed.exactOriginalMesh, ready)) {
+        !validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready)) {
         gaps += com.bitchat.android.service.HolderProcessorGap.WitnessChanged
         status = PanicProcessorBatchStatus.Ineligible
     }
