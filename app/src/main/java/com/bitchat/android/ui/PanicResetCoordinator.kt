@@ -379,27 +379,17 @@ private suspend fun collectOriginalProcessors(
             var valid = callerGaps.isEmpty() && preparations.size == roots.size
             preparations.forEach { if (!com.bitchat.android.mesh.validateOriginalProcessorPreparation(it)) valid = false }
             if (valid && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready)) {
-                var allProcessed = true
-                var coreAwaitOmitted = false
+                var allReturned = true
                 for ((index, preparation) in preparations.withIndex()) {
-                    if (!validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready)) {
-                        allProcessed = false
+                    if (!validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) ||
+                        !com.bitchat.android.mesh.awaitOriginalProcessor(preparation)) {
+                        allReturned = false
                         break
                     }
-                    val source = ready.rows.single { it.root === roots[index].identity }.source
-                    if (source == com.bitchat.android.service.HolderProcessorSource.WifiCore) {
-                        // Baseline: the actual Core await is not performed; no return identity is recorded.
-                        coreAwaitOmitted = true
-                    } else {
-                        if (!com.bitchat.android.mesh.awaitOriginalProcessor(preparation)) {
-                            allProcessed = false
-                            break
-                        }
-                        awaitReturnedRoots += roots[index].identity
-                    }
+                    awaitReturnedRoots += roots[index].identity
                 }
-                if (allProcessed && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready)) {
-                    status = if (coreAwaitOmitted) PanicProcessorBatchStatus.RequestedNotAwaited else PanicProcessorBatchStatus.AwaitReturned
+                if (allReturned && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready)) {
+                    status = PanicProcessorBatchStatus.AwaitReturned
                 }
             }
         }
