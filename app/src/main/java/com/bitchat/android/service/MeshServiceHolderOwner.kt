@@ -237,6 +237,8 @@ internal fun validateHolderAdmittedManagerFrontier(
 /** Scalar evidence has no participant, caller, Job, product or preparation capability. */
 internal sealed interface HolderProcessorChildIdentity
 internal sealed interface HolderProcessorParentIdentity
+private enum class HolderProcessorScope { BluetoothOnly, BluetoothAndCore }
+internal enum class HolderProcessorSource { BluetoothService, WifiCore }
 internal enum class HolderProcessorState { Dispatched, Returned, Unknown }
 internal enum class HolderProcessorGap {
     InvalidSubject, MissingCollector, NotClosed, ActiveEntry, DispatchedParent, UnknownParent,
@@ -245,7 +247,8 @@ internal enum class HolderProcessorGap {
 }
 internal data class HolderProcessorRow(
     val child: HolderProcessorChildIdentity, val parent: HolderProcessorParentIdentity,
-    val root: com.bitchat.android.mesh.OriginalProcessorRootIdentity?, val state: HolderProcessorState
+    val root: com.bitchat.android.mesh.OriginalProcessorRootIdentity?, val state: HolderProcessorState,
+    val source: HolderProcessorSource
 )
 /** Call-scoped authority; never stored in a retirement report or restored from scalar rows. */
 internal sealed interface HolderProcessorBatch {
@@ -260,6 +263,8 @@ internal sealed interface HolderProcessorCapture {
 private interface OriginalProcessorCollector {
     fun capture(subject: HolderPanicSubject, product: Any): HolderProcessorCapture
     fun validate(subject: HolderPanicSubject, product: Any, batch: HolderProcessorBatch): Boolean
+    fun captureBluetoothAndCore(subject: HolderPanicSubject, product: Any): HolderProcessorCapture
+    fun validateBluetoothAndCore(subject: HolderPanicSubject, product: Any, batch: HolderProcessorBatch): Boolean
 }
 private class TypedOriginalProcessorCollector<B : Any, U : Any, G : Any>(
     private val original: MeshServiceHolderOwner<B, U, G>
@@ -267,6 +272,10 @@ private class TypedOriginalProcessorCollector<B : Any, U : Any, G : Any>(
     override fun capture(subject: HolderPanicSubject, product: Any) = original.captureOriginalBluetoothProcessors(subject, product)
     override fun validate(subject: HolderPanicSubject, product: Any, batch: HolderProcessorBatch) =
         original.validateOriginalBluetoothProcessors(subject, product, batch)
+    override fun captureBluetoothAndCore(subject: HolderPanicSubject, product: Any) =
+        original.captureOriginalBluetoothAndCoreProcessors(subject, product)
+    override fun validateBluetoothAndCore(subject: HolderPanicSubject, product: Any, batch: HolderProcessorBatch) =
+        original.validateOriginalBluetoothAndCoreProcessors(subject, product, batch)
 }
 private sealed interface BoundProcessorCollector {
     data object Missing : BoundProcessorCollector
@@ -288,6 +297,25 @@ internal fun validateHolderOriginalBluetoothProcessors(
     is CapturedHolderPanicBinding -> binding.product === product && when (val collector = binding.processorCollector) {
         BoundProcessorCollector.Missing -> false
         is BoundProcessorCollector.Installed -> collector.original.validate(binding.subject, product, batch)
+    }
+}
+
+internal fun captureHolderOriginalBluetoothAndCoreProcessors(binding: HolderPanicBinding, product: Any): HolderProcessorCapture =
+    when (binding) {
+        is UnconfirmedHolderPanicBinding -> HolderProcessorCapture.Invalid(HolderProcessorGap.InvalidSubject)
+        is CapturedHolderPanicBinding -> if (binding.product !== product) HolderProcessorCapture.Invalid(HolderProcessorGap.InvalidSubject)
+        else when (val collector = binding.processorCollector) {
+            BoundProcessorCollector.Missing -> HolderProcessorCapture.Invalid(HolderProcessorGap.MissingCollector)
+            is BoundProcessorCollector.Installed -> collector.original.captureBluetoothAndCore(binding.subject, product)
+        }
+    }
+internal fun validateHolderOriginalBluetoothAndCoreProcessors(
+    binding: HolderPanicBinding, product: Any, batch: HolderProcessorBatch
+): Boolean = when (binding) {
+    is UnconfirmedHolderPanicBinding -> false
+    is CapturedHolderPanicBinding -> binding.product === product && when (val collector = binding.processorCollector) {
+        BoundProcessorCollector.Missing -> false
+        is BoundProcessorCollector.Installed -> collector.original.validateBluetoothAndCore(binding.subject, product, batch)
     }
 }
 
@@ -475,6 +503,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     private class ProcessorChild(
         val identity: HolderProcessorChildIdentity, val context: HolderConstructionContext,
         val entry: HolderEntryOrigin, val parent: HolderProcessorParentIdentity,
+        val source: HolderProcessorSource,
         var state: HolderProcessorState = HolderProcessorState.Dispatched,
         var allocated: com.bitchat.android.mesh.PacketProcessor? = null,
         var binding: com.bitchat.android.mesh.OriginalProcessorBinding? = null,
@@ -483,6 +512,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     private val processorChildren = mutableListOf<ProcessorChild>()
     private class ProcessorBatch(
         val anchor: Any, val subject: HolderPanicSubject, val product: Any, val revision: Any,
+        val scope: HolderProcessorScope,
         private val bindings: List<com.bitchat.android.mesh.OriginalProcessorBinding>,
         rows: List<HolderProcessorRow>, gaps: List<HolderProcessorGap>
     ) : HolderProcessorBatch {
@@ -497,11 +527,22 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
     /** Registry admission only; inherited constructor serialization remains unchanged. */
     fun constructBluetoothProcessor(
         context: HolderConstructionContext, creator: () -> com.bitchat.android.mesh.PacketProcessor
+    ): com.bitchat.android.mesh.PacketProcessor = constructProcessor(
+        context, HolderConstructionKind.BLUETOOTH, HolderProcessorSource.BluetoothService, creator)
+
+    fun constructWifiProcessor(
+        context: HolderConstructionContext, creator: () -> com.bitchat.android.mesh.PacketProcessor
+    ): com.bitchat.android.mesh.PacketProcessor = constructProcessor(
+        context, HolderConstructionKind.WIFI, HolderProcessorSource.WifiCore, creator)
+
+    private fun constructProcessor(
+        context: HolderConstructionContext, expected: HolderConstructionKind, source: HolderProcessorSource,
+        creator: () -> com.bitchat.android.mesh.PacketProcessor
     ): com.bitchat.android.mesh.PacketProcessor {
         val (operation, child) = synchronized(registryMonitor) {
-            val operation = admit(HolderContextOperationKind.PacketProcessorCreator, context, HolderConstructionKind.BLUETOOTH)
+            val operation = admit(HolderContextOperationKind.PacketProcessorCreator, context, expected)
             val parent = checkNotNull(constructionFor(context))
-            val child = ProcessorChild(ProcessorChildIdentity(), context, checkNotNull(operation.entry), parent.processorParent)
+            val child = ProcessorChild(ProcessorChildIdentity(), context, checkNotNull(operation.entry), parent.processorParent, source)
             processorChildren += child
             changed()
             operation to child
@@ -529,8 +570,16 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         return allocated
     }
 
-    /** One fail-fast BLE-only view. Wi-Fi/Core and escaped host roots remain unbound. */
-    fun captureOriginalBluetoothProcessors(subject: HolderPanicSubject, product: Any): HolderProcessorCapture = synchronized(registryMonitor) {
+    /** The old entry point observes only original Bluetooth processor children. */
+    fun captureOriginalBluetoothProcessors(subject: HolderPanicSubject, product: Any): HolderProcessorCapture =
+        captureOriginalProcessors(subject, product, HolderProcessorScope.BluetoothOnly)
+
+    fun captureOriginalBluetoothAndCoreProcessors(subject: HolderPanicSubject, product: Any): HolderProcessorCapture =
+        captureOriginalProcessors(subject, product, HolderProcessorScope.BluetoothAndCore)
+
+    private fun captureOriginalProcessors(
+        subject: HolderPanicSubject, product: Any, scope: HolderProcessorScope
+    ): HolderProcessorCapture = synchronized(registryMonitor) {
         if (subject !is UnifiedPanicSubject || subject.ownerAnchor !== ownerAnchor) {
             return@synchronized HolderProcessorCapture.Invalid(HolderProcessorGap.InvalidSubject)
         }
@@ -551,11 +600,15 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         if (propagationUnverified) gaps += HolderProcessorGap.PropagationUnverified
         if (externalProducts.isNotEmpty() || retainedInputs.any { it.product != null }) gaps += HolderProcessorGap.ExternalInput
         if (retainedInputs.any { it.state == HolderContextOperationState.DeniedBeforeHelperEffects }) gaps += HolderProcessorGap.RefusedAllocatedInput
+        val children = processorChildren.filter {
+            scope == HolderProcessorScope.BluetoothAndCore || it.source == HolderProcessorSource.BluetoothService
+        }
         val roots = mutableListOf<com.bitchat.android.mesh.OriginalProcessorBinding>()
         val seen = java.util.IdentityHashMap<com.bitchat.android.mesh.OriginalProcessorBinding, Unit>()
-        processorChildren.forEach { child ->
+        children.forEach { child ->
             val parent = constructionFor(child.context)
-            if (parent == null || parent.kind != HolderConstructionKind.BLUETOOTH || parent.entry !== child.entry ||
+            val expected = if (child.source == HolderProcessorSource.BluetoothService) HolderConstructionKind.BLUETOOTH else HolderConstructionKind.WIFI
+            if (parent == null || parent.kind != expected || parent.entry !== child.entry ||
                 parent.processorParent !== child.parent) gaps += HolderProcessorGap.ParentMismatch
             if (child.state != HolderProcessorState.Returned || child.binding == null || child.rootIdentity == null) gaps += HolderProcessorGap.UnknownProcessor
             child.binding?.let { binding ->
@@ -563,21 +616,32 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
             }
         }
         val bluetooth = constructions.values.filter { it.kind == HolderConstructionKind.BLUETOOTH }
-        bluetooth.forEach { parent ->
-            if (processorChildren.count { it.context === parent.context && it.entry === parent.entry &&
+        val requiredParents = if (scope == HolderProcessorScope.BluetoothOnly) bluetooth else constructions.values.filter {
+            it.kind == HolderConstructionKind.BLUETOOTH || it.kind == HolderConstructionKind.WIFI
+        }
+        requiredParents.forEach { parent ->
+            val source = if (parent.kind == HolderConstructionKind.BLUETOOTH) HolderProcessorSource.BluetoothService else HolderProcessorSource.WifiCore
+            if (children.count { it.context === parent.context && it.entry === parent.entry && it.source == source &&
                     it.state == HolderProcessorState.Returned && it.binding != null } != 1) gaps += HolderProcessorGap.MissingProcessor
         }
         if (bluetooth.none { (it.outcome as? HolderConstructionOutcome.Returned)?.product === unified.suppliedBluetooth }) {
             gaps += HolderProcessorGap.ParentMismatch
         }
         if (roots.isEmpty()) gaps += HolderProcessorGap.MissingProcessor
-        HolderProcessorCapture.Observed(ProcessorBatch(ownerAnchor, subject, product, censusRevision, roots.toList(),
-            processorChildren.map { HolderProcessorRow(it.identity, it.parent, it.rootIdentity, it.state) }, gaps.distinct()))
+        HolderProcessorCapture.Observed(ProcessorBatch(ownerAnchor, subject, product, censusRevision, scope, roots.toList(),
+            children.map { HolderProcessorRow(it.identity, it.parent, it.rootIdentity, it.state, it.source) }, gaps.distinct()))
     }
 
     fun validateOriginalBluetoothProcessors(subject: HolderPanicSubject, product: Any, batch: HolderProcessorBatch): Boolean =
-        synchronized(registryMonitor) {
-            batch is ProcessorBatch && batch.anchor === ownerAnchor && batch.subject === subject &&
+        validateOriginalProcessors(subject, product, batch, HolderProcessorScope.BluetoothOnly)
+
+    fun validateOriginalBluetoothAndCoreProcessors(subject: HolderPanicSubject, product: Any, batch: HolderProcessorBatch): Boolean =
+        validateOriginalProcessors(subject, product, batch, HolderProcessorScope.BluetoothAndCore)
+
+    private fun validateOriginalProcessors(
+        subject: HolderPanicSubject, product: Any, batch: HolderProcessorBatch, scope: HolderProcessorScope
+    ): Boolean = synchronized(registryMonitor) {
+            batch is ProcessorBatch && batch.scope == scope && batch.anchor === ownerAnchor && batch.subject === subject &&
                 batch.product === product && batch.revision === censusRevision && batch.eligible && constructionAdmissionClosed
         }
 

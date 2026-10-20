@@ -175,6 +175,9 @@ class WifiAwareMeshService internal constructor(
                     creator
                 )
             },
+            recordPacketProcessor = { creator ->
+                com.bitchat.android.service.MeshServiceHolder.constructWifiProcessor(holderConstruction, creator)
+            },
             hooks = MeshCore.Hooks(
                 onMessageReceived = { message -> handleMessageReceived(message) },
                 onAnnounceProcessed = { routed, _ ->
