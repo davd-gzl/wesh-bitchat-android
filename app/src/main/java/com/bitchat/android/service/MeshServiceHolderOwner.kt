@@ -2,7 +2,7 @@ package com.bitchat.android.service
 
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.sync.GossipSyncManager
-import com.bitchat.android.wifiaware.WifiAwareFactoryResult
+import com.bitchat.android.wifiaware.*
 
 internal enum class HolderLogLevel { DEBUG, INFO, WARN, ERROR }
 
@@ -93,13 +93,14 @@ private class CapturedHolderPanicBinding(
     val product: Any,
     val gossipCollector: BoundGossipCollector,
     val processorCollector: BoundProcessorCollector,
-    val storeForwardCollector: BoundStoreForwardCollector
+    val storeForwardCollector: BoundStoreForwardCollector,
+    val wifiHostCollector: BoundWifiHostCollector
 ) : HolderPanicBinding
 private class UnconfirmedHolderPanicBinding(val gap: HolderPanicCaptureGap) : HolderPanicBinding
 
 internal fun captureHolderPanicBinding(actor: HolderPanicAdmissionActor, exactUnified: Any): HolderPanicBinding =
     when (val captured = actor.captureUnifiedPanicSubject(exactUnified)) {
-        is HolderPanicSubjectCapture.Captured -> CapturedHolderPanicBinding(actor, captured.subject, exactUnified, BoundGossipCollector.Missing, BoundProcessorCollector.Missing, BoundStoreForwardCollector.Missing)
+        is HolderPanicSubjectCapture.Captured -> CapturedHolderPanicBinding(actor, captured.subject, exactUnified, BoundGossipCollector.Missing, BoundProcessorCollector.Missing, BoundStoreForwardCollector.Missing, BoundWifiHostCollector.Missing)
         is HolderPanicSubjectCapture.Unconfirmed -> UnconfirmedHolderPanicBinding(captured.gap)
     }
 
@@ -126,7 +127,7 @@ internal sealed interface HolderGossipSubsetCapture<out G : Any> {
     class Unconfirmed(val gap: HolderGossipCaptureGap) : HolderGossipSubsetCapture<Nothing>
 }
 
-internal enum class HolderContextOperationKind { ManagerCreator, BluetoothEnsure, ManagerRegistration, ExternalAttach, PacketProcessorCreator, StoreForwardCreator }
+internal enum class HolderContextOperationKind { ManagerCreator, BluetoothEnsure, ManagerRegistration, ExternalAttach, PacketProcessorCreator, StoreForwardCreator, WifiHostCreator }
 internal enum class HolderContextOperationGap { ForeignContext, WrongContextKind, EndedContextAfterClose, UnattributedAfterClose }
 internal sealed class HolderContextOperationRefusal protected constructor(
     val operation: HolderContextOperationKind,
@@ -186,6 +187,57 @@ private sealed interface BoundGossipCollector {
     class Installed(val original: OriginalGossipCollector) : BoundGossipCollector
 }
 
+internal sealed interface HolderWifiInitializationTicket
+internal sealed interface HolderWifiInitializationAdmissionResult {
+    class Accepted(val ticket: HolderWifiInitializationTicket) : HolderWifiInitializationAdmissionResult
+    data object RefusedOriginalClosed : HolderWifiInitializationAdmissionResult
+    data object InvalidOrigin : HolderWifiInitializationAdmissionResult
+}
+internal sealed interface HolderWifiHostBatch {
+    val hosts: List<OriginalWifiHostBinding>
+    val controllers: List<OriginalWifiControllerParticipant>
+    val controllerViews: List<WifiControllerOriginalView>
+    val gaps: List<WifiHostGap>
+}
+internal sealed interface HolderWifiHostCapture {
+    class Observed(val batch: HolderWifiHostBatch) : HolderWifiHostCapture
+    class Invalid(val gap: WifiHostGap) : HolderWifiHostCapture
+}
+private interface OriginalWifiHostCollector {
+    fun fence(subject: HolderPanicSubject, product: Any)
+    fun capture(subject: HolderPanicSubject, product: Any): HolderWifiHostCapture
+    fun validate(subject: HolderPanicSubject, product: Any, batch: HolderWifiHostBatch): Boolean
+}
+private class TypedOriginalWifiHostCollector<B : Any, U : Any>(
+    val owner: MeshServiceHolderOwner<B, U, GossipSyncManager>
+) : OriginalWifiHostCollector {
+    override fun fence(subject: HolderPanicSubject, product: Any) = owner.fenceOriginalWifiHosts(subject, product)
+    override fun capture(subject: HolderPanicSubject, product: Any) = owner.captureOriginalWifiHosts(subject, product)
+    override fun validate(subject: HolderPanicSubject, product: Any, batch: HolderWifiHostBatch) = owner.validateOriginalWifiHosts(subject, product, batch)
+}
+private sealed interface BoundWifiHostCollector {
+    data object Missing : BoundWifiHostCollector
+    class Installed(val original: OriginalWifiHostCollector) : BoundWifiHostCollector
+}
+internal fun fenceHolderOriginalWifiHosts(binding: HolderPanicBinding, exactProduct: Any) {
+    val captured = binding as? CapturedHolderPanicBinding ?: return
+    if (captured.product !== exactProduct) return
+    (captured.wifiHostCollector as? BoundWifiHostCollector.Installed)?.original?.fence(captured.subject, captured.product)
+}
+internal fun captureHolderOriginalWifiHosts(binding: HolderPanicBinding, exactProduct: Any): HolderWifiHostCapture {
+    val captured = binding as? CapturedHolderPanicBinding ?: return HolderWifiHostCapture.Invalid(WifiHostGap.InvalidOrigin)
+    if (captured.product !== exactProduct) return HolderWifiHostCapture.Invalid(WifiHostGap.InvalidOrigin)
+    val collector = captured.wifiHostCollector as? BoundWifiHostCollector.Installed
+        ?: return HolderWifiHostCapture.Invalid(WifiHostGap.MissingParticipant)
+    return collector.original.capture(captured.subject, captured.product)
+}
+internal fun validateHolderOriginalWifiHosts(binding: HolderPanicBinding, exactProduct: Any, batch: HolderWifiHostBatch): Boolean {
+    val captured = binding as? CapturedHolderPanicBinding ?: return false
+    if (captured.product !== exactProduct) return false
+    val collector = captured.wifiHostCollector as? BoundWifiHostCollector.Installed ?: return false
+    return collector.original.validate(captured.subject, captured.product, batch)
+}
+
 /** The collector and admission actor are the same original concrete owner. */
 internal fun <B : Any, U : Any> captureHolderPanicBindingWithGossip(
     original: MeshServiceHolderOwner<B, U, GossipSyncManager>,
@@ -195,7 +247,8 @@ internal fun <B : Any, U : Any> captureHolderPanicBindingWithGossip(
         original, captured.subject, exactUnified,
         BoundGossipCollector.Installed(TypedOriginalGossipCollector(original)),
         BoundProcessorCollector.Installed(TypedOriginalProcessorCollector(original)),
-        BoundStoreForwardCollector.Installed(TypedOriginalStoreForwardCollector(original))
+        BoundStoreForwardCollector.Installed(TypedOriginalStoreForwardCollector(original)),
+        BoundWifiHostCollector.Installed(TypedOriginalWifiHostCollector(original))
     )
     is HolderPanicSubjectCapture.Unconfirmed -> UnconfirmedHolderPanicBinding(captured.gap)
 }
@@ -519,6 +572,139 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         }
         changed()
     }
+    private class WifiInitialization(val original: HolderOrigin, val participant: OriginalWifiControllerParticipant) : HolderWifiInitializationTicket {
+        var ended = false
+        var outcome: WifiInitializationOutcome? = null
+    }
+    private class WifiHostChild(val context: HolderWifiConstructionContext, val entry: HolderEntryOrigin) {
+        var owner: OriginalWifiHostOwner? = null
+        var binding: OriginalWifiHostBinding? = null
+        var unknown = false
+    }
+    private class WifiBatch(
+        val anchor: Any, val subject: HolderPanicSubject, val product: Any, val revision: Any,
+        hosts: List<OriginalWifiHostBinding>, controllers: List<OriginalWifiControllerParticipant>,
+        controllerViews: List<WifiControllerOriginalView>, gaps: List<WifiHostGap>
+    ) : HolderWifiHostBatch {
+        private val originalHosts = hosts.toList()
+        private val originalControllers = controllers.toList()
+        private val originalViews = controllerViews.toList()
+        private val originalGaps = gaps.toList()
+        override val hosts: List<OriginalWifiHostBinding> get() = originalHosts.toList()
+        override val controllers: List<OriginalWifiControllerParticipant> get() = originalControllers.toList()
+        override val controllerViews: List<WifiControllerOriginalView> get() = originalViews.toList()
+        override val gaps: List<WifiHostGap> get() = originalGaps.toList()
+    }
+    private val wifiInitializations = mutableListOf<WifiInitialization>()
+    private val wifiHosts = mutableListOf<WifiHostChild>()
+
+    fun attachOriginalWifiController(original: HolderOrigin, participant: OriginalWifiControllerParticipant): HolderWifiInitializationAdmissionResult {
+        val suppliedOriginal = originalWifiParticipantOrigin(participant)
+        return synchronized(registryMonitor) {
+            if (original !is InitialOrigin || original.ownerAnchor !== ownerAnchor || suppliedOriginal !== original) {
+                return@synchronized HolderWifiInitializationAdmissionResult.InvalidOrigin
+            }
+            if (constructionAdmissionClosed) return@synchronized HolderWifiInitializationAdmissionResult.RefusedOriginalClosed
+            HolderWifiInitializationAdmissionResult.Accepted(WifiInitialization(original, participant).also {
+                wifiInitializations += it; changed()
+            })
+        }
+    }
+    fun finishWifiInitialization(ticket: HolderWifiInitializationTicket, outcome: WifiInitializationOutcome) = synchronized(registryMonitor) {
+        val record = wifiInitializations.firstOrNull { it === ticket } ?: return@synchronized
+        if (record.ended) record.outcome = WifiInitializationOutcome.UnknownFailure else record.outcome = outcome
+        record.ended = true
+        changed()
+    }
+    fun constructWifiHost(context: HolderWifiConstructionContext, creator: () -> OriginalWifiHostOwner): OriginalWifiHostOwner {
+        val (operation, child) = synchronized(registryMonitor) {
+            val operation = admit(HolderContextOperationKind.WifiHostCreator, context, HolderConstructionKind.WIFI)
+            val child = WifiHostChild(context, checkNotNull(operation.entry))
+            wifiHosts += child; changed()
+            operation to child
+        }
+        val allocated = try { creator() } catch (failure: Throwable) {
+            synchronized(registryMonitor) { child.unknown = true; changed() }
+            finish(operation, false, failure = failureKind(failure)); throw failure
+        }
+        synchronized(registryMonitor) { child.owner = allocated; changed() }
+        val binding = try { allocated.binding } catch (failure: Throwable) {
+            synchronized(registryMonitor) { child.unknown = true; changed() }
+            finish(operation, false, failure = failureKind(failure)); throw failure
+        }
+        val alreadyClosed = synchronized(registryMonitor) {
+            child.binding = binding
+            operation.state = HolderContextOperationState.Completed
+            changed()
+            constructionAdmissionClosed
+        }
+        // A preaccepted creator can return after the original fence. Preserve custody first;
+        // close only admission before any later product effect, never stop or join here.
+        if (alreadyClosed) allocated.fence(binding)
+        return allocated
+    }
+    private fun validWifiSubject(subject: HolderPanicSubject, product: Any): Boolean {
+        if (subject !is UnifiedPanicSubject || subject.ownerAnchor !== ownerAnchor || !constructionAdmissionClosed) return false
+        val parent = constructionFor(subject.context)
+        return parent?.kind == HolderConstructionKind.UNIFIED && (parent.outcome as? HolderConstructionOutcome.Returned)?.product === product
+    }
+    /** The registry snapshot and every fence are RAM only; no observer or Job state is read here. */
+    fun fenceOriginalWifiHosts(subject: HolderPanicSubject, product: Any) {
+        val values = synchronized(registryMonitor) {
+            if (!validWifiSubject(subject, product)) return
+            wifiInitializations.map { it.participant }.distinctByIdentity() to wifiHosts.mapNotNull { it.binding }
+        }
+        values.first.forEach { it.fence() }
+        values.second.forEach { host -> wifiHostOwner(host)?.fence(host) }
+    }
+    private fun <T : Any> List<T>.distinctByIdentity(): List<T> {
+        val seen = java.util.IdentityHashMap<T, Unit>()
+        return filter { seen.put(it, Unit) == null }
+    }
+    fun captureOriginalWifiHosts(subject: HolderPanicSubject, product: Any): HolderWifiHostCapture {
+        val initial = synchronized(registryMonitor) {
+            if (!validWifiSubject(subject, product)) return HolderWifiHostCapture.Invalid(WifiHostGap.InvalidOrigin)
+            val participants = wifiInitializations.map { it.participant }.distinctByIdentity()
+            Triple(censusRevision, participants, wifiHosts.mapNotNull { it.binding })
+        }
+        // Generic mapping, immutable binding reads, and actual Job inspections stay outside registry RAM.
+        val views = initial.second.map { it.observe() }
+        val mapped = views.flatMap { it.products }
+        val viewGaps = views.flatMap { it.gaps }
+        return synchronized(registryMonitor) {
+            val gaps = viewGaps.toMutableList()
+            if (censusRevision !== initial.first || !validWifiSubject(subject, product)) gaps += WifiHostGap.WitnessChanged
+            if (activeEntries.isNotEmpty() || operations.any { it.state == HolderContextOperationState.Admitted || it.state == HolderContextOperationState.Unknown } ||
+                constructions.values.any { it.outcome !is HolderConstructionOutcome.Returned } || propagationUnverified || externalProducts.isNotEmpty()) {
+                gaps += WifiHostGap.HolderUnsettled
+            }
+            if (wifiInitializations.isEmpty() || wifiInitializations.any { !it.ended || it.outcome == WifiInitializationOutcome.UnknownFailure }) {
+                gaps += WifiHostGap.ControllerUnsettled
+            }
+            val parents = constructions.values.filter { it.kind == HolderConstructionKind.WIFI }
+            parents.forEach { parent ->
+                val children = wifiHosts.filter { it.context === parent.context && it.entry === parent.entry }
+                val returned = (parent.outcome as? HolderConstructionOutcome.Returned)?.product
+                if (children.size != 1 || children.any { it.owner == null || it.binding == null || it.unknown }) gaps += WifiHostGap.MissingHost
+                val child = children.singleOrNull()
+                if (mapped.count { it.product === returned && it.token === parent.controllerOrigin && it.host === child?.binding } != 1) gaps += WifiHostGap.InvalidOrigin
+            }
+            if (wifiHosts.any { child -> parents.none { it.context === child.context && it.entry === child.entry } } ||
+                mapped.size != parents.size || initial.third.distinctByIdentity().size != initial.third.size) gaps += WifiHostGap.InvalidOrigin
+            HolderWifiHostCapture.Observed(WifiBatch(ownerAnchor, subject, product, censusRevision,
+                initial.third.toList(), initial.second.toList(), views.toList(), gaps.distinct()))
+        }
+    }
+    fun validateOriginalWifiHosts(subject: HolderPanicSubject, product: Any, batch: HolderWifiHostBatch): Boolean {
+        val original = batch as? WifiBatch ?: return false
+        val local = synchronized(registryMonitor) {
+            original.anchor === ownerAnchor && original.subject === subject && original.product === product &&
+                original.revision === censusRevision && original.gaps.isEmpty() && validWifiSubject(subject, product)
+        }
+        if (!local) return false
+        return original.controllers.indices.all { original.controllers[it].validate(original.controllerViews[it]) }
+    }
+
     private class InitialOrigin(val ownerAnchor: Any) : HolderOrigin
     private class InitialPreparation(override val origin: HolderOrigin) : HolderProcessPreparation
     private var preparation: HolderProcessPreparation? = null

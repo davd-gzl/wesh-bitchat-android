@@ -1,6 +1,7 @@
 package com.bitchat.android.ui
 
 import com.bitchat.android.mesh.UnifiedMeshService
+import com.bitchat.android.wifiaware.*
 import com.bitchat.android.services.SeenReceiptAdmission
 import com.bitchat.android.service.HolderAdmittedManagerFrontier
 import com.bitchat.android.service.HolderGossipCensusCapture
@@ -80,6 +81,7 @@ internal sealed interface KnownManagerDirectCloseOutcome {
     data object RootNotClosed : KnownManagerDirectCloseOutcome
     data object ForeignBinding : KnownManagerDirectCloseOutcome
     data object ForeignRootReceipt : KnownManagerDirectCloseOutcome
+    data object OperationFailed : KnownManagerDirectCloseOutcome
 }
 
 internal enum class KnownDirectEndBatchGap { MissingOrFailedClose, ClosureMismatch }
@@ -208,7 +210,8 @@ internal data class PanicRetirementReport(
     val holderConstructionAndCallbacks: PanicOwnerRetirement,
     val gossipJobsAndWriters: PanicOwnerRetirement,
     val transportCoreRadioAndHandlers: PanicOwnerRetirement,
-    val startupAndRemainingSharedKeyUsers: PanicOwnerRetirement
+    val startupAndRemainingSharedKeyUsers: PanicOwnerRetirement,
+    val originalWifiHosts: PanicOriginalWifiEvidence = PanicOriginalWifiEvidence()
 ) {
     val confirmed: Boolean get() = facade === PanicOwnerRetirement.Confirmed &&
         wifiController === PanicOwnerRetirement.Confirmed &&
@@ -219,10 +222,10 @@ internal data class PanicRetirementReport(
 }
 
 /** Known-manager root closure restricts admission; every missing aggregate proof stays unconfirmed. */
-internal suspend fun collectPanicRetirement(
-    originalFacade: UnifiedMeshService?,
-    originalGossip: PanicOriginalGossipInput
-): PanicRetirementReport {
+private class GossipRestriction(val early: PanicRetirementReport?, val evidence: PanicUnconfirmedEvidence)
+
+private suspend fun restrictOriginalGossip(originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput,
+    savedCaller: GossipCallerFrame? = null, failures: MutableList<Throwable>? = null): GossipRestriction {
     val evidence = when (originalGossip) {
         PanicOriginalGossipInput.MissingCapturedHolder -> PanicUnconfirmedEvidence.NotCollected
         is PanicOriginalGossipInput.Installed -> {
@@ -231,25 +234,35 @@ internal suspend fun collectPanicRetirement(
                 originalGossip.exactOriginalMesh !== originalFacade -> PanicRetirementGap.InstalledFacadeMismatch
                 else -> null
             }
-            if (pairGap != null) return unconfirmedPanicReport(
+            if (pairGap != null) return GossipRestriction(unconfirmedPanicReport(
                 PanicOwnerRetirement.Unconfirmed(pairGap), PanicUnconfirmedEvidence.InvalidInstalledPair(pairGap)
-            )
+            ), PanicUnconfirmedEvidence.NotCollected)
             when (val captured = observeHolderOriginalGossipSubset(originalGossip.binding, originalGossip.exactOriginalMesh)) {
-                is HolderGossipSubsetCapture.Unconfirmed -> return unconfirmedPanicReport(
+                is HolderGossipSubsetCapture.Unconfirmed -> return GossipRestriction(unconfirmedPanicReport(
                     PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.OriginalHolderInputUnconfirmed),
                     PanicUnconfirmedEvidence.InvalidOriginalGossip(captured.gap)
-                )
+                ), PanicUnconfirmedEvidence.NotCollected)
                 is HolderGossipSubsetCapture.Observed -> {
-                    val originalInvoker = currentCoroutineContext()[Job]
-                    val closed = closeKnownOriginalGossipRoots(captured.snapshot)
-                    val direct = closeKnownOriginalDirectIngress(closed.attempts)
-                    val cancellation = cancelKnownOriginalReturnedJobs(closed, originalInvoker)
+                    val originalInvoker = if (savedCaller == null) currentCoroutineContext()[Job] else savedCaller.invoking
+                    val closed = closeKnownOriginalGossipRoots(captured.snapshot, failures)
+                    val direct = closeKnownOriginalDirectIngress(closed.attempts, failures)
+                    val cancellation = cancelKnownOriginalReturnedJobs(closed, originalInvoker, savedCaller)
                     currentCoroutineContext().ensureActive()
                     PanicUnconfirmedEvidence.KnownOriginalGossip(closed.snapshot, closed.attempts, direct, cancellation)
                 }
             }
         }
     }
+    return GossipRestriction(null, evidence)
+}
+
+internal suspend fun collectPanicRetirement(
+    originalFacade: UnifiedMeshService?,
+    originalGossip: PanicOriginalGossipInput
+): PanicRetirementReport {
+    val restricted = restrictOriginalGossip(originalFacade, originalGossip)
+    restricted.early?.let { return it }
+    val evidence = restricted.evidence
     // Restrict already-known managers before any facade await, never after waiting for Holder entries.
     val facade = when {
         originalFacade == null -> PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.MissingCapturedFacade)
@@ -275,8 +288,9 @@ internal suspend fun collectPanicRetirementWithRecordedJobsJoin(
 
 private suspend fun collectRecordedGossipPhase(
     report: PanicRetirementReport,
-    originalGossip: PanicOriginalGossipInput
+    originalGossip: PanicOriginalGossipInput, preflight: (() -> Boolean)? = null
 ): PanicRetirementReport {
+    if (preflight?.invoke() == false) return report
     val gossip = report.gossipJobsAndWriters as? PanicOwnerRetirement.Unconfirmed ?: return report
     val known = gossip.evidence as? PanicUnconfirmedEvidence.KnownOriginalGossip ?: return report
     val installed = originalGossip as? PanicOriginalGossipInput.Installed ?: return report
@@ -287,7 +301,7 @@ private suspend fun collectRecordedGossipPhase(
             KnownRecordedJoinRejection.Batch(KnownRecordedBatchGap.HolderFrontierUnavailable)))
         !sameCoveredManagerIdentities(known, frontier) -> KnownRecordedFrontiersJoin.Ineligible(listOf(
             KnownRecordedJoinRejection.Batch(KnownRecordedBatchGap.NeedsExplicitCancellationRetry)))
-        else -> joinKnownRecordedFrontiers(known, installed, frontier)
+        else -> joinKnownRecordedFrontiers(known, installed, frontier, preflight)
     }
     currentCoroutineContext().ensureActive()
     val current = if (frontier != null && !validateHolderAdmittedManagerFrontier(installed.binding, installed.exactOriginalMesh, frontier)) {
@@ -296,6 +310,172 @@ private suspend fun collectRecordedGossipPhase(
     return report.copy(gossipJobsAndWriters = PanicOwnerRetirement.Unconfirmed(gossip.gap,
         PanicUnconfirmedEvidence.KnownOriginalGossip(known.snapshot, known.attempts,
             known.directIngressClosure, known.returnedJobsCancellation, joined, current, known.directBodiesEnd)))
+}
+
+/** Original caller frames are call-scoped and captured before any new request or cancellation. */
+private class WifiCollectionFrame(
+    val installed: PanicOriginalGossipInput.Installed, val facade: UnifiedMeshService,
+    val caller: WifiHostCaller, val ppCaller: com.bitchat.android.mesh.OriginalProcessorCaller,
+    val storeCaller: com.bitchat.android.mesh.OriginalStoreForwardCaller,
+    val gossipCaller: GossipCallerFrame
+) {
+    val failures = mutableListOf<Throwable>()
+    private val requested = mutableListOf<OriginalWifiHostBinding>()
+    private val operations = mutableListOf<Pair<OriginalWifiHostBinding, WifiStopOperation>>()
+    private val requestGaps = mutableListOf<WifiHostGap>()
+    private var current: com.bitchat.android.service.HolderWifiHostBatch? = null
+    private var restricted: GossipRestriction? = null
+    private var inheritedEntered = false
+    private var inheritedPhase = WifiInheritedPhase.NotCollected
+    private val awaitedStops = mutableListOf<WifiStopIdentity>()
+    private val cancelled = mutableListOf<WifiHostIdentity>()
+    private var status = WifiHostBatchStatus.Ineligible
+
+    fun requestEarly() {
+        com.bitchat.android.service.fenceHolderOriginalWifiHosts(installed.binding, facade)
+        val captured = com.bitchat.android.service.captureHolderOriginalWifiHosts(installed.binding, facade)
+        val batch = (captured as? com.bitchat.android.service.HolderWifiHostCapture.Observed)?.batch
+        if (batch == null) { requestGaps += (captured as com.bitchat.android.service.HolderWifiHostCapture.Invalid).gap; return }
+        batch.controllers.indices.forEach { index ->
+            try { failures += batch.controllers[index].requestRestartCancellation(batch.controllerViews[index], caller) }
+            catch (failure: Throwable) { failures += failure }
+        }
+        batch.hosts.forEach { binding ->
+            val owner = wifiHostOwner(binding)
+            if (owner == null) requestGaps += WifiHostGap.ForeignBinding
+            else try {
+                when (val request = owner.requestTerminalStop(binding, caller)) {
+                    is WifiStopRequest.Published -> { requested += binding; operations += binding to request.operation }
+                    is WifiStopRequest.Pending -> { requested += binding; requestGaps += WifiHostGap.PendingPublication }
+                    is WifiStopRequest.Unconfirmed -> requestGaps += request.gap
+                }
+            } catch (failure: Throwable) { failures += failure }
+        }
+    }
+    suspend fun restrictGossip() {
+        try { restricted = restrictOriginalGossip(facade, installed, gossipCaller, failures) }
+        catch (failure: Throwable) { failures += failure }
+    }
+    fun gate(): Boolean {
+        val captured = com.bitchat.android.service.captureHolderOriginalWifiHosts(installed.binding, facade)
+        val batch = (captured as? com.bitchat.android.service.HolderWifiHostCapture.Observed)?.batch
+        current = batch
+        if (batch == null || requestGaps.isNotEmpty() || batch.gaps.isNotEmpty()) return false
+        if (batch.hosts.size != requested.size || batch.hosts.any { target -> requested.count { it === target } != 1 }) {
+            status = WifiHostBatchStatus.NeedsExplicitRetry
+            return false
+        }
+        return com.bitchat.android.service.validateHolderOriginalWifiHosts(installed.binding, facade, batch)
+    }
+    fun stillValid(): Boolean = current?.let {
+        com.bitchat.android.service.validateHolderOriginalWifiHosts(installed.binding, facade, it)
+    } ?: false
+    fun scoped(report: PanicRetirementReport): PanicRetirementReport {
+        val captured = current
+        val rows = requested.mapNotNull { binding -> wifiHostOwner(binding)?.observation(binding) }
+        return report.copy(originalWifiHosts = PanicOriginalWifiEvidence(status, rows,
+            requested.map { it.identity }, cancelled.toList(), emptyList(),
+            (requestGaps + (captured?.gaps ?: emptyList())).distinct(), inheritedPhase, awaitedStops.toList()))
+    }
+    fun notCollected(): PanicRetirementReport = scoped(unconfirmedPanicReport(
+        PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.OriginalHolderInputUnconfirmed),
+        restricted?.evidence ?: PanicUnconfirmedEvidence.NotCollected))
+    suspend fun inheritedReport(): PanicRetirementReport {
+        if (!stillValid()) return notCollected()
+        val stage = restricted ?: return notCollected()
+        stage.early?.let { return scoped(it) }
+        inheritedEntered = true
+        inheritedPhase = WifiInheritedPhase.Entered
+        val retired = facade.retireForPanic()
+        if (!stillValid()) return notCollected()
+        val report = unconfirmedPanicReport(if (retired) PanicOwnerRetirement.Confirmed else
+            PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.FacadeUnconfirmed), stage.evidence)
+        val completed = collectEndedDirectPhase(report, installed, ::stillValid)
+        inheritedPhase = WifiInheritedPhase.Returned
+        return completed
+    }
+    suspend fun finish(report: PanicRetirementReport): PanicRetirementReport {
+        if (!inheritedEntered || !stillValid() || report.facade !== PanicOwnerRetirement.Confirmed) return scoped(report)
+        val inherited = (report.transportCoreRadioAndHandlers as? PanicOwnerRetirement.Unconfirmed)?.evidence
+            as? PanicUnconfirmedEvidence.OriginalProcessorStoreForwardUnion ?: return scoped(report)
+        if (inherited.processorObservation.status != PanicProcessorBatchStatus.AwaitReturned ||
+            inherited.storeForwardObservation.status != PanicStoreForwardBatchStatus.AwaitReturned) return scoped(report)
+        val batch = current ?: return scoped(report)
+        for (index in batch.controllers.indices) {
+            if (!stillValid() || !batch.controllers[index].awaitRestarts(batch.controllerViews[index], caller)) return scoped(report)
+        }
+        var allStopBodiesReturned = true
+        for ((binding, operation) in operations) {
+            try {
+                if (!stillValid() || wifiHostOwner(binding)?.awaitStopBody(operation, caller) != true || !stillValid()) {
+                    allStopBodiesReturned = false
+                } else awaitedStops += operation.identity
+            } catch (failure: Throwable) {
+                failures += failure
+                allStopBodiesReturned = false
+            }
+        }
+        try { currentCoroutineContext().ensureActive() }
+        catch (cancelled: CancellationException) { failures += cancelled }
+        throwRequestFailures(failures)
+        if (!allStopBodiesReturned) return scoped(report)
+        val preparations = mutableListOf<Pair<OriginalWifiHostBinding, WifiHostAwaitPreparation>>()
+        for ((binding, operation) in operations) {
+            if (!stillValid()) return scoped(report)
+            when (val prepared = wifiHostOwner(binding)?.prepareHostAwait(binding, operation, caller)) {
+                is WifiHostPreparation.Ready -> preparations += binding to prepared.preparation
+                is WifiHostPreparation.Unconfirmed -> { requestGaps += prepared.gap; return scoped(report) }
+                null -> { requestGaps += WifiHostGap.ForeignBinding; return scoped(report) }
+            }
+        }
+        if (!stillValid() || preparations.size != batch.hosts.size) return scoped(report)
+        preparations.forEach { (binding, preparation) ->
+            try {
+                if (wifiHostOwner(binding)?.cancelPreparedHost(preparation) == true) cancelled += binding.identity
+                else requestGaps += WifiHostGap.WitnessChanged
+            } catch (failure: Throwable) { failures += failure }
+        }
+        try { currentCoroutineContext().ensureActive() }
+        catch (cancelled: CancellationException) { failures += cancelled }
+        throwRequestFailures(failures)
+        currentCoroutineContext().ensureActive()
+        if (!stillValid() || requestGaps.isNotEmpty() || cancelled.size != preparations.size) return scoped(report)
+        preparations.forEach { (binding, preparation) ->
+            if (wifiHostOwner(binding)?.validatePrepared(preparation) != true) return scoped(report)
+        }
+        // Baseline: all genuine preparation and cancellation above returned; original-host joins are deliberately absent.
+        status = if (preparations.isEmpty()) WifiHostBatchStatus.EmptyValidated else WifiHostBatchStatus.RequestedNotAwaited
+        return scoped(report)
+    }
+}
+
+private fun throwRequestFailures(failures: List<Throwable>) {
+    if (failures.isEmpty()) return
+    val primary = failures.firstOrNull { it is CancellationException } ?: failures.first()
+    val seen = java.util.IdentityHashMap<Throwable, Unit>()
+    seen[primary] = Unit
+    failures.forEach { if (seen.put(it, Unit) == null) primary.addSuppressed(it) }
+    throw primary
+}
+
+internal suspend fun collectPanicRetirementWithOriginalWifiHosts(
+    originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput
+): PanicRetirementReport {
+    val installed = originalGossip as? PanicOriginalGossipInput.Installed
+    if (installed == null || originalFacade == null || installed.exactOriginalMesh !== originalFacade) {
+        return unconfirmedPanicReport(PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.OriginalHolderInputUnconfirmed),
+            PanicUnconfirmedEvidence.NotCollected).copy(originalWifiHosts = PanicOriginalWifiEvidence(
+                WifiHostBatchStatus.Ineligible, gaps = listOf(WifiHostGap.InvalidOrigin)))
+    }
+    val caller = captureOriginalWifiCaller()
+    val ppCaller = com.bitchat.android.mesh.captureOriginalProcessorCaller()
+    val storeCaller = com.bitchat.android.mesh.captureOriginalStoreForwardCaller()
+    val gossipCaller = captureGossipCallerFrame(currentCoroutineContext()[Job])
+    val frame = WifiCollectionFrame(installed, originalFacade, caller, ppCaller, storeCaller, gossipCaller)
+    frame.requestEarly()
+    val report = collectOriginalProcessors(originalFacade, originalGossip, PanicProcessorScope.BluetoothAndCore,
+        StoreForwardCollection.RequiredOriginalUnion, frame)
+    return frame.finish(report)
 }
 
 private enum class PanicProcessorScope { BluetoothOnly, BluetoothAndCore }
@@ -334,7 +514,7 @@ private fun validateOriginalProcessors(
 
 private suspend fun collectOriginalProcessors(
     originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput, scope: PanicProcessorScope,
-    storeCollection: StoreForwardCollection
+    storeCollection: StoreForwardCollection, wifiFrame: WifiCollectionFrame? = null
 ): PanicRetirementReport {
     val installed = originalGossip as? PanicOriginalGossipInput.Installed
     val requireStore = storeCollection == StoreForwardCollection.RequiredOriginalUnion
@@ -349,7 +529,7 @@ private suspend fun collectOriginalProcessors(
             }))
     fun empty(status: PanicProcessorBatchStatus) = PanicOriginalProcessorEvidence(status, emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
     if (installed == null || originalFacade == null || installed.exactOriginalMesh !== originalFacade) {
-        val report = collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
+        val report = wifiFrame?.notCollected() ?: collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
         return withEvidence(report, empty(if (installed == null) PanicProcessorBatchStatus.MissingInput else PanicProcessorBatchStatus.InvalidInput))
     }
     val firstUnion = if (requireStore) com.bitchat.android.service.captureHolderOriginalProcessorStoreForwardUnion(
@@ -371,13 +551,13 @@ private suspend fun collectOriginalProcessors(
         }
     val original = (first as? com.bitchat.android.service.HolderProcessorCapture.Observed)?.batch
     if (original == null) {
-        val report = collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
+        val report = wifiFrame?.notCollected() ?: collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
         return withEvidence(report, empty(PanicProcessorBatchStatus.InvalidInput).copy(holderGaps = listOf(
             (first as com.bitchat.android.service.HolderProcessorCapture.Invalid).gap)))
     }
     // Snapshot active caller ancestry before any cancellation can detach its original links.
-    val caller = com.bitchat.android.mesh.captureOriginalProcessorCaller()
-    val storeCaller = if (requireStore) com.bitchat.android.mesh.captureOriginalStoreForwardCaller() else null
+    val caller = wifiFrame?.ppCaller ?: com.bitchat.android.mesh.captureOriginalProcessorCaller()
+    val storeCaller = if (requireStore) wifiFrame?.storeCaller ?: com.bitchat.android.mesh.captureOriginalStoreForwardCaller() else null
     val storeRequests = mutableListOf<PanicStoreForwardRequest>()
     val storesRequested = mutableListOf<com.bitchat.android.mesh.OriginalStoreForwardBinding>()
     val storeCallerGaps = mutableListOf<com.bitchat.android.mesh.OriginalStoreForwardGap>()
@@ -386,7 +566,7 @@ private suspend fun collectOriginalProcessors(
     val awaitReturnedRoots = mutableListOf<com.bitchat.android.mesh.OriginalProcessorRootIdentity>()
     val storeAwaitReturnedRoots = mutableListOf<com.bitchat.android.mesh.OriginalStoreForwardRootIdentity>()
     val callerGaps = mutableListOf<com.bitchat.android.mesh.OriginalProcessorGap>()
-    val failures = mutableListOf<Throwable>()
+    val failures = wifiFrame?.failures ?: mutableListOf<Throwable>()
     original.roots.forEach { binding ->
         val gap = com.bitchat.android.mesh.originalProcessorRelationshipGap(binding, caller)
         if (gap != null) {
@@ -412,6 +592,7 @@ private suspend fun collectOriginalProcessors(
             } else storeCallerGaps += com.bitchat.android.mesh.OriginalStoreForwardGap.RequestUnavailable
         } catch (failure: Throwable) { failures += failure }
     }
+    wifiFrame?.restrictGossip()
     try { currentCoroutineContext().ensureActive() }
     catch (cancelled: CancellationException) { failures += cancelled }
     if (failures.isNotEmpty()) {
@@ -422,7 +603,14 @@ private suspend fun collectOriginalProcessors(
         throw primary
     }
     currentCoroutineContext().ensureActive()
-    val report = collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
+    if (wifiFrame != null && !wifiFrame.gate()) {
+        storeEvidence = storeEvidence.copy(rows = originalUnion?.storeForwardRows ?: emptyList(),
+            requests = storeRequests.toList(), holderGaps = originalUnion?.storeForwardGaps ?: emptyList(),
+            callerGaps = storeCallerGaps.toList())
+        return withEvidence(wifiFrame.notCollected(), empty(PanicProcessorBatchStatus.Ineligible).copy(
+            rows = original.rows, requests = requests.toList(), callerGaps = callerGaps.toList()))
+    }
+    val report = wifiFrame?.inheritedReport() ?: collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
     currentCoroutineContext().ensureActive()
     val secondUnion = if (requireStore) com.bitchat.android.service.captureHolderOriginalProcessorStoreForwardUnion(
         installed.binding, installed.exactOriginalMesh) else null
@@ -489,27 +677,27 @@ private suspend fun collectOriginalProcessors(
             if (valid && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) && wholeUnionStillValid()) {
                 var allReturned = true
                 for ((index, preparation) in preparations.withIndex()) {
-                    if (!wholeUnionStillValid() || !validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) ||
+                    if (wifiFrame?.stillValid() == false || !wholeUnionStillValid() || !validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) ||
                         !com.bitchat.android.mesh.awaitOriginalProcessor(preparation)) {
                         allReturned = false
                         break
                     }
                     awaitReturnedRoots += roots[index].identity
                 }
-                if (allReturned && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) && wholeUnionStillValid()) {
+                if (wifiFrame?.stillValid() != false && allReturned && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) && wholeUnionStillValid()) {
                     status = PanicProcessorBatchStatus.AwaitReturned
                     if (requireStore) {
                         val storeRoots = checkNotNull(readyUnion).storeForwardRoots
                         var allStoresReturned = true
                         for ((index, preparation) in storePreparations.withIndex()) {
-                            if (!wholeUnionStillValid() || !validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) ||
+                            if (wifiFrame?.stillValid() == false || !wholeUnionStillValid() || !validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) ||
                                 !com.bitchat.android.mesh.awaitOriginalStoreForward(preparation)) {
                                 allStoresReturned = false
                                 break
                             }
                             storeAwaitReturnedRoots += storeRoots[index].identity
                         }
-                        if (allStoresReturned && wholeUnionStillValid() &&
+                        if (wifiFrame?.stillValid() != false && allStoresReturned && wholeUnionStillValid() &&
                             validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready)) {
                             storeStatus = PanicStoreForwardBatchStatus.AwaitReturned
                         }
@@ -543,6 +731,12 @@ internal suspend fun collectPanicRetirementWithEndedDirectFrontiers(
     originalGossip: PanicOriginalGossipInput
 ): PanicRetirementReport {
     val report = collectPanicRetirement(originalFacade, originalGossip)
+    return collectEndedDirectPhase(report, originalGossip)
+}
+
+private suspend fun collectEndedDirectPhase(report: PanicRetirementReport,
+    originalGossip: PanicOriginalGossipInput, preflight: (() -> Boolean)? = null): PanicRetirementReport {
+    if (preflight?.invoke() == false) return report
     val gossip = report.gossipJobsAndWriters as? PanicOwnerRetirement.Unconfirmed ?: return report
     val known = gossip.evidence as? PanicUnconfirmedEvidence.KnownOriginalGossip ?: return report
     if (originalGossip !is PanicOriginalGossipInput.Installed) return report
@@ -552,7 +746,7 @@ internal suspend fun collectPanicRetirementWithEndedDirectFrontiers(
         currentCoroutineContext().ensureActive()
         return prepared
     }
-    val joined = collectRecordedGossipPhase(prepared, originalGossip)
+    val joined = collectRecordedGossipPhase(prepared, originalGossip, preflight)
     currentCoroutineContext().ensureActive()
     return withDirectEnds(joined, validateKnownDirectEnds(observed))
 }
@@ -627,7 +821,7 @@ private fun sameCoveredManagerIdentities(
 private suspend fun joinKnownRecordedFrontiers(
     known: PanicUnconfirmedEvidence.KnownOriginalGossip,
     installed: PanicOriginalGossipInput.Installed,
-    holderFrontier: HolderAdmittedManagerFrontier<GossipSyncManager>
+    holderFrontier: HolderAdmittedManagerFrontier<GossipSyncManager>, preflight: (() -> Boolean)? = null
 ): KnownRecordedFrontiersJoin {
     fun rejected(gap: KnownRecordedBatchGap) = KnownRecordedFrontiersJoin.Ineligible(
         listOf(KnownRecordedJoinRejection.Batch(gap))
@@ -665,22 +859,24 @@ private suspend fun joinKnownRecordedFrontiers(
         }
     }
     if (reasons.isNotEmpty()) return KnownRecordedFrontiersJoin.Ineligible(reasons.toList())
-    if (!validateHolderAdmittedManagerFrontier(installed.binding, installed.exactOriginalMesh, holderFrontier)) {
+    if (preflight?.invoke() == false || !validateHolderAdmittedManagerFrontier(installed.binding, installed.exactOriginalMesh, holderFrontier)) {
         return rejected(KnownRecordedBatchGap.HolderFrontierChanged)
     }
     if (prepared.isEmpty()) return KnownRecordedFrontiersJoin.NoKnownRecordedJobs
     val outcomes = prepared.map { original ->
+        if (preflight?.invoke() == false) return rejected(KnownRecordedBatchGap.HolderFrontierChanged)
         val result = try {
             original.original.originalClose.manager.joinPreparedRecordedFrontier(original.frontier)
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { GossipRecordedFrontierJoinOutcome.Unconfirmed(GossipRecordedJoinGap.OperationFailed) }
+        if (preflight?.invoke() == false) return rejected(KnownRecordedBatchGap.HolderFrontierChanged)
         KnownRecordedManagerJoin(original.original, result)
     }
     return KnownRecordedFrontiersJoin.Attempted(outcomes)
 }
 
 private fun closeKnownOriginalGossipRoots(
-    snapshot: HolderGossipSubsetSnapshot<GossipSyncManager>
+    snapshot: HolderGossipSubsetSnapshot<GossipSyncManager>, failures: MutableList<Throwable>? = null
 ): PanicUnconfirmedEvidence.KnownOriginalGossip {
     val known = mutableListOf<GossipSyncManager>()
     val seen = java.util.IdentityHashMap<GossipSyncManager, Unit>()
@@ -703,7 +899,9 @@ private fun closeKnownOriginalGossipRoots(
                 )
             }
         } catch (cancelled: CancellationException) {
-            throw cancelled
+            if (failures == null) throw cancelled
+            failures += cancelled
+            PanicGossipRootCloseAttempt.Unconfirmed(manager, binding, PanicGossipRootCloseGap.OperationFailed)
         } catch (_: Exception) {
             PanicGossipRootCloseAttempt.Unconfirmed(manager, binding, PanicGossipRootCloseGap.OperationFailed)
         }
@@ -713,16 +911,54 @@ private fun closeKnownOriginalGossipRoots(
 
 /** Restricts every already-known direct ingress before cancellation or the original facade await. */
 private fun closeKnownOriginalDirectIngress(
-    attempts: List<PanicGossipRootCloseAttempt>
+    attempts: List<PanicGossipRootCloseAttempt>, failures: MutableList<Throwable>? = null
 ): KnownDirectIngressClosure.Attempted = KnownDirectIngressClosure.Attempted(attempts.map { original ->
     val outcome = if (original !is PanicGossipRootCloseAttempt.Closed) KnownManagerDirectCloseOutcome.RootNotClosed
-    else when (val closed = original.manager.closeDirectIngressForPanic(original.binding, original.receipt)) {
+    else try { when (val closed = original.manager.closeDirectIngressForPanic(original.binding, original.receipt)) {
         is GossipDirectCloseOutcome.Closed -> KnownManagerDirectCloseOutcome.Closed(closed.receipt, closed.snapshotAtClose)
         GossipDirectCloseOutcome.ForeignBinding -> KnownManagerDirectCloseOutcome.ForeignBinding
         GossipDirectCloseOutcome.ForeignRootReceipt -> KnownManagerDirectCloseOutcome.ForeignRootReceipt
     }
+    } catch (failure: Throwable) {
+        if (failures == null) throw failure
+        failures += failure
+        KnownManagerDirectCloseOutcome.OperationFailed
+    }
     KnownManagerDirectClosure(original, outcome)
 })
+
+private class GossipCallerFrame(val invoking: Job?, val chain: java.util.IdentityHashMap<Job, Unit>,
+    val gap: JobCancellationRequestOutcome?, val cancellation: CancellationException?)
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+private fun captureGossipCallerFrame(originalInvoker: Job?): GossipCallerFrame {
+    var pendingCancellation: CancellationException? = null
+
+    val callerChain = java.util.IdentityHashMap<Job, Unit>()
+    var relationshipGap: JobCancellationRequestOutcome? = null
+    if (originalInvoker == null) relationshipGap = JobCancellationRequestOutcome.SkippedMissingCaller
+    else try {
+        if (!originalInvoker.isActive) relationshipGap = JobCancellationRequestOutcome.SkippedCallerRelationshipUnknown
+        else {
+            var current: Job? = originalInvoker
+            while (current != null) {
+                if (callerChain.containsKey(current)) {
+                    relationshipGap = JobCancellationRequestOutcome.SkippedCallerRelationshipUnknown
+                    break
+                }
+                callerChain[current] = Unit
+                current = current.parent
+            }
+        }
+    } catch (cancelled: CancellationException) {
+        pendingCancellation = cancelled
+        relationshipGap = JobCancellationRequestOutcome.SkippedCallerRelationshipUnknown
+    } catch (_: Exception) {
+        relationshipGap = JobCancellationRequestOutcome.SkippedCallerRelationshipUnknown
+    }
+
+    return GossipCallerFrame(originalInvoker, callerChain, relationshipGap, pendingCancellation)
+}
 
 private class CancellationOrigin(
     val managerSnapshot: KnownManagerReturnedJobs,
@@ -736,7 +972,7 @@ private class CancellationCandidate(val job: Job) {
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 private fun cancelKnownOriginalReturnedJobs(
     closed: PanicUnconfirmedEvidence.KnownOriginalGossip,
-    originalInvoker: Job?
+    originalInvoker: Job?, savedCaller: GossipCallerFrame? = null
 ): KnownReturnedJobsCancellation.Attempted {
     var pendingCancellation: CancellationException? = null
     val managers = closed.attempts.filterIsInstance<PanicGossipRootCloseAttempt.Closed>().map { original ->
@@ -773,29 +1009,10 @@ private fun cancelKnownOriginalReturnedJobs(
         }
     }
 
-    // Save the caller chain once, before any cancellation handler can cancel or detach it.
-    val callerChain = java.util.IdentityHashMap<Job, Unit>()
-    var relationshipGap: JobCancellationRequestOutcome? = null
-    if (originalInvoker == null) relationshipGap = JobCancellationRequestOutcome.SkippedMissingCaller
-    else try {
-        if (!originalInvoker.isActive) relationshipGap = JobCancellationRequestOutcome.SkippedCallerRelationshipUnknown
-        else {
-            var current: Job? = originalInvoker
-            while (current != null) {
-                if (callerChain.containsKey(current)) {
-                    relationshipGap = JobCancellationRequestOutcome.SkippedCallerRelationshipUnknown
-                    break
-                }
-                callerChain[current] = Unit
-                current = current.parent
-            }
-        }
-    } catch (cancelled: CancellationException) {
-        if (pendingCancellation == null) pendingCancellation = cancelled
-        relationshipGap = JobCancellationRequestOutcome.SkippedCallerRelationshipUnknown
-    } catch (_: Exception) {
-        relationshipGap = JobCancellationRequestOutcome.SkippedCallerRelationshipUnknown
-    }
+    val capturedCaller = savedCaller ?: captureGossipCallerFrame(originalInvoker)
+    val callerChain = capturedCaller.chain
+    val relationshipGap = capturedCaller.gap
+    if (pendingCancellation == null) pendingCancellation = capturedCaller.cancellation
 
     val requests = candidates.map { candidate ->
         val outcome = when {
@@ -842,7 +1059,11 @@ internal object PanicResetCoordinator {
         exactOriginalMesh: Any
     ): com.bitchat.android.service.HolderConstructionCloseOutcome {
         originalFacade?.fenceForPanic()
-        return com.bitchat.android.service.closeHolderPanicBinding(holderBinding, exactOriginalMesh)
+        val outcome = com.bitchat.android.service.closeHolderPanicBinding(holderBinding, exactOriginalMesh)
+        if (outcome === com.bitchat.android.service.HolderConstructionCloseOutcome.ClosedForConstruction) {
+            com.bitchat.android.service.fenceHolderOriginalWifiHosts(holderBinding, exactOriginalMesh)
+        }
+        return outcome
     }
 
     fun launchPanic(scope: CoroutineScope, action: suspend () -> Unit): Job =

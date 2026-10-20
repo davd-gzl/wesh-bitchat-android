@@ -87,7 +87,11 @@ class WifiAwareMeshService internal constructor(
 
     // Peer ID must match BluetoothMeshService: first 16 hex chars of identity fingerprint (8 bytes)
     override val myPeerID: String = encryptionService.getIdentityFingerprint().take(16)
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val originalHost = com.bitchat.android.service.MeshServiceHolder.constructWifiHost(holderConstruction) {
+        OriginalWifiHostOwner(Dispatchers.IO)
+    }
+    internal val originalHostBinding: OriginalWifiHostBinding get() = originalHost.binding
+    private val serviceScope = originalHost.scope
     private val powerManager = com.bitchat.android.mesh.PowerManager.getInstance(context.applicationContext)
     private val wifiTransport = WifiAwareTransport()
     private lateinit var meshCore: MeshCore
@@ -348,6 +352,7 @@ class WifiAwareMeshService internal constructor(
         Manifest.permission.CHANGE_WIFI_STATE
     ])
     override fun startServices() {
+        if (!originalHost.startAllowed()) return
         if (isActive) return
         if (!com.bitchat.android.wifiaware.WifiAwareController.enabled.value) {
             Log.i(TAG, "Wi-Fi Aware transport disabled by debug settings; not starting")
@@ -551,6 +556,18 @@ class WifiAwareMeshService internal constructor(
      * Stops the Wi-Fi Aware mesh services and cleans up sockets and sessions.
      */
     override fun stopServices() {
+        if (!originalHost.beginOrdinaryStop()) return
+        try {
+            stopPrefix()
+            val actual = serviceScope.launch { stopTail(terminal = false) }
+            originalHost.retainOrdinaryJob(actual)
+        } catch (failure: Throwable) {
+            originalHost.noteOrdinaryFailure()
+            throw failure
+        }
+    }
+
+    private fun stopPrefix() {
         val wasActive = isActive
         isActive = false
         sessionGeneration.incrementAndGet()
@@ -566,7 +583,9 @@ class WifiAwareMeshService internal constructor(
             meshCore.sendLeaveAnnouncement()
         }
 
-        serviceScope.launch {
+    }
+
+    private suspend fun stopTail(terminal: Boolean) {
             delay(200)
 
             meshCore.stopCore()
@@ -594,14 +613,13 @@ class WifiAwareMeshService internal constructor(
                     try { listenerExec.shutdownNow() } catch (_: Exception) { }
 
                     com.bitchat.android.wifiaware.WifiAwareController.onServiceStopped(controllerOwner, this@WifiAwareMeshService)
-                    serviceScope.cancel()
+                    if (!terminal) serviceScope.cancel()
                 } catch (cleanupFailure: Throwable) {
                     val original = awaitFailure
                     if (original == null) throw cleanupFailure
                     if (cleanupFailure !== original) original.addSuppressed(cleanupFailure)
                 }
             }
-        }
     }
 
     private fun isCurrentSession(generation: Int): Boolean {
@@ -1652,4 +1670,11 @@ class WifiAwareMeshService internal constructor(
             return connectionTracker.getDebugInfo()
         }
     }
+    init {
+        check(originalHost.installTerminalStop(originalHostBinding) {
+            stopPrefix()
+            stopTail(terminal = true)
+        })
+    }
+
 }
