@@ -384,6 +384,7 @@ private suspend fun collectOriginalProcessors(
     val requests = mutableListOf<PanicProcessorRequest>()
     val requested = mutableListOf<com.bitchat.android.mesh.OriginalProcessorBinding>()
     val awaitReturnedRoots = mutableListOf<com.bitchat.android.mesh.OriginalProcessorRootIdentity>()
+    val storeAwaitReturnedRoots = mutableListOf<com.bitchat.android.mesh.OriginalStoreForwardRootIdentity>()
     val callerGaps = mutableListOf<com.bitchat.android.mesh.OriginalProcessorGap>()
     val failures = mutableListOf<Throwable>()
     original.roots.forEach { binding ->
@@ -498,8 +499,20 @@ private suspend fun collectOriginalProcessors(
                 if (allReturned && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) && wholeUnionStillValid()) {
                     status = PanicProcessorBatchStatus.AwaitReturned
                     if (requireStore) {
-                        // Deliberate failing-first baseline: Store roots are prepared but not awaited.
-                        storeStatus = PanicStoreForwardBatchStatus.RequestedNotAwaited
+                        val storeRoots = checkNotNull(readyUnion).storeForwardRoots
+                        var allStoresReturned = true
+                        for ((index, preparation) in storePreparations.withIndex()) {
+                            if (!wholeUnionStillValid() || !validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) ||
+                                !com.bitchat.android.mesh.awaitOriginalStoreForward(preparation)) {
+                                allStoresReturned = false
+                                break
+                            }
+                            storeAwaitReturnedRoots += storeRoots[index].identity
+                        }
+                        if (allStoresReturned && wholeUnionStillValid() &&
+                            validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready)) {
+                            storeStatus = PanicStoreForwardBatchStatus.AwaitReturned
+                        }
                     }
                 }
             }
@@ -519,7 +532,7 @@ private suspend fun collectOriginalProcessors(
     }
     storeEvidence = PanicOriginalStoreForwardEvidence(storeStatus,
         readyUnion?.storeForwardRows ?: originalUnion?.storeForwardRows ?: emptyList(), storeRequests.toList(),
-        storeGaps.toList(), storeCallerGaps.toList(), emptyList())
+        storeGaps.toList(), storeCallerGaps.toList(), storeAwaitReturnedRoots.toList())
     return withEvidence(report, PanicOriginalProcessorEvidence(status, ready?.rows ?: original.rows,
         requests.toList(), gaps.toList(), callerGaps.toList(), awaitReturnedRoots.toList()))
 }
