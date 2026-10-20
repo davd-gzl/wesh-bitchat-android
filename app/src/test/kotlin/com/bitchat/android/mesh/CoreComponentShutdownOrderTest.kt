@@ -314,6 +314,7 @@ class CoreComponentShutdownOrderTest {
                     override fun gcsTargetFpr() = 0.01
                 },
                 recordFallbackGossip = { _ -> throw AssertionError("Shared RAM gossip must prevent fallback construction") },
+                recordPeerManager = { creator -> creator() },
                 recordStoreForwardManager = { creator -> creator() },
                 recordPacketProcessor = { creator -> creator() },
                 hooks = MeshCore.Hooks(), weshLocalOnly = true

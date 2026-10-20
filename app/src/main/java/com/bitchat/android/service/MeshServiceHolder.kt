@@ -56,6 +56,14 @@ object MeshServiceHolder {
         construction: HolderWifiConstructionContext, creator: () -> com.bitchat.android.mesh.PacketProcessor
     ): com.bitchat.android.mesh.PacketProcessor = owner.constructWifiProcessor(construction, creator)
 
+    internal fun constructBluetoothPeer(
+        construction: HolderConstructionContext, creator: () -> com.bitchat.android.mesh.PeerManager
+    ): com.bitchat.android.mesh.PeerManager = owner.constructBluetoothPeer(construction, creator)
+
+    internal fun constructWifiPeer(
+        construction: HolderWifiConstructionContext, creator: () -> com.bitchat.android.mesh.PeerManager
+    ): com.bitchat.android.mesh.PeerManager = owner.constructWifiPeer(construction, creator)
+
     internal fun constructBluetoothStoreForward(
         construction: HolderConstructionContext, creator: () -> com.bitchat.android.mesh.StoreForwardManager
     ): com.bitchat.android.mesh.StoreForwardManager = owner.constructBluetoothStoreForward(construction, creator)
