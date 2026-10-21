@@ -123,9 +123,14 @@ class WeshInternetHookupTest {
     }
 
     @Test fun `a stored key that cannot be read is never replaced by a new one`() = runBlocking {
-        keys.storeSecureValue("nostr_private_key", "unreadable synthetic key")
+        keys.storeSecureValue("nostr_private_key", "unparseable synthetic key")
         assertFalse(WeshQrIdentity.ensureKey(app))
-        assertEquals("unreadable synthetic key", keys.getSecureValue("nostr_private_key"))
+        assertEquals("unparseable synthetic key", keys.getSecureValue("nostr_private_key"))
+        // The entry exists but reading it fails, as a broken store's decrypt would: still no new key.
+        val prefs = app.getSharedPreferences("synthetic-nostr-key", android.content.Context.MODE_PRIVATE)
+        prefs.edit().putInt("nostr_private_key", 7).commit()
+        assertFalse(WeshQrIdentity.ensureKey(app))
+        assertEquals(7, prefs.getInt("nostr_private_key", 0))
     }
 
     @Test fun `while an erase is unconfirmed no key is made and no npub is shown or owned`() = runBlocking {
