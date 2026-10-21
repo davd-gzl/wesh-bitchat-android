@@ -74,27 +74,37 @@ internal object WeshDataWipe {
 
     /** Keys, notifications and conversation shortcuts are kept by the system, outside the data directories. */
     private fun clearOutsideAppFiles(context: Context) {
-        context.getSystemService(android.app.NotificationManager::class.java)?.cancelAll()
-        neutralizePinnedShortcuts(context)
-        val conversations = ShortcutManagerCompat.getShortcuts(
-            context, ShortcutManagerCompat.FLAG_MATCH_DYNAMIC or ShortcutManagerCompat.FLAG_MATCH_CACHED
-        ).map { it.id }
-        ShortcutManagerCompat.removeAllDynamicShortcuts(context)
-        if (conversations.isNotEmpty()) ShortcutManagerCompat.removeLongLivedShortcuts(context, conversations)
-        deleteKeystoreEntries()
+        // Every step runs even when an earlier one fails; the first failure then reaches the fallback.
+        val failures = listOf(
+            ::deleteKeystoreEntries,
+            { checkNotNull(context.getSystemService(android.app.NotificationManager::class.java)).cancelAll() },
+            { neutralizePinnedShortcuts(context) },
+            {
+                val conversations = ShortcutManagerCompat.getShortcuts(
+                    context, ShortcutManagerCompat.FLAG_MATCH_DYNAMIC or ShortcutManagerCompat.FLAG_MATCH_CACHED
+                ).map { it.id }
+                ShortcutManagerCompat.removeAllDynamicShortcuts(context)
+                if (conversations.isNotEmpty()) ShortcutManagerCompat.removeLongLivedShortcuts(context, conversations)
+            }
+        ).mapNotNull { step -> runCatching { step() }.exceptionOrNull() }
+        failures.firstOrNull()?.let { throw it }
     }
 
     /** Android cannot unpin a home-screen shortcut, so a pinned conversation loses its name and is disabled. */
     internal fun neutralizePinnedShortcuts(context: Context) {
-        val shortcuts = context.getSystemService(android.content.pm.ShortcutManager::class.java) ?: return
+        val shortcuts = checkNotNull(context.getSystemService(android.content.pm.ShortcutManager::class.java))
         val static = shortcuts.manifestShortcuts.map { it.id }.toSet()
         val pinned = shortcuts.pinnedShortcuts.map { it.id } - static
         if (pinned.isEmpty()) return
         val name = context.packageManager.getApplicationLabel(context.applicationInfo).toString()
-        val open = Intent(Intent.ACTION_MAIN).setClassName(context, "com.bitchat.android.MainActivity")
-        ShortcutManagerCompat.updateShortcuts(context, pinned.map {
-            ShortcutInfoCompat.Builder(context, it).setShortLabel(name).setLongLabel(name).setIntent(open).build()
+        val open = Intent(context, com.bitchat.android.MainActivity::class.java).setAction(Intent.ACTION_MAIN)
+        // An update keeps every field it leaves unset, so the stored contact is overwritten too.
+        val nobody = androidx.core.app.Person.Builder().setName(name).build()
+        val renamed = ShortcutManagerCompat.updateShortcuts(context, pinned.map {
+            ShortcutInfoCompat.Builder(context, it).setShortLabel(name).setLongLabel(name).setPerson(nobody).setIntent(open).build()
         })
+        // Android rate-limits updates from the background; a refused update must reach the fallback.
+        check(renamed) { "Pinned shortcuts could not be renamed" }
         ShortcutManagerCompat.disableShortcuts(context, pinned, name)
     }
 

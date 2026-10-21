@@ -13,12 +13,14 @@ import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito
 import org.mockito.kotlin.argumentCaptor
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.util.ReflectionHelpers
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
@@ -32,7 +34,7 @@ class WeshDataWipeSystemTracesTest {
         ShortcutManagerCompat.pushDynamicShortcut(context, ShortcutInfoCompat.Builder(context, "synthetic-peer")
             .setShortLabel("Synthetic contact").setLongLived(true).setIntent(Intent(Intent.ACTION_VIEW)).build())
 
-        // The test runtime has no Android Keystore, so the wipe fails after the system traces are cleared.
+        // The test runtime has no Android Keystore: the first step fails, the later ones must still run.
         runCatching { WeshDataWipe.wipe(context) }
 
         assertEquals(0, notifications.activeNotifications.size)
@@ -47,6 +49,7 @@ class WeshDataWipeSystemTracesTest {
         val manager = Mockito.mock(ShortcutManager::class.java)
         Mockito.`when`(manager.manifestShortcuts).thenReturn(listOf(info("hold_to_erase", "Tout effacer")))
         Mockito.`when`(manager.pinnedShortcuts).thenReturn(listOf(info("hold_to_erase", "Tout effacer"), info("dm_synthetic", "Synthetic contact")))
+        Mockito.`when`(manager.updateShortcuts(Mockito.anyList())).thenReturn(true)
         val context = object : ContextWrapper(app) {
             override fun getSystemService(name: String): Any? =
                 if (name == Context.SHORTCUT_SERVICE) manager else super.getSystemService(name)
@@ -62,5 +65,22 @@ class WeshDataWipeSystemTracesTest {
         order.verify(manager).disableShortcuts(listOf("dm_synthetic"), name)
         assertEquals(listOf("dm_synthetic"), updated.firstValue.map { it.id })
         assertEquals(name, updated.firstValue.single().shortLabel.toString())
+        val people = ReflectionHelpers.callInstanceMethod<Array<android.app.Person>?>(updated.firstValue.single(), "getPersons")
+        assertEquals("the stored contact must be overwritten, not left unset", listOf(name), people?.map { it.name.toString() })
+    }
+
+    @Test
+    fun `a rate-limited shortcut update fails the wipe so Android clears the data`() {
+        val app = ApplicationProvider.getApplicationContext<Context>()
+        val manager = Mockito.mock(ShortcutManager::class.java)
+        Mockito.`when`(manager.pinnedShortcuts).thenReturn(listOf(
+            ShortcutInfo.Builder(app, "dm_synthetic").setShortLabel("Synthetic contact").setIntent(Intent(Intent.ACTION_VIEW)).build()
+        ))
+        val context = object : ContextWrapper(app) {
+            override fun getSystemService(name: String): Any? =
+                if (name == Context.SHORTCUT_SERVICE) manager else super.getSystemService(name)
+        }
+
+        assertTrue(runCatching { WeshDataWipe.neutralizePinnedShortcuts(context) }.isFailure)
     }
 }
