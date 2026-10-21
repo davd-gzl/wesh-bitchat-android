@@ -2,16 +2,13 @@ package com.bitchat.android.ui
 
 import android.app.Application
 import android.content.SharedPreferences
-import com.bitchat.android.services.ConversationStorageCipher
 import com.bitchat.android.services.InMemoryConversationStorageCipher
-import com.bitchat.android.startup.WeshRecoveryGate
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Rule
@@ -185,7 +182,7 @@ class WeshMeetingNoteMigrationTest {
     }
 
     @Test
-    fun `a real load held across panic cannot publish old note text or recreate storage`() = runTest {
+    fun `a real load held across the panic fence cannot publish old note text`() = runTest {
         val fixture = fixture()
         fixture.backend().write(NOTE)
         val storage = LegacyPreferences()
@@ -206,113 +203,15 @@ class WeshMeetingNoteMigrationTest {
         try {
             entered.await()
             preferences.fenceForPanic()
-            val clearing = async { preferences.clearForPanic() }
-            runCurrent()
-            val waitsForOldLoad = !clearing.isCompleted
             release.complete(Unit)
             assertFalse(loading.await())
-            assertTrue(clearing.await())
-            assertTrue("Erase must drain the old note operation", waitsForOldLoad)
             assertEquals("", preferences.meetingDraft.value)
             assertEquals("", preferences.meetingNote)
             assertEquals(MeetingNoteState.Fenced, preferences.meetingNoteState.value)
-            assertTrue(storage.disk.isEmpty())
-            assertFalse(fixture.file.exists())
-            preferences.resumeAfterVerifiedPanic()
-            assertTrue(preferences.loadMeetingNote())
-            assertEquals("", preferences.meetingNote)
+            assertFalse(preferences.loadMeetingNote())
         } finally {
             release.complete(Unit)
         }
-    }
-
-    @Test
-    fun `startup readiness waiting leaves the IO mutex available for panic erase`() = runTest {
-        val fixture = fixture()
-        fixture.backend().write(NOTE)
-        val storage = LegacyPreferences()
-        val entered = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        var factories = 0
-        val preferences = preferences(fixture, storage, factory = { factories++; fixture.backend() }, before = {
-            entered.complete(Unit)
-            release.await()
-        })
-        val loading = async { preferences.loadMeetingNote() }
-        try {
-            entered.await()
-            assertEquals(0, factories)
-            val clearing = async { preferences.clearForPanic() }
-            runCurrent()
-            val erasedWhileStartupWaits = clearing.isCompleted
-            release.complete(Unit)
-            assertTrue(clearing.await())
-            assertFalse(loading.await())
-            assertTrue("Startup waiting must not own the note IO mutex", erasedWhileStartupWaits)
-            assertEquals(1, factories)
-            assertFalse(fixture.file.exists())
-            assertTrue(storage.disk.isEmpty())
-            assertEquals(MeetingNoteState.Fenced, preferences.meetingNoteState.value)
-        } finally {
-            release.complete(Unit)
-        }
-    }
-
-    @Test
-    fun `failed real key erase keeps recovery fenced while raw preference cleanup is still attempted`() = runTest {
-        val fixture = fixture()
-        fixture.backend().write(NOTE)
-        val encrypted = fixture.file.readBytes()
-        val storage = LegacyPreferences()
-        var failKeyDeletion = true
-        val failingCipher = object : ConversationStorageCipher by fixture.cipher {
-            override fun destroyKey() {
-                if (failKeyDeletion) throw IOException("Synthetic key deletion failure")
-                fixture.cipher.destroyKey()
-            }
-        }
-        val preferences = preferences(fixture, storage, factory = {
-            EncryptedWeshMeetingNoteBackend(fixture.root, failingCipher)
-        })
-        val gate = WeshRecoveryGate().apply { requireRecovery() }
-        var resumes = 0
-        suspend fun globalPanic(): Boolean = resumeAfterWeshPanicWipe(
-            seenCleared = true,
-            draftsCleared = true, conversationsCleared = true, mediaCleared = true,
-            clearPreferences = { preferences.clearForPanic() }, resume = {
-                resumes++
-                gate.normalPanicCompleted()
-                preferences.resumeAfterVerifiedPanic()
-                true
-            },
-            identityErasureConfirmed = true,
-            meshOwnerRetired = true
-        )
-        assertFalse(globalPanic())
-        assertEquals(0, resumes)
-        assertTrue(gate.recoveryRequired.value)
-        assertEquals(1, storage.clearCommits)
-        assertTrue(storage.memory.isEmpty())
-        assertTrue(storage.disk.isEmpty())
-        assertArrayEquals(encrypted, fixture.file.readBytes())
-        val failedEpoch = preferences.resetEpoch.value
-        preferences.resumeAfterVerifiedPanic()
-        assertEquals(failedEpoch, preferences.resetEpoch.value)
-        assertEquals(MeetingNoteState.Fenced, preferences.meetingNoteState.value)
-        assertFalse(preferences.loadMeetingNote())
-        assertFalse(preferences.editMeetingDraft("Synthetic stale writer", failedEpoch))
-
-        failKeyDeletion = false
-        assertTrue(globalPanic())
-        assertEquals(1, resumes)
-        assertFalse(gate.recoveryRequired.value)
-        assertFalse(fixture.file.exists())
-        assertTrue(preferences.loadMeetingNote())
-        assertEquals("", preferences.meetingNote)
-        val freshEpoch = preferences.resetEpoch.value
-        assertTrue(preferences.editMeetingDraft("Synthetic fresh note", freshEpoch))
-        assertTrue(preferences.saveMeetingDraft(freshEpoch))
-        assertEquals("Synthetic fresh note", fixture.backend().load())
     }
 
     @Test
@@ -399,8 +298,6 @@ class WeshMeetingNoteMigrationTest {
             private set
         var removeCommits = 0
             private set
-        var clearCommits = 0
-            private set
 
         init {
             whenever(prefs.all).thenAnswer { memory.toMap() }
@@ -419,17 +316,13 @@ class WeshMeetingNoteMigrationTest {
         private fun editor(): SharedPreferences.Editor {
             val editor: SharedPreferences.Editor = mock()
             val removed = mutableSetOf<String>()
-            var clear = false
             whenever(editor.remove(any())).thenAnswer { removed += it.getArgument<String>(0); editor }
-            whenever(editor.clear()).thenAnswer { clear = true; editor }
             fun publish() {
-                if (clear) memory.clear()
                 removed.forEach(memory::remove)
             }
             whenever(editor.commit()).thenAnswer {
                 commits++
                 if (LEGACY in removed) removeCommits++
-                if (clear) clearCommits++
                 publish()
                 if (commitSucceeds) { disk.clear(); disk.putAll(memory) }
                 commitSucceeds

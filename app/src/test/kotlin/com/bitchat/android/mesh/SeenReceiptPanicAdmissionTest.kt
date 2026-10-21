@@ -5,11 +5,7 @@ import android.content.SharedPreferences
 import com.bitchat.android.identity.SecureIdentityStateManager
 import com.bitchat.android.services.SeenMessageStore
 import com.bitchat.android.services.SeenReceiptAdmission
-import com.bitchat.android.startup.WeshRecoveryGate
-import com.bitchat.android.ui.clearSeenForPanic
-import com.bitchat.android.ui.resumeAfterWeshPanicWipe
 import com.google.gson.Gson
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
@@ -31,41 +27,16 @@ class SeenReceiptPanicAdmissionTest {
     @Test fun `old BLE receipt completion during panic cannot recreate Seen storage`() = runTest {
         val fixture = Fixture()
         val pending = holdFinalAttempt(fixture, OLD_ID)
-        val recovery = WeshRecoveryGate().apply { requireRecovery() }
         try {
-            assertTrue(fixture.clearForPanic())
+            fixture.admission.fenceForPanic()
         } finally {
             pending.complete(Unit)
         }
         advanceUntilIdle()
 
-        assertTrue(recovery.recoveryRequired.value)
         assertFalse("the old completed window must not recreate its receipt marker", fixture.seen.hasReadReceiptBeenSent(OLD_ID))
         assertEquals(mapOf(NEIGHBOR to NEIGHBOR_VALUE), fixture.storage.memory)
         assertEquals(mapOf(NEIGHBOR to NEIGHBOR_VALUE), fixture.storage.disk)
-    }
-
-    @Test fun `old MeshCore receipt completion after verified resume cannot replace fresh Seen state`() = runTest {
-        val fixture = Fixture()
-        var acceptedHooks = 0
-        val pending = holdFinalAttempt(fixture, OLD_ID) { acceptedHooks++ }
-        val recovery = WeshRecoveryGate().apply { requireRecovery() }
-        try {
-            val cleared = fixture.clearForPanic()
-            assertTrue(resume(cleared, recovery, fixture))
-            completeFresh(fixture, FRESH_ID)
-        } finally {
-            pending.complete(Unit)
-        }
-        advanceUntilIdle()
-
-        assertFalse(recovery.recoveryRequired.value)
-        assertFalse("an old completion stays stale after admission reopens", fixture.seen.hasReadReceiptBeenSent(OLD_ID))
-        assertTrue(fixture.seen.hasReadReceiptBeenSent(FRESH_ID))
-        assertEquals(expectedMap(FRESH_ID), fixture.storage.memory)
-        assertEquals(expectedMap(FRESH_ID), fixture.storage.disk)
-        // The transport hook's accepted-window behavior is independently preserved.
-        assertEquals(1, acceptedHooks)
     }
 
     @Test fun `fresh BLE completion persists the accepted receipt`() = runTest {
@@ -115,74 +86,6 @@ class SeenReceiptPanicAdmissionTest {
         assertEquals(1, hooks)
     }
 
-    @Test fun `failed Seen disk mutation cannot release the global recovery gate`() = runTest {
-        val fixture = Fixture(seeded = true)
-        val oldDisk = fixture.storage.disk.toMap()
-        fixture.storage.commitSucceeds = false
-        val recovery = WeshRecoveryGate().apply { requireRecovery() }
-        var preferenceAttempts = 0
-        val resumed = resume(fixture.clearForPanic(), recovery, fixture) { preferenceAttempts++ }
-
-        assertFalse("RAM-only Seen deletion is not confirmed cleanup", resumed)
-        assertTrue(recovery.recoveryRequired.value)
-        assertEquals(1, preferenceAttempts)
-        assertEquals(oldDisk, fixture.storage.disk)
-    }
-
-    @Test fun `Seen persistence exception keeps recovery closed while other cleanup is attempted`() = runTest {
-        val fixture = Fixture(seeded = true)
-        fixture.storage.writeFailure = IllegalStateException("Synthetic Seen write failure")
-        val recovery = WeshRecoveryGate().apply { requireRecovery() }
-        var preferenceAttempts = 0
-        val resumed = resume(fixture.clearForPanic(), recovery, fixture) { preferenceAttempts++ }
-
-        assertFalse(resumed)
-        assertTrue(recovery.recoveryRequired.value)
-        assertEquals(1, preferenceAttempts)
-    }
-
-    @Test fun `successful commit with a retained Seen key still keeps recovery closed`() = runTest {
-        val fixture = Fixture(seeded = true)
-        fixture.storage.retainRemovedValues = true
-        val recovery = WeshRecoveryGate().apply { requireRecovery() }
-        var preferenceAttempts = 0
-        val resumed = resume(fixture.clearForPanic(), recovery, fixture) { preferenceAttempts++ }
-
-        assertFalse("absence must be checked after the Seen commit", resumed)
-        assertTrue(recovery.recoveryRequired.value)
-        assertEquals(1, preferenceAttempts)
-        assertTrue(fixture.storage.memory.containsKey(SEEN_KEY))
-    }
-
-    @Test fun `failed Seen cleanup can be retried before fresh receipt persistence resumes`() = runTest {
-        val fixture = Fixture(seeded = true)
-        val recovery = WeshRecoveryGate().apply { requireRecovery() }
-        fixture.storage.commitSucceeds = false
-        val firstResult = resume(fixture.clearForPanic(), recovery, fixture)
-        val blockedAfterFailure = recovery.recoveryRequired.value
-        fixture.storage.commitSucceeds = true
-        val retryResult = resume(fixture.clearForPanic(), recovery, fixture)
-        completeFresh(fixture, FRESH_ID)
-        advanceUntilIdle()
-
-        assertFalse(firstResult)
-        assertTrue(blockedAfterFailure)
-        assertTrue(retryResult)
-        assertFalse(recovery.recoveryRequired.value)
-        assertFalse(fixture.seen.hasReadReceiptBeenSent(OLD_ID))
-        assertTrue(fixture.seen.hasReadReceiptBeenSent(FRESH_ID))
-        assertEquals(expectedMap(FRESH_ID), fixture.storage.disk)
-    }
-
-    @Test fun `explicit unconfirmed Seen result cannot be compensated by every other successful store`() = runTest {
-        val recovery = WeshRecoveryGate().apply { requireRecovery() }
-        var preferenceAttempts = 0
-        val resumed = resume(false, recovery) { preferenceAttempts++ }
-        assertFalse(resumed)
-        assertTrue(recovery.recoveryRequired.value)
-        assertEquals(1, preferenceAttempts)
-    }
-
     @Test fun `fenced receipt admission refuses a new callback without opening storage`() = runTest {
         val admission = SeenReceiptAdmission()
         admission.fenceForPanic()
@@ -196,42 +99,14 @@ class SeenReceiptPanicAdmissionTest {
         assertEquals(1, hooks)
     }
 
-    @Test fun `old and other owner receipt tokens stay refused after verified resume`() = runTest {
+    @Test fun `old and other owner receipt tokens are refused once fenced`() = runTest {
         val fixture = Fixture()
         val old = fixture.admission.capture()
         val foreign = SeenReceiptAdmission().capture()
-        assertTrue(fixture.clearForPanic())
-        assertTrue(fixture.resumeSeen())
-        assertFalse(fixture.seen.markReadReceiptSent(OLD_ID, old))
         assertFalse(fixture.seen.markReadReceiptSent(OLD_ID, foreign))
-        assertTrue(fixture.seen.markReadReceiptSent(FRESH_ID, fixture.admission.capture()))
-        assertEquals(expectedMap(FRESH_ID), fixture.storage.disk)
-    }
-
-    @Test fun `failed wipe cannot reopen receipt admission and an obsolete panic cannot resume its retry`() = runTest {
-        val fixture = Fixture(seeded = true)
-        fixture.storage.commitSucceeds = false
-        val failed = fixture.admission.fenceForPanic()
-        assertFalse(clearSeenForPanic(failed) { fixture.seen })
-        assertFalse(fixture.admission.resumeAfterVerifiedPanic(failed))
-        assertNull(fixture.admission.capture())
-        fixture.storage.commitSucceeds = true
-        val retry = fixture.admission.fenceForPanic()
-        assertTrue(clearSeenForPanic(retry) { fixture.seen })
-        assertFalse(fixture.admission.resumeAfterVerifiedPanic(failed))
-        assertNull(fixture.admission.capture())
-        assertTrue(fixture.admission.resumeAfterVerifiedPanic(retry))
-        assertNotNull(fixture.admission.capture())
-    }
-
-    @Test fun `cancellation during checked Seen cleanup propagates and keeps admission fenced`() = runTest {
-        val fixture = Fixture(seeded = true)
-        fixture.storage.writeFailure = CancellationException("Synthetic canceled Seen mutation")
-        var cancelled = false
-        try { fixture.clearForPanic() } catch (_: CancellationException) { cancelled = true }
-        assertTrue(cancelled)
-        assertNull(fixture.admission.capture())
-        assertFalse(fixture.resumeSeen())
+        fixture.admission.fenceForPanic()
+        assertFalse(fixture.seen.markReadReceiptSent(OLD_ID, old))
+        assertEquals(mapOf(NEIGHBOR to NEIGHBOR_VALUE), fixture.storage.disk)
     }
 
     private fun TestScope.sender() = RetryingControlPacketSender(this,
@@ -257,34 +132,10 @@ class SeenReceiptPanicAdmissionTest {
         runCurrent()
     }
 
-    private suspend fun resume(seenCleared: Boolean, recovery: WeshRecoveryGate, fixture: Fixture? = null,
-        otherPreferenceAttempt: () -> Unit = {}): Boolean = resumeAfterWeshPanicWipe(
-        draftsCleared = true, conversationsCleared = true, mediaCleared = true,
-        seenCleared = seenCleared,
-        clearPreferences = { otherPreferenceAttempt(); true },
-        resume = {
-            if (fixture != null && !fixture.resumeSeen()) false else {
-                recovery.normalPanicCompleted()
-                true
-            }
-        },
-        identityErasureConfirmed = true,
-        meshOwnerRetired = true
-    )
-
-    private class Fixture(seeded: Boolean = false) {
-        val storage = Storage(if (seeded) expectedMap(OLD_ID) else mapOf(NEIGHBOR to NEIGHBOR_VALUE))
+    private class Fixture {
+        val storage = Storage(mapOf(NEIGHBOR to NEIGHBOR_VALUE))
         val admission = SeenReceiptAdmission()
         val seen = SeenMessageStore(SecureIdentityStateManager(storage.prefs, testOnly = true), admission, testOnly = true)
-        private var panicToken: SeenReceiptAdmission.Token? = null
-
-        suspend fun clearForPanic(): Boolean {
-            val token = admission.fenceForPanic()
-            panicToken = token
-            return clearSeenForPanic(token) { seen }
-        }
-
-        fun resumeSeen(): Boolean = admission.resumeAfterVerifiedPanic(requireNotNull(panicToken))
     }
 
     /** Failed durable edits can still update the preference RAM cache. No backing domain exists. */
@@ -292,9 +143,6 @@ class SeenReceiptPanicAdmissionTest {
         val memory = initial.toMutableMap()
         val disk = initial.toMutableMap()
         val prefs: SharedPreferences = mock()
-        var commitSucceeds = true
-        var retainRemovedValues = false
-        var writeFailure: Exception? = null
 
         init {
             whenever(prefs.getString(any(), anyOrNull())).thenAnswer {
@@ -314,12 +162,11 @@ class SeenReceiptPanicAdmissionTest {
                 }
                 whenever(editor.remove(any())).thenAnswer { removes += it.getArgument<String>(0); editor }
                 fun publish() {
-                    if (!retainRemovedValues) removes.forEach(memory::remove)
+                    removes.forEach(memory::remove)
                     memory.putAll(puts)
-                    writeFailure?.let { throw it }
-                    if (commitSucceeds) { disk.clear(); disk.putAll(memory) }
+                    disk.clear(); disk.putAll(memory)
                 }
-                whenever(editor.commit()).thenAnswer { publish(); commitSucceeds }
+                whenever(editor.commit()).thenAnswer { publish(); true }
                 doAnswer { publish(); null }.whenever(editor).apply()
                 editor
             }

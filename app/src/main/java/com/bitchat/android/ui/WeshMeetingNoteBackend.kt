@@ -13,13 +13,11 @@ import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
 import java.nio.file.attribute.BasicFileAttributes
 
-/** Caller owns the process-wide IO mutex, dispatcher and panic transaction. */
+/** Caller owns the process-wide IO mutex and dispatcher. */
 internal interface WeshMeetingNoteBackend {
     /** Null means absent; an empty string is a saved empty note. */
     suspend fun load(): String?
     suspend fun write(text: String)
-    /** Retires this instance even on failure. Only a verified global resume may replace it. */
-    suspend fun erase()
 }
 
 internal class EncryptedWeshMeetingNoteBackend private constructor(
@@ -43,13 +41,11 @@ internal class EncryptedWeshMeetingNoteBackend private constructor(
     )
 
     private val data by lazy { AtomicFile(File(directory(), FILE_NAME)) }
-    private var retired = false
     private var initialized = false
     private var baseline: ByteArray? = null
     private var candidate: ByteArray? = null
 
     override suspend fun load(): String? {
-        requireActive()
         val record = readCurrent()
         if (!initialized) {
             initialized = true
@@ -61,7 +57,6 @@ internal class EncryptedWeshMeetingNoteBackend private constructor(
     }
 
     override suspend fun write(text: String) {
-        requireActive()
         val plaintext = encode(text)
         // Read and authenticate existing data before encryption is allowed to
         // create any key. An orphaned or unreadable note must never be replaced.
@@ -83,28 +78,6 @@ internal class EncryptedWeshMeetingNoteBackend private constructor(
         candidate = null
     }
 
-    override suspend fun erase() {
-        // Retirement precedes even key deletion, and remains permanent if any
-        // destructive effect fails. An explicit erase retry is still permitted.
-        retired = true
-        initialized = false
-        baseline = null
-        candidate = null
-        cipher.destroyKey()
-        val paths = storagePaths()
-        // Validate every entry before removing any file; unexpected directories
-        // or links must remain visible as failures of the global panic.
-        val present = paths.map(probe)
-        paths.zip(present).forEach { (path, exists) ->
-            if (exists) check(path.delete()) { "Meeting-note deletion was not confirmed" }
-        }
-        check(paths.map(probe).none { it }) { "Meeting-note storage remains after erase" }
-    }
-
-    private fun requireActive() {
-        check(!retired) { "Meeting-note backend was retired" }
-    }
-
     private data class Record(val envelope: ByteArray?, val text: String?)
 
     private fun readCurrent(): Record {
@@ -112,7 +85,7 @@ internal class EncryptedWeshMeetingNoteBackend private constructor(
         val present = paths.map(probe)
         // Do not use AtomicFile.openRead: it can rename/delete ambiguous crash
         // remnants before authentication. This bounded store preserves them and
-        // refuses access until a verified global erase removes all variants.
+        // refuses access until the emergency wipe removes all variants.
         check(!present[1] && !present[2]) { "Meeting-note atomic write requires recovery" }
         if (!present[0]) return Record(null, null)
         val envelope = paths[0].inputStream().use { input ->
@@ -158,7 +131,6 @@ internal class EncryptedWeshMeetingNoteBackend private constructor(
     }
 
     private fun writeAtomically(envelope: ByteArray) {
-        requireActive()
         data.baseFile.parentFile?.let { check(it.isDirectory || it.mkdirs()) }
         val output = data.startWrite()
         try {

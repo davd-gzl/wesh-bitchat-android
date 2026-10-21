@@ -35,12 +35,12 @@ class PanicIntentOrderingTest {
 
     @Before fun setUp() {
         AppStateStore.setConversationRepositoryForTest(null)
-        AppStateStore.resumePrivateConversationsAfterPanic()
+        AppStateStore.resetPrivateConversationAdmissionForTest()
         AppStateStore.clear()
     }
 
     @After fun tearDown() {
-        AppStateStore.resumePrivateConversationsAfterPanic()
+        AppStateStore.resetPrivateConversationAdmissionForTest()
         AppStateStore.clear()
         AppStateStore.setConversationRepositoryForTest(null)
     }
@@ -150,10 +150,10 @@ class PanicIntentOrderingTest {
         assertTrue(f.run())
 
         assertEquals(1, f.erases)
-        assertEquals(1, f.cipher.destroys)
         assertEquals(0, f.androidClears)
+        assertFalse(f.data.exists())
         assertFalse("the marker survives the wipe for the relaunch", f.coldAllows())
-        assertEquals(listOf("intent", "erase", "intent", "restart"), f.order)
+        assertEquals(listOf("intent", "erase", "restart"), f.order)
     }
 
     @Test fun `initial private fence rejects a retained callback before any IO await`() = runTest {
@@ -236,7 +236,8 @@ class PanicIntentOrderingTest {
                     order += "erase"
                     erases++
                     wipeFailure?.let { throw it }
-                    check(store.panicClear(deferCompletion = true))
+                    // Stands in for the app's own file wipe, which leaves the marker for the relaunch.
+                    check(data.delete())
                 },
                 restart = { order += "restart"; restarted = true },
                 clearAppData = { androidClears++ }

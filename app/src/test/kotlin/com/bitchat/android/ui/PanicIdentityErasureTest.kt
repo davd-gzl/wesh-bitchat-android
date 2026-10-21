@@ -4,9 +4,7 @@ import android.app.Application
 import android.content.SharedPreferences
 import com.bitchat.android.favorites.FavoritesPersistenceService
 import com.bitchat.android.identity.SecureIdentityStateManager
-import com.bitchat.android.startup.WeshRecoveryGate
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -167,96 +165,6 @@ class PanicIdentityErasureTest {
         assertEquals(2, storage.applies)
         assertEquals(0, storage.commits)
         assertEquals(SENTINEL_VALUE, storage.memory[SENTINEL])
-    }
-
-    @Test fun `any uncertain cryptographic outcome prevents the actual all store resume continuation`() = runTest {
-        for (failed in listOf("mesh", "identity", "keys", "favorites")) {
-            val attempts = mutableListOf<String>()
-            fun result(name: String): Boolean { attempts += name; return name != failed }
-            val erased = clearPanicCryptography(
-                clearMesh = { attempts += "mesh"; if (failed == "mesh") error("Synthetic mesh failure") },
-                clearIdentity = { result("identity") },
-                clearFavoriteKeys = { result("keys") },
-                clearFavorites = { result("favorites") }
-            )
-            var pending = true
-            var resumes = 0
-            val gate = WeshRecoveryGate().apply { requireRecovery() }
-            val resumed = resumeAfterWeshPanicWipe(
-                draftsCleared = true, conversationsCleared = true, mediaCleared = true, seenCleared = true,
-                identityErasureConfirmed = erased.confirmed, clearPreferences = { true },
-                resume = { resumes++; pending = false; gate.normalPanicCompleted(); true },
-                meshOwnerRetired = true
-            )
-            assertFalse("Uncertain $failed cleanup must not enter the real continuation", resumed)
-            assertEquals(0, resumes)
-            assertTrue(pending)
-            assertTrue(gate.recoveryRequired.value)
-            assertEquals(listOf("mesh", "identity", "keys", "favorites"), attempts)
-        }
-    }
-
-    @Test fun `actual failed identity persistence cannot restart through the production conjunction`() = runTest {
-        val storage = Storage(identitySeed())
-        storage.commitSucceeds = false
-        val manager = storage.manager()
-        val erased = clearPanicCryptography(
-            clearMesh = {}, clearIdentity = manager::clearIdentityDataForPanic,
-            clearFavoriteKeys = { manager.clearSecureValuesForPanic(FAVORITES, INDEX) }, clearFavorites = { true }
-        )
-        var restarted = false
-        val resumed = resumeAfterWeshPanicWipe(
-            draftsCleared = true, conversationsCleared = true, mediaCleared = true, seenCleared = true,
-            identityErasureConfirmed = erased.confirmed, clearPreferences = { true },
-            resume = { restarted = true; true },
-            meshOwnerRetired = true
-        )
-        assertTrue(storage.disk.containsKey("static_private_key"))
-        assertFalse(resumed)
-        assertFalse(restarted)
-    }
-
-    @Test fun `cleanup exceptions do not skip independent owned erasure attempts`() {
-        val attempts = mutableListOf<String>()
-        val result = clearPanicCryptography(
-            clearMesh = { attempts += "mesh"; error("Synthetic mesh failure") },
-            clearIdentity = { attempts += "identity"; true },
-            clearFavoriteKeys = { attempts += "keys"; true },
-            clearFavorites = { attempts += "favorites"; true }
-        )
-        assertFalse(result.confirmed)
-        assertEquals(listOf("mesh", "identity", "keys", "favorites"), attempts)
-    }
-
-    @Test fun `cleanup cancellation propagates before any successful resume decision`() {
-        var cancelled = false
-        try {
-            clearPanicCryptography(clearMesh = {}, clearIdentity = { throw CancellationException("Synthetic cancellation") },
-                clearFavoriteKeys = { true }, clearFavorites = { true })
-        } catch (_: CancellationException) { cancelled = true }
-        assertTrue(cancelled)
-    }
-
-    @Test fun `an ordinary false result still attempts the remaining owned cleanup operations`() {
-        val attempts = mutableListOf<String>()
-        val result = clearPanicCryptography(clearMesh = { attempts += "mesh" },
-            clearIdentity = { attempts += "identity"; false }, clearFavoriteKeys = { attempts += "keys"; true },
-            clearFavorites = { attempts += "favorites"; true })
-        assertFalse(result.confirmed)
-        assertEquals(listOf("mesh", "identity", "keys", "favorites"), attempts)
-    }
-
-    @Test fun `fully confirmed operations preserve successful all store resume`() = runTest {
-        val result = clearPanicCryptography(clearMesh = {}, clearIdentity = { true },
-            clearFavoriteKeys = { true }, clearFavorites = { true })
-        var resumed = 0
-        assertTrue(result.confirmed)
-        assertTrue(resumeAfterWeshPanicWipe(
-            draftsCleared = true, conversationsCleared = true, mediaCleared = true, seenCleared = true,
-            identityErasureConfirmed = result.confirmed, clearPreferences = { true }, resume = { resumed++; true },
-            meshOwnerRetired = true
-        ))
-        assertEquals(1, resumed)
     }
 
     /** A failed commit may update memory while leaving the synthetic durable document intact. */

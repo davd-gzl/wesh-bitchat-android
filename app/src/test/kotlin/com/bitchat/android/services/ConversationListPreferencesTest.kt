@@ -51,7 +51,7 @@ class ConversationListPreferencesTest {
     }
 
     @Test
-    fun `draft persistence is globally bounded and panic clear is durable`() {
+    fun `draft persistence is globally bounded`() {
         val preferences = preferences()
         repeat(60) { index ->
             preferences.setDraft("peer-$index", "x".repeat(3_000))
@@ -61,15 +61,6 @@ class ConversationListPreferencesTest {
         assertTrue(preferences.drafts.value.values.sumOf(String::length) <= 128_000)
         assertNull(preferences.draftFor("peer-0"))
         assertTrue(preferences.draftFor("peer-59")?.isNotEmpty() == true)
-
-        preferences.togglePinned("peer-59")
-        preferences.toggleMuted("peer-59")
-        preferences.clearAll()
-
-        val afterPanic = preferences()
-        assertTrue(afterPanic.pinned.value.isEmpty())
-        assertTrue(afterPanic.muted.value.isEmpty())
-        assertTrue(afterPanic.drafts.value.isEmpty())
     }
 
     @Test

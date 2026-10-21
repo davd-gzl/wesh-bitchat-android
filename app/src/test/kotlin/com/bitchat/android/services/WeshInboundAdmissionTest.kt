@@ -30,7 +30,7 @@ class WeshInboundAdmissionTest {
         databaseName = "wesh-admission-${UUID.randomUUID()}.db"
         repository = ConversationRepository(context, Dispatchers.Unconfined, databaseName, InMemoryConversationStorageCipher())
         AppStateStore.setConversationRepositoryForTest(repository)
-        AppStateStore.resumePrivateConversationsAfterPanic()
+        AppStateStore.resetPrivateConversationAdmissionForTest()
         AppStateStore.clear()
         WeshMessageRequests.clear()
         SessionHiddenPeers.clear()

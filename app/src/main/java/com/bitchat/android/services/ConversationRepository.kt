@@ -327,32 +327,6 @@ class ConversationRepository internal constructor(
         }
     }
 
-    /**
-     * Drains earlier writes and completes the database wipe before returning.
-     *
-     * Panic mode uses this stronger variant so identity regeneration and transport restart cannot
-     * race an outstanding message insert or an unfinished conversation deletion.
-     */
-    suspend fun clearAllAndWait(): Boolean {
-        // Retire pending work before the first suspension, including on a failed
-        // or cancelled wipe. Never re-authorize an old generation on retry.
-        writeGeneration.incrementAndGet()
-        return withContext(dispatcher) {
-            try {
-                database.clearAll()
-                _storeState.value = ConversationStoreState.Ready
-                true
-            } catch (error: Exception) {
-                Log.e(TAG, "Unable to synchronously clear private conversations", error)
-                database.destroyStorage()
-                _storeState.value = ConversationStoreState.Error(
-                    error.message ?: "Unable to erase conversations"
-                )
-                false
-            }
-        }
-    }
-
     private fun deleteStoredMedia(paths: Collection<String>) {
         if (paths.isEmpty()) return
         com.bitchat.android.features.file.FileUtils.deleteStoredMediaPaths(
@@ -1109,37 +1083,6 @@ internal class ConversationDatabase(
             updateConversationMetadataLocked(this, conversationID, displayName, now)
         }
         return pruneToRetentionLimits()
-    }
-
-    fun clearAll() {
-        // Destroy the only usable copy of the history key before attempting filesystem cleanup.
-        storageCipher.destroyKey()
-        writableDatabase.inTransaction {
-            delete("conversation_aliases", null, null)
-            delete("message_attachments", null, null)
-            delete("private_messages", null, null)
-            delete("conversations", null, null)
-            delete("deleted_private_messages", null, null)
-            execSQL("DELETE FROM sqlite_sequence WHERE name = 'private_messages'")
-        }
-        writableDatabase.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { }
-        writableDatabase.rawQuery("PRAGMA incremental_vacuum", null).use { }
-    }
-
-    /**
-     * Last-resort panic cleanup when [clearAll] throws: drop the encrypted database
-     * files so a later reload cannot resurrect erased conversations (#699).
-     */
-    fun destroyStorage() {
-        try {
-            clearAll()
-        } catch (error: Exception) {
-            Log.e(TAG, "clearAll failed during destroyStorage; deleting database files", error)
-        }
-        try {
-            close()
-        } catch (_: Exception) { }
-        applicationContext.deleteDatabase(databaseName)
     }
 
     fun pruneToRetentionLimits(): Set<String> {

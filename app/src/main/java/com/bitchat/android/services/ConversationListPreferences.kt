@@ -125,21 +125,6 @@ internal class ConversationListPreferences private constructor(
         }
     }
 
-    fun clearInMemory() {
-        _pinned.value = emptySet()
-        _muted.value = emptySet()
-        _drafts.value = emptyMap()
-    }
-
-    fun clearAll(): Boolean {
-        return try {
-            stateManager.clearSecureValuesSynchronously(PINNED_KEY, MUTED_KEY, DRAFTS_KEY) &&
-                listOf(PINNED_KEY, MUTED_KEY, DRAFTS_KEY).none(stateManager::hasSecureValue)
-        } finally {
-            clearInMemory()
-        }
-    }
-
     private fun loadSet(key: String): Set<String> = runCatching {
         val array = JSONArray(stateManager.getSecureValue(key) ?: return emptySet())
         buildSet {

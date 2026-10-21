@@ -3,9 +3,6 @@ package com.bitchat.android.ui
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 /**
@@ -42,9 +39,6 @@ class DataManager(private val context: Context) {
         prefs.edit().putString("nickname", nickname).apply()
     }
 
-    internal fun saveNicknameForPanic(nickname: String): Boolean =
-        prefs.edit().putString("nickname", nickname).commit() &&
-            prefs.getString("nickname", null) == nickname
     
     // MARK: - Favorites Management
     
@@ -114,17 +108,5 @@ class DataManager(private val context: Context) {
     @Synchronized
     fun isUserBlocked(fingerprint: String): Boolean {
         return _blockedUsers.contains(fingerprint)
-    }
-    
-    // MARK: - Emergency Clear
-    
-    suspend fun clearAllData(): Boolean {
-        _favoritePeers.clear()
-        _blockedUsers.clear()
-        // Clears the whole file, including joined_channels, password_protected_channels and
-        // channel_creators that an older build may still hold.
-        return withContext(NonCancellable + Dispatchers.IO) {
-            prefs.edit().clear().commit() && prefs.all.isEmpty()
-        }
     }
 }

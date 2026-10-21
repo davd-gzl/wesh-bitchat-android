@@ -3,7 +3,6 @@ package com.bitchat.android.ui
 import android.app.Application
 import android.content.Context
 import com.bitchat.android.services.AndroidConversationStorageCipher
-import com.bitchat.android.services.ConversationStorageCipher
 import com.bitchat.android.services.ConversationStorageKeyProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
@@ -222,90 +221,12 @@ class WeshMeetingNoteBackendTest {
     }
 
     @Test
-    fun `erase destroys the key before removing every atomic variant and retires this instance`() = runBlocking {
-        val fixture = fixture()
-        fixture.seed(NOTE)
-        for (suffix in listOf(".bak", ".new")) File(fixture.file.path + suffix).writeText("Synthetic pending bytes")
-        val delegate = fixture.cipher()
-        val events = mutableListOf<String>()
-        lateinit var backend: EncryptedWeshMeetingNoteBackend
-        val cipher = object : ConversationStorageCipher by delegate {
-            override fun destroyKey() {
-                events += "key"
-                // Retirement is observable before even the first destructive effect.
-                runBlocking {
-                    refuses { backend.load() }
-                    refuses { backend.write("Synthetic stale writer") }
-                }
-                delegate.destroyKey()
-            }
-        }
-        backend = EncryptedWeshMeetingNoteBackend(fixture.root, cipher, probe = { path ->
-            events += "probe"
-            assertNull("Storage must only be inspected for removal after key deletion", fixture.keys.stored)
-            path.exists()
-        })
-        backend.erase()
-        assertEquals(listOf("key"), events.take(1))
-        assertEquals(1, fixture.keys.deletes)
-        assertNull(fixture.keys.stored)
-        for (suffix in listOf("", ".bak", ".new")) assertFalse(File(fixture.file.path + suffix).exists())
-        refuses { backend.load() }
-        refuses { backend.write("Synthetic stale writer") }
-        assertNull(fixture.backend().load())
-        assertEquals(1, fixture.keys.creates)
-    }
-
-    @Test
-    fun `failed key deletion retires the instance but explicit erase retry remains possible`() = runBlocking {
-        val fixture = fixture()
-        val original = fixture.seed(NOTE)
-        val delegate = fixture.cipher()
-        var failDelete = true
-        val cipher = object : ConversationStorageCipher by delegate {
-            override fun destroyKey() {
-                if (failDelete) error("Synthetic unavailable key deletion")
-                delegate.destroyKey()
-            }
-        }
-        val backend = EncryptedWeshMeetingNoteBackend(fixture.root, cipher)
-        refuses { backend.erase() }
-        refuses { backend.load() }
-        refuses { backend.write("Synthetic stale writer") }
-        assertArrayEquals(original, fixture.file.readBytes())
-        failDelete = false
-        backend.erase()
-        assertFalse(fixture.file.exists())
-        assertNull(fixture.keys.stored)
-        assertNull(fixture.backend().load())
-    }
-
-    @Test
-    fun `failed erase verification remains an error until an explicit retry confirms absence`() = runBlocking {
-        val fixture = fixture()
-        fixture.seed(NOTE)
-        var failProbe = true
-        val backend = EncryptedWeshMeetingNoteBackend(fixture.root, fixture.cipher(), probe = { path ->
-            if (failProbe) throw AccessDeniedException("synthetic-note")
-            path.exists()
-        })
-        refuses { backend.erase() }
-        assertNull(fixture.keys.stored)
-        refuses { backend.load() }
-        refuses { backend.write("Synthetic stale writer") }
-        failProbe = false
-        backend.erase()
-        assertFalse(fixture.file.exists())
-    }
-
-    @Test
-    fun `unexpected directory entry cannot be read overwritten or silently removed`() = runBlocking {
+    fun `unexpected directory entry cannot be read or overwritten`() = runBlocking {
         val fixture = fixture()
         assertTrue(fixture.file.mkdir())
         val backend = fixture.backend()
         refuses { backend.load() }
         refuses { backend.write(NOTE) }
-        refuses { backend.erase() }
         assertTrue(fixture.file.isDirectory)
     }
 
