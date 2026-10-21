@@ -108,7 +108,6 @@
   <string name="about_pow">הוכחת עבודה</string>
   <string name="about_pow_off">הוכחת עבודה כבויה</string>
   <string name="about_pow_on">הוכחת עבודה דלוקה</string>
-  <string name="about_pow_tip">הוסף הוכחת עבודה להודעות geohash כדי להרתיע ספאם.</string>
   <string name="about_pow_difficulty">קושי: %1$d ביטים (~%2$s)</string>
   <string name="about_pow_difficulty_attempts">קושי %1$d דורש כ-%2$s ניסיונות גיבוב</string>
   <string name="about_pow_desc_none">לא נדרשת הוכחת עבודה</string>
@@ -201,9 +200,7 @@
   <string name="debug_role_client">כלקוח (אנחנו מתחברים)</string>
   <string name="location_services_required">נדרשים שירותי מיקום</string>
   <string name="privacy_first">פרטיות תחילה</string>
-  <string name="location_explanation">Wesh לא עוקב אחר המיקום שלך.\n\nשירותי מיקום נדרשים לסריקת Bluetooth ולתכונת צ׳אט ה-Geohash.</string>
   <string name="location_needs_for">Wesh זקוק לשירותי מיקום עבור:</string>
-  <string name="location_needs_bullets">• סריקת מכשירי Bluetooth\n• איתור משתמשים קרובים ברשת ה-Mesh\n• תכונת צ׳אט Geohash\n• ללא מעקב או איסוף מיקום</string>
   <string name="open_location_settings">פתח הגדרות מיקום</string>
   <string name="check_again">בדוק שוב</string>
   <string name="location_services_unavailable">שירותי מיקום אינם זמינים</string>
@@ -238,7 +235,6 @@
   <string name="location_tracking_warning">Wesh לא עוקב אחר המיקום שלך</string>
   <string name="nobody_around">אין אף אחד בסביבה…</string>
   <string name="you_suffix"> (אתה)</string>
-  <string name="pan_zoom_instruction">הזז ושנה תצוגה כדי לבחור geohash</string>
   <string name="select">בחר</string>
   <string name="type_a_message_placeholder">הקלד הודעה…</string>
   <string name="mention">אזכור</string>

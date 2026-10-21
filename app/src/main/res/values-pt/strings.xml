@@ -75,7 +75,6 @@
     <string name="about_pow">Prova de Trabalho</string>
     <string name="about_pow_off">PoW desligado</string>
     <string name="about_pow_on">PoW ligado</string>
-    <string name="about_pow_tip">Adicionar prova de trabalho às mensagens geohash para tornar o spam mais difícil.</string>
     <string name="about_pow_difficulty">Dificuldade: %1$d bits (~%2$s)</string>
     <string name="about_pow_difficulty_attempts">Dificuldade %1$d requer ~%2$s tentativas de hash</string>
     <string name="about_pow_desc_none">nenhuma prova de trabalho necessária</string>
@@ -174,9 +173,7 @@
     <!-- Ecrãs de integração -->
     <string name="location_services_required">Serviços de localização necessários</string>
     <string name="privacy_first">Privacidade primeiro</string>
-    <string name="location_explanation">O Wesh NÃO rastreia a sua localização.\n\nOs serviços de localização são necessários para a digitalização Bluetooth e a funcionalidade de chat geohash.</string>
     <string name="location_needs_for">O Wesh precisa de serviços de localização para:</string>
-    <string name="location_needs_bullets">• Digitalização de dispositivos Bluetooth\n• Descobrir utilizadores próximos na rede mesh\n• Funcionalidade de chat geohash\n• Sem rastreamento ou recolha de localização</string>
     <string name="open_location_settings">Abrir definições de localização</string>
     <string name="check_again">Verificar novamente</string>
     <string name="location_services_unavailable">Serviços de localização indisponíveis</string>
@@ -209,7 +206,6 @@
     <string name="location_tracking_warning">O Wesh NÃO rastreia a sua localização</string>
     <string name="nobody_around">ninguém por perto…</string>
     <string name="you_suffix"> (você)</string>
-    <string name="pan_zoom_instruction">arraste e amplie para selecionar um geohash</string>
     <string name="select">selecionar</string>
     <string name="type_a_message_placeholder">Digite uma mensagem…</string>
     <string name="mention">mencionar</string>

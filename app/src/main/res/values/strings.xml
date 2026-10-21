@@ -150,7 +150,6 @@
   <string name="about_pow">Proof of Work</string>
   <string name="about_pow_off">PoW Off</string>
   <string name="about_pow_on">PoW On</string>
-  <string name="about_pow_tip">Add proof of work to geohash messages for spam deterrence.</string>
   <string name="about_pow_difficulty">Difficulty: %1$d bits (~%2$s)</string>
   <string name="about_pow_difficulty_attempts">Difficulty %1$d requires ~%2$s hash attempts</string>
   <string name="about_pow_desc_none">No proof of work required</string>
@@ -319,9 +318,7 @@
   <!-- Onboarding screens -->
   <string name="location_services_required">Location Services Required</string>
   <string name="privacy_first">Privacy First</string>
-  <string name="location_explanation">Android 11 and earlier requires the system location switch for Bluetooth scanning. Wesh does not request GPS coordinates or offer a geographic channel.</string>
   <string name="location_needs_for">Wesh needs location services for:</string>
-  <string name="location_needs_bullets">• scan Bluetooth on this older Android\n• discover mesh connections</string>
   <string name="open_location_settings">Open Location Settings</string>
   <string name="check_again">Check Again</string>
   <string name="location_services_unavailable">Location Services Unavailable</string>
@@ -359,7 +356,6 @@
   <string name="cd_open_about">Open About</string>
   <string name="nobody_around">Nobody around…</string>
   <string name="you_suffix"> (you)</string>
-  <string name="pan_zoom_instruction">Drag to spin · Pinch to zoom · Tap to focus</string>
   <string name="select">Select</string>
   <string name="type_a_message_placeholder">Type a message…</string>
   <string name="mention_suggestion_at" translatable="false">@%1$s</string>

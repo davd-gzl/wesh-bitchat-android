@@ -75,7 +75,6 @@
     <string name="about_pow">proof of work</string>
     <string name="about_pow_off">pow off</string>
     <string name="about_pow_on">pow on</string>
-    <string name="about_pow_tip">magdagdag ng proof of work sa mga geohash na mensahe para iwas spam.</string>
     <string name="about_pow_difficulty">hirap: %1$d bits (~%2$s)</string>
     <string name="about_pow_difficulty_attempts">ang hirap na %1$d ay ~%2$s hash attempts</string>
     <string name="about_pow_desc_none">walang proof of work na kailangan</string>
@@ -170,9 +169,7 @@
     <!-- Onboarding screens -->
     <string name="location_services_required">Kailangang‑kailangan ang Location Services</string>
     <string name="privacy_first">Privacy muna</string>
-    <string name="location_explanation">HINDI sinusubaybayan ng Wesh ang iyong lokasyon.\n\nKailangan ang location services para sa Bluetooth scanning at Geohash chat.</string>
     <string name="location_needs_for">Kailangan ng Wesh ang location services para sa:</string>
-    <string name="location_needs_bullets">• Bluetooth device scanning\n• Pagtuklas ng kalapit na user sa mesh\n• Geohash chat\n• Walang tracking o koleksiyon ng lokasyon</string>
     <string name="open_location_settings">Buksan ang Location Settings</string>
     <string name="check_again">Suriin muli</string>
     <string name="location_services_unavailable">Hindi available ang Location Services</string>
@@ -206,7 +203,6 @@
     <string name="location_tracking_warning">HINDI sinusubaybayan ng Wesh ang lokasyon mo</string>
     <string name="nobody_around">walang tao sa paligid…</string>
     <string name="you_suffix"> (ikaw)</string>
-    <string name="pan_zoom_instruction">i‑pan at i‑zoom para pumili ng geohash</string>
     <string name="select">piliin</string>
     <string name="type_a_message_placeholder">magtype ng mensahe…</string>
     <string name="mention">banggit</string>

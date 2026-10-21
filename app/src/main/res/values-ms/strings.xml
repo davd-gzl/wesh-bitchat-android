@@ -77,7 +77,6 @@
   <string name="about_pow">bukti kerja</string>
   <string name="about_pow_off">pow dimatikan</string>
   <string name="about_pow_on">pow dihidupkan</string>
-  <string name="about_pow_tip">tambah bukti kerja pada mesej geohash untuk mengelakkan spam.</string>
   <string name="about_pow_difficulty">tahap kesukaran: %1$d bit (~%2$s)</string>
   <string name="about_pow_difficulty_attempts">kesukaran %1$d memerlukan ~%2$s percubaan hash</string>
   <string name="about_pow_desc_none">tiada bukti kerja diperlukan</string>
@@ -221,9 +220,7 @@
   <!-- Onboarding screens -->
   <string name="location_services_required">Perkhidmatan Lokasi Diperlukan</string>
   <string name="privacy_first">Privasi Diutamakan</string>
-  <string name="location_explanation">Wesh TIDAK menjejaki lokasi anda.\n\nPerkhidmatan lokasi diperlukan untuk imbasan Bluetooth dan untuk ciri sembang Geohash.</string>
   <string name="location_needs_for">Wesh memerlukan perkhidmatan lokasi untuk:</string>
-  <string name="location_needs_bullets">• Imbasan peranti Bluetooth\n• Mengesan pengguna berdekatan pada rangkaian mesh\n• Ciri sembang Geohash\n• Tiada penjejakan atau pengumpulan lokasi</string>
   <string name="open_location_settings">Buka Tetapan Lokasi</string>
   <string name="check_again">Semak Semula</string>
   <string name="location_services_unavailable">Perkhidmatan Lokasi Tidak Tersedia</string>
@@ -258,7 +255,6 @@
   <string name="location_tracking_warning">Wesh TIDAK menjejaki lokasi anda</string>
   <string name="nobody_around">tiada sesiapa berdekatan…</string>
   <string name="you_suffix"> (anda)</string>
-  <string name="pan_zoom_instruction">gerak dan zum untuk memilih geohash</string>
   <string name="select">pilih</string>
   <string name="type_a_message_placeholder">taip mesej…</string>
   <string name="mention">sebutan</string>

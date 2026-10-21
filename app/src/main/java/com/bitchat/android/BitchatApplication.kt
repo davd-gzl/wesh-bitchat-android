@@ -65,7 +65,7 @@ class BitchatApplication : Application() {
 
         // Initialize the Nostr alias registry for persistence
         try {
-            com.bitchat.android.nostr.GeohashAliasRegistry.initialize(this)
+            com.bitchat.android.nostr.NostrAliasRegistry.initialize(this)
         } catch (_: Exception) { }
 
         // Own relay connectivity and account-DM subscriptions at the process level so closing the

@@ -660,7 +660,7 @@ class NotificationManager(
         }
 
         // Use a special notification ID for mesh mentions
-        val notificationId = 4000 // Different from DM and geohash IDs
+        val notificationId = 4000 // Different from the other notification IDs
         notifySafely(notificationId, builder.build())
 
         Log.d(TAG, "Displayed mesh mention notification: $contentTitle")

@@ -65,7 +65,6 @@
     <string name="about_pow">proof of work</string>
     <string name="about_pow_off">pow av</string>
     <string name="about_pow_on">pow på</string>
-    <string name="about_pow_tip">lägg till proof of work i geohash‑meddelanden för att hindra spam.</string>
     <string name="about_pow_difficulty">svårighet: %1$d bitar (~%2$s)</string>
     <string name="about_pow_difficulty_attempts">svårighet %1$d kräver ~%2$s hash‑försök</string>
     <string name="about_pow_desc_none">inget proof of work krävs</string>
@@ -155,9 +154,7 @@
 
     <string name="location_services_required">Platstjänster krävs</string>
     <string name="privacy_first">Integritet först</string>
-    <string name="location_explanation">Wesh SPÅRAR INTE din plats.\n\nPlatstjänster krävs för Bluetooth‑skanning och Geohash‑chatt.</string>
     <string name="location_needs_for">Wesh behöver platstjänster för:</string>
-    <string name="location_needs_bullets">• Bluetooth‑skanning av enheter\n• Hitta användare i närheten i mesh‑nätet\n• Geohash‑chatt\n• Ingen spårning eller insamling</string>
     <string name="open_location_settings">Öppna platsinställningar</string>
     <string name="check_again">Kontrollera igen</string>
     <string name="location_services_unavailable">Platstjänster inte tillgängliga</string>
@@ -191,7 +188,6 @@
     <string name="location_tracking_warning">Wesh spårar INTE din plats</string>
     <string name="nobody_around">ingen i närheten…</string>
     <string name="you_suffix"> (du)</string>
-    <string name="pan_zoom_instruction">panorera och zooma för att välja geohash</string>
     <string name="select">välj</string>
     <string name="type_a_message_placeholder">skriv ett meddelande…</string>
     <string name="mention">nämn</string>

@@ -106,7 +106,6 @@
   <string name="about_pow">工作量证明</string>
   <string name="about_pow_off">工作量证明已关闭</string>
   <string name="about_pow_on">工作量证明已开启</string>
-  <string name="about_pow_tip">为 Geohash 消息添加工作量证明以遏制垃圾信息。</string>
   <string name="about_pow_difficulty">难度：%1$d 位（约 %2$s）</string>
   <string name="about_pow_difficulty_attempts">难度 %1$d 需要约 %2$s 次哈希尝试</string>
   <string name="about_pow_desc_none">无需工作量证明</string>
@@ -199,9 +198,7 @@
   <string name="debug_role_client">作为客户端（我方连接）</string>
   <string name="location_services_required">需要位置服务</string>
   <string name="privacy_first">隐私优先</string>
-  <string name="location_explanation">Wesh 不会追踪你的位置。\n\n蓝牙扫描以及 Geohash 聊天功能需要位置服务的支持。</string>
   <string name="location_needs_for">Wesh 需要位置服务以实现：</string>
-  <string name="location_needs_bullets">• 蓝牙设备扫描\n• 发现 Mesh 网络上的附近用户\n• Geohash 聊天功能\n• 不进行任何追踪或位置收集</string>
   <string name="open_location_settings">打开位置设置</string>
   <string name="check_again">再次检查</string>
   <string name="location_services_unavailable">位置服务不可用</string>
@@ -236,7 +233,6 @@
   <string name="location_tracking_warning">Wesh 不会追踪你的位置</string>
   <string name="nobody_around">附近没有人…</string>
   <string name="you_suffix"> (你)</string>
-  <string name="pan_zoom_instruction">拖动并缩放以选择一个 geohash</string>
   <string name="select">选择</string>
   <string name="type_a_message_placeholder">输入消息…</string>
   <string name="mention">提及</string>

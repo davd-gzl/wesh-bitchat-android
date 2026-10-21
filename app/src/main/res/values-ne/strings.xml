@@ -75,7 +75,6 @@
     <string name="about_pow">प्रुफ अफ वर्क</string>
     <string name="about_pow_off">pow बन्द</string>
     <string name="about_pow_on">pow चालु</string>
-    <string name="about_pow_tip">स्पाम रोकथामका लागि geohash सन्देशमा proof of work थप्नुहोस्।</string>
     <string name="about_pow_difficulty">कठिनाइ: %1$d बिट (~%2$s)</string>
     <string name="about_pow_difficulty_attempts">कठिनाइ %1$d का लागि ~%2$s ह्यास प्रयास</string>
     <string name="about_pow_desc_none">proof of work आवश्यक छैन</string>
@@ -171,9 +170,7 @@
     <!-- अनबोर्डिङ स्क्रिन -->
     <string name="location_services_required">स्थान सेवाहरू आवश्यक</string>
     <string name="privacy_first">गोपनीयता पहिलो</string>
-    <string name="location_explanation">Wesh ले तपाईंको स्थान पछ्याउँदैन।\n\nब्लुटुथ स्क्यान र Geohash च्याट सुविधा लागि स्थान सेवा आवश्यक छन्।</string>
     <string name="location_needs_for">Wesh लाई स्थान सेवा आवश्यक पर्छ:</string>
-    <string name="location_needs_bullets">• ब्लुटुथ यन्त्र स्क्यान\n• मेष सञ्जालमा नजिकका प्रयोगकर्ता पत्ता लगाउने\n• Geohash च्याट सुविधा\n• कुनै ट्र्याकिङ वा स्थान सङ्कलन छैन</string>
     <string name="open_location_settings">स्थान सेटिङ खोल्नुहोस्</string>
     <string name="check_again">फेरि जाँच्नुहोस्</string>
     <string name="location_services_unavailable">स्थान सेवाहरू उपलब्ध छैनन्</string>
@@ -207,7 +204,6 @@
     <string name="location_tracking_warning">Wesh ले तपाईंको स्थान पछ्याउँदैन</string>
     <string name="nobody_around">वरिपरि कोही छैन…</string>
     <string name="you_suffix"> (तपाईं)</string>
-    <string name="pan_zoom_instruction">geohash छान्न प्यान र जुम गर्नुहोस्</string>
     <string name="select">छान्नुहोस्</string>
     <string name="type_a_message_placeholder">सन्देश टाइप गर्नुहोस्…</string>
     <string name="mention">उल्लेख</string>

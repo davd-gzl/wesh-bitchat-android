@@ -75,7 +75,6 @@
     <string name="about_pow">proof of work</string>
     <string name="about_pow_off">pow désactivé</string>
     <string name="about_pow_on">pow activé</string>
-    <string name="about_pow_tip">ajoute un proof of work aux messages geohash pour dissuader le spam.</string>
     <string name="about_pow_difficulty">difficulté : %1$d bits (~%2$s)</string>
     <string name="about_pow_difficulty_attempts">la difficulté %1$d nécessite ~%2$s tentatives de hachage</string>
     <string name="about_pow_desc_none">aucun proof of work requis</string>
@@ -172,9 +171,7 @@
     <!-- Écrans d’onboarding -->
     <string name="location_services_required">Services de localisation requis</string>
     <string name="privacy_first">Confidentialité d’abord</string>
-    <string name="location_explanation">Sur Android 11 et versions antérieures, le scan Bluetooth exige les services de localisation du système. Wesh ne demande aucune coordonnée GPS et ne propose pas de canal géographique.</string>
     <string name="location_needs_for">Wesh a besoin des services de localisation pour :</string>
-    <string name="location_needs_bullets">• scanner Bluetooth sur cet ancien Android\n• trouver des connexions au mesh</string>
     <string name="open_location_settings">Ouvrir les paramètres de localisation</string>
     <string name="check_again">Vérifier à nouveau</string>
     <string name="location_services_unavailable">Services de localisation indisponibles</string>
@@ -208,7 +205,6 @@
     <string name="location_tracking_warning">Wesh ne suit PAS votre position</string>
     <string name="nobody_around">personne aux alentours…</string>
     <string name="you_suffix"> (toi)</string>
-    <string name="pan_zoom_instruction">déplacer et zoomer pour choisir un geohash</string>
     <string name="select">sélectionner</string>
     <string name="type_a_message_placeholder">écrire un message…</string>
     <string name="mention">mention</string>

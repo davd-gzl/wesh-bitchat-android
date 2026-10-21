@@ -75,7 +75,6 @@
     <string name="about_pow">برهان العمل</string>
     <string name="about_pow_off">PoW معطّل</string>
     <string name="about_pow_on">PoW مفعّل</string>
-    <string name="about_pow_tip">أضف برهان العمل لرسائل geohash للحد من الرسائل المزعجة.</string>
     <string name="about_pow_difficulty">الصعوبة: %1$d بت (~%2$s)</string>
     <string name="about_pow_difficulty_attempts">الصعوبة %1$d تتطلب ~%2$s من محاولات الهاش</string>
     <string name="about_pow_desc_none">لا حاجة لبرهان العمل</string>
@@ -174,9 +173,7 @@
     <!-- شاشات البدء -->
     <string name="location_services_required">خدمات الموقع مطلوبة</string>
     <string name="privacy_first">الخصوصية أولاً</string>
-    <string name="location_explanation">Wesh لا يتتبع موقعك.\n\nخدمات الموقع مطلوبة لمسح البلوتوث وميزة دردشة geohash.</string>
     <string name="location_needs_for">Wesh يحتاج خدمات الموقع من أجل:</string>
-    <string name="location_needs_bullets">• مسح أجهزة البلوتوث\n• اكتشاف المستخدمين القريبين في شبكة mesh\n• ميزة دردشة geohash\n• بدون تتبع أو جمع للموقع</string>
     <string name="open_location_settings">فتح إعدادات الموقع</string>
     <string name="check_again">التحقق مرة أخرى</string>
     <string name="location_services_unavailable">خدمات الموقع غير متاحة</string>
@@ -209,7 +206,6 @@
     <string name="location_tracking_warning">Wesh لا يتتبع موقعك</string>
     <string name="nobody_around">لا أحد هنا…</string>
     <string name="you_suffix"> (أنت)</string>
-    <string name="pan_zoom_instruction">حرّك وقرّب لاختيار geohash</string>
     <string name="select">اختيار</string>
     <string name="type_a_message_placeholder">اكتب رسالة…</string>
     <string name="mention">إشارة</string>
