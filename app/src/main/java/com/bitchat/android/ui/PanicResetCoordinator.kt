@@ -1305,11 +1305,12 @@ internal object PanicResetCoordinator {
         )
     }
 
-    /** A refused or failed in-app erase still erases: Android then clears all app data. */
+    /** A refused, failed or cancelled in-app erase still erases: Android then clears all app data. */
     suspend fun eraseOrClearAppData(erase: suspend () -> Boolean, clearAppData: () -> Unit) {
         val erased = try {
             erase()
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            clearAppData()
             throw cancelled
         } catch (_: Exception) {
             false

@@ -52,6 +52,17 @@ class PanicResetCoordinatorTest {
     }
 
     @Test
+    fun `a cancelled in-app erase still clears all app data`() = runTest {
+        var cleared = 0
+        val erasing = async {
+            PanicResetCoordinator.eraseOrClearAppData(erase = { awaitCancellation() }, clearAppData = { cleared++ })
+        }
+        runCurrent()
+        erasing.cancelAndJoin()
+        assertEquals(1, cleared)
+    }
+
+    @Test
     fun `a completed in-app erase does not clear app data`() = runTest {
         var cleared = 0
         PanicResetCoordinator.eraseOrClearAppData(erase = { true }, clearAppData = { cleared++ })
