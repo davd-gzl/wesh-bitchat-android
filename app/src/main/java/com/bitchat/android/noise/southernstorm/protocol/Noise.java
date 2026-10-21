@@ -29,10 +29,7 @@ import java.util.Arrays;
 
 import javax.crypto.BadPaddingException;
 
-import com.bitchat.android.noise.southernstorm.crypto.Blake2bMessageDigest;
-import com.bitchat.android.noise.southernstorm.crypto.Blake2sMessageDigest;
 import com.bitchat.android.noise.southernstorm.crypto.SHA256MessageDigest;
-import com.bitchat.android.noise.southernstorm.crypto.SHA512MessageDigest;
 
 /**
  * Utility functions for the Noise protocol library.
@@ -76,7 +73,7 @@ public final class Noise {
 	/**
 	 * Creates a Diffie-Hellman object from its Noise protocol name.
 	 * 
-	 * @param name The name of the DH algorithm; e.g. "25519", "448", etc.
+	 * @param name The name of the DH algorithm; only "25519".
 	 * 
 	 * @return The Diffie-Hellman object if the name is recognized.
 	 * 
@@ -86,19 +83,16 @@ public final class Noise {
 	 */
 	public static DHState createDH(String name) throws NoSuchAlgorithmException
 	{
+		// Wesh compiles in only the BitChat suite, Noise_XX_25519_ChaChaPoly_SHA256.
 		if (name.equals("25519"))
 			return new Curve25519DHState();
-		if (name.equals("448"))
-			return new Curve448DHState();
-		if (name.equals("NewHope"))
-			return new NewHopeDHState();
 		throw new NoSuchAlgorithmException("Unknown Noise DH algorithm name: " + name);
 	}
 
 	/**
 	 * Creates a cipher object from its Noise protocol name.
 	 * 
-	 * @param name The name of the cipher algorithm; e.g. "AESGCM", "ChaChaPoly", etc.
+	 * @param name The name of the cipher algorithm; only "ChaChaPoly".
 	 * 
 	 * @return The cipher object if the name is recognized.
 	 * 
@@ -108,20 +102,7 @@ public final class Noise {
 	 */
 	public static CipherState createCipher(String name) throws NoSuchAlgorithmException
 	{
-		if (name.equals("AESGCM")) {
-			if (forceFallbacks)
-				return new AESGCMFallbackCipherState();
-			// "AES/GCM/NoPadding" exists in some recent JDK's but it is flaky
-			// to use and not easily back-portable to older Android versions.
-			// We instead emulate AESGCM on top of "AES/CTR/NoPadding".
-			try {
-				return new AESGCMOnCtrCipherState();
-			} catch (NoSuchAlgorithmException e1) {
-				// Could not find anything useful in the JCA/JCE so
-				// use the pure Java fallback implementation instead.
-				return new AESGCMFallbackCipherState();
-			}
-		} else if (name.equals("ChaChaPoly")) {
+		if (name.equals("ChaChaPoly")) {
 			return new ChaChaPolyCipherState();
 		}
 		throw new NoSuchAlgorithmException("Unknown Noise cipher algorithm name: " + name);
@@ -130,7 +111,7 @@ public final class Noise {
 	/**
 	 * Creates a hash object from its Noise protocol name.
 	 * 
-	 * @param name The name of the hash algorithm; e.g. "SHA256", "BLAKE2s", etc.
+	 * @param name The name of the hash algorithm; only "SHA256".
 	 * 
 	 * @return The hash object if the name is recognized.
 	 * 
@@ -151,35 +132,6 @@ public final class Noise {
 				return MessageDigest.getInstance("SHA-256");
 			} catch (NoSuchAlgorithmException e) {
 				return new SHA256MessageDigest();
-			}
-		} else if (name.equals("SHA512")) {
-			if (forceFallbacks)
-				return new SHA512MessageDigest();
-			try {
-				return MessageDigest.getInstance("SHA-512");
-			} catch (NoSuchAlgorithmException e) {
-				return new SHA512MessageDigest();
-			}
-		} else if (name.equals("BLAKE2b")) {
-			// Bouncy Castle registers the BLAKE2b variant we
-			// want under the name "BLAKE2B-512".
-			if (forceFallbacks)
-				return new Blake2bMessageDigest();
-			try {
-				return MessageDigest.getInstance("BLAKE2B-512");
-			} catch (NoSuchAlgorithmException e) {
-				return new Blake2bMessageDigest();
-			}
-		} else if (name.equals("BLAKE2s")) {
-			// Bouncy Castle doesn't currently (June 2016) have an
-			// implementation of BLAKE2s, but look for the most
-			// obvious provider name in case one is added in the future.
-			if (forceFallbacks)
-				return new Blake2sMessageDigest();
-			try {
-				return MessageDigest.getInstance("BLAKE2S-256");
-			} catch (NoSuchAlgorithmException e) {
-				return new Blake2sMessageDigest();
 			}
 		}
 		throw new NoSuchAlgorithmException("Unknown Noise hash algorithm name: " + name);
