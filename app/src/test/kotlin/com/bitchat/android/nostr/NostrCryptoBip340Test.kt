@@ -4,6 +4,7 @@ import android.app.Application
 import com.bitchat.android.util.dataFromHexString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,10 +55,24 @@ class NostrCryptoBip340Test {
         val (secret, public) = NostrCrypto.generateKeyPair()
         val message = ByteArray(32) { it.toByte() }
         val first = NostrCrypto.schnorrSign(message, secret)
+        val second = NostrCrypto.schnorrSign(message, secret)
         assertTrue(NostrCrypto.schnorrVerify(message, first, public))
-        assertTrue(NostrCrypto.schnorrVerify(message, NostrCrypto.schnorrSign(message, secret), public))
+        assertTrue(NostrCrypto.schnorrVerify(message, second, public))
+        assertNotEquals("each signature draws its own aux rand", first, second)
         assertFalse(NostrCrypto.schnorrVerify(ByteArray(32), first, public))
         assertEquals(public, NostrCrypto.derivePublicKey(secret))
+    }
+
+    @Test
+    fun `malformed input fails closed instead of throwing`() {
+        val v = vectors.single { it.index == 0 }
+        val message = v.message.dataFromHexString()!!
+        assertFalse(NostrCrypto.schnorrVerify(message, v.signature.dropLast(2), v.publicKey))
+        assertFalse(NostrCrypto.schnorrVerify(message, v.signature.dropLast(1), v.publicKey))
+        assertFalse(NostrCrypto.schnorrVerify(message, "zz" + v.signature.drop(2), v.publicKey))
+        assertFalse(NostrCrypto.schnorrVerify(message.copyOf(31), v.signature, v.publicKey))
+        assertFalse(NostrCrypto.isValidPublicKey(v.publicKey.dropLast(1)))
+        assertFalse(NostrCrypto.isValidPrivateKey("zz".repeat(32)))
     }
 
     @Test
@@ -77,6 +92,8 @@ class NostrCryptoBip340Test {
         val sender = NostrCrypto.derivePublicKey("00".repeat(31) + "03")
         val recipient = "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef"
         assertEquals("Synthetic NIP-44 sentinel", NostrCrypto.decryptNIP44(ciphertext, sender, recipient))
+        // The blinded shared point is recomputed with fresh shares every call and must not change.
+        repeat(20) { assertEquals("Synthetic NIP-44 sentinel", NostrCrypto.decryptNIP44(ciphertext, sender, recipient)) }
         val roundTrip = NostrCrypto.encryptNIP44("Synthetic NIP-44 sentinel", NostrCrypto.derivePublicKey(recipient), "00".repeat(31) + "03")
         assertEquals("Synthetic NIP-44 sentinel", NostrCrypto.decryptNIP44(roundTrip, sender, recipient))
     }

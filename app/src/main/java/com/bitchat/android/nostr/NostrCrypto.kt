@@ -10,7 +10,7 @@ import java.security.SecureRandom
 /**
  * Cryptographic utilities for Nostr protocol
  * secp256k1 keys, BIP-340 signatures and the NIP-44 shared point come from libsecp256k1,
- * the constant-time library iOS uses too.
+ * the library iOS uses too.
  */
 object NostrCrypto {
 
@@ -36,7 +36,8 @@ object NostrCrypto {
     fun derivePublicKey(privateKeyHex: String): String =
         xOnly(Secp256k1.pubkeyCreate(privateKeyHex.hexToByteArray())).toHexString()
 
-    private fun xOnly(publicKey: ByteArray): ByteArray = Secp256k1.pubKeyCompress(publicKey).copyOfRange(1, 33)
+    /** [Secp256k1.pubkeyCreate] returns the 65-byte uncompressed key: 04 || x || y. */
+    private fun xOnly(publicKey: ByteArray): ByteArray = publicKey.copyOfRange(1, 33)
 
     /**
      * Compressed ECDH shared point (33 bytes) with an explicit parity choice for the x-only public key
@@ -45,7 +46,18 @@ object NostrCrypto {
         val xOnlyKey = publicKeyHex.hexToByteArray()
         require(xOnlyKey.size == 32) { "X-only public key must be 32 bytes" }
         val point = Secp256k1.pubkeyParse(byteArrayOf(if (preferOddY) 0x03 else 0x02) + xOnlyKey)
-        return Secp256k1.pubKeyCompress(Secp256k1.pubKeyTweakMul(point, privateKeyHex.hexToByteArray()))
+        val privateKey = privateKeyHex.hexToByteArray()
+        // libsecp256k1's tweak multiply is variable-time, and its constant-time ECDH only returns a hash of
+        // the point. The key is split into two fresh random shares, (k - b)P + bP, so the timing depends
+        // only on values drawn anew for every call; the scalar arithmetic itself is constant-time.
+        while (true) {
+            val blind = ByteArray(32).also(secureRandom::nextBytes)
+            if (!Secp256k1.secKeyVerify(blind)) continue
+            val share = runCatching { Secp256k1.privKeyTweakAdd(privateKey, Secp256k1.privKeyNegate(blind)) }.getOrNull()
+            if (share == null || !Secp256k1.secKeyVerify(share)) continue
+            val shared = Secp256k1.pubKeyCombine(arrayOf(Secp256k1.pubKeyTweakMul(point, share), Secp256k1.pubKeyTweakMul(point, blind)))
+            return Secp256k1.pubKeyCompress(shared)
+        }
     }
 
     /**
@@ -175,6 +187,9 @@ object NostrCrypto {
         privateKeyBytes.size == 32 && Secp256k1.secKeyVerify(privateKeyBytes)
     } catch (e: Exception) {
         false
+    } catch (e: LinkageError) {
+        // The native library failed to load: fail closed rather than crash on a relay event.
+        false
     }
 
     /**
@@ -184,6 +199,9 @@ object NostrCrypto {
         val publicKeyBytes = publicKeyHex.hexToByteArray()
         publicKeyBytes.size == 32 && Secp256k1.pubkeyParse(byteArrayOf(0x02) + publicKeyBytes).isNotEmpty()
     } catch (e: Exception) {
+        false
+    } catch (e: LinkageError) {
+        // The native library failed to load: fail closed rather than crash on a relay event.
         false
     }
 
@@ -210,6 +228,9 @@ object NostrCrypto {
         messageHash.size == 32 && signatureBytes.size == 64 && publicKeyBytes.size == 32 &&
             Secp256k1.verifySchnorr(signatureBytes, messageHash, publicKeyBytes)
     } catch (e: Exception) {
+        false
+    } catch (e: LinkageError) {
+        // The native library failed to load: fail closed rather than crash on a relay event.
         false
     }
 }
