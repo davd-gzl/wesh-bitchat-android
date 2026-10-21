@@ -224,36 +224,6 @@ fun HoldToEraseScreen(onErase: () -> Unit, onClose: () -> Unit, modifier: Modifi
     }
 }
 
-/** After erasing: a neutral "Wesh est vide", or the failure with a retry. */
-@Composable
-fun EraseResultScreen(succeeded: Boolean, onRestart: () -> Unit, onRetry: () -> Unit, modifier: Modifier = Modifier) {
-    val c = WeshPave.colors
-    Column(
-        modifier
-            .fillMaxSize()
-            .background(c.bg)
-            .systemBarsPadding()
-            .padding(WeshSpace.gutter),
-        verticalArrangement = Arrangement.spacedBy(WeshSpace.s3),
-    ) {
-        Spacer(Modifier.weight(1f))
-        Text(
-            stringResource(if (succeeded) R.string.wesh_pave_erased_title else R.string.wesh_pave_erase_failed_title),
-            style = WeshType.title,
-            color = if (succeeded) c.ink else c.danger,
-            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-        )
-        Text(
-            stringResource(if (succeeded) R.string.wesh_pave_erased_body else R.string.wesh_pave_erase_failed_body),
-            style = WeshType.body,
-            color = c.ink,
-        )
-        Spacer(Modifier.weight(1f))
-        if (succeeded) PrimaryButton(stringResource(R.string.wesh_pave_erased_restart), onRestart)
-        else PrimaryButton(stringResource(R.string.wesh_pave_retry), onRetry)
-    }
-}
-
 @PavePreviews
 @Composable
 private fun HoldToErasePreview() = PavePreview {
@@ -266,7 +236,3 @@ private fun HoldToErasePreview() = PavePreview {
 @PaveScreenPreviews
 @Composable
 private fun HoldToEraseScreenPreview() = PavePreview(padded = false) { HoldToEraseScreen({}, {}) }
-
-@PaveScreenPreviews
-@Composable
-private fun EraseResultPreview() = PavePreview(padded = false) { EraseResultScreen(true, {}, {}) }

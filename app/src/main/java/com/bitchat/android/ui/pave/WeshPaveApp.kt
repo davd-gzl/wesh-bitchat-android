@@ -189,8 +189,6 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
     var contactActionsOpen by remember { mutableStateOf(false) }
     // Bumped by local actions (block, unblock) whose effect is not observable as a flow.
     var revision by remember { mutableIntStateOf(0) }
-    var erased by rememberSaveable { mutableStateOf(false) }
-    var wasErasing by remember { mutableStateOf(false) }
 
     val myPeerID = viewModel.myPeerID
     val bluetoothReady = bluetoothReadyState || viewModel.weshBluetoothReady()
@@ -216,10 +214,6 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
         if (selectedPrivate != null && route != PaveRoute.Exchange) route = PaveRoute.Private
         if (selectedPrivate == null && route == PaveRoute.Private) route = PaveRoute.Home
     }
-    LaunchedEffect(panicInProgress) {
-        if (panicInProgress) wasErasing = true
-        else if (wasErasing) { wasErasing = false; erased = true; route = PaveRoute.Home }
-    }
 
     fun go(next: PaveRoute) {
         feedback = null
@@ -244,10 +238,6 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
             failed = true, onRetry = {}, draftWipeRequired = true, recovery = panicRecovery,
             onEraseAll = { com.bitchat.android.startup.WeshRuntime.clearInterruptedPanic(context) },
         )
-        return
-    }
-    if (erased) {
-        EraseResultScreen(succeeded = true, onRestart = { erased = false }, onRetry = {})
         return
     }
 
