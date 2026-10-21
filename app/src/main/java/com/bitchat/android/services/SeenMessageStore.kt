@@ -6,7 +6,6 @@ import android.util.Log
 import com.bitchat.android.identity.SecureIdentityStateManager
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
-import kotlinx.coroutines.CancellationException
 
 /**
  * Persistent store for message IDs we've already acknowledged as delivered, read locally, or
