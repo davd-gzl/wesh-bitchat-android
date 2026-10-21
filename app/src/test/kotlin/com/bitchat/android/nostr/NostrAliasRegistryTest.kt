@@ -6,6 +6,8 @@ import androidx.test.core.app.ApplicationProvider
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.After
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -14,6 +16,10 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE, application = Application::class)
 class NostrAliasRegistryTest {
+    // The registry is process-wide and another class may have initialized it already.
+    @Before fun fresh() = NostrAliasRegistry.resetForTesting()
+    @After fun done() = NostrAliasRegistry.resetForTesting()
+
     @Test
     fun `aliases stored under the inherited geohash name move to the Nostr registry`() {
         val context = ApplicationProvider.getApplicationContext<Context>()

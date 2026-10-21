@@ -18,7 +18,8 @@ object NostrAliasRegistry {
     fun initialize(context: Context) {
         if (prefs == null) {
             prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            migrateLegacy(context)
+            // A failed copy keeps the old file for the next launch; this one still loads what it has.
+            try { migrateLegacy(context) } catch (_: Exception) { }
             loadFromPrefs()
         }
     }
@@ -54,6 +55,11 @@ object NostrAliasRegistry {
     fun contains(alias: String): Boolean = map.containsKey(alias)
 
     fun snapshot(): Map<String, String> = HashMap(map)
+
+    internal fun resetForTesting() {
+        map.clear()
+        prefs = null
+    }
 
     fun clear() {
         map.clear()
