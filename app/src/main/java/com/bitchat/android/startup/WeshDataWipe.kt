@@ -3,9 +3,11 @@ package com.bitchat.android.startup
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import androidx.core.content.pm.ShortcutManagerCompat
 import com.bitchat.android.ui.EncryptedWeshDraftBackend
 import java.io.File
 import java.io.IOException
+import java.nio.file.DirectoryNotEmptyException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.Path
@@ -14,7 +16,8 @@ import java.nio.file.attribute.BasicFileAttributes
 import java.security.KeyStore
 
 /**
- * The app's own full wipe: every file in both data directories, then every Keystore key.
+ * The app's own full wipe: every file in both data directories, then every Keystore key,
+ * notification and conversation shortcut.
  * The durable erase marker in no_backup survives it, so the next launch wipes again whatever
  * the old process wrote late, and only then lifts the marker.
  */
@@ -22,10 +25,10 @@ internal object WeshDataWipe {
     private const val MARKER = "wesh-drafts-wipe-v1"
     private val markerNames = listOf(MARKER, "$MARKER.bak", "$MARKER.new")
 
-    fun wipe(context: Context) = wipe(roots(context), noBackup(context), ::deleteKeystoreEntries)
+    fun wipe(context: Context) = wipe(roots(context), noBackup(context)) { clearOutsideAppFiles(context) }
 
     /** Called before any provider or store opens storage. Never blocks the erase: Android clears what the wipe could not. */
-    fun finishPendingErase(context: Context) = finishPendingErase(roots(context), noBackup(context), ::deleteKeystoreEntries) {
+    fun finishPendingErase(context: Context) = finishPendingErase(roots(context), noBackup(context), { clearOutsideAppFiles(context) }) {
         (context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).clearApplicationUserData()
     }
 
@@ -40,10 +43,12 @@ internal object WeshDataWipe {
         }
     }
 
-    internal fun wipe(roots: List<File>, noBackup: File, deleteKeys: () -> Unit) {
-        val kept = markerNames.map { File(noBackup, it).toPath() }.toSet()
+    internal fun wipe(roots: List<File>, noBackup: File, clearOutsideFiles: () -> Unit) {
+        val kept = markerNames.map { File(noBackup, it).toPath() }.toSet() +
+            // Android owns this link for 32-bit apps, and its own clear keeps it too.
+            roots.map { it.toPath().resolve("lib") }.filter { Files.isSymbolicLink(it) }
         roots.forEach { deleteTree(it.toPath(), kept) }
-        deleteKeys()
+        clearOutsideFiles()
         // code_cache is still deleted, but the running renderer may write its shader cache back at any time.
         val renderCaches = roots.map { it.toPath().resolve("code_cache") }
         val left = roots.flatMap { root -> entries(root.toPath()) }
@@ -51,11 +56,11 @@ internal object WeshDataWipe {
         check(left.isEmpty()) { "${left.size} app data entries remain after the wipe" }
     }
 
-    internal fun finishPendingErase(roots: List<File>, noBackup: File, deleteKeys: () -> Unit, clearAppData: () -> Unit) {
+    internal fun finishPendingErase(roots: List<File>, noBackup: File, clearOutsideFiles: () -> Unit, clearAppData: () -> Unit) {
         val pending = try { EncryptedWeshDraftBackend.hasPendingWipe(noBackup) } catch (_: Exception) { true }
         if (!pending) return
         try {
-            wipe(roots, noBackup, deleteKeys)
+            wipe(roots, noBackup, clearOutsideFiles)
             markerNames.forEach { Files.deleteIfExists(File(noBackup, it).toPath()) }
         } catch (_: Exception) {
             clearAppData()
@@ -66,13 +71,24 @@ internal object WeshDataWipe {
 
     private fun noBackup(context: Context) = File(context.dataDir, "no_backup")
 
+    /** Keys, notifications and conversation shortcuts are kept by the system, outside the data directories. */
+    private fun clearOutsideAppFiles(context: Context) {
+        context.getSystemService(android.app.NotificationManager::class.java)?.cancelAll()
+        val conversations = ShortcutManagerCompat.getShortcuts(
+            context, ShortcutManagerCompat.FLAG_MATCH_DYNAMIC or ShortcutManagerCompat.FLAG_MATCH_CACHED
+        ).map { it.id }
+        ShortcutManagerCompat.removeAllDynamicShortcuts(context)
+        if (conversations.isNotEmpty()) ShortcutManagerCompat.removeLongLivedShortcuts(context, conversations)
+        deleteKeystoreEntries()
+    }
+
     private fun deleteKeystoreEntries() {
         val keystore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         keystore.aliases().toList().forEach(keystore::deleteEntry)
         check(!keystore.aliases().hasMoreElements()) { "Keystore entries remain after the wipe" }
     }
 
-    /** Links are removed, never followed. The root itself and directories holding the marker stay. */
+    /** Links are removed, never followed. The root itself and directories holding a kept entry stay. */
     private fun deleteTree(root: Path, kept: Set<Path>) {
         if (!Files.exists(root)) return
         Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
@@ -87,7 +103,10 @@ internal object WeshDataWipe {
             }
 
             override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
-                if (dir != root && kept.none { it.startsWith(dir) }) Files.deleteIfExists(dir)
+                if (dir != root && kept.none { it.startsWith(dir) }) {
+                    // A file written back meanwhile is left to the final check and the launch wipe.
+                    try { Files.deleteIfExists(dir) } catch (_: DirectoryNotEmptyException) { }
+                }
                 return FileVisitResult.CONTINUE
             }
         })

@@ -62,6 +62,30 @@ class WeshDataWipeTest {
     }
 
     @Test
+    fun `the lib link Android owns is kept and a rewritten render cache does not fail the wipe`() {
+        populate()
+        val library = directory.newFolder("system-lib")
+        Files.createSymbolicLink(File(ce, "lib").toPath(), library.toPath())
+
+        WeshDataWipe.wipe(listOf(ce, de), noBackup) { write(ce, "code_cache/com.android.skia.shaders_cache") }
+
+        assertTrue(Files.isSymbolicLink(File(ce, "lib").toPath()))
+        assertTrue(marker.exists())
+        assertFalse(File(ce, "databases").exists())
+    }
+
+    @Test
+    fun `a partial marker still counts as a pending erase at launch`() {
+        populate()
+        marker.renameTo(File(noBackup, "wesh-drafts-wipe-v1.bak"))
+
+        WeshDataWipe.finishPendingErase(listOf(ce, de), noBackup, { keyWipes++ }) { androidClears++ }
+
+        assertEquals(emptyList<String>(), remaining())
+        assertEquals(1, keyWipes)
+    }
+
+    @Test
     fun `a pending erase at launch wipes again then lifts the marker`() {
         populate()
 
