@@ -22,6 +22,42 @@ import kotlin.coroutines.CoroutineContext
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PanicResetCoordinatorTest {
+    private val unconfirmed = PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.ProducerNotImplemented)
+    private val unconfirmedReport = PanicRetirementReport(
+        PanicOwnerRetirement.Confirmed, unconfirmed, unconfirmed, unconfirmed, unconfirmed, unconfirmed
+    )
+
+    @Test
+    fun `a refused in-app erase still clears all app data`() = runTest {
+        var cleared = 0
+        PanicResetCoordinator.eraseOrClearAppData(
+            erase = {
+                PanicResetCoordinator.admitDestructivePanicOwners(
+                    establishIntent = { true },
+                    retireOwners = { unconfirmedReport },
+                    eraseOwnedData = { error("unconfirmed owners never reach the in-app wipe") }
+                )
+            },
+            clearAppData = { cleared++ }
+        )
+        assertEquals(1, cleared)
+    }
+
+    @Test
+    fun `a failed in-app erase or intent still clears all app data`() = runTest {
+        var cleared = 0
+        PanicResetCoordinator.eraseOrClearAppData(erase = { throw RestartFailure() }, clearAppData = { cleared++ })
+        PanicResetCoordinator.eraseOrClearAppData(erase = { false }, clearAppData = { cleared++ })
+        assertEquals(2, cleared)
+    }
+
+    @Test
+    fun `a completed in-app erase does not clear app data`() = runTest {
+        var cleared = 0
+        PanicResetCoordinator.eraseOrClearAppData(erase = { true }, clearAppData = { cleared++ })
+        assertEquals(0, cleared)
+    }
+
     @Test
     fun `start failure keeps durable recovery and all injected admission closed`() = runTest {
         val fixture = Fixture(this)

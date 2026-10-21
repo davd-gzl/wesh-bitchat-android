@@ -1280,11 +1280,10 @@ class ChatViewModel internal constructor(
         com.bitchat.android.services.AppStateStore.fencePrivateConversationAdmissionForPanic()
         PanicResetCoordinator.launchPanic(viewModelScope) {
             try {
-                performPanicClearAllData(seenPanic, originalFacade, originalGossip)
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                // The durable recovery marker stays set; StartupScreen offers recovery.
+                PanicResetCoordinator.eraseOrClearAppData(
+                    erase = { performPanicClearAllData(seenPanic, originalFacade, originalGossip) },
+                    clearAppData = { com.bitchat.android.startup.WeshRuntime.clearInterruptedPanic(getApplication()) }
+                )
             } finally {
                 weshPanicInProgress.value = false
             }
@@ -1295,9 +1294,9 @@ class ChatViewModel internal constructor(
         seenPanic: com.bitchat.android.services.SeenReceiptAdmission.Token,
         originalFacade: com.bitchat.android.mesh.UnifiedMeshService?,
         originalGossip: PanicOriginalGossipInput
-    ) {
+    ): Boolean {
         val draftEpoch = weshDraftStore.epoch
-        PanicResetCoordinator.admitDestructivePanicOwners(
+        return PanicResetCoordinator.admitDestructivePanicOwners(
             establishIntent = {
                 !com.bitchat.android.BuildConfig.WESH_POLICY || weshDraftStore.establishPanicIntent(draftEpoch)
             },
