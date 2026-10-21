@@ -9,6 +9,12 @@ import com.bitchat.android.net.ArtiTorManager
  */
 class BitchatApplication : Application() {
 
+    override fun attachBaseContext(base: android.content.Context) {
+        super.attachBaseContext(base)
+        // Before any content provider or store opens a file: while the erase marker remains, wipe again, then lift it.
+        if (BuildConfig.WESH_POLICY) com.bitchat.android.startup.WeshDataWipe.finishPendingErase(base)
+    }
+
     override fun onCreate() {
         super.onCreate()
 

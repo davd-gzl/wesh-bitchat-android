@@ -62,11 +62,6 @@
     <string name="wesh_pave_erase_confirm_question">Erase everything on this phone?</string>
     <string name="wesh_pave_erase_confirm">Erase now</string>
     <string name="wesh_pave_erase_holding">Holding, %d %%</string>
-    <string name="wesh_pave_erased_title">Wesh is empty</string>
-    <string name="wesh_pave_erased_body">Everything was erased from this phone.</string>
-    <string name="wesh_pave_erased_restart">Start again</string>
-    <string name="wesh_pave_erase_failed_title">Erasing failed</string>
-    <string name="wesh_pave_erase_failed_body">Some data may remain on this phone.</string>
     <string name="wesh_pave_cancel">Cancel</string>
     <string name="wesh_pave_close">Close</string>
     <string name="wesh_pave_back">Back</string>
