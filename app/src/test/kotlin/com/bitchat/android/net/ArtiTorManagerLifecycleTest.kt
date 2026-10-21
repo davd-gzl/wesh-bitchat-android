@@ -6,6 +6,8 @@ import info.guardianproject.arti.ArtiNativeApi
 import info.guardianproject.arti.ArtiProxy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -70,11 +72,23 @@ class ArtiTorManagerLifecycleTest {
     private lateinit var native: FakeNative
     private lateinit var manager: ArtiTorManager
     private val recorders = CoroutineScope(Dispatchers.Unconfined)
+    private val managerScopes = mutableListOf<CoroutineScope>()
+    private val managers = mutableListOf<ArtiTorManager>()
+    private val natives = mutableListOf<FakeNative>()
+    private val commandThreads = mutableListOf<Thread>()
 
-    private fun newManager(native: FakeNative, stopTimeoutMs: Long) = ArtiTorManager(
-        newProxy = { app, listener -> ArtiProxy(app, listener, native) },
-        stopTimeoutMs = stopTimeoutMs
-    ).also { it.init(app) }
+    private fun newManager(native: FakeNative, stopTimeoutMs: Long): ArtiTorManager {
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        managerScopes += scope
+        natives += native
+        return ArtiTorManager(
+            newProxy = { app, listener -> ArtiProxy(app, listener, native) },
+            stopTimeoutMs = stopTimeoutMs,
+            appScope = scope
+        ).also { managers += it; it.init(app) }
+    }
+
+    private fun command(block: () -> Unit): Thread = thread(block = block).also { commandThreads += it }
 
     @Before fun setUp() {
         TorPreferenceManager.set(app, TorMode.OFF, commit = true)
@@ -84,8 +98,16 @@ class ArtiTorManagerLifecycleTest {
 
     @After fun tearDown() = runBlocking {
         recorders.cancel()
+        managers.forEach(ArtiTorManager::requestOff)
+        managerScopes.forEach { it.cancel() }
+        natives.forEach { it.blockInitialize?.countDown() }
         TorPreferenceManager.set(app, TorMode.OFF, commit = true)
-        manager.applyMode(app, TorMode.OFF)
+        managers.forEach { it.applyMode(app, TorMode.OFF) }
+        managerScopes.forEach { it.coroutineContext[Job]?.join() }
+        commandThreads.forEach {
+            it.join(5_000)
+            assertFalse("every explicit command finished", it.isAlive)
+        }
     }
 
     private fun assertFullyOff(manager: ArtiTorManager = this.manager) {
@@ -208,7 +230,7 @@ class ArtiTorManagerLifecycleTest {
         val release = CountDownLatch(1)
         native.blockInitialize = release
         // A first start holds applyMutex in its bootstrap.
-        val first = thread { runBlocking { manager.applyMode(app, TorMode.ON) } }
+        val first = command { runBlocking { manager.applyMode(app, TorMode.ON) } }
         assertTrue(native.initializeEntered.await(5, TimeUnit.SECONDS))
         // The mode collector now applies ON and waits for applyMutex...
         TorPreferenceManager.set(app, TorMode.ON)
@@ -233,7 +255,7 @@ class ArtiTorManagerLifecycleTest {
         val slowNative = FakeNative()
         val slow = newManager(slowNative, stopTimeoutMs = 800)
         val statuses = recordStatuses(slow)
-        val on = thread { runBlocking { slow.applyMode(app, TorMode.ON) } }
+        val on = command { runBlocking { slow.applyMode(app, TorMode.ON) } }
         assertTrue(waitUntil { slow.statusFlow.value.state == ArtiTorManager.TorState.STARTING })
         Thread.sleep(100)
         assertTrue("still in the wait", slowNative.snapshot().isEmpty())
@@ -287,7 +309,7 @@ class ArtiTorManagerLifecycleTest {
         native.onInitialize = {
             native.onInitialize = null
             // Internet off arrives while the bootstrap runs; its native stop lands first.
-            off = thread { runBlocking { manager.applyMode(app, TorMode.OFF) } }
+            off = command { runBlocking { manager.applyMode(app, TorMode.OFF) } }
             assertTrue(native.stopped.await(5, TimeUnit.SECONDS))
         }
         manager.applyMode(app, TorMode.ON)

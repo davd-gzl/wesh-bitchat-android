@@ -54,6 +54,8 @@
     <string name="wesh_pave_internet_disclosure">Passe par Tor et par des relais publics. Désactivé par défaut.</string>
     <string name="wesh_pave_bt_visibility">Un téléphone qui utilise Wesh reste repérable par Bluetooth à proximité. Coupez Bluetooth pour ne plus l’être.</string>
     <string name="wesh_pave_settings_title">Réglages</string>
+    <string name="wesh_pave_settings_boot">Démarrer après redémarrage</string>
+    <string name="wesh_pave_settings_boot_body">Autorisez Wesh à démarrer après le redémarrage de votre téléphone, si Android le permet. La session en cours ne change pas.</string>
     <string name="wesh_pave_settings_profile">Profil</string>
     <string name="wesh_pave_settings_connexion">Connexion</string>
     <string name="wesh_pave_settings_connexion_value">Bluetooth · Internet</string>

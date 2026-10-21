@@ -54,10 +54,6 @@ object AppStateStore {
     private val _selectedPrivateChatPeer = MutableStateFlow<String?>(null)
     val selectedPrivateChatPeer: StateFlow<String?> = _selectedPrivateChatPeer.asStateFlow()
 
-    // Channel messages by channel name
-    private val _channelMessages = MutableStateFlow<Map<String, List<BitchatMessage>>>(emptyMap())
-    val channelMessages: StateFlow<Map<String, List<BitchatMessage>>> = _channelMessages.asStateFlow()
-
     fun setPeers(ids: List<String>) {
         synchronized(this) {
             _peers.value = ids.distinct()
@@ -75,10 +71,29 @@ object AppStateStore {
         _selectedPrivateChatPeer.value = peerID
     }
 
+    internal fun capturePrivateConversationGeneration(): Long? = synchronized(this) {
+        if (privateConversationWritesSuspended) null else privateConversationGeneration
+    }
+
+    internal fun fencePrivateConversationAdmissionForPanic() {
+        synchronized(this) {
+            privateConversationWritesSuspended = true
+            privateConversationGeneration += 1
+        }
+    }
+
+    internal fun isCurrentPrivateConversationGeneration(generation: Long): Boolean = synchronized(this) {
+        !privateConversationWritesSuspended && generation == privateConversationGeneration
+    }
+
     fun initializeConversationPersistence(context: Context) {
         val repository = ConversationRepository.getInstance(context.applicationContext)
-        conversationRepository = repository
-        repository.initialize(::restorePrivateConversations)
+        val generation = synchronized(this) {
+            if (privateConversationWritesSuspended) return
+            conversationRepository = repository
+            privateConversationGeneration
+        }
+        repository.initialize { restorePrivateConversations(it, generation) }
     }
 
     /**
@@ -87,8 +102,12 @@ object AppStateStore {
      */
     fun reloadConversationPersistence(context: Context) {
         val repository = ConversationRepository.getInstance(context.applicationContext)
-        conversationRepository = repository
-        repository.reload(::restorePrivateConversations)
+        val generation = synchronized(this) {
+            if (privateConversationWritesSuspended) return
+            conversationRepository = repository
+            privateConversationGeneration
+        }
+        repository.reload { restorePrivateConversations(it, generation) }
     }
 
     internal fun setConversationRepositoryForTest(repository: ConversationRepository?) {
@@ -99,13 +118,20 @@ object AppStateStore {
         conversationRepository?.awaitPendingWrites()
     }
 
-    suspend fun loadPrivateConversationHistory(conversationID: String): Boolean {
-        val repository = conversationRepository ?: return false
+    suspend fun loadPrivateConversationHistory(
+        conversationID: String,
+        expectedGeneration: Long? = capturePrivateConversationGeneration()
+    ): Boolean {
+        val generation = expectedGeneration ?: return false
+        val (repository, writeGeneration) = synchronized(this) {
+            if (!isCurrentPrivateConversationGeneration(generation)) return false
+            val repository = conversationRepository ?: return false
+            repository to repository.captureWriteGeneration()
+        }
         val snapshot = repository.loadConversationAndWait(
-            ContactDirectory.canonicalConversationId(conversationID)
+            ContactDirectory.canonicalConversationId(conversationID), writeGeneration
         ) ?: return false
-        restorePrivateConversations(snapshot)
-        return true
+        return restorePrivateConversations(snapshot, generation)
     }
 
     /**
@@ -233,7 +259,8 @@ object AppStateStore {
             aliases = persistence.aliases,
             displayName = persistence.displayName,
             message = msg,
-            isRead = persistence.isRead
+            isRead = persistence.isRead,
+            expectedGeneration = persistence.repositoryGeneration
         )
         return synchronized(this) {
             reservedPrivateMessageIds.remove(msg.id)
@@ -328,8 +355,10 @@ object AppStateStore {
                         !isMine(candidate.sender)
                 }
                 ?.sender
+        val repository = conversationRepository
         return PendingPrivateMessagePersistence(
-            repository = conversationRepository,
+            repository = repository,
+            repositoryGeneration = repository?.captureWriteGeneration() ?: 0,
             conversationID = conversationID,
             aliases = aliases,
             displayName = displayName,
@@ -534,13 +563,20 @@ object AppStateStore {
 
     suspend fun setPrivateConversationRead(
         conversationID: String,
-        isRead: Boolean
+        isRead: Boolean,
+        expectedGeneration: Long? = capturePrivateConversationGeneration()
     ): Boolean {
+        val generation = expectedGeneration ?: return false
         val canonicalID = ContactDirectory.canonicalConversationId(conversationID)
-        val repository = conversationRepository ?: return false
-        val result = repository.setConversationReadAndWait(canonicalID, isRead)
+        val (repository, writeGeneration) = synchronized(this) {
+            if (!isCurrentPrivateConversationGeneration(generation)) return false
+            val repository = conversationRepository ?: return false
+            repository to repository.captureWriteGeneration()
+        }
+        val result = repository.setConversationReadAndWait(canonicalID, isRead, writeGeneration)
         if (!result.success) return false
         synchronized(this) {
+            if (!isCurrentPrivateConversationGeneration(generation)) return false
             val messageIDs = _privateMessages.value
                 .filterKeys { key ->
                     ContactDirectory.canonicalConversationId(key)
@@ -608,18 +644,21 @@ object AppStateStore {
     }
 
     internal suspend fun deletePrivateConversationAndWait(
-        peerOrConversationID: String
+        peerOrConversationID: String,
+        expectedGeneration: Long? = capturePrivateConversationGeneration()
     ): DeletedPrivateConversation? {
-        loadPrivateConversationHistory(peerOrConversationID)
-        val deletion = synchronized(this) {
-            if (privateConversationWritesSuspended) return null
-            buildDeletedConversationLocked(peerOrConversationID)
+        val generation = expectedGeneration ?: return null
+        if (!loadPrivateConversationHistory(peerOrConversationID, generation)) return null
+        val (deletion, repository, writeGeneration) = synchronized(this) {
+            if (!isCurrentPrivateConversationGeneration(generation)) return null
+            val repository = conversationRepository ?: return null
+            Triple(buildDeletedConversationLocked(peerOrConversationID), repository, repository.captureWriteGeneration())
         }
-        val repository = conversationRepository ?: return null
-        if (!repository.deleteConversationAndWait(deletion.conversationID, deletion.aliases)) {
+        if (!repository.deleteConversationAndWait(deletion.conversationID, deletion.aliases, writeGeneration)) {
             return null
         }
         synchronized(this) {
+            if (!isCurrentPrivateConversationGeneration(generation)) return null
             val updated = _privateMessages.value.toMutableMap()
             updated.keys.toList().forEach { key ->
                 if (
@@ -658,7 +697,11 @@ object AppStateStore {
     internal suspend fun restoreDeletedConversation(
         deletion: DeletedPrivateConversation
     ): Boolean {
-        val repository = conversationRepository ?: return false
+        val (repository, writeGeneration) = synchronized(this) {
+            if (!isCurrentPrivateConversationGeneration(deletion.generation)) return false
+            val repository = conversationRepository ?: return false
+            repository to repository.captureWriteGeneration()
+        }
         val restoredDisplayName =
             ContactDirectory.resolve(deletion.conversationID).displayName
                 ?: deletion.displayName
@@ -668,12 +711,14 @@ object AppStateStore {
                 aliases = deletion.aliases,
                 displayName = restoredDisplayName,
                 messages = deletion.messages,
-                readMessageIDs = deletion.readMessageIDs
+                readMessageIDs = deletion.readMessageIDs,
+                expectedGeneration = writeGeneration
             )
         ) {
             return false
         }
         synchronized(this) {
+            if (!isCurrentPrivateConversationGeneration(deletion.generation)) return false
             seenMessageIds.removeAll(deletion.messageIDs)
             deletion.messages.forEach { message ->
                 addPrivateMessageLocked(
@@ -711,6 +756,7 @@ object AppStateStore {
         val messageIDs = messages.mapTo(linkedSetOf(), BitchatMessage::id)
         val readIDs = _readPrivateMessageIDs.value.intersect(messageIDs)
         return DeletedPrivateConversation(
+            generation = privateConversationGeneration,
             conversationID = canonicalID,
             aliases = aliases,
             displayName = _privateConversationDisplayNames.value.entries
@@ -786,17 +832,6 @@ object AppStateStore {
         }
     }
 
-    fun addChannelMessage(channel: String, msg: BitchatMessage) {
-        synchronized(this) {
-            if (seenMessageIds.contains(msg.id)) return
-            seenMessageIds.add(msg.id)
-            val map = _channelMessages.value.toMutableMap()
-            val list = (map[channel] ?: emptyList()) + msg
-            map[channel] = list
-            _channelMessages.value = map
-        }
-    }
-
     // Clear all in-memory state (used for full app shutdown)
     fun clear() {
         synchronized(this) {
@@ -815,7 +850,6 @@ object AppStateStore {
             _readPrivateMessageIDs.value = emptySet()
             _unreadPrivateMessageCounts.value = emptyMap()
             _privateConversationDisplayNames.value = emptyMap()
-            _channelMessages.value = emptyMap()
             _nickname.value = ""
             _selectedPrivateChatPeer.value = null
         }
@@ -833,8 +867,16 @@ object AppStateStore {
     }
 
     internal fun restorePrivateConversations(snapshot: PersistedConversationSnapshot) {
+        restorePrivateConversations(snapshot, expectedGeneration = null)
+    }
+
+    private fun restorePrivateConversations(
+        snapshot: PersistedConversationSnapshot,
+        expectedGeneration: Long?
+    ): Boolean {
         synchronized(this) {
-            if (privateConversationWritesSuspended) return
+            if (privateConversationWritesSuspended ||
+                (expectedGeneration != null && expectedGeneration != privateConversationGeneration)) return false
             val liveChats = _privateMessages.value
             val liveMessageIDs = liveChats.values.flatten().map { it.id }
             PrivateMessageArrivalOrder.restore(
@@ -882,6 +924,7 @@ object AppStateStore {
             )
             canonicalizePrivateConversationStateLocked()
         }
+        return true
     }
 
     private fun updateConversationDisplayNameLocked(
@@ -1058,6 +1101,7 @@ object AppStateStore {
 
 private data class PendingPrivateMessagePersistence(
     val repository: ConversationRepository?,
+    val repositoryGeneration: Long,
     val conversationID: String,
     val aliases: Set<String>,
     val displayName: String?,
@@ -1066,6 +1110,7 @@ private data class PendingPrivateMessagePersistence(
 )
 
 internal data class DeletedPrivateConversation(
+    val generation: Long,
     val conversationID: String,
     val aliases: Set<String>,
     val displayName: String?,

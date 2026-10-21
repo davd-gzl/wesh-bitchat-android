@@ -6,6 +6,7 @@ import android.util.Log
 import com.bitchat.android.identity.SecureIdentityStateManager
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
+import kotlinx.coroutines.CancellationException
 
 /**
  * Persistent store for message IDs we've already acknowledged as delivered, read locally, or
@@ -15,8 +16,26 @@ import com.google.gson.annotations.SerializedName
  * Transport delivery is best-effort and retryable, while local read state drives unread UI.
  * Limits to last MAX_IDS entries per set to avoid memory bloat.
  */
-class SeenMessageStore private constructor(private val context: Context) {
+class SeenMessageStore private constructor(
+    secureProvider: () -> SecureIdentityStateManager,
+    private val receiptAdmission: SeenReceiptAdmission
+) {
+    private constructor(context: Context) : this({ SecureIdentityStateManager(context) }, processReceiptAdmission)
+
+    /** Synthetic storage injection; production keeps its encrypted application-context store. */
+    internal constructor(secure: SecureIdentityStateManager, receiptAdmission: SeenReceiptAdmission,
+        testOnly: Boolean) : this({
+        require(testOnly) { "Injected Seen storage is test-only" }
+        secure
+    }, receiptAdmission)
+
     companion object {
+        private val processReceiptAdmission = SeenReceiptAdmission()
+        internal fun captureReceiptToken() = processReceiptAdmission.capture()
+        internal fun fenceReceiptAdmissionForPanic() = processReceiptAdmission.fenceForPanic()
+        internal fun resumeReceiptAdmissionAfterVerifiedPanic(token: SeenReceiptAdmission.Token) =
+            processReceiptAdmission.resumeAfterVerifiedPanic(token)
+
         private const val TAG = "SeenMessageStore"
         private const val STORAGE_KEY = "seen_message_store_v1"
         private const val MAX_IDS = com.bitchat.android.util.AppConstants.Services.SEEN_MESSAGE_MAX_IDS
@@ -32,7 +51,7 @@ class SeenMessageStore private constructor(private val context: Context) {
     }
 
     private val gson = Gson()
-    private val secure = SecureIdentityStateManager(context)
+    private val secure = secureProvider()
 
     private val delivered = LinkedHashSet<String>(MAX_IDS)
     private val locallyRead = LinkedHashSet<String>(MAX_IDS)
@@ -40,49 +59,81 @@ class SeenMessageStore private constructor(private val context: Context) {
 
     init { load() }
 
-    @Synchronized fun hasDelivered(id: String) = delivered.contains(id)
-    @Synchronized fun hasBeenReadLocally(id: String) = locallyRead.contains(id)
-    @Synchronized fun hasReadReceiptBeenSent(id: String) = readReceiptsSent.contains(id)
+    fun hasDelivered(id: String) = synchronized(receiptAdmission.monitor) { delivered.contains(id) }
+    fun hasBeenReadLocally(id: String) = synchronized(receiptAdmission.monitor) { locallyRead.contains(id) }
+    fun hasReadReceiptBeenSent(id: String) = synchronized(receiptAdmission.monitor) { readReceiptsSent.contains(id) }
 
-    @Synchronized fun markDelivered(id: String) {
-        if (delivered.remove(id)) delivered.add(id) else {
-            delivered.add(id)
-            trim(delivered)
+    internal fun markDelivered(id: String, expectedToken: SeenReceiptAdmission.Token?) {
+        synchronized(receiptAdmission.monitor) {
+            if (!receiptAdmission.admits(expectedToken)) return
+            if (delivered.remove(id)) delivered.add(id) else {
+                delivered.add(id)
+                trim(delivered)
+            }
+            persist()
         }
-        persist()
     }
 
-    @Synchronized fun markReadLocally(id: String) {
-        if (locallyRead.remove(id)) locallyRead.add(id) else {
-            locallyRead.add(id)
-            trim(locallyRead)
+    internal fun markReadLocally(id: String, expectedToken: SeenReceiptAdmission.Token?) {
+        synchronized(receiptAdmission.monitor) {
+            if (!receiptAdmission.admits(expectedToken)) return
+            if (locallyRead.remove(id)) locallyRead.add(id) else {
+                locallyRead.add(id)
+                trim(locallyRead)
+            }
+            AppStateStore.markPrivateMessageRead(id)
+            persist()
         }
-        AppStateStore.markPrivateMessageRead(id)
-        persist()
     }
 
-    @Synchronized fun markReadReceiptSent(id: String) {
-        if (readReceiptsSent.remove(id)) readReceiptsSent.add(id) else {
-            readReceiptsSent.add(id)
-            trim(readReceiptsSent)
+    internal fun markReadReceiptSent(id: String, expectedToken: SeenReceiptAdmission.Token?): Boolean =
+        synchronized(receiptAdmission.monitor) {
+            if (!receiptAdmission.admits(expectedToken)) return@synchronized false
+            if (readReceiptsSent.remove(id)) readReceiptsSent.add(id) else {
+                readReceiptsSent.add(id)
+                trim(readReceiptsSent)
+            }
+            persist()
+            true
         }
-        persist()
+
+    internal fun remove(ids: Set<String>, expectedToken: SeenReceiptAdmission.Token?) {
+        synchronized(receiptAdmission.monitor) {
+            if (!receiptAdmission.admits(expectedToken)) return
+            if (ids.isEmpty()) return
+            delivered.removeAll(ids)
+            locallyRead.removeAll(ids)
+            readReceiptsSent.removeAll(ids)
+            persist()
+        }
     }
 
-    @Synchronized fun remove(ids: Set<String>) {
-        if (ids.isEmpty()) return
-        delivered.removeAll(ids)
-        locallyRead.removeAll(ids)
-        readReceiptsSent.removeAll(ids)
-        persist()
-    }
-
-    @Synchronized fun clear() {
-        delivered.clear()
-        locallyRead.clear()
-        readReceiptsSent.clear()
-        persist()
-    }
+    internal fun clearForPanic(expectedPanic: SeenReceiptAdmission.Token): Boolean =
+        synchronized(receiptAdmission.monitor) {
+            if (!receiptAdmission.ownsPanic(expectedPanic)) return@synchronized false
+            receiptAdmission.confirmClear(expectedPanic, false)
+            delivered.clear()
+            locallyRead.clear()
+            readReceiptsSent.clear()
+            val committed = try {
+                secure.clearSecureValuesSynchronously(STORAGE_KEY)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                false
+            }
+            // Always attempt absence readback, including when commit returned false.
+            val absent = try {
+                !secure.hasSecureValue(STORAGE_KEY)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                false
+            }
+            val confirmed = committed && absent
+            receiptAdmission.confirmClear(expectedPanic, confirmed)
+            confirmed
+        }
 
     private fun trim(set: LinkedHashSet<String>) {
         if (set.size <= MAX_IDS) return
@@ -92,39 +143,43 @@ class SeenMessageStore private constructor(private val context: Context) {
         }
     }
 
-    @Synchronized private fun load() {
-        try {
-            val json = secure.getSecureValue(STORAGE_KEY) ?: return
-            val data = gson.fromJson(json, StorePayload::class.java) ?: return
-            delivered.clear(); locallyRead.clear(); readReceiptsSent.clear()
-            data.delivered.takeLast(MAX_IDS).forEach { delivered.add(it) }
-            data.locallyRead.takeLast(MAX_IDS).forEach { locallyRead.add(it) }
-            // Older payloads used the local-read set to suppress receipt sends. Seed the new
-            // explicit set once during migration to avoid replaying an entire chat history.
-            (data.readReceiptsSent ?: data.locallyRead)
-                .takeLast(MAX_IDS)
-                .forEach { readReceiptsSent.add(it) }
-            Log.d(
-                TAG,
-                "Loaded delivered=${delivered.size}, locallyRead=${locallyRead.size}, " +
-                    "readReceiptsSent=${readReceiptsSent.size}"
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load SeenMessageStore: ${e.message}")
+    private fun load() {
+        synchronized(receiptAdmission.monitor) {
+            try {
+                val json = secure.getSecureValue(STORAGE_KEY) ?: return
+                val data = gson.fromJson(json, StorePayload::class.java) ?: return
+                delivered.clear(); locallyRead.clear(); readReceiptsSent.clear()
+                data.delivered.takeLast(MAX_IDS).forEach { delivered.add(it) }
+                data.locallyRead.takeLast(MAX_IDS).forEach { locallyRead.add(it) }
+                // Older payloads used the local-read set to suppress receipt sends. Seed the new
+                // explicit set once during migration to avoid replaying an entire chat history.
+                (data.readReceiptsSent ?: data.locallyRead)
+                    .takeLast(MAX_IDS)
+                    .forEach { readReceiptsSent.add(it) }
+                Log.d(
+                    TAG,
+                    "Loaded delivered=${delivered.size}, locallyRead=${locallyRead.size}, " +
+                        "readReceiptsSent=${readReceiptsSent.size}"
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load SeenMessageStore: ${e.message}")
+            }
         }
     }
 
-    @Synchronized private fun persist() {
-        try {
-            val payload = StorePayload(
-                delivered = delivered.toList(),
-                locallyRead = locallyRead.toList(),
-                readReceiptsSent = readReceiptsSent.toList()
-            )
-            val json = gson.toJson(payload)
-            secure.storeSecureValue(STORAGE_KEY, json)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to persist SeenMessageStore: ${e.message}")
+    private fun persist() {
+        synchronized(receiptAdmission.monitor) {
+            try {
+                val payload = StorePayload(
+                    delivered = delivered.toList(),
+                    locallyRead = locallyRead.toList(),
+                    readReceiptsSent = readReceiptsSent.toList()
+                )
+                val json = gson.toJson(payload)
+                secure.storeSecureValue(STORAGE_KEY, json)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to persist SeenMessageStore: ${e.message}")
+            }
         }
     }
 

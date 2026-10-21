@@ -76,7 +76,14 @@ interface FavoritesChangeListener {
  * Manages favorites with Noise↔Nostr mapping
  * Singleton pattern matching iOS implementation.
  */
-class FavoritesPersistenceService private constructor(private val context: Context) {
+class FavoritesPersistenceService private constructor(private val stateManager: SecureIdentityStateManager) {
+
+    private constructor(context: Context) : this(SecureIdentityStateManager(context))
+
+    /** The supplied manager owns only the synthetic preference backend. */
+    internal constructor(stateManager: SecureIdentityStateManager, testOnly: Boolean) : this(
+        stateManager.also { require(testOnly) { "Injected favorites storage is test-only" } }
+    )
 
     companion object {
         private const val TAG = "FavoritesPersistenceService"
@@ -100,7 +107,6 @@ class FavoritesPersistenceService private constructor(private val context: Conte
         }
     }
 
-    private val stateManager = SecureIdentityStateManager(context)
     private val gson = Gson()
     private val favorites = mutableMapOf<String, FavoriteRelationship>() // noiseHex -> relationship
     private val peerIdIndex = mutableMapOf<String, String>() // peerID (lowercase 16-hex) -> npub
@@ -272,6 +278,16 @@ class FavoritesPersistenceService private constructor(private val context: Conte
         savePeerIdIndex()
         Log.i(TAG, "Cleared all favorites")
         notifyAllCleared()
+    }
+
+    internal fun clearAllFavoritesForPanic(): Boolean {
+        favorites.clear()
+        peerIdIndex.clear()
+        return try {
+            stateManager.clearSecureValuesForPanic(FAVORITES_KEY, PEERID_INDEX_KEY)
+        } finally {
+            notifyAllCleared()
+        }
     }
 
     /** Find Noise key by Nostr pubkey */

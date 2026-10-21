@@ -100,4 +100,7 @@
     <string name="wesh_report_where_request">Private message request</string>
     <string name="wesh_report_where_contact">Contact verified by QR</string>
     <string name="wesh_report_mail_public_message">Reported public message, quoted as received:</string>
+    <string name="wesh_pave_fluo_meeting_loading">Loading your note…</string>
+    <string name="wesh_pave_fluo_meeting_unavailable">Your note is unavailable. Retry before editing it.</string>
+    <string name="wesh_pave_fluo_meeting_retry">Retry</string>
 </resources>

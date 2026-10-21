@@ -58,7 +58,7 @@ private fun SettingsDetailFrame(title: String, onBack: () -> Unit, content: @Com
 }
 
 @Composable
-private fun PaveTextArea(value: String, onChange: (String) -> Unit, label: String, singleLine: Boolean) {
+private fun PaveTextArea(value: String, onChange: (String) -> Unit, label: String, singleLine: Boolean, enabled: Boolean = true) {
     val c = WeshPave.colors
     val shape = RoundedCornerShape(WeshRadius.control)
     Column(verticalArrangement = Arrangement.spacedBy(WeshSpace.s2)) {
@@ -67,6 +67,7 @@ private fun PaveTextArea(value: String, onChange: (String) -> Unit, label: Strin
             BasicTextField(
                 value = value,
                 onValueChange = onChange,
+                enabled = enabled,
                 singleLine = singleLine,
                 minLines = if (singleLine) 1 else 5,
                 textStyle = WeshType.body.copy(color = c.ink),
@@ -126,7 +127,7 @@ fun ProfileScreen(
 }
 
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     val c = WeshPave.colors
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -168,13 +169,19 @@ fun MeetingNoteScreen(
     feedback: String?,
     feedbackIsError: Boolean,
     onBack: () -> Unit,
+    ready: Boolean = true,
+    loading: Boolean = false,
+    onRetry: (() -> Unit)? = null,
 ) {
     val c = WeshPave.colors
     SettingsDetailFrame(stringResource(R.string.wesh_pave_settings_meeting), onBack) {
-        PaveTextArea(note, onNoteChange, stringResource(R.string.wesh_pave_fluo_meeting_label), singleLine = false)
+        PaveTextArea(note, onNoteChange, stringResource(R.string.wesh_pave_fluo_meeting_label), singleLine = false, enabled = ready)
+        if (loading) Text(stringResource(R.string.wesh_pave_fluo_meeting_loading), style = WeshType.caption, color = c.inkMuted)
+        if (!ready && !loading) Text(stringResource(R.string.wesh_pave_fluo_meeting_unavailable), style = WeshType.caption, color = c.warning)
+        onRetry?.let { SecondaryButton(stringResource(R.string.wesh_pave_fluo_meeting_retry), it) }
         Text(stringResource(R.string.wesh_pave_fluo_meeting_body), style = WeshType.caption, color = c.inkMuted)
         Feedback(feedback, feedbackIsError)
-        PrimaryButton(stringResource(R.string.wesh_pave_fluo_save), onSave, enabled = !saving)
+        PrimaryButton(stringResource(R.string.wesh_pave_fluo_save), onSave, enabled = ready && !saving)
     }
 }
 

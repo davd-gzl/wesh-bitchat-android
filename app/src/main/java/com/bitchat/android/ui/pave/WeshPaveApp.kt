@@ -39,19 +39,21 @@ import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.model.DeliveryStatus
 import com.bitchat.android.net.WeshInternetMode
 import com.bitchat.android.nostr.NostrRelayManager
+import com.bitchat.android.service.MeshServicePreferences
 import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.services.VerificationService
 import com.bitchat.android.services.WeshMessageRequests
+import com.bitchat.android.ui.MeetingNoteState
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.WeshDraftStore
 import com.bitchat.android.ui.WeshMessagePolicy
+import com.bitchat.android.ui.WeshPreferences
 import com.bitchat.android.ui.weshNamesakes
 import com.bitchat.android.util.dataFromHexString
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Locale
@@ -71,6 +73,38 @@ internal enum class PaveRoute(val parent: PaveRoute?) {
     Home(null), Public(Home), Private(Home), Requests(Home), Exchange(Home), Settings(Home),
     Profile(Settings), Discretion(Settings), Meeting(Settings), Blocked(Settings), Appearance(Settings),
     About(Settings), Licenses(About), Erase(Settings),
+}
+
+internal enum class PavePanicPresentation { Erasing, RecoveryRequired, Erased, Content }
+
+internal fun pavePanicPresentation(
+    inProgress: Boolean,
+    recoveryRequired: Boolean,
+    erased: Boolean
+): PavePanicPresentation = when {
+    inProgress -> PavePanicPresentation.Erasing
+    recoveryRequired -> PavePanicPresentation.RecoveryRequired
+    erased -> PavePanicPresentation.Erased
+    else -> PavePanicPresentation.Content
+}
+
+internal fun meetingNoteEditCallback(
+    preferences: WeshPreferences,
+    capturedEpoch: Long,
+    onAccepted: () -> Unit
+): (String) -> Unit = { text ->
+    if (preferences.editMeetingDraft(text, capturedEpoch)) onAccepted()
+}
+
+internal fun composerDraftEditCallback(
+    store: WeshDraftStore,
+    destination: String?,
+    onRejected: () -> Unit
+): (String) -> Unit {
+    val capturedEpoch = store.epoch
+    return { text ->
+        destination?.let { if (!store.save(capturedEpoch, it, text)) onRejected() }
+    }
 }
 
 internal fun paveRouteFor(entry: PaveSettingsEntry): PaveRoute = when (entry) {
@@ -132,6 +166,8 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
     val scope = rememberCoroutineScope()
     val prefs = viewModel.weshPreferences
     val preferencesEpoch by prefs.resetEpoch.collectAsState()
+    val savedMeetingNote by prefs.savedMeetingNote.collectAsState()
+    val meetingState by prefs.meetingNoteState.collectAsState()
     val publicMessages by viewModel.messages.collectAsState()
     val publicSending by viewModel.weshPublicSending.collectAsState()
     val privateChats by viewModel.privateChats.collectAsState()
@@ -174,7 +210,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
     val internet = remember {
         LiveWeshInternetModeState(
             WeshInternetMode.get(context),
-            NostrRelayManager.shared.relays.map { relays -> relays.count { it.isConnected } },
+            NostrRelayManager.shared.connectedCount,
             scope,
         )
     }
@@ -212,20 +248,23 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
     }
 
     // Erase states come first: nothing else may show while data is being wiped or must be recovered.
-    if (panicInProgress) {
-        ErasingScreen()
-        return
-    }
-    if (panicRecoveryRequired) {
-        com.bitchat.android.startup.StartupScreen(
-            failed = true, onRetry = {}, draftWipeRequired = true, recovery = panicRecovery,
-            onEraseAll = { com.bitchat.android.startup.WeshRuntime.clearInterruptedPanic(context) },
-        )
-        return
-    }
-    if (erased) {
-        EraseResultScreen(succeeded = true, onRestart = { erased = false }, onRetry = {})
-        return
+    when (pavePanicPresentation(panicInProgress, panicRecoveryRequired, erased)) {
+        PavePanicPresentation.Erasing -> {
+            ErasingScreen()
+            return
+        }
+        PavePanicPresentation.RecoveryRequired -> {
+            com.bitchat.android.startup.StartupScreen(
+                failed = true, onRetry = {}, draftWipeRequired = true, recovery = panicRecovery,
+                onEraseAll = { com.bitchat.android.startup.WeshRuntime.clearInterruptedPanic(context) },
+            )
+            return
+        }
+        PavePanicPresentation.Erased -> {
+            EraseResultScreen(succeeded = true, onRestart = { erased = false }, onRetry = {})
+            return
+        }
+        PavePanicPresentation.Content -> Unit
     }
 
     val privatePeer = selectedPrivate
@@ -280,9 +319,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
             }
         }
     }
-    val onDraftChange: (String) -> Unit = { text ->
-        destination?.let { if (!viewModel.weshDraftStore.save(it, text)) feedback = msgDraftTooLong }
-    }
+    val onDraftChange = composerDraftEditCallback(viewModel.weshDraftStore, destination) { feedback = msgDraftTooLong }
 
     Box(Modifier.fillMaxSize()) {
         when (route) {
@@ -312,7 +349,11 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                         contactStoreFailed = contactStoreFailed,
                     ),
                     onOpenPublicRoom = { viewModel.endPrivateChat(); go(PaveRoute.Public) },
-                    onOpenContact = { id -> scope.launch { viewModel.startPrivateChat(id) }; route = PaveRoute.Private },
+                    onOpenContact = { id ->
+                        val seenToken = com.bitchat.android.services.SeenMessageStore.captureReceiptToken()
+                        scope.launch { viewModel.startPrivateChat(id, seenToken) }
+                        route = PaveRoute.Private
+                    },
                     onOpenRequests = { go(PaveRoute.Requests) },
                     onExchange = { go(PaveRoute.Exchange) },
                     onOpenSettings = { go(PaveRoute.Settings) },
@@ -386,23 +427,37 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                 onBlock = { id -> requestToBlock = requests.firstOrNull { (it.fingerprint ?: it.peerID) == id } },
             )
             PaveRoute.Exchange -> ExchangeRoute(viewModel, nickname, onClose = { go(PaveRoute.Home) }, onOpenChat = { conversationID ->
-                scope.launch { viewModel.startPrivateChat(conversationID) }
+                val seenToken = com.bitchat.android.services.SeenMessageStore.captureReceiptToken()
+                scope.launch { viewModel.startPrivateChat(conversationID, seenToken) }
                 viewModel.weshContactSheet.value = false
                 route = PaveRoute.Private
             })
-            PaveRoute.Settings -> SettingsScreen(
-                summary = PaveSettingsSummary(
-                    nickname = nickname,
-                    previewsHidden = !prefs.notificationShowsSender,
-                    meeting = prefs.meetingNote.takeIf { it.isNotBlank() },
-                    blockedCount = if (revision >= 0) viewModel.weshBlockedFingerprints().size + sessionHidden.size else 0,
-                    appearance = appearance,
-                ),
-                onErase = { go(PaveRoute.Erase) },
-                onOpen = { entry ->
-                    if (entry == PaveSettingsEntry.Connexion) connexionOpen = true else go(paveRouteFor(entry))
-                },
-            )
+            PaveRoute.Settings -> {
+                var autoStartOnBoot by remember { mutableStateOf(MeshServicePreferences.isAutoStartEnabled()) }
+                SettingsScreen(
+                    summary = PaveSettingsSummary(
+                        nickname = nickname,
+                        previewsHidden = !prefs.notificationShowsSender,
+                        meeting = when (meetingState) {
+                            MeetingNoteState.Ready -> savedMeetingNote.takeIf { it.isNotBlank() }
+                            MeetingNoteState.Unavailable -> stringResource(R.string.wesh_pave_fluo_meeting_unavailable)
+                            MeetingNoteState.Unloaded, MeetingNoteState.Loading -> stringResource(R.string.wesh_pave_fluo_meeting_loading)
+                            MeetingNoteState.Fenced -> null
+                        },
+                        blockedCount = if (revision >= 0) viewModel.weshBlockedFingerprints().size + sessionHidden.size else 0,
+                        appearance = appearance,
+                    ),
+                    onErase = { go(PaveRoute.Erase) },
+                    onOpen = { entry ->
+                        if (entry == PaveSettingsEntry.Connexion) connexionOpen = true else go(paveRouteFor(entry))
+                    },
+                    autoStartOnBoot = autoStartOnBoot,
+                    onAutoStartOnBoot = { enabled ->
+                        MeshServicePreferences.setAutoStartEnabled(enabled)
+                        autoStartOnBoot = enabled
+                    },
+                )
+            }
             PaveRoute.Profile -> ProfileRoute(viewModel, nickname, onBack = { go(PaveRoute.Settings) })
             PaveRoute.Discretion -> {
                 var muted by remember(preferencesEpoch) { mutableStateOf(prefs.publicMuted) }
@@ -675,6 +730,7 @@ private fun ExchangeRoute(viewModel: ChatViewModel, nickname: String, onClose: (
 
 @Composable
 private fun ProfileRoute(viewModel: ChatViewModel, nickname: String, onBack: () -> Unit) {
+    val epoch = viewModel.weshPreferences.resetEpoch.collectAsState().value
     var edited by rememberSaveable(nickname) { mutableStateOf(nickname) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf(false) }
@@ -688,8 +744,9 @@ private fun ProfileRoute(viewModel: ChatViewModel, nickname: String, onBack: () 
         onSave = {
             val clean = edited.trim()
             if (NicknameGenerator.isValid(clean)) {
-                viewModel.setNickname(clean)
-                feedback = saved; error = false
+                if (viewModel.setNickname(clean, epoch)) {
+                    feedback = saved; error = false
+                }
             } else { feedback = invalid; error = true }
         },
         feedback = feedback,
@@ -701,8 +758,11 @@ private fun ProfileRoute(viewModel: ChatViewModel, nickname: String, onBack: () 
 @Composable
 private fun MeetingRoute(viewModel: ChatViewModel, onBack: () -> Unit) {
     val prefs = viewModel.weshPreferences
-    val epoch by prefs.resetEpoch.collectAsState()
+    val epoch = prefs.resetEpoch.collectAsState().value
     val note by prefs.meetingDraft.collectAsState()
+    val loadState by prefs.meetingNoteState.collectAsState()
+    // Re-entering the screen restarts a load cancelled with the previous route.
+    LaunchedEffect(prefs, epoch) { prefs.loadMeetingNote(epoch) }
     val scope = rememberCoroutineScope()
     var saving by remember { mutableStateOf(false) }
     var feedback by remember(epoch) { mutableStateOf<String?>(null) }
@@ -710,8 +770,14 @@ private fun MeetingRoute(viewModel: ChatViewModel, onBack: () -> Unit) {
     val saved = stringResource(R.string.wesh_pave_fluo_meeting_saved)
     val unconfirmed = stringResource(R.string.wesh_pave_fluo_meeting_unconfirmed)
     MeetingNoteScreen(
+        ready = loadState == MeetingNoteState.Ready,
+        loading = loadState == MeetingNoteState.Unloaded || loadState == MeetingNoteState.Loading,
+        onRetry = if (loadState == MeetingNoteState.Unavailable) ({
+            scope.launch { prefs.loadMeetingNote(epoch) }
+            Unit
+        }) else null,
         note = note,
-        onNoteChange = { if (prefs.editMeetingDraft(it, epoch)) feedback = null },
+        onNoteChange = meetingNoteEditCallback(prefs, epoch) { feedback = null },
         saving = saving,
         onSave = {
             saving = true

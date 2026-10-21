@@ -6,12 +6,12 @@ import com.bitchat.android.util.AppConstants
 import info.guardianproject.arti.ArtiLogListener
 import info.guardianproject.arti.ArtiProxy
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -41,7 +41,9 @@ class ArtiTorManager internal constructor(
     private val newProxy: (Application, ArtiLogListener) -> ArtiProxy = { app, listener ->
         ArtiProxy.Builder(app).setLogListener(listener).build()
     },
-    private val stopTimeoutMs: Long = STOP_TIMEOUT_MS
+    private val stopTimeoutMs: Long = STOP_TIMEOUT_MS,
+    private val appScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    private val modeFlow: StateFlow<TorMode> = TorPreferenceManager.modeFlow
 ) {
     enum class TorState {
         OFF,
@@ -76,8 +78,6 @@ class ArtiTorManager internal constructor(
             }
         }
     }
-
-    private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     @Volatile
     private var initialized = false
@@ -156,20 +156,33 @@ class ArtiTorManager internal constructor(
             if (savedMode == TorMode.ON) {
                 desiredMode = savedMode
             }
-            appScope.launch {
-                // Not behind applyMutex, which a start holds for its whole bootstrap. The initial
-                // value is skipped: nothing runs yet, and the collector below applies it.
-                TorPreferenceManager.modeFlow.drop(1).collect { mode ->
-                    if (mode == TorMode.OFF) requestOff()
+            appScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                // A stop may finish after a newer opt-in. Reconcile with the current preference,
+                // never a mode captured before the native stop completed.
+                immediateStops.drop(1).collect {
+                    applyObservedMode(application, modeFlow.value)
                 }
             }
 
-            appScope.launch {
-                // Applies the saved mode at start-up too (the first value), so there is a single ON
-                // to cancel. An immediate stop re-runs the serialized path, which then settles on the
-                // current mode.
-                combine(TorPreferenceManager.modeFlow, immediateStops) { mode, _ -> mode }.collect { mode ->
-                    applyMode(application, mode)
+            appScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                // Subscribe before init returns. Never discard a later OFF as the first value
+                // of a collector that had not started yet. An initially OFF manager is already
+                // settled, so it needs no asynchronous OFF command racing an explicit start.
+                var initialValue = true
+                modeFlow.collect { mode ->
+                    // A resumed collector can hold an older value than the StateFlow now has.
+                    // A stale OFF must not withdraw a newer opt-in before the mutex path runs.
+                    if (mode == modeFlow.value) {
+                        if (mode == TorMode.OFF) {
+                            if (!initialValue) requestOff()
+                        } else {
+                            val offRequestsAtObservation = offRequests.get()
+                            appScope.launch {
+                                applyObservedMode(application, mode, offRequestsAtObservation)
+                            }
+                        }
+                    }
+                    initialValue = false
                 }
             }
         }
@@ -274,7 +287,28 @@ class ArtiTorManager internal constructor(
         } ?: false
     }
 
-    suspend fun applyMode(application: Application, mode: TorMode) {
+    /** A delayed preference observation must not supersede a newer preference or OFF request. */
+    internal suspend fun applyObservedMode(
+        application: Application,
+        mode: TorMode,
+        offRequestsAtObservation: Long = offRequests.get()
+    ) = applyModeInternal(application, mode, offRequestsAtObservation)
+
+    /** Explicit callers retain their command semantics, independent of preference collection. */
+    suspend fun applyMode(application: Application, mode: TorMode) =
+        applyModeInternal(application, mode, observedOffRequests = null)
+
+    private suspend fun applyModeInternal(
+        application: Application,
+        mode: TorMode,
+        observedOffRequests: Long?
+    ) {
+        fun observationIsCurrent(): Boolean = observedOffRequests == null ||
+            (mode == modeFlow.value &&
+                (mode == TorMode.OFF || observedOffRequests == offRequests.get()))
+
+        // OFF has eager effects before the mutex, so stale OFF observations need this check too.
+        if (!observationIsCurrent()) return
         val offRequestsAtEntry = offRequests.get()
         if (mode == TorMode.OFF) {
             // A start holds applyMutex for its whole bootstrap: cancel it now, not after. Every
@@ -285,6 +319,8 @@ class ArtiTorManager internal constructor(
         }
         applyMutex.withLock {
             try {
+                // The preference can change while another bootstrap holds the mutex.
+                if (!observationIsCurrent()) return
                 // Internet went off while this ON waited for the lock: keep it off.
                 if (mode != TorMode.OFF && offRequests.get() != offRequestsAtEntry) return
                 desiredMode = mode

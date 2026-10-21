@@ -6,6 +6,8 @@ import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.model.DeliveryStatus
+import com.bitchat.android.services.SeenMessageStore
+import com.bitchat.android.services.SeenReceiptAdmission
 import com.bitchat.android.services.ContactDirectory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -14,21 +16,24 @@ import java.util.Date
 /**
  * Handles all BluetoothMeshDelegate callbacks and routes them to appropriate managers
  */
-class MeshDelegateHandler(
+class MeshDelegateHandler internal constructor(
     private val state: ChatState,
     private val messageManager: MessageManager,
-    private val channelManager: ChannelManager,
     private val privateChatManager: PrivateChatManager,
     private val notificationManager: NotificationManager,
     private val coroutineScope: CoroutineScope,
     private val onHapticFeedback: () -> Unit,
-    private val getMyPeerID: () -> String,
     private val getMeshService: () -> MeshService,
     private val publicNotificationsMuted: () -> Boolean = { false },
-    private val markMessageReadLocally: (messageID: String) -> Unit = {}
+    private val markMessageReadLocally: (messageID: String, expectedToken: SeenReceiptAdmission.Token?) -> Unit = { _, _ -> },
+    private val captureSeenToken: () -> SeenReceiptAdmission.Token? = { SeenMessageStore.captureReceiptToken() }
 ) : BluetoothMeshDelegate {
 
     override fun didReceiveMessage(message: BitchatMessage) {
+        // Wesh has one public room and no named channels: a message tagged for a BitChat channel
+        // never reaches the UI (admission already drops it), and neither buzzes nor notifies.
+        if (!message.isPrivate && message.channel != null) return
+        val seenToken = captureSeenToken()
         coroutineScope.launch {
             val messageKey = messageManager.generateMessageKey(message)
             if (messageManager.isMessageProcessed(messageKey)) {
@@ -56,7 +61,7 @@ class MeshDelegateHandler(
 
                     // Reactive read receipts: if chat is focused, send immediately for this message
                     message.senderPeerID?.let { senderPeerID ->
-                        sendReadReceiptIfFocused(message)
+                        sendReadReceiptIfFocused(message, seenToken)
                     }
 
                     // Show notification with enhanced information - now includes senderPeerID
@@ -69,17 +74,6 @@ class MeshDelegateHandler(
                             senderNickname = senderNickname,
                             messageContent = preview
                         )
-                    }
-                }
-            } else if (message.channel != null) {
-                // Channel message: AppStateStore is the source of truth for list; only manage unread
-                if (state.getJoinedChannelsValue().contains(message.channel)) {
-                    val channel = message.channel
-                    val viewingClassic = state.getCurrentChannelValue() == channel
-                    if (!viewingClassic) {
-                        val currentUnread = state.getUnreadChannelMessagesValue().toMutableMap()
-                        currentUnread[channel] = (currentUnread[channel] ?: 0) + 1
-                        state.setUnreadChannelMessages(currentUnread)
                     }
                 }
             } else {
@@ -107,9 +101,6 @@ class MeshDelegateHandler(
         
         // Flush router outbox for any peers that just connected (and their noiseHex aliases)
         runCatching { com.bitchat.android.services.MessageRouter.tryGetInstance()?.onPeersUpdated(mergedPeers) }
-
-        // Clean up channel members who disconnected
-        channelManager.cleanupDisconnectedMembers(mergedPeers, getMyPeerID())
 
         runCatching { com.bitchat.android.services.AppStateStore.canonicalizePrivateChats() }
 
@@ -147,12 +138,6 @@ class MeshDelegateHandler(
         com.bitchat.android.services.ConversationAliasResolver.unifyChatsIntoPeer(state, targetPeerID, keysToMerge)
     }
 
-    override fun didReceiveChannelLeave(channel: String, fromPeer: String) {
-        coroutineScope.launch {
-            channelManager.removeChannelMember(channel, fromPeer)
-        }
-    }
-    
     override fun didReceiveDeliveryAck(messageID: String, recipientPeerID: String) {
         coroutineScope.launch {
             messageManager.updateMessageDeliveryStatus(messageID, DeliveryStatus.Delivered(recipientPeerID, Date()))
@@ -171,10 +156,6 @@ class MeshDelegateHandler(
 
     override fun didReceiveVerifyResponse(peerID: String, payload: ByteArray, timestampMs: Long) {
         // Handled by ChatViewModel for verification flow
-    }
-    
-    override fun decryptChannelMessage(encryptedContent: ByteArray, channel: String): String? {
-        return channelManager.decryptChannelMessage(encryptedContent, channel)
     }
     
     override fun getNickname(): String? = state.getNicknameValue()
@@ -229,7 +210,7 @@ class MeshDelegateHandler(
      * Uses same logic as notification system - send read receipt if user is currently
      * viewing the private chat with this sender AND app is in foreground.
      */
-    private fun sendReadReceiptIfFocused(message: BitchatMessage) {
+    private fun sendReadReceiptIfFocused(message: BitchatMessage, expectedToken: SeenReceiptAdmission.Token?) {
         // Get notification manager's focus state (mirror the notification logic)
         val isAppInBackground = notificationManager.getAppBackgroundState()
         val currentPrivateChatPeer = notificationManager.getCurrentPrivateChatPeer()
@@ -249,7 +230,7 @@ class MeshDelegateHandler(
             )
             // UI focus is the source of truth for local read state. Transport acceptance is a
             // separate fact and may remain retryable when the peer disconnects.
-            try { markMessageReadLocally(message.id) } catch (_: Exception) { }
+            try { markMessageReadLocally(message.id, expectedToken) } catch (_: Exception) { }
 
             val nickname = state.getNicknameValue().ifBlank { "unknown" }
             val mesh = getMeshService()

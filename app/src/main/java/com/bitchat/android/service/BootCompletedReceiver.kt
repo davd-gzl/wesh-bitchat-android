@@ -12,7 +12,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
         // Ensure preferences are initialized on cold boot before reading values
         try { MeshServicePreferences.init(context.applicationContext) } catch (_: Exception) { }
 
-        if (MeshServicePreferences.isAutoStartEnabled(true)) {
+        if (MeshServicePreferences.isAutoStartEnabled()) {
             MeshForegroundService.start(context.applicationContext)
         }
     }

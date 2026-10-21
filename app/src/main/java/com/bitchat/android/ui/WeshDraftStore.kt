@@ -37,6 +37,8 @@ internal class WeshDraftStore(
     private var loaded = backend == null
     private var fenced = false
     private var wipeVerified = false
+    private var panicCompletionDeferred = false
+    private var preparedPanic: PanicPreparation? = null
     private val beforeLoad = linkedMapOf<String, String>()
     private val destinationVersions = linkedMapOf<String, Long>()
     val epoch: Long get() = synchronized(lock) { generation }
@@ -47,8 +49,10 @@ internal class WeshDraftStore(
         }
     }
 
-    fun save(destination: String, value: String): Boolean = synchronized(lock) {
-        if (fenced || !validDestination(destination) || value.toByteArray(Charsets.UTF_8).size > MAX_DRAFT_BYTES) {
+    fun save(expectedEpoch: Long, destination: String, value: String): Boolean = synchronized(lock) {
+        if (fenced || generation != expectedEpoch || !validDestination(destination) ||
+            value.toByteArray(Charsets.UTF_8).size > MAX_DRAFT_BYTES
+        ) {
             return@synchronized false
         }
         if (!loaded && destination !in beforeLoad && beforeLoad.size >= MAX_DRAFTS) return@synchronized false
@@ -85,7 +89,7 @@ internal class WeshDraftStore(
     }
 
     fun clearIfUnchanged(capture: Capture) {
-        synchronized(lock) { if (isCurrent(capture)) save(capture.destination, "") }
+        synchronized(lock) { if (isCurrent(capture)) save(capture.epoch, capture.destination, "") }
     }
 
     /** A different local full Noise key fences pending work and discards the previous RAM owner. */
@@ -95,7 +99,7 @@ internal class WeshDraftStore(
         require(validOwner(identity))
         val token = synchronized(lock) {
             if (expectedGeneration != null && (generation != expectedGeneration || owner != identity)) return
-            if (fenced && !wipeVerified) return
+            if (fenced && (!wipeVerified || panicCompletionDeferred)) return
             if (owner != null && owner != identity) {
                 generation++
                 revision++
@@ -203,6 +207,8 @@ internal class WeshDraftStore(
             fenced = true
             loaded = false
             wipeVerified = false
+            panicCompletionDeferred = false
+            preparedPanic = null
             _drafts.value = emptyMap()
             beforeLoad.clear()
             destinationVersions.clear()
@@ -210,8 +216,27 @@ internal class WeshDraftStore(
         }
     }
 
-    suspend fun panicClear(): Boolean {
+    /** Confirms only durable intent. No key, ciphertext or owner is erased here. */
+    internal suspend fun establishPanicIntent(expectedEpoch: Long): Boolean {
+        fun current() = synchronized(lock) { fenced && generation == expectedEpoch }
+        if (!current()) return false
+        return withContext(NonCancellable + ioDispatcher) {
+            io.withLock {
+                if (!current()) return@withLock false
+                val persistent = backend ?: return@withLock false
+                try {
+                    persistent.markPanicPending()
+                    current()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) { false }
+            }
+        }
+    }
+
+    suspend fun panicClear(deferCompletion: Boolean = false): Boolean {
         fenceForPanic()
+        synchronized(lock) { panicCompletionDeferred = deferCompletion }
         return withContext(NonCancellable + ioDispatcher) {
             io.withLock {
                 try {
@@ -223,6 +248,58 @@ internal class WeshDraftStore(
                     }
                     true
                 } catch (_: Exception) {
+                    false
+                }
+            }
+        }
+    }
+
+    internal class PanicPreparation internal constructor(internal val generation: Long, internal val identity: String)
+
+    /** Prepare only RAM; ordinary loads and writers stay fenced until global completion. */
+    fun prepareAfterVerifiedPanic(identity: String): PanicPreparation? = synchronized(lock) {
+        require(validOwner(identity))
+        if (!fenced || !wipeVerified || !panicCompletionDeferred) return@synchronized null
+        val prepared = preparedPanic
+        if (prepared != null) return@synchronized prepared.takeIf { it.identity == identity }
+        PanicPreparation(generation, identity).also { preparedPanic = it }
+    }
+
+    /**
+     * The caller serializes its remaining admission token before invoking finishDrafts.
+     * Both marker completion and synchronous admission reopening run in the enclosing
+     * non-cancellable final commit; no IO-to-caller cancellation can split them.
+     */
+    suspend fun completePreparedPanic(
+        prepared: PanicPreparation,
+        commitAdmission: (finishDrafts: () -> Unit) -> Boolean
+    ): Boolean = withContext(ioDispatcher) {
+        io.withLock {
+            synchronized(lock) {
+                if (preparedPanic !== prepared || generation != prepared.generation ||
+                    !fenced || !wipeVerified || !panicCompletionDeferred
+                ) return@synchronized false
+                try {
+                    val completed = commitAdmission {
+                        backend?.finishVerifiedWipe()
+                        owner = prepared.identity
+                        loaded = true
+                        wipeVerified = false
+                        panicCompletionDeferred = false
+                        preparedPanic = null
+                        confirmedRevision = revision
+                        fenced = false
+                    }
+                    // Publish only after synchronous admission reopening; observers cannot
+                    // supersede the Seen token between durable finish and its release.
+                    if (completed && generation == prepared.generation && !fenced) {
+                        _persistence.value = Persistence.Confirmed
+                    }
+                    completed
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    _persistence.value = Persistence.WipeRequired
                     false
                 }
             }
@@ -261,6 +338,7 @@ internal class WeshDraftStore(
             private val delegate by lazy { EncryptedWeshDraftBackend(context) }
             override fun load(owner: String) = delegate.load(owner)
             override fun write(owner: String, drafts: Map<String, String>) = delegate.write(owner, drafts)
+            override fun markPanicPending() = delegate.markPanicPending()
             override fun wipe() = delegate.wipe()
             override fun finishVerifiedWipe() = delegate.finishVerifiedWipe()
         }

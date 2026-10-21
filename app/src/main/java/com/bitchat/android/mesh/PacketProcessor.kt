@@ -5,9 +5,108 @@ import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.protocol.MessageType
 import com.bitchat.android.protocol.SpecialRecipients
 import com.bitchat.android.model.RoutedPacket
+import com.bitchat.android.util.AppConstants
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import java.util.concurrent.atomic.AtomicLong
+
+/** Authentic identity of one immutable original processor root, never await authority. */
+internal sealed interface OriginalProcessorRootIdentity
+internal sealed interface OriginalProcessorBinding { val identity: OriginalProcessorRootIdentity }
+private class ProcessorRootIdentity : OriginalProcessorRootIdentity
+private class ProcessorRootBinding(val processor: PacketProcessor, val root: Job) : OriginalProcessorBinding {
+    override val identity: OriginalProcessorRootIdentity = ProcessorRootIdentity()
+}
+internal enum class OriginalProcessorGap {
+    MissingCaller, UninspectableCaller, CallerRelated, ForeignBinding, RequestUnavailable, ChangedCaller
+}
+/** Caller references stay in this private, call-scoped preparation, never in reports. */
+internal sealed interface OriginalProcessorCaller { val gap: OriginalProcessorGap? }
+private class ActiveProcessorCaller(val invoking: Job, val chain: List<Job>) : OriginalProcessorCaller {
+    override val gap: OriginalProcessorGap? = null
+}
+private class UnconfirmedProcessorCaller(override val gap: OriginalProcessorGap) : OriginalProcessorCaller
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+internal suspend fun captureOriginalProcessorCaller(): OriginalProcessorCaller {
+    val context = currentCoroutineContext()
+    context.ensureActive()
+    val invoking = context[Job] ?: return UnconfirmedProcessorCaller(OriginalProcessorGap.MissingCaller)
+    val chain = mutableListOf<Job>()
+    val seen = java.util.IdentityHashMap<Job, Unit>()
+    try {
+        var current: Job? = invoking
+        while (current != null) {
+            if (!current.isActive || seen.put(current, Unit) != null) {
+                return UnconfirmedProcessorCaller(OriginalProcessorGap.UninspectableCaller)
+            }
+            chain += current
+            current = current.parent
+        }
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { return UnconfirmedProcessorCaller(OriginalProcessorGap.UninspectableCaller) }
+    context.ensureActive()
+    return ActiveProcessorCaller(invoking, chain.toList())
+}
+
+internal fun originalProcessorRelationshipGap(
+    binding: OriginalProcessorBinding, caller: OriginalProcessorCaller
+): OriginalProcessorGap? {
+    val original = binding as? ProcessorRootBinding ?: return OriginalProcessorGap.ForeignBinding
+    val active = caller as? ActiveProcessorCaller ?: return caller.gap ?: OriginalProcessorGap.UninspectableCaller
+    return if (active.chain.any { it === original.root }) OriginalProcessorGap.CallerRelated else null
+}
+
+/** A finite terminal request only; arbitrary cancellation handlers may run or throw. */
+internal fun requestOriginalProcessorShutdown(binding: OriginalProcessorBinding): Boolean {
+    val original = binding as? ProcessorRootBinding ?: return false
+    original.processor.shutdown()
+    return original.processor.originalShutdownRequested(binding)
+}
+
+internal sealed interface OriginalProcessorAwaitPreparation
+private class PreparedProcessorAwait(
+    val original: ProcessorRootBinding, val caller: ActiveProcessorCaller
+) : OriginalProcessorAwaitPreparation
+internal sealed interface OriginalProcessorPreparation {
+    class Ready(val preparation: OriginalProcessorAwaitPreparation) : OriginalProcessorPreparation
+    class Unconfirmed(val gap: OriginalProcessorGap) : OriginalProcessorPreparation
+}
+
+internal suspend fun prepareOriginalProcessorAwait(
+    binding: OriginalProcessorBinding, caller: OriginalProcessorCaller
+): OriginalProcessorPreparation {
+    val context = currentCoroutineContext()
+    context.ensureActive()
+    val gap = originalProcessorRelationshipGap(binding, caller)
+    if (gap != null) return OriginalProcessorPreparation.Unconfirmed(gap)
+    val active = caller as? ActiveProcessorCaller
+        ?: return OriginalProcessorPreparation.Unconfirmed(OriginalProcessorGap.UninspectableCaller)
+    if (context[Job] !== active.invoking) return OriginalProcessorPreparation.Unconfirmed(OriginalProcessorGap.ChangedCaller)
+    val original = binding as? ProcessorRootBinding
+        ?: return OriginalProcessorPreparation.Unconfirmed(OriginalProcessorGap.ForeignBinding)
+    if (!original.processor.originalShutdownRequested(binding)) {
+        return OriginalProcessorPreparation.Unconfirmed(OriginalProcessorGap.RequestUnavailable)
+    }
+    return OriginalProcessorPreparation.Ready(PreparedProcessorAwait(original, active))
+}
+
+internal suspend fun validateOriginalProcessorPreparation(preparation: OriginalProcessorAwaitPreparation): Boolean {
+    val context = currentCoroutineContext()
+    context.ensureActive()
+    val prepared = preparation as? PreparedProcessorAwait ?: return false
+    return context[Job] === prepared.caller.invoking &&
+        originalProcessorRelationshipGap(prepared.original, prepared.caller) == null &&
+        prepared.original.processor.originalShutdownRequested(prepared.original)
+}
+
+/** Returns only after the same original root join; the preparation stays bound to this caller. */
+internal suspend fun awaitOriginalProcessor(preparation: OriginalProcessorAwaitPreparation): Boolean {
+    if (!validateOriginalProcessorPreparation(preparation)) return false
+    val prepared = preparation as? PreparedProcessorAwait ?: return false
+    prepared.original.processor.awaitShutdown()
+    return validateOriginalProcessorPreparation(preparation)
+}
 
 /**
  * Processes incoming packets and routes them to appropriate handlers
@@ -51,7 +150,12 @@ class PacketProcessor(
     private val packetRelayManager = PacketRelayManager(myPeerID)
     
     // Coroutines
-    private val processorScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val processorJob = SupervisorJob()
+    private val processorScope = CoroutineScope(Dispatchers.IO + processorJob)
+    private val originalProcessorBinding = ProcessorRootBinding(this, processorJob)
+    internal fun captureOriginalProcessorBinding(): OriginalProcessorBinding = originalProcessorBinding
+    internal fun originalShutdownRequested(binding: OriginalProcessorBinding): Boolean =
+        binding === originalProcessorBinding && synchronized(queueLock) { shutdownRequested }
     
     // Each peer gets its own queue, processed sequentially, so session management never races.
     private class PeerQueue(val channel: Channel<RoutedPacket>) {
@@ -60,6 +164,7 @@ class PacketProcessor(
     }
 
     private val queueLock = Any()
+    private var shutdownRequested = false
     private val queues = LinkedHashMap<String, PeerQueue>()
     private val linkPending = HashMap<String, Int>()
     private var queuedPackets = 0
@@ -85,10 +190,14 @@ class PacketProcessor(
             Log.w(TAG, "Received packet with no peer ID, skipping")
             return
         }
+        // TTL is mutable and excluded from signatures. Reject inflated hop counts before
+        // they consume an actor slot or reach authentication, presence, storage or forwarding.
+        if (routed.packet.ttl > AppConstants.MAX_MESH_TTL_HOPS) return
         
         val bytes = queuedSize(routed)
         val link = quotaKey(routed, peerID)
-        val queue = synchronized(queueLock) {
+        val offered = synchronized(queueLock) {
+            if (shutdownRequested) return@synchronized null
             if (queuedPackets >= maxQueuedPackets || queuedBytes + bytes > maxQueuedBytes) return@synchronized null
             if ((linkPending[link] ?: 0) >= perLinkQueueCapacity) return@synchronized null
             val queue = queues[peerID] ?: newQueueLocked(peerID) ?: return@synchronized null
@@ -96,16 +205,12 @@ class PacketProcessor(
             linkPending[link] = (linkPending[link] ?: 0) + 1
             queuedPackets += 1
             queuedBytes += bytes
-            queue
+            // These private channels have no undelivered handler and resume only fixed-IO actors.
+            val sent = queue.channel.trySend(routed).isSuccess
+            if (!sent) release(queue, routed)
+            sent
         }
-        if (queue == null) {
-            droppedPackets.incrementAndGet()
-            return
-        }
-        if (!queue.channel.trySend(routed).isSuccess) {
-            release(queue, routed)
-            droppedPackets.incrementAndGet()
-        }
+        if (offered != true) droppedPackets.incrementAndGet()
     }
 
     /** Quotas follow the link a packet arrived on, never the sender ID it claims. */
@@ -179,6 +284,8 @@ class PacketProcessor(
     private suspend fun handleReceivedPacket(routed: RoutedPacket) {
         val packet = routed.packet
         val peerID = routed.peerID ?: "unknown"
+        // Re-check at dispatch, including packets supplied by reassembly.
+        if (packet.ttl > AppConstants.MAX_MESH_TTL_HOPS) return
 
         // Basic validation and security checks
         if (!delegate?.validatePacketSecurity(packet, peerID)!!) {
@@ -309,6 +416,9 @@ class PacketProcessor(
         if (result is FragmentResult.Refused) return false
         if (result !is FragmentResult.Complete) return true
         val reassembledPacket = result.packet
+        // A valid outer hop count does not authorize an inflated inner packet. Refuse the
+        // completed assembly as well, so its outer fragment cannot refresh presence or relay.
+        if (reassembledPacket.ttl > AppConstants.MAX_MESH_TTL_HOPS) return false
         if (reassembledPacket.type == MessageType.FRAGMENT.value) {
             // Fragments are never nested: refuse a second level of reassembly.
             Log.w(TAG, "Dropping nested fragment from ${formatPeerForLog(routed.peerID ?: "unknown")}")
@@ -390,6 +500,7 @@ class PacketProcessor(
      */
     fun shutdown() {
         synchronized(queueLock) {
+            shutdownRequested = true
             Log.d(TAG, "Shutting down PacketProcessor and ${queues.size} peer queues")
             queues.values.forEach { it.channel.close() }
             queues.clear()
@@ -400,6 +511,12 @@ class PacketProcessor(
         
         // Cancel the main scope
         processorScope.cancel()
+    }
+
+    /** Only the original external teardown may await after requesting shutdown. */
+    internal suspend fun awaitShutdown() {
+        check(synchronized(queueLock) { shutdownRequested }) { "Shutdown must be requested before awaiting" }
+        processorJob.join()
     }
 }
 

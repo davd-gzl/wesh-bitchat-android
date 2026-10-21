@@ -21,6 +21,7 @@ internal class DraftWipePending : IllegalStateException()
 internal interface WeshDraftBackend {
     fun load(owner: String): Map<String, String>
     fun write(owner: String, drafts: Map<String, String>)
+    fun markPanicPending()
     fun wipe()
     fun finishVerifiedWipe()
 }
@@ -29,7 +30,8 @@ internal class EncryptedWeshDraftBackend(
     directory: File,
     private val cipher: ConversationStorageCipher,
     private val probe: (File) -> Boolean = ::pathExists,
-    private val commitData: (() -> Unit) -> Unit = { it() }
+    private val commitData: (() -> Unit) -> Unit = { it() },
+    private val commitMarker: (() -> Unit) -> Unit = { it() }
 ) : WeshDraftBackend {
     private val data = AtomicFile(File(directory, "wesh-drafts-v1.bin"))
     private val marker = AtomicFile(File(directory, "wesh-drafts-wipe-v1"))
@@ -126,10 +128,14 @@ internal class EncryptedWeshDraftBackend(
         commitData { writeAtomically(data, envelope) }
     }
 
+    override fun markPanicPending() {
+        commitMarker { writeAtomically(marker, byteArrayOf(1)) }
+        check(marker.openRead().use { it.read() == 1 && it.read() == -1 })
+    }
+
     override fun wipe() {
         // The marker must be committed before deleting either key or blob. It survives failure.
-        writeAtomically(marker, byteArrayOf(1))
-        check(marker.openRead().use { it.read() == 1 && it.read() == -1 })
+        markPanicPending()
         erase()
     }
 
@@ -185,6 +191,10 @@ internal class EncryptedWeshDraftBackend(
 
         fun hasPendingWipe(context: Context): Boolean {
             val directory = checkNotNull(context.applicationContext.noBackupFilesDir)
+            return hasPendingWipe(directory)
+        }
+
+        internal fun hasPendingWipe(directory: File): Boolean {
             val marker = File(directory, "wesh-drafts-wipe-v1")
             val base = pathExists(marker)
             val backup = pathExists(File(marker.path + ".bak"))

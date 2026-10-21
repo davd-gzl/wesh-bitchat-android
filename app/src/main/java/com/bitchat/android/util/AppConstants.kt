@@ -7,7 +7,8 @@ import java.util.UUID
  */
 object AppConstants {
     // Packet time-to-live (hops)
-    val MESSAGE_TTL_HOPS: UByte = 7u     // Default TTL for regular packets
+    val MAX_MESH_TTL_HOPS: UByte = 7u    // Wesh admission/relay ceiling; zero remains local-only
+    val MESSAGE_TTL_HOPS: UByte = MAX_MESH_TTL_HOPS // Default TTL for regular packets
     val SYNC_TTL_HOPS: UByte = 0u        // TTL for neighbor-only sync packets
 
     object Mesh {

@@ -8,18 +8,25 @@ import com.bitchat.android.net.ArtiTorManager
  * Main application class for bitchat Android
  */
 class BitchatApplication : Application() {
+    private var originalPreparation: com.bitchat.android.service.HolderProcessPreparation? = null
+
+    internal fun requireOriginalPreparation(): com.bitchat.android.service.HolderProcessPreparation =
+        checkNotNull(originalPreparation) { "Application preparation has not been captured" }
+
 
     override fun onCreate() {
         super.onCreate()
+        val preparation = com.bitchat.android.service.MeshServiceHolder.initialProcessPreparation()
+        originalPreparation = preparation
 
         if (BuildConfig.WESH_POLICY) {
             com.bitchat.android.startup.WeshRuntime.start(this)
         } else {
-            initializeRuntime()
+            initializeRuntime(preparation.origin)
         }
     }
 
-    internal fun initializeRuntime() {
+    internal fun initializeRuntime(original: com.bitchat.android.service.HolderOrigin) {
         // Start the single process-wide power policy before transport components are constructed.
         com.bitchat.android.mesh.PowerManager.getInstance(this).start()
 
@@ -60,7 +67,7 @@ class BitchatApplication : Application() {
         // Initialize Wi‑Fi Aware controller with persisted default
         try {
             val enabled = !BuildConfig.WESH_POLICY && com.bitchat.android.ui.debug.DebugPreferenceManager.getWifiAwareEnabled(false)
-            com.bitchat.android.wifiaware.WifiAwareController.initialize(this, enabled)
+            com.bitchat.android.wifiaware.WifiAwareController.initialize(this, enabled, original)
         } catch (_: Exception) { }
 
         // Initialize the Nostr alias registry for persistence

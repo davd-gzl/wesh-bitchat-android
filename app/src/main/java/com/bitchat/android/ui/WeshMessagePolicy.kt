@@ -67,16 +67,30 @@ internal object WeshMessagePolicy {
     }
 }
 
+internal enum class MeetingNoteState { Unloaded, Loading, Ready, Unavailable, Fenced }
+
 internal class WeshPreferences(
     private val prefs: SharedPreferences,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val commitEditor: suspend (SharedPreferences.Editor) -> Boolean = { it.commit() }
+    private val commitEditor: suspend (SharedPreferences.Editor) -> Boolean = { it.commit() },
+    private val meetingBackendFactory: () -> WeshMeetingNoteBackend = { error("Meeting-note storage unavailable") },
+    private val beforeNoteLoad: suspend () -> Unit = {}
 ) {
-    constructor(context: Context) : this(context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE))
+    constructor(context: Context) : this(
+        context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE),
+        meetingBackendFactory = { EncryptedWeshMeetingNoteBackend(context.applicationContext) },
+        beforeNoteLoad = { com.bitchat.android.startup.WeshRuntime.awaitTransportReady(context.applicationContext) }
+    )
 
     companion object {
         const val FILE = "wesh_ui"
         private const val NOTIFICATION_SENDER = "notification_sender"
+        private const val LEGACY_MEETING_NOTE = "meeting_note"
+        @Volatile private var shared: WeshPreferences? = null
+
+        fun getInstance(context: Context): WeshPreferences = shared ?: synchronized(this) {
+            shared ?: WeshPreferences(context.applicationContext).also { shared = it }
+        }
 
         /** Notifications show no sender unless the person explicitly opted in on this phone. */
         fun notificationShowsSender(context: Context): Boolean =
@@ -87,45 +101,132 @@ internal class WeshPreferences(
     private val lock = Any()
     private val io = Mutex()
     private var fenced = false
+    private var clearConfirmed = false
     private var meetingRevision = 0L
+    private var draftRestored = false
+    private var loadAttempt = 0L
     private data class MeetingSnapshot(val text: String, val epoch: Long, val revision: Long)
     private val _resetEpoch = MutableStateFlow(0L)
     val resetEpoch = _resetEpoch.asStateFlow()
-    private val _meetingDraft = MutableStateFlow(prefs.stringOr("meeting_note", "") ?: "")
+    private val _meetingDraft = MutableStateFlow("")
     val meetingDraft = _meetingDraft.asStateFlow()
+    private val _savedMeetingNote = MutableStateFlow("")
+    val savedMeetingNote = _savedMeetingNote.asStateFlow()
+    private val _meetingNoteState = MutableStateFlow(MeetingNoteState.Unloaded)
+    val meetingNoteState = _meetingNoteState.asStateFlow()
+
+    // Only the IO mutex owns backend instances and uncertain legacy cleanup.
+    private var meetingBackend: WeshMeetingNoteBackend? = null
+    private var backendEpoch: Long? = null
+    private var pendingLegacyRemoval = false
+
+    /** Serializes synchronous UI mutations with the panic fence; never use for suspending or blocking IO. */
+    internal fun withCurrentEpoch(expectedEpoch: Long, action: () -> Unit): Boolean = synchronized(lock) {
+        if (fenced || expectedEpoch != _resetEpoch.value) return@synchronized false
+        action()
+        true
+    }
 
     var publicMuted: Boolean
         get() = prefs.booleanOr("public_muted", false)
-        set(value) {
-            synchronized(lock) { if (!fenced) prefs.edit { putBoolean("public_muted", value) } }
-        }
+        set(value) { synchronized(lock) { if (!fenced) prefs.edit { putBoolean("public_muted", value) } } }
     var publicDisclosureAccepted: Boolean
         get() = prefs.booleanOr("public_disclosure", false)
-        set(value) {
-            synchronized(lock) { if (!fenced) prefs.edit { putBoolean("public_disclosure", value) } }
-        }
+        set(value) { synchronized(lock) { if (!fenced) prefs.edit { putBoolean("public_disclosure", value) } } }
     var notificationShowsSender: Boolean
         get() = prefs.booleanOr(NOTIFICATION_SENDER, false)
-        set(value) {
-            synchronized(lock) { if (!fenced) prefs.edit { putBoolean(NOTIFICATION_SENDER, value) } }
-        }
-    /** True once the Pavé welcome was completed on this phone (cleared by an erase). */
+        set(value) { synchronized(lock) { if (!fenced) prefs.edit { putBoolean(NOTIFICATION_SENDER, value) } } }
     var welcomed: Boolean
         get() = prefs.getBoolean("welcomed", false)
-        set(value) {
-            synchronized(lock) { if (!fenced) prefs.edit { putBoolean("welcomed", value) } }
-        }
-    /** Pavé appearance name ("Nuit", "Jour", "Automatique"); Nuit when unset or after an erase. */
+        set(value) { synchronized(lock) { if (!fenced) prefs.edit { putBoolean("welcomed", value) } } }
     var appearance: String
         get() = prefs.stringOr("appearance", "Nuit") ?: "Nuit"
-        set(value) {
-            synchronized(lock) { if (!fenced) prefs.edit { putString("appearance", value) } }
+        set(value) { synchronized(lock) { if (!fenced) prefs.edit { putString("appearance", value) } } }
+    /** Cached confirmed text only; opening storage and Keystore always belongs to IO. */
+    val meetingNote: String get() = _savedMeetingNote.value
+
+    suspend fun loadMeetingNote(expectedEpoch: Long = _resetEpoch.value): Boolean {
+        val attempt = synchronized(lock) {
+            if (!isCurrentEpoch(expectedEpoch)) return false
+            if (_meetingNoteState.value == MeetingNoteState.Ready) return true
+            _meetingNoteState.value = MeetingNoteState.Loading
+            ++loadAttempt
         }
-    val meetingNote: String
-        get() = prefs.stringOr("meeting_note", "") ?: ""
+        val loaded = try {
+            withContext(ioDispatcher) {
+                // Startup can wait for explicit recovery. Never hold the note
+                // mutex while waiting: panic must still be able to erase it.
+                beforeNoteLoad()
+                io.withLock {
+                    if (!isCurrentEpoch(expectedEpoch)) return@withLock false
+                    if (_meetingNoteState.value == MeetingNoteState.Ready) return@withLock true
+                    val backend = backendForLoad(expectedEpoch)
+                    var saved = backend.load()
+                    if (!isCurrentEpoch(expectedEpoch)) return@withLock false
+                    val legacy = prefs.all
+                    if (legacy.containsKey(LEGACY_MEETING_NOTE)) {
+                        val text = legacy[LEGACY_MEETING_NOTE] as? String
+                            ?: error("Invalid legacy meeting note")
+                        if (saved == null) {
+                            backend.write(text)
+                            if (!isCurrentEpoch(expectedEpoch)) return@withLock false
+                            saved = backend.load()
+                            check(saved == text) { "Meeting note migration not confirmed" }
+                        } else {
+                            check(saved == text) { "Meeting note copies disagree" }
+                        }
+                        pendingLegacyRemoval = true
+                    }
+                    if (!isCurrentEpoch(expectedEpoch)) return@withLock false
+                    if (pendingLegacyRemoval) {
+                        check(saved != null) { "Meeting note migration not confirmed" }
+                        // A failed commit can change only the RAM cache. Keep
+                        // retrying a real remove+commit even if the key looks absent.
+                        val committed = commitEditor(prefs.edit().remove(LEGACY_MEETING_NOTE))
+                        check(committed && !prefs.contains(LEGACY_MEETING_NOTE)) { "Legacy note removal not confirmed" }
+                        pendingLegacyRemoval = false
+                    }
+                    synchronized(lock) {
+                        if (!isCurrentEpoch(expectedEpoch)) return@synchronized false
+                        _savedMeetingNote.value = saved ?: ""
+                        if (!draftRestored) {
+                            _meetingDraft.value = saved ?: ""
+                            draftRestored = true
+                        }
+                        _meetingNoteState.value = MeetingNoteState.Ready
+                        true
+                    }
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            synchronized(lock) {
+                if (isCurrentEpoch(expectedEpoch) && loadAttempt == attempt && _meetingNoteState.value == MeetingNoteState.Loading) {
+                    _meetingNoteState.value = MeetingNoteState.Unloaded
+                }
+            }
+            throw cancelled
+        } catch (_: Exception) {
+            synchronized(lock) {
+                if (isCurrentEpoch(expectedEpoch) && loadAttempt == attempt && _meetingNoteState.value == MeetingNoteState.Loading) {
+                    _meetingNoteState.value = MeetingNoteState.Unavailable
+                }
+            }
+            false
+        }
+        return loaded && isCurrentEpoch(expectedEpoch)
+    }
+
+    private fun backendForLoad(epoch: Long): WeshMeetingNoteBackend {
+        if (meetingBackend == null || backendEpoch != epoch) {
+            meetingBackend = meetingBackendFactory()
+            backendEpoch = epoch
+            pendingLegacyRemoval = false
+        }
+        return checkNotNull(meetingBackend)
+    }
 
     fun editMeetingDraft(value: String, expectedEpoch: Long): Boolean = synchronized(lock) {
-        if (fenced || expectedEpoch != _resetEpoch.value) return@synchronized false
+        if (!isCurrentEpoch(expectedEpoch) || _meetingNoteState.value != MeetingNoteState.Ready) return@synchronized false
         _meetingDraft.value = value
         meetingRevision++
         true
@@ -133,16 +234,22 @@ internal class WeshPreferences(
 
     suspend fun saveMeetingDraft(expectedEpoch: Long): Boolean {
         val snapshot = synchronized(lock) {
-            if (fenced || expectedEpoch != _resetEpoch.value) return false
+            if (!isCurrentEpoch(expectedEpoch) || _meetingNoteState.value != MeetingNoteState.Ready) return false
             MeetingSnapshot(_meetingDraft.value, expectedEpoch, meetingRevision)
         }
         val confirmed = withContext(ioDispatcher) {
             io.withLock {
                 if (!isCurrent(snapshot)) return@withLock false
                 try {
-                    // Retry the actual commit even when a failed prior commit changed the RAM cache.
-                    val committed = commitEditor(prefs.edit().putString("meeting_note", snapshot.text))
-                    committed && prefs.stringOr("meeting_note", null) == snapshot.text && isCurrent(snapshot)
+                    val backend = backendForLoad(snapshot.epoch)
+                    backend.write(snapshot.text)
+                    if (!isCurrentEpoch(snapshot.epoch)) return@withLock false
+                    val persisted = backend.load()
+                    check(persisted == snapshot.text) { "Meeting note save not confirmed" }
+                    synchronized(lock) {
+                        if (isCurrentEpoch(snapshot.epoch)) _savedMeetingNote.value = snapshot.text
+                    }
+                    isCurrent(snapshot)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
@@ -153,29 +260,46 @@ internal class WeshPreferences(
         return confirmed && isCurrent(snapshot)
     }
 
+    private fun isCurrentEpoch(epoch: Long): Boolean = synchronized(lock) {
+        !fenced && epoch == _resetEpoch.value
+    }
     private fun isCurrent(snapshot: MeetingSnapshot): Boolean = synchronized(lock) {
-        !fenced && snapshot.epoch == _resetEpoch.value && snapshot.revision == meetingRevision
+        isCurrentEpoch(snapshot.epoch) && snapshot.revision == meetingRevision
     }
 
-    /** Blocks stale UI callbacks before any suspending panic work. */
+    /** Blocks stale callbacks and clears both cached copies before any suspending wipe work. */
     fun fenceForPanic() {
         synchronized(lock) {
             fenced = true
+            clearConfirmed = false
             _meetingDraft.value = ""
+            _savedMeetingNote.value = ""
+            draftRestored = false
+            _meetingNoteState.value = MeetingNoteState.Fenced
             meetingRevision++
             _resetEpoch.value++
         }
     }
 
-    /** Waits for any in-flight save, then erases it before the global panic can resume. */
     suspend fun clearForPanic(): Boolean {
         fenceForPanic()
+        val epoch = _resetEpoch.value
         return withContext(NonCancellable + ioDispatcher) {
             io.withLock {
-                try {
+                val erased = try {
+                    val backend = meetingBackend ?: meetingBackendFactory().also { meetingBackend = it }
+                    backend.erase()
+                    true
+                } catch (_: Exception) { false }
+                // Attempt the independent plaintext cleanup even if key/file erasure failed.
+                val preferencesCleared = try {
                     commitEditor(prefs.edit().clear()) && prefs.all.isEmpty()
-                } catch (_: Exception) {
-                    false
+                } catch (_: Exception) { false }
+                synchronized(lock) {
+                    val confirmed = erased && preferencesCleared && fenced && epoch == _resetEpoch.value
+                    clearConfirmed = confirmed
+                    if (confirmed) pendingLegacyRemoval = false
+                    confirmed
                 }
             }
         }
@@ -183,7 +307,11 @@ internal class WeshPreferences(
 
     fun resumeAfterVerifiedPanic() {
         synchronized(lock) {
+            if (!fenced || !clearConfirmed) return
             fenced = false
+            clearConfirmed = false
+            _meetingNoteState.value = MeetingNoteState.Unloaded
+            meetingRevision++
             _resetEpoch.value++
         }
     }
@@ -208,7 +336,15 @@ internal suspend fun resumeAfterWeshPanicWipe(
     /** Internet off, Tor state deleted and Nostr keys erased. */
     internetCleared: Boolean = true,
     /** The removed features' preference files are gone. */
-    legacyStoresCleared: Boolean = true
+    legacyStoresCleared: Boolean = true,
+    /** Plain metadata, conversation organization and the fresh nickname were confirmed. */
+    metadataCleared: Boolean = true,
+    /** Seen receipt bookkeeping has completed its panic clear. */
+    seenCleared: Boolean,
+    /** Checked identity and favorites cleanup; never inferred from a fresh key alone. */
+    identityErasureConfirmed: Boolean,
+    /** The previous facade finished its panic-only owner retirement. */
+    meshOwnerRetired: Boolean
 ): Boolean {
     val preferencesCleared = try {
         clearPreferences()
@@ -218,7 +354,7 @@ internal suspend fun resumeAfterWeshPanicWipe(
         false
     }
     if (!draftsCleared || !conversationsCleared || !mediaCleared || !internetCleared || !legacyStoresCleared ||
-        !preferencesCleared
+        !metadataCleared || !seenCleared || !identityErasureConfirmed || !meshOwnerRetired || !preferencesCleared
     ) return false
     return resume()
 }

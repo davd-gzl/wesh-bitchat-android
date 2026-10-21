@@ -14,7 +14,7 @@ object MeshServicePreferences {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
-    fun isAutoStartEnabled(default: Boolean = true): Boolean {
+    fun isAutoStartEnabled(default: Boolean = false): Boolean {
         return prefs.getBoolean(KEY_AUTO_START, default)
     }
 

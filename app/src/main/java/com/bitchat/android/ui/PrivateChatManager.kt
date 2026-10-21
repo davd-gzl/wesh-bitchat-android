@@ -6,6 +6,7 @@ import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.model.DeliveryStatus
 import com.bitchat.android.mesh.PeerFingerprintManager
 import com.bitchat.android.mesh.MeshService
+import com.bitchat.android.services.SeenReceiptAdmission
 import com.bitchat.android.services.ContactDirectory
 import com.bitchat.android.services.ContactIdentityResolver
 
@@ -30,14 +31,14 @@ enum class PrivateMessageOrigin {
 /**
  * Handles private chat functionality including peer management and blocking.
  */
-class PrivateChatManager(
+class PrivateChatManager internal constructor(
     private val state: ChatState,
     private val messageManager: MessageManager,
     private val dataManager: DataManager,
     private val noiseSessionDelegate: NoiseSessionDelegate,
     private val trackUnreadMessages: Boolean = true,
     private val hasReadReceiptBeenSent: (messageID: String) -> Boolean = { false },
-    private val markMessageReadLocally: (messageID: String) -> Unit = {},
+    private val markMessageReadLocally: (messageID: String, expectedToken: SeenReceiptAdmission.Token?) -> Unit = { _, _ -> },
     private val weshPolicy: Boolean = com.bitchat.android.BuildConfig.WESH_POLICY
 ) {
 
@@ -52,9 +53,10 @@ class PrivateChatManager(
 
     // MARK: - Private Chat Lifecycle
 
-    fun startPrivateChat(
+    internal fun startPrivateChat(
         peerID: String,
         meshService: MeshService,
+        expectedSeenToken: SeenReceiptAdmission.Token?,
         unreadAliases: Set<String> = emptySet()
     ): Boolean {
         val conversationID = ContactDirectory.canonicalConversationId(peerID)
@@ -92,7 +94,7 @@ class PrivateChatManager(
         messageManager.initializePrivateChat(conversationID)
 
         // Send read receipts for all unread messages from this peer
-        sendReadReceiptsForPeer(conversationID, meshPeerID, meshService)
+        sendReadReceiptsForPeer(conversationID, meshPeerID, meshService, expectedSeenToken)
 
         return true
     }
@@ -267,105 +269,6 @@ class PrivateChatManager(
         return fingerprintManager.getAllPeerFingerprints()
     }
 
-    // MARK: - Block/Unblock Operations
-
-    fun blockPeer(peerID: String, meshService: MeshService): Boolean {
-        val fingerprint = fingerprintManager.getFingerprintForPeer(peerID)
-        if (fingerprint != null) {
-            dataManager.addBlockedUser(fingerprint)
-
-            val peerNickname = getPeerNickname(peerID, meshService)
-            val systemMessage = BitchatMessage(
-                sender = "system",
-                content = "blocked user $peerNickname",
-                timestamp = Date(),
-                isRelay = false
-            )
-            messageManager.addMessage(systemMessage)
-
-            // End private chat if currently in one with this peer
-            if (state.getSelectedPrivateChatPeerValue() == peerID) {
-                endPrivateChat()
-            }
-
-            return true
-        }
-        return false
-    }
-
-    fun unblockPeer(peerID: String, meshService: MeshService): Boolean {
-        val fingerprint = fingerprintManager.getFingerprintForPeer(peerID)
-        if (fingerprint != null && dataManager.isUserBlocked(fingerprint)) {
-            dataManager.removeBlockedUser(fingerprint)
-
-            val peerNickname = getPeerNickname(peerID, meshService)
-            val systemMessage = BitchatMessage(
-                sender = "system",
-                content = "unblocked user $peerNickname",
-                timestamp = Date(),
-                isRelay = false
-            )
-            messageManager.addMessage(systemMessage)
-            return true
-        }
-        return false
-    }
-
-    fun blockPeerByNickname(targetName: String, meshService: MeshService): Boolean {
-        val peerID = getPeerIDForNickname(targetName, meshService)
-
-        if (peerID != null) {
-            return blockPeer(peerID, meshService)
-        } else {
-            val systemMessage = BitchatMessage(
-                sender = "system",
-                content = "user '$targetName' not found",
-                timestamp = Date(),
-                isRelay = false
-            )
-            messageManager.addMessage(systemMessage)
-            return false
-        }
-    }
-
-    fun unblockPeerByNickname(targetName: String, meshService: MeshService): Boolean {
-        val peerID = getPeerIDForNickname(targetName, meshService)
-
-        if (peerID != null) {
-            val fingerprint = fingerprintManager.getFingerprintForPeer(peerID)
-            if (fingerprint != null && dataManager.isUserBlocked(fingerprint)) {
-                return unblockPeer(peerID, meshService)
-            } else {
-                val systemMessage = BitchatMessage(
-                    sender = "system",
-                    content = "user '$targetName' is not blocked",
-                    timestamp = Date(),
-                    isRelay = false
-                )
-                messageManager.addMessage(systemMessage)
-                return false
-            }
-        } else {
-            val systemMessage = BitchatMessage(
-                sender = "system",
-                content = "user '$targetName' not found",
-                timestamp = Date(),
-                isRelay = false
-            )
-            messageManager.addMessage(systemMessage)
-            return false
-        }
-    }
-
-    fun listBlockedUsers(): String {
-        val blockedCount = dataManager.blockedUsers.size
-        return if (blockedCount == 0) {
-            "no blocked users"
-        } else {
-            "blocked users: $blockedCount fingerprints"
-        }
-    }
-
     // MARK: - Message Handling
 
     fun handleIncomingPrivateMessage(message: BitchatMessage) {
@@ -473,10 +376,11 @@ class PrivateChatManager(
      * Send read receipts for all unread messages from a specific peer
      * Called when the user focuses on a private chat
      */
-    fun sendReadReceiptsForPeer(
+    internal fun sendReadReceiptsForPeer(
         conversationID: String,
         meshPeerID: String?,
-        meshService: MeshService
+        meshService: MeshService,
+        expectedSeenToken: SeenReceiptAdmission.Token?
     ) {
         val canonicalConversationID = ContactDirectory.canonicalConversationId(conversationID)
 
@@ -504,7 +408,7 @@ class PrivateChatManager(
                 )
             if (isFromTarget) {
                 try {
-                    markMessageReadLocally(msg.id)
+                    markMessageReadLocally(msg.id, expectedSeenToken)
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to persist local read for message ${msg.id}: ${e.message}")
                 }
@@ -581,10 +485,6 @@ class PrivateChatManager(
     }
 
     // MARK: - Utility Functions
-
-    private fun getPeerIDForNickname(nickname: String, meshService: MeshService): String? {
-        return meshService.getPeerNicknames().entries.find { it.value == nickname }?.key
-    }
 
     private fun getPeerNickname(peerID: String, meshService: MeshService): String {
         return meshService.getPeerNicknames()[peerID] ?: peerID

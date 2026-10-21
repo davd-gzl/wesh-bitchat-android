@@ -17,6 +17,7 @@ import com.bitchat.android.protocol.MessageType
 import com.bitchat.android.protocol.SpecialRecipients
 import com.bitchat.android.service.TransportBridgeService
 import com.bitchat.android.sync.GossipSyncManager
+import com.bitchat.android.sync.launchOriginalGossipJob
 import com.bitchat.android.util.toHexString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -37,6 +38,10 @@ class MeshCore(
     private val maxTtl: UByte,
     sharedGossipManager: GossipSyncManager?,
     gossipConfigProvider: GossipSyncManager.ConfigProvider,
+    recordFallbackGossip: ((() -> GossipSyncManager) -> GossipSyncManager),
+    recordPacketProcessor: ((() -> PacketProcessor) -> PacketProcessor),
+    recordStoreForwardManager: ((() -> StoreForwardManager) -> StoreForwardManager),
+    recordPeerManager: ((() -> PeerManager) -> PeerManager),
     private val hooks: Hooks = Hooks(),
     // Passed in rather than read from BuildConfig: this file also compiles into the watch module.
     // Defaults to the stricter Wesh policy.
@@ -55,7 +60,7 @@ class MeshCore(
         val leavePayloadProvider: (() -> ByteArray)? = null
     )
 
-    private val peerManager = PeerManager()
+    private val peerManager = recordPeerManager { PeerManager() }
     val fragmentManager = FragmentManager(myPeerID).apply { acceptMediaFragments = !weshLocalOnly }
     private val readReceiptRetrySender = RetryingControlPacketSender(scope)
     private val authenticatedPeerStateStore = SecureAuthenticatedPeerStateStore(context)
@@ -77,16 +82,19 @@ class MeshCore(
         )
     }
     private val securityManager = SecurityManager(encryptionService, myPeerID)
-    private val storeForwardManager = StoreForwardManager()
+    private val storeForwardManager = recordStoreForwardManager { StoreForwardManager() }
     // Same inbound policy as Bluetooth.
     private val messageHandler = MessageHandler(myPeerID, context.applicationContext).apply {
         applyInboundPolicy(weshLocalOnly)
     }
-    private val packetProcessor = PacketProcessor(myPeerID)
+    private val packetProcessor = recordPacketProcessor { PacketProcessor(myPeerID) }
     private val directPeers = ConcurrentHashMap.newKeySet<String>()
 
     val gossipSyncManager: GossipSyncManager =
-        sharedGossipManager ?: GossipSyncManager(myPeerID = myPeerID, scope = scope, configProvider = gossipConfigProvider)
+        sharedGossipManager ?: recordFallbackGossip {
+            GossipSyncManager(myPeerID = myPeerID, scope = scope, configProvider = gossipConfigProvider,
+                workOwner = com.bitchat.android.sync.GossipWorkOwner(), jobCreator = ::launchOriginalGossipJob)
+        }
     private val ownsGossipManager: Boolean = sharedGossipManager == null
 
     var delegate: MeshDelegate? = null
@@ -109,8 +117,8 @@ class MeshCore(
                     TransportBridgeService.sendToPeer(transport.id, peerID, packet)
                 }
 
-                override fun signPacketForBroadcast(packet: BitchatPacket): BitchatPacket {
-                    return signPacketBeforeBroadcast(packet)
+                override fun signPacketForBroadcast(packet: BitchatPacket): BitchatPacket? {
+                    return com.bitchat.android.sync.signGossipPacket(packet, ::applyRouteIfAvailable, encryptionService::signData)
                 }
             }
         }
@@ -135,12 +143,29 @@ class MeshCore(
 
     fun shutdown() {
         directPeers.clear()
+        shutdownComponents()
+        packetProcessor.shutdown()
+    }
+
+    private fun shutdownComponents() {
         peerManager.shutdown()
         fragmentManager.shutdown()
         securityManager.shutdown()
         storeForwardManager.shutdown()
         messageHandler.shutdown()
+    }
+
+    /** Only the original external Wi-Fi teardown may suspend here. */
+    internal suspend fun shutdownAndJoin() {
+        directPeers.clear()
         packetProcessor.shutdown()
+        packetProcessor.awaitShutdown()
+        shutdownComponents()
+    }
+
+    /** The Wi-Fi service teardown uses its original external scope. */
+    internal suspend fun awaitPacketProcessorShutdown() {
+        packetProcessor.awaitShutdown()
     }
 
     fun processIncoming(
@@ -368,10 +393,6 @@ class MeshCore(
                 authenticatedPeerState.receive(peerID, state, authenticatedSession)
             }
 
-            override fun decryptChannelMessage(encryptedContent: ByteArray, channel: String): String? {
-                return delegate?.decryptChannelMessage(encryptedContent, channel)
-            }
-
             override fun onMessageReceived(message: BitchatMessage) {
                 if (hooks.onMessageReceived?.invoke(message) == false) return
                 delegate?.didReceiveMessage(message)
@@ -387,10 +408,6 @@ class MeshCore(
                 if (!admit(message)) return false
                 delegate?.didReceiveMessage(message)
                 return true
-            }
-
-            override fun onChannelLeave(channel: String, fromPeer: String) {
-                delegate?.didReceiveChannelLeave(channel, fromPeer)
             }
 
             override fun onDeliveryAckReceived(messageID: String, peerID: String) {
@@ -513,7 +530,7 @@ class MeshCore(
         }
     }
 
-    fun sendMessage(content: String, mentions: List<String> = emptyList(), channel: String? = null) {
+    fun sendMessage(content: String, mentions: List<String> = emptyList()) {
         if (content.isEmpty()) return
         scope.launch {
             val packet = BitchatPacket(
@@ -594,6 +611,7 @@ class MeshCore(
     }
 
     fun sendReadReceipt(messageID: String, recipientPeerID: String, readerNickname: String) {
+        val receiptToken = com.bitchat.android.services.SeenMessageStore.captureReceiptToken()
         scope.launch {
             if (hooks.readReceiptInterceptor?.invoke(messageID, recipientPeerID) == true) return@launch
             try {
@@ -619,16 +637,12 @@ class MeshCore(
                     sendAttempt = {
                         dispatchGlobalAndReport(RoutedPacket(signedPacket))
                     },
-                    onComplete = { accepted ->
-                        if (accepted) {
-                            try {
-                                com.bitchat.android.services.SeenMessageStore
-                                    .getInstance(context.applicationContext)
-                                    .markReadReceiptSent(messageID)
-                            } catch (_: Exception) { }
-                            hooks.onReadReceiptSent?.invoke(messageID)
-                        }
-                    }
+                    onComplete = readReceiptCompletion(
+                        messageID = messageID,
+                        expectedToken = receiptToken,
+                        seenStore = { com.bitchat.android.services.SeenMessageStore.getInstance(context.applicationContext) },
+                        onAccepted = { hooks.onReadReceiptSent?.invoke(messageID) }
+                    )
                 )
             } catch (e: Exception) {
                 Log.e("MeshCore", "Failed to send read receipt: ${e.message}")
