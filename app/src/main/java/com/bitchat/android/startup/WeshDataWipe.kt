@@ -103,9 +103,9 @@ internal object WeshDataWipe {
         val renamed = ShortcutManagerCompat.updateShortcuts(context, pinned.map {
             ShortcutInfoCompat.Builder(context, it).setShortLabel(name).setLongLabel(name).setPerson(nobody).setIntent(open).build()
         })
-        // Android rate-limits updates from the background; a refused update must reach the fallback.
-        check(renamed) { "Pinned shortcuts could not be renamed" }
         ShortcutManagerCompat.disableShortcuts(context, pinned, name)
+        // Android rate-limits updates from the background; a refused update must still reach the fallback.
+        check(renamed) { "Pinned shortcuts could not be renamed" }
     }
 
     private fun deleteKeystoreEntries() {

@@ -70,7 +70,7 @@ class WeshDataWipeSystemTracesTest {
     }
 
     @Test
-    fun `a rate-limited shortcut update fails the wipe so Android clears the data`() {
+    fun `a rate-limited shortcut update still disables it and fails the wipe so Android clears the data`() {
         val app = ApplicationProvider.getApplicationContext<Context>()
         val manager = Mockito.mock(ShortcutManager::class.java)
         Mockito.`when`(manager.pinnedShortcuts).thenReturn(listOf(
@@ -82,5 +82,6 @@ class WeshDataWipeSystemTracesTest {
         }
 
         assertTrue(runCatching { WeshDataWipe.neutralizePinnedShortcuts(context) }.isFailure)
+        Mockito.verify(manager).disableShortcuts(Mockito.eq(listOf("dm_synthetic")), Mockito.any())
     }
 }
