@@ -254,7 +254,7 @@ class PanicOriginalPeerRootsTest {
             f.ready(held.entered)
             f.completeFacadeRootOnly()
             f.fence()
-            val sentinel = CancellationException("synthetic Peer caller cancellation")
+            val sentinel = FixtureCancellation("synthetic Peer caller cancellation")
             val first = f.launchCollector(full = false, expectedFailure = sentinel)
             val pendingAtExistingPPWait = !first.job.isCompleted && !held.returned.get() && held.release.count == 1L
             check(f.requestFlags().let { it.first.all { value -> value } && it.second.all { value -> value } && it.third.all { value -> value } })
@@ -344,6 +344,10 @@ class PanicOriginalPeerRootsTest {
         post()
     }
 
+    private class FixtureCancellation(message: String) : CancellationException(message), CopyableThrowable<FixtureCancellation> {
+        override fun createCopy(): FixtureCancellation? = null
+    }
+
     private class Call(val job: Job, val result: AtomicReference<PanicRetirementReport>, val failure: AtomicReference<Throwable>)
     private class Probe(val job: Job, val prepared: AtomicBoolean, val returned: AtomicBoolean, val failure: AtomicReference<Throwable>)
     private class Held(val entered: CompletableDeferred<Unit>, val release: CountDownLatch, val returned: AtomicBoolean)
@@ -418,6 +422,8 @@ class PanicOriginalPeerRootsTest {
             )) }
             check(acquired is HolderAcquisitionResult.Available)
             facade = acquired.product
+            facade.delegate = mock<MeshDelegate>()
+            check(transport.delegate === facade)
             binding = captureHolderPanicBindingWithGossip(holder, facade)
         }
         /** Generic Holder contract order, distinct from the real Core's Peer-before-Store-before-PP. */
