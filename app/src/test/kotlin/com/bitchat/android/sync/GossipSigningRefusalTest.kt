@@ -5,7 +5,6 @@ import android.os.Build
 import com.bitchat.android.model.RequestSyncPacket
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.protocol.MessageType
-import com.bitchat.android.service.HolderManagerProvenance
 import com.bitchat.android.service.MeshServiceHolderOwner
 import com.bitchat.android.service.MeshServiceHolderPorts
 import com.bitchat.android.util.AppConstants
@@ -245,8 +244,6 @@ class GossipSigningRefusalTest {
         assertEquals(1, firstSigns)
         assertEquals(0, secondSigns)
         assertNotSame(saved, f.manager.delegate)
-        assertEquals(1, first.provenanceSnapshot().registrations.size)
-        assertEquals(1, replacement.provenanceSnapshot().registrations.size)
         assertEquals(1, f.sent.size)
         assertSame(SIGNATURE, f.sent.single().packet.signature)
         assertEquals(if (targeted) PEER else null, f.sent.single().peer)
@@ -262,8 +259,6 @@ class GossipSigningRefusalTest {
             override fun seenCapacity() = 8
             override fun gcsMaxBytes() = 128
             override fun gcsTargetFpr() = 0.01
-        }, workOwner = GossipWorkOwner(), jobCreator = { _, _, _ ->
-            error("Signing fixture must never dispatch jobs")
         })
         val sent = mutableListOf<Sent>()
         var onSend: (() -> Unit)? = null
@@ -276,8 +271,8 @@ class GossipSigningRefusalTest {
             log = { _, _ -> }
         ))
         fun bind(owner: MeshServiceHolderOwner<Any, Any, GossipSyncManager>, signer: (BitchatPacket) -> BitchatPacket?) {
-            owner.getOrCreate { context ->
-                owner.setGossipManager(HolderManagerProvenance.Constructed(context), manager, signer)
+            owner.getOrCreate {
+                owner.setGossipManager(manager, signer)
                 Any()
             }
         }

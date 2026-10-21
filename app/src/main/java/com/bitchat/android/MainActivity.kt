@@ -59,14 +59,12 @@ class MainActivity : OrientationAwareActivity() {
     private val mainViewModel: MainViewModel by viewModels()
     private var pendingMeshForegroundServiceStart = false
     private var runtimeAttached by mutableStateOf(false)
-    private var runtimeAdmissionRefused by mutableStateOf(false)
     private val routeGate = com.bitchat.android.startup.StartupRouteGate()
     private val chatViewModel: ChatViewModel by viewModels { 
         object : ViewModelProvider.Factory {
             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
                 @Suppress("UNCHECKED_CAST")
-                return ChatViewModel(application, meshService, unifiedMeshService,
-                    com.bitchat.android.service.MeshServiceHolder.captureUnifiedPanicBinding(unifiedMeshService)) as T
+                return ChatViewModel(application, meshService, unifiedMeshService) as T
             }
         }
     }
@@ -157,25 +155,23 @@ class MainActivity : OrientationAwareActivity() {
                     containerColor = MaterialTheme.colorScheme.background
                 ) { innerPadding ->
                     val modifier = Modifier.fillMaxSize().padding(innerPadding)
-                    if (!runtimeAttached) {
-                        if (BuildConfig.WESH_POLICY) {
-                            val startup by com.bitchat.android.startup.WeshRuntime.get(applicationContext).state.collectAsState()
-                            val draftWipeRequired by com.bitchat.android.startup.WeshRuntime.draftWipeRequired.collectAsState()
-                            val panicRecovery by com.bitchat.android.startup.WeshRuntime.recoveryState.collectAsState()
-                            val startupFailures by com.bitchat.android.startup.WeshRuntime.get(applicationContext).failures.collectAsState()
-                            com.bitchat.android.startup.StartupScreen(
-                                draftWipeRequired = draftWipeRequired,
-                                recovery = panicRecovery,
-                                onEraseAll = { com.bitchat.android.startup.WeshRuntime.clearInterruptedPanic(applicationContext) },
-                                offerIdentityReset = com.bitchat.android.startup.StartupRecoveryPolicy.offersIdentityReset(startupFailures, startup, draftWipeRequired),
-                                onResetIdentity = { com.bitchat.android.startup.WeshRuntime.resetIdentityAfterFailures(applicationContext) },
-                                failed = startup is com.bitchat.android.startup.StartupCoordinator.State.Failed || runtimeAdmissionRefused,
-                                onRetry = {
-                                    com.bitchat.android.startup.WeshRuntime.get(applicationContext).start(retry = true)
-                                },
-                                modifier = modifier
-                            )
-                        }
+                    if (BuildConfig.WESH_POLICY && !runtimeAttached) {
+                        val startup by com.bitchat.android.startup.WeshRuntime.get(applicationContext).state.collectAsState()
+                        val draftWipeRequired by com.bitchat.android.startup.WeshRuntime.draftWipeRequired.collectAsState()
+                        val panicRecovery by com.bitchat.android.startup.WeshRuntime.recoveryState.collectAsState()
+                        val startupFailures by com.bitchat.android.startup.WeshRuntime.get(applicationContext).failures.collectAsState()
+                        com.bitchat.android.startup.StartupScreen(
+                            draftWipeRequired = draftWipeRequired,
+                            recovery = panicRecovery,
+                            onEraseAll = { com.bitchat.android.startup.WeshRuntime.clearInterruptedPanic(applicationContext) },
+                            offerIdentityReset = com.bitchat.android.startup.StartupRecoveryPolicy.offersIdentityReset(startupFailures, startup, draftWipeRequired),
+                            onResetIdentity = { com.bitchat.android.startup.WeshRuntime.resetIdentityAfterFailures(applicationContext) },
+                            failed = startup is com.bitchat.android.startup.StartupCoordinator.State.Failed,
+                            onRetry = {
+                                com.bitchat.android.startup.WeshRuntime.get(applicationContext).start(retry = true)
+                            },
+                            modifier = modifier
+                        )
                     } else {
                         OnboardingFlowScreen(modifier)
                     }
@@ -217,29 +213,15 @@ class MainActivity : OrientationAwareActivity() {
     }
     
     private fun attachRuntime() {
-        com.bitchat.android.service.makeHolderRuntimePairAction(
-            acquireBluetooth = { com.bitchat.android.service.MeshServiceHolder.getOrCreate(applicationContext) },
-            acquireUnified = { com.bitchat.android.service.MeshServiceHolder.getUnifiedOrCreate(applicationContext) },
-            available = { acquiredBluetooth, acquiredUnified ->
-                meshService = acquiredBluetooth
-                unifiedMeshService = acquiredUnified
-                runtimeAttached = true
-                startMeshForegroundServiceBestEffort()
-                if (mainViewModel.onboardingState.value == OnboardingState.CHECKING) checkOnboardingStatus()
-                if (mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
-                    unifiedMeshService.delegate = chatViewModel
-                    dispatchPendingRoute()
-                }
-            },
-            refused = {
-                runtimeAdmissionRefused = true
-                if (BuildConfig.WESH_POLICY) {
-                    com.bitchat.android.startup.WeshRuntime.requirePanicRecovery()
-                } else {
-                    finish()
-                }
-            }
-        )()
+        meshService = com.bitchat.android.service.MeshServiceHolder.getOrCreate(applicationContext)
+        unifiedMeshService = com.bitchat.android.service.MeshServiceHolder.getUnifiedOrCreate(applicationContext)
+        runtimeAttached = true
+        startMeshForegroundServiceBestEffort()
+        if (mainViewModel.onboardingState.value == OnboardingState.CHECKING) checkOnboardingStatus()
+        if (mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
+            unifiedMeshService.delegate = chatViewModel
+            dispatchPendingRoute()
+        }
     }
 
     @Composable
@@ -735,36 +717,31 @@ class MainActivity : OrientationAwareActivity() {
                 // This solves the issue where app needs restart to work on first install
                 delay(1000) // Give the system time to process permission grants
 
-                com.bitchat.android.service.makeAttachedHolderInitializer(
-                    isAttached = { runtimeAttached },
-                    initialize = initialize@{
-                        // Initialize PoW preferences early in the initialization process
-                        PoWPreferenceManager.init(this@MainActivity)
+                // Initialize PoW preferences early in the initialization process
+                PoWPreferenceManager.init(this@MainActivity)
                 
-                        // Ensure all permissions are still granted (user might have revoked in settings)
-                        if (!permissionManager.areAllPermissionsGranted()) {
-                            val missing = permissionManager.getMissingPermissions()
-                            Log.w("MainActivity", "Permissions revoked during initialization: $missing")
-                            // Back to the Pavé Bluetooth step, which explains and asks again: never a dead-end error.
-                            mainViewModel.updateOnboardingState(OnboardingState.PERMISSION_EXPLANATION)
-                            return@initialize
-                        }
+                // Ensure all permissions are still granted (user might have revoked in settings)
+                if (!permissionManager.areAllPermissionsGranted()) {
+                    val missing = permissionManager.getMissingPermissions()
+                    Log.w("MainActivity", "Permissions revoked during initialization: $missing")
+                    // Back to the Pavé Bluetooth step, which explains and asks again: never a dead-end error.
+                    mainViewModel.updateOnboardingState(OnboardingState.PERMISSION_EXPLANATION)
+                    return@launch
+                }
 
-                        // Set up unified mesh delegate and start enabled transports
-                        if (BuildConfig.WESH_POLICY && !com.bitchat.android.startup.WeshRuntime.transportAllowed) return@initialize
-                        unifiedMeshService.delegate = chatViewModel
-                        unifiedMeshService.startServices()
-                        startMeshForegroundServiceBestEffort()
+                // Set up unified mesh delegate and start enabled transports
+                if (BuildConfig.WESH_POLICY && !com.bitchat.android.startup.WeshRuntime.transportAllowed) return@launch
+                unifiedMeshService.delegate = chatViewModel
+                unifiedMeshService.startServices()
+                startMeshForegroundServiceBestEffort()
 
-                        // Keep the latest launch route bounded until secure startup and onboarding finish.
+                // Keep the latest launch route bounded until secure startup and onboarding finish.
 
-                        // Small delay to ensure mesh service is fully initialized
-                        delay(500)
-                        Log.i("MainActivity", "App initialization complete")
-                        mainViewModel.updateOnboardingState(OnboardingState.COMPLETE)
-                        dispatchPendingRoute()
-                    }
-                )()
+                // Small delay to ensure mesh service is fully initialized
+                delay(500)
+                Log.i("MainActivity", "App initialization complete")
+                mainViewModel.updateOnboardingState(OnboardingState.COMPLETE)
+                dispatchPendingRoute()
             } catch (e: Exception) {
                 Log.e("MainActivity", "Failed to initialize app", e)
                 handleOnboardingFailed(getString(R.string.wesh_pave_fluo_init_failed))
