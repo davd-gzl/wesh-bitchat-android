@@ -32,9 +32,17 @@ class WeshInternetHookupTest {
     private val originalSocks = OkHttpProvider.socksAddressProvider
     private val sources = File("src/main/java").walkTopDown().filter { it.extension == "kt" }.toList()
 
+    private val keys by lazy {
+        val prefs = app.getSharedPreferences("synthetic-nostr-key", android.content.Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        com.bitchat.android.identity.SecureIdentityStateManager(prefs, true)
+    }
+    private fun stored() = com.bitchat.android.nostr.NostrIdentityBridge.peekCurrentNostrIdentity(keys)
+
     @Before fun closed() {
         WeshInternetMode.resetForTesting()
         WeshQrIdentity.resetForTesting()
+        WeshQrIdentity.keyStore = { keys }
         NostrRelayManager.shared.disconnect()
     }
 
@@ -94,11 +102,63 @@ class WeshInternetHookupTest {
         assertFalse(relays.isConnectionDesired())
         assertTrue(relays.getRelayStatuses().none { it.isConnected })
 
-        // My QR reveals no npub while Internet mode is off.
+        // Internet routes stay closed; my QR never creates a key, so without one it shows no npub.
         assertFalse(WeshQrIdentity.isActive())
         val qr = WeshQrIdentity.myQR(app, "Synthetic contact")
         assertNull(qr?.let { VerificationService.VerificationQR.fromUrlString(it)?.npub })
+        assertEquals(emptySet<String>(), WeshQrIdentity.ownedNpubs(app))
+        assertNull(stored())
+    }
+
+    @Test fun `my key is made locally with Internet off and owned for enrollment, the routes still closed`() = runBlocking {
+        assertFalse(WeshNetworkPolicy.allowsNetwork())
+        assertTrue(WeshQrIdentity.ensureKey(app))
+        val mine = stored()!!
+        assertTrue(WeshQrIdentity.showsNpub())
+        assertEquals(setOf(mine.npub), WeshQrIdentity.ownedNpubs(app))
+        // Making the key again keeps the same one; the Internet routes still see nothing.
+        assertTrue(WeshQrIdentity.ensureKey(app))
+        assertEquals(mine.npub, stored()!!.npub)
+        assertNull(WeshQrIdentity.mine(app))
+    }
+
+    @Test fun `concurrent creators all end up with the one stored key`() {
+        val start = java.util.concurrent.CountDownLatch(1)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(8)
+        try {
+            val made = (1..8).map {
+                pool.submit<String?> { start.await(); com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(keys)?.npub }
+            }
+            start.countDown()
+            val npubs = made.map { it.get(10, java.util.concurrent.TimeUnit.SECONDS) }.toSet()
+            assertEquals(setOf(stored()!!.npub), npubs)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test fun `a stored key that cannot be read is never replaced by a new one`() = runBlocking {
+        keys.storeSecureValue("nostr_private_key", "unparseable synthetic key")
+        assertFalse(WeshQrIdentity.ensureKey(app))
+        assertEquals("unparseable synthetic key", keys.getSecureValue("nostr_private_key"))
+        // The entry exists but reading it fails, as a broken store's decrypt would: still no new key.
+        val prefs = app.getSharedPreferences("synthetic-nostr-key", android.content.Context.MODE_PRIVATE)
+        prefs.edit().putInt("nostr_private_key", 7).commit()
+        assertFalse(WeshQrIdentity.ensureKey(app))
+        assertEquals(7, prefs.getInt("nostr_private_key", 0))
+    }
+
+    @Test fun `while an erase is unconfirmed no key is made and no npub is shown or owned`() = runBlocking {
+        assertTrue(WeshQrIdentity.ensureKey(app))
+        WeshQrIdentity.eraseUnconfirmed = { true }
+        assertFalse(WeshQrIdentity.showsNpub())
         assertNull(WeshQrIdentity.ownedNpubs(app))
+        WeshQrIdentity.eraseUnconfirmed = { error("unreadable gate") }
+        assertNull(WeshQrIdentity.ownedNpubs(app))
+        keys.clearIdentityDataForPanic()
+        WeshQrIdentity.eraseUnconfirmed = { true }
+        assertFalse(WeshQrIdentity.ensureKey(app))
+        assertNull(stored())
     }
 
     @Test fun `the QR identity follows the runtime Internet gate`() {
@@ -120,13 +180,13 @@ class WeshInternetHookupTest {
     @Test fun `my QR and owned npubs are read off the calling thread`() = runBlocking {
         val caller = Thread.currentThread()
         val seen = mutableListOf<Thread>()
-        val original = WeshQrIdentity.internetActive
         try {
-            WeshQrIdentity.internetActive = { synchronized(seen) { seen += Thread.currentThread() }; false }
+            WeshQrIdentity.eraseUnconfirmed = { synchronized(seen) { seen += Thread.currentThread() }; true }
             WeshQrIdentity.myQR(app, "Synthetic contact")
             assertNull(WeshQrIdentity.ownedNpubs(app))
+            WeshQrIdentity.ensureKey(app)
         } finally {
-            WeshQrIdentity.internetActive = original
+            WeshQrIdentity.eraseUnconfirmed = { false }
         }
         assertTrue(seen.isNotEmpty())
         seen.forEach { assertNotEquals(caller, it) }

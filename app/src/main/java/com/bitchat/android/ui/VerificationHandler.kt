@@ -35,7 +35,7 @@ class VerificationHandler(
     private val notificationManager: NotificationManager,
     private val messageManager: MessageManager,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
-    /** Read-only; null while Internet mode is off or fenced, which fails closed. Never creates keys. */
+    /** Read-only; null while an erase is unconfirmed or the key store is unreadable, which fails closed. Never creates keys. */
     private val ownedNpubs: suspend () -> Set<String>? = { com.bitchat.android.services.WeshQrIdentity.ownedNpubs(context) },
     private val remoteName: RemoteNameRule = RemoteNameRule.of(context)
 ) {
@@ -205,7 +205,7 @@ class VerificationHandler(
             }
             addVerificationSystemMessage(peerID, context.getString(R.string.verify_success_system_message, remoteName.show(announced)))
             notificationManager.showVerificationSuccessNotification(announced, peerID)
-            // BitChat peers learn my npub only from this notice; it is sent while Internet mode is active.
+            // BitChat peers do not read the npub in my QR: they learn it from this notice, sent only while Internet mode is active.
             com.bitchat.android.services.MessageRouter.tryGetInstance()?.announceWeshInternetKey(peerID)
 
 

@@ -221,7 +221,15 @@ class MainActivity : OrientationAwareActivity() {
         if (mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
             unifiedMeshService.delegate = chatViewModel
             dispatchPendingRoute()
+            // A recreated activity skips initialization; making the key is idempotent.
+            ensureWeshNostrKey()
         }
+    }
+
+    /** My QR always carries my npub: the key is made here, locally, and unused while Internet is off. */
+    private fun ensureWeshNostrKey() {
+        if (!BuildConfig.WESH_POLICY) return
+        lifecycleScope.launch { com.bitchat.android.services.WeshQrIdentity.ensureKey(applicationContext) }
     }
 
     @Composable
@@ -740,6 +748,8 @@ class MainActivity : OrientationAwareActivity() {
                 // Small delay to ensure mesh service is fully initialized
                 delay(500)
                 Log.i("MainActivity", "App initialization complete")
+                // Before any screen can show my QR. Covers phones onboarded before keys were made here.
+                if (BuildConfig.WESH_POLICY) com.bitchat.android.services.WeshQrIdentity.ensureKey(applicationContext)
                 mainViewModel.updateOnboardingState(OnboardingState.COMPLETE)
                 dispatchPendingRoute()
             } catch (e: Exception) {

@@ -102,9 +102,12 @@ object NostrIdentityBridge {
     /**
      * Get or create the current Nostr identity
      */
-    fun getCurrentNostrIdentity(context: Context): NostrIdentity? {
-        val stateManager = SecureIdentityStateManager(context)
-        
+    fun getCurrentNostrIdentity(context: Context): NostrIdentity? =
+        getCurrentNostrIdentity(SecureIdentityStateManager(context))
+
+    /** One creator at a time for the whole process: two callers must never each make and store a key. */
+    @Synchronized
+    internal fun getCurrentNostrIdentity(stateManager: SecureIdentityStateManager): NostrIdentity? {
         // Try to load existing Nostr private key
         val existingKey = loadNostrPrivateKey(stateManager)
         if (existingKey != null) {
@@ -116,17 +119,23 @@ object NostrIdentityBridge {
             }
         }
         
+        // Never replace a key that exists but cannot be read: a new npub would strand every contact's binding.
+        if (runCatching { stateManager.hasSecureValue(NOSTR_PRIVATE_KEY) }.getOrDefault(true)) return null
+
         // Generate new identity
         val newIdentity = NostrIdentity.generate()
         saveNostrPrivateKey(stateManager, newIdentity.privateKeyHex)
         
-        Log.i(TAG, "Created new Nostr identity: ${newIdentity.getShortNpub()}")
+        Log.i(TAG, "Created new Nostr identity")
         return newIdentity
     }
     
     /** Read-only: the stored identity, or null. Never generates or persists key material. */
-    fun peekCurrentNostrIdentity(context: Context): NostrIdentity? = runCatching {
-        loadNostrPrivateKey(SecureIdentityStateManager(context))?.let(NostrIdentity::fromPrivateKey)
+    fun peekCurrentNostrIdentity(context: Context): NostrIdentity? =
+        runCatching { peekCurrentNostrIdentity(SecureIdentityStateManager(context)) }.getOrNull()
+
+    internal fun peekCurrentNostrIdentity(stateManager: SecureIdentityStateManager): NostrIdentity? = runCatching {
+        loadNostrPrivateKey(stateManager)?.let(NostrIdentity::fromPrivateKey)
     }.getOrNull()
 
     /**

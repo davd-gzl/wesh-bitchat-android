@@ -42,6 +42,7 @@ Contact: `support@samourai.coop`. Security issues: `security@samourai.coop`.
 - **Relaying:** your messages may pass through third-party phones (Wesh or BitChat). Each relaying phone sees the sender's and recipient's IDs, the time and the size of the message. It does not see the content of a private message, which is end-to-end encrypted.
 - **The local room is public.** Every Wesh and BitChat user in range can read, keep and relay it.
 - **Private messages:** only with contacts verified by QR code. They are end-to-end encrypted: only your contact can read them.
+- **Your QR code** also carries a key for the optional Internet mode, even while that mode is off. The key is created on the phone at the end of the welcome and is not used on the network unless you turn the mode on. Anyone who has your QR code knows it.
 
 ## 6. Permissions
 - **Bluetooth:** talk to nearby phones.
