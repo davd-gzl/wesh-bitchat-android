@@ -63,6 +63,14 @@ class NostrCryptoBip340Test {
         assertEquals(public, NostrCrypto.derivePublicKey(secret))
     }
 
+    @Test(timeout = 10_000)
+    fun `an invalid secret key makes NIP-44 fail at once instead of looping`() {
+        val recipient = NostrCrypto.derivePublicKey("00".repeat(31) + "03")
+        for (secret in listOf("00".repeat(32), "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", "01")) {
+            assertTrue(runCatching { NostrCrypto.encryptNIP44("Synthetic", recipient, secret) }.isFailure)
+        }
+    }
+
     @Test
     fun `malformed input fails closed instead of throwing`() {
         val v = vectors.single { it.index == 0 }

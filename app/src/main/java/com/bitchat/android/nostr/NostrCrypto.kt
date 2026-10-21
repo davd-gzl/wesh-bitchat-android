@@ -47,17 +47,20 @@ object NostrCrypto {
         require(xOnlyKey.size == 32) { "X-only public key must be 32 bytes" }
         val point = Secp256k1.pubkeyParse(byteArrayOf(if (preferOddY) 0x03 else 0x02) + xOnlyKey)
         val privateKey = privateKeyHex.hexToByteArray()
+        require(privateKey.size == 32 && Secp256k1.secKeyVerify(privateKey)) { "Invalid private key" }
         // libsecp256k1's tweak multiply is variable-time, and its constant-time ECDH only returns a hash of
         // the point. The key is split into two fresh random shares, (k - b)P + bP, so the timing depends
         // only on values drawn anew for every call; the scalar arithmetic itself is constant-time.
-        while (true) {
+        // A retry needs a random value of zero or k; reaching the cap means something else is wrong.
+        repeat(64) {
             val blind = ByteArray(32).also(secureRandom::nextBytes)
-            if (!Secp256k1.secKeyVerify(blind)) continue
+            if (!Secp256k1.secKeyVerify(blind)) return@repeat
             val share = runCatching { Secp256k1.privKeyTweakAdd(privateKey, Secp256k1.privKeyNegate(blind)) }.getOrNull()
-            if (share == null || !Secp256k1.secKeyVerify(share)) continue
+            if (share == null || !Secp256k1.secKeyVerify(share)) return@repeat
             val shared = Secp256k1.pubKeyCombine(arrayOf(Secp256k1.pubKeyTweakMul(point, share), Secp256k1.pubKeyTweakMul(point, blind)))
             return Secp256k1.pubKeyCompress(shared)
         }
+        error("NIP-44 shared point could not be blinded")
     }
 
     /**
