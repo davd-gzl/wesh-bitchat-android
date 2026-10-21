@@ -439,16 +439,36 @@ private class PeerCollectionFrame(
         currentCoroutineContext().ensureActive()
         val inherited = (report.transportCoreRadioAndHandlers as? PanicOwnerRetirement.Unconfirmed)?.evidence
             as? PanicUnconfirmedEvidence.OriginalProcessorStoreForwardUnion
+        val returned = mutableListOf<com.bitchat.android.mesh.OriginalPeerRootIdentity>()
         if (inherited != null && inherited.processorObservation.status == PanicProcessorBatchStatus.AwaitReturned &&
             inherited.storeForwardObservation.status == PanicStoreForwardBatchStatus.AwaitReturned &&
             (!requireWifi || report.originalWifiHosts.status == WifiHostBatchStatus.AwaitReturned ||
                 report.originalWifiHosts.status == WifiHostBatchStatus.EmptyValidated) && stillValid()) {
-            // Baseline omission: the authentic prepared original Peer roots are not joined here.
-            status = PanicPeerBatchStatus.RequestedNotAwaited
+            val roots = current?.peerRoots ?: emptyList()
+            if (roots.isNotEmpty() && preparations.size == roots.size) {
+                status = PanicPeerBatchStatus.Ineligible
+                var allReturned = true
+                for ((index, preparation) in preparations.withIndex()) {
+                    if (!stillValid() || !com.bitchat.android.mesh.awaitOriginalPeer(preparation)) {
+                        allReturned = false
+                        break
+                    }
+                    returned += roots[index].identity
+                    if (!stillValid()) {
+                        allReturned = false
+                        break
+                    }
+                }
+                val finalValid = stillValid()
+                currentCoroutineContext().ensureActive()
+                if (allReturned && returned == roots.map { it.identity } && finalValid) {
+                    status = PanicPeerBatchStatus.AwaitReturned
+                }
+            }
         }
         return report.copy(originalPeers = PanicOriginalPeerEvidence(status, current?.peerRows ?:
             (initial as? com.bitchat.android.service.HolderPeerCapture.Observed)?.batch?.peerRows ?: emptyList(),
-            requests.toList(), holderGaps.toList(), callerGaps.toList(), emptyList()))
+            requests.toList(), holderGaps.toList(), callerGaps.toList(), returned.toList()))
     }
 }
 
