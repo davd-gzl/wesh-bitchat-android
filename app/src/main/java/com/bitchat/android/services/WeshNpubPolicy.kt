@@ -35,7 +35,7 @@ object WeshNpubPolicy {
     /**
      * Rules in NPUB-PROOF.md. [proof]: null when the QR had no `npubsig` (official BitChat),
      * else whether it verified. [ownedNpubs]: every npub I own, or null when that set cannot be
-     * computed (Internet mode off, no key, storage error), which fails closed. An unproven claim
+     * computed (erase unconfirmed, storage error), which fails closed. An unproven claim
      * never unbinds an incumbent; only a verified proof may, and never a proven incumbent.
      */
     fun enroll(

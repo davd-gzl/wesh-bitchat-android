@@ -221,7 +221,15 @@ class MainActivity : OrientationAwareActivity() {
         if (mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
             unifiedMeshService.delegate = chatViewModel
             dispatchPendingRoute()
+            // Phones onboarded before the key was made at onboarding get it now.
+            ensureWeshNostrKey()
         }
+    }
+
+    /** My QR always carries my npub: the key is made here, locally, and unused while Internet is off. */
+    private fun ensureWeshNostrKey() {
+        if (!BuildConfig.WESH_POLICY) return
+        lifecycleScope.launch { com.bitchat.android.services.WeshQrIdentity.ensureKey(applicationContext) }
     }
 
     @Composable
@@ -742,6 +750,7 @@ class MainActivity : OrientationAwareActivity() {
                 Log.i("MainActivity", "App initialization complete")
                 mainViewModel.updateOnboardingState(OnboardingState.COMPLETE)
                 dispatchPendingRoute()
+                ensureWeshNostrKey()
             } catch (e: Exception) {
                 Log.e("MainActivity", "Failed to initialize app", e)
                 handleOnboardingFailed(getString(R.string.wesh_pave_fluo_init_failed))

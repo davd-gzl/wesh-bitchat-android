@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.*
 import org.junit.Assert.*
+import kotlinx.coroutines.async
 import org.junit.runner.RunWith
 import org.mockito.kotlin.*
 import org.robolectric.RobolectricTestRunner
@@ -247,15 +248,48 @@ class WeshVerificationHandlerTest {
         assertEquals(syntheticNpub, store.contacts.value.single().npub)
         assertFalse(store.contacts.value.single().npubProven)
     }
-    @Test fun `with Internet mode closed my QR has no npub and enrollment binds none`() = scope.runTest {
+    private fun defaultHandler() = VerificationHandler(mock<Context>().also {
+        whenever(it.getString(any())).thenReturn("Synthetic verification title")
+        whenever(it.getString(any(), any())).thenReturn("Synthetic verification notice")
+    }, scope, { mesh }, mock(), state(), mock(), mock(), { time }, remoteName = names)
+
+    private fun syntheticKeyStore(): SecureIdentityStateManager {
+        val prefs = RuntimeEnvironment.getApplication().getSharedPreferences("synthetic-qr-nostr-key", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        return SecureIdentityStateManager(prefs, true).also { keys -> com.bitchat.android.services.WeshQrIdentity.keyStore = { keys } }
+    }
+
+    @Test fun `with Internet mode closed my QR carries my npub and enrollment binds the scanned one`() = scope.runTest {
         com.bitchat.android.services.WeshQrIdentity.internetActive = { false }
-        val mine = com.bitchat.android.services.WeshQrIdentity.myQR(RuntimeEnvironment.getApplication(), "Synthetic contact")!!
-        assertNull(VerificationService.VerificationQR.fromUrlString(mine)!!.npub)
-        handler = VerificationHandler(mock<Context>().also {
-            whenever(it.getString(any())).thenReturn("Synthetic verification title")
-            whenever(it.getString(any(), any())).thenReturn("Synthetic verification notice")
-        }, scope, { mesh }, mock(), state(), mock(), mock(), { time }, remoteName = names)
+        com.bitchat.android.services.WeshQrIdentity.eraseUnconfirmed = { false }
+        val keys = syntheticKeyStore()
+        val ready = async { com.bitchat.android.services.WeshQrIdentity.ensureKey(RuntimeEnvironment.getApplication()) }
+        runCurrent()
+        assertTrue(ready.await())
+        val myNpub = com.bitchat.android.nostr.NostrIdentityBridge.peekCurrentNostrIdentity(keys)!!.npub
+        val shown = async { com.bitchat.android.services.WeshQrIdentity.myQR(RuntimeEnvironment.getApplication(), "Synthetic contact")!! }
+        runCurrent()
+        val myQR = VerificationService.VerificationQR.fromUrlString(shown.await())!!
+        assertEquals(myNpub, myQR.npub)
+        assertTrue(com.bitchat.android.services.WeshNpubProof.isValid(myQR))
+        handler = defaultHandler()
         qr = npubQR(syntheticNpub, "Synthetic closed", syntheticSigner)
+        assertTrue(handler.beginQRVerification(qr))
+        respond(); runCurrent()
+        assertEquals(syntheticNpub, store.contacts.value.single().npub)
+    }
+
+    @Test fun `while an erase is unconfirmed my QR has no npub and enrollment binds none`() = scope.runTest {
+        syntheticKeyStore()
+        val ready = async { com.bitchat.android.services.WeshQrIdentity.ensureKey(RuntimeEnvironment.getApplication()) }
+        runCurrent()
+        assertTrue(ready.await())
+        com.bitchat.android.services.WeshQrIdentity.eraseUnconfirmed = { true }
+        val shown = async { com.bitchat.android.services.WeshQrIdentity.myQR(RuntimeEnvironment.getApplication(), "Synthetic contact")!! }
+        runCurrent()
+        assertNull(VerificationService.VerificationQR.fromUrlString(shown.await())!!.npub)
+        handler = defaultHandler()
+        qr = npubQR(syntheticNpub, "Synthetic fenced", syntheticSigner)
         assertTrue(handler.beginQRVerification(qr))
         respond(); runCurrent()
         assertNull(store.contacts.value.single().npub)

@@ -35,7 +35,7 @@ class VerificationHandler(
     private val notificationManager: NotificationManager,
     private val messageManager: MessageManager,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
-    /** Read-only; null while Internet mode is off or fenced, which fails closed. Never creates keys. */
+    /** Read-only; null while an erase is unconfirmed or the key store is unreadable, which fails closed. Never creates keys. */
     private val ownedNpubs: suspend () -> Set<String>? = { com.bitchat.android.services.WeshQrIdentity.ownedNpubs(context) },
     private val remoteName: RemoteNameRule = RemoteNameRule.of(context)
 ) {

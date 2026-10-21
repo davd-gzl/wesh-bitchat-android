@@ -621,11 +621,11 @@ private fun ExchangeRoute(viewModel: ChatViewModel, nickname: String, onClose: (
     val msgPending = stringResource(R.string.wesh_pave_fluo_qr_pending)
 
     LaunchedEffect(nickname) {
-        // Rebuild every minute, and at once when Internet mode or a panic fence changes the npub rule.
+        // Rebuild every minute, and at once when an erase fence changes whether my npub is shown.
         var shownActive: Boolean? = null
         var builtAt = 0L
         while (true) {
-            val active = com.bitchat.android.services.WeshQrIdentity.isActive()
+            val active = com.bitchat.android.services.WeshQrIdentity.showsNpub()
             val now = System.currentTimeMillis()
             if (active != shownActive || now - builtAt >= 60_000) {
                 qr = com.bitchat.android.services.WeshQrIdentity.myQR(context, nickname)
