@@ -95,13 +95,14 @@ private class CapturedHolderPanicBinding(
     val processorCollector: BoundProcessorCollector,
     val storeForwardCollector: BoundStoreForwardCollector,
     val wifiHostCollector: BoundWifiHostCollector,
-    val peerCollector: BoundPeerCollector
+    val peerCollector: BoundPeerCollector,
+    val fragmentCollector: BoundFragmentCollector
 ) : HolderPanicBinding
 private class UnconfirmedHolderPanicBinding(val gap: HolderPanicCaptureGap) : HolderPanicBinding
 
 internal fun captureHolderPanicBinding(actor: HolderPanicAdmissionActor, exactUnified: Any): HolderPanicBinding =
     when (val captured = actor.captureUnifiedPanicSubject(exactUnified)) {
-        is HolderPanicSubjectCapture.Captured -> CapturedHolderPanicBinding(actor, captured.subject, exactUnified, BoundGossipCollector.Missing, BoundProcessorCollector.Missing, BoundStoreForwardCollector.Missing, BoundWifiHostCollector.Missing, BoundPeerCollector.Missing)
+        is HolderPanicSubjectCapture.Captured -> CapturedHolderPanicBinding(actor, captured.subject, exactUnified, BoundGossipCollector.Missing, BoundProcessorCollector.Missing, BoundStoreForwardCollector.Missing, BoundWifiHostCollector.Missing, BoundPeerCollector.Missing, BoundFragmentCollector.Missing)
         is HolderPanicSubjectCapture.Unconfirmed -> UnconfirmedHolderPanicBinding(captured.gap)
     }
 
@@ -128,7 +129,7 @@ internal sealed interface HolderGossipSubsetCapture<out G : Any> {
     class Unconfirmed(val gap: HolderGossipCaptureGap) : HolderGossipSubsetCapture<Nothing>
 }
 
-internal enum class HolderContextOperationKind { ManagerCreator, BluetoothEnsure, ManagerRegistration, ExternalAttach, PacketProcessorCreator, StoreForwardCreator, WifiHostCreator, PeerCreator }
+internal enum class HolderContextOperationKind { ManagerCreator, BluetoothEnsure, ManagerRegistration, ExternalAttach, PacketProcessorCreator, StoreForwardCreator, WifiHostCreator, PeerCreator, FragmentCreator }
 internal enum class HolderContextOperationGap { ForeignContext, WrongContextKind, EndedContextAfterClose, UnattributedAfterClose }
 internal sealed class HolderContextOperationRefusal protected constructor(
     val operation: HolderContextOperationKind,
@@ -250,7 +251,8 @@ internal fun <B : Any, U : Any> captureHolderPanicBindingWithGossip(
         BoundProcessorCollector.Installed(TypedOriginalProcessorCollector(original)),
         BoundStoreForwardCollector.Installed(TypedOriginalStoreForwardCollector(original)),
         BoundWifiHostCollector.Installed(TypedOriginalWifiHostCollector(original)),
-        BoundPeerCollector.Installed(TypedOriginalPeerCollector(original))
+        BoundPeerCollector.Installed(TypedOriginalPeerCollector(original)),
+        BoundFragmentCollector.Installed(TypedOriginalFragmentCollector(original))
     )
     is HolderPanicSubjectCapture.Unconfirmed -> UnconfirmedHolderPanicBinding(captured.gap)
 }
@@ -509,6 +511,76 @@ internal fun validateHolderOriginalWifiProcessorStorePeerUnion(binding: HolderPa
     val captured = binding as? CapturedHolderPanicBinding ?: return false
     if (captured.product !== exactProduct) return false
     return (captured.peerCollector as? BoundPeerCollector.Installed)?.original?.validateWifi(captured.subject, exactProduct, batch) == true
+}
+
+/** Distinct original Fragment authority, independent of scalar retirement rows. */
+internal sealed interface HolderFragmentChildIdentity
+internal sealed interface HolderFragmentParentIdentity
+internal enum class HolderFragmentSource { BluetoothService, WifiCore }
+internal enum class HolderFragmentState { Dispatched, Returned, Unknown }
+internal enum class HolderFragmentGap { MissingCollector, InvalidSubject, InheritedUnionUnavailable, MissingFragment, UnknownFragment, DuplicateFragment, ParentMismatch, WitnessChanged }
+internal data class HolderFragmentRow(
+    val child: HolderFragmentChildIdentity, val parent: HolderFragmentParentIdentity,
+    val root: com.bitchat.android.mesh.OriginalFragmentRootIdentity?, val state: HolderFragmentState,
+    val source: HolderFragmentSource
+)
+internal sealed interface HolderProcessorStorePeerFragmentBatch {
+    val peerBatch: HolderProcessorStorePeerBatch
+    val fragmentRoots: List<com.bitchat.android.mesh.OriginalFragmentBinding>
+    val fragmentRows: List<HolderFragmentRow>
+    val fragmentGaps: List<HolderFragmentGap>
+}
+internal sealed interface HolderWifiProcessorStorePeerFragmentBatch {
+    val fragmentBatch: HolderProcessorStorePeerFragmentBatch
+    val wifiBatch: HolderWifiHostBatch
+}
+internal sealed interface HolderFragmentCapture {
+    class Observed(val batch: HolderProcessorStorePeerFragmentBatch) : HolderFragmentCapture
+    class Invalid(val gap: HolderFragmentGap) : HolderFragmentCapture
+}
+internal sealed interface HolderWifiFragmentCapture {
+    class Observed(val batch: HolderWifiProcessorStorePeerFragmentBatch) : HolderWifiFragmentCapture
+    class Invalid(val gap: HolderFragmentGap) : HolderWifiFragmentCapture
+}
+private interface OriginalFragmentCollector {
+    fun capture(subject: HolderPanicSubject, product: Any): HolderFragmentCapture
+    fun validate(subject: HolderPanicSubject, product: Any, batch: HolderProcessorStorePeerFragmentBatch): Boolean
+    fun captureWifi(subject: HolderPanicSubject, product: Any): HolderWifiFragmentCapture
+    fun validateWifi(subject: HolderPanicSubject, product: Any, batch: HolderWifiProcessorStorePeerFragmentBatch): Boolean
+}
+private class TypedOriginalFragmentCollector<B : Any, U : Any, G : Any>(
+    private val original: MeshServiceHolderOwner<B, U, G>
+) : OriginalFragmentCollector {
+    override fun capture(subject: HolderPanicSubject, product: Any) = original.captureOriginalProcessorStorePeerFragmentUnion(subject, product)
+    override fun validate(subject: HolderPanicSubject, product: Any, batch: HolderProcessorStorePeerFragmentBatch) = original.validateOriginalProcessorStorePeerFragmentUnion(subject, product, batch)
+    override fun captureWifi(subject: HolderPanicSubject, product: Any) = original.captureOriginalWifiProcessorStorePeerFragmentUnion(subject, product)
+    override fun validateWifi(subject: HolderPanicSubject, product: Any, batch: HolderWifiProcessorStorePeerFragmentBatch) = original.validateOriginalWifiProcessorStorePeerFragmentUnion(subject, product, batch)
+}
+private sealed interface BoundFragmentCollector {
+    data object Missing : BoundFragmentCollector
+    class Installed(val original: OriginalFragmentCollector) : BoundFragmentCollector
+}
+internal fun captureHolderOriginalProcessorStorePeerFragmentUnion(binding: HolderPanicBinding, exactProduct: Any): HolderFragmentCapture {
+    val captured = binding as? CapturedHolderPanicBinding ?: return HolderFragmentCapture.Invalid(HolderFragmentGap.InvalidSubject)
+    if (captured.product !== exactProduct) return HolderFragmentCapture.Invalid(HolderFragmentGap.InvalidSubject)
+    val collector = captured.fragmentCollector as? BoundFragmentCollector.Installed ?: return HolderFragmentCapture.Invalid(HolderFragmentGap.MissingCollector)
+    return collector.original.capture(captured.subject, exactProduct)
+}
+internal fun validateHolderOriginalProcessorStorePeerFragmentUnion(binding: HolderPanicBinding, exactProduct: Any, batch: HolderProcessorStorePeerFragmentBatch): Boolean {
+    val captured = binding as? CapturedHolderPanicBinding ?: return false
+    if (captured.product !== exactProduct) return false
+    return (captured.fragmentCollector as? BoundFragmentCollector.Installed)?.original?.validate(captured.subject, exactProduct, batch) == true
+}
+internal fun captureHolderOriginalWifiProcessorStorePeerFragmentUnion(binding: HolderPanicBinding, exactProduct: Any): HolderWifiFragmentCapture {
+    val captured = binding as? CapturedHolderPanicBinding ?: return HolderWifiFragmentCapture.Invalid(HolderFragmentGap.InvalidSubject)
+    if (captured.product !== exactProduct) return HolderWifiFragmentCapture.Invalid(HolderFragmentGap.InvalidSubject)
+    val collector = captured.fragmentCollector as? BoundFragmentCollector.Installed ?: return HolderWifiFragmentCapture.Invalid(HolderFragmentGap.MissingCollector)
+    return collector.original.captureWifi(captured.subject, exactProduct)
+}
+internal fun validateHolderOriginalWifiProcessorStorePeerFragmentUnion(binding: HolderPanicBinding, exactProduct: Any, batch: HolderWifiProcessorStorePeerFragmentBatch): Boolean {
+    val captured = binding as? CapturedHolderPanicBinding ?: return false
+    if (captured.product !== exactProduct) return false
+    return (captured.fragmentCollector as? BoundFragmentCollector.Installed)?.original?.validateWifi(captured.subject, exactProduct, batch) == true
 }
 
 /** External registration never inherits a constructor or its epoch. */
@@ -801,6 +873,7 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         val processorParent: HolderProcessorParentIdentity = ProcessorParentIdentity(),
         val storeForwardParent: HolderStoreForwardParentIdentity = StoreForwardParentIdentity(),
         val peerParent: HolderPeerParentIdentity = PeerParentIdentity(),
+        val fragmentParent: HolderFragmentParentIdentity = FragmentParentIdentity(),
         var selection: HolderWifiManagerSelection<G> = HolderWifiManagerSelection.NotSelected,
         var outcome: HolderConstructionOutcome = HolderConstructionOutcome.Dispatched
     )
@@ -1146,6 +1219,145 @@ internal class MeshServiceHolderOwner<B : Any, U : Any, G : Any>(
         if (!validateOriginalProcessorStorePeerUnion(subject, product, original.peerBatch)) return false
         if (!validateOriginalWifiHosts(subject, product, original.wifiBatch)) return false
         return validateOriginalProcessorStorePeerUnion(subject, product, original.peerBatch)
+    }
+
+    private class FragmentChildIdentity : HolderFragmentChildIdentity
+    private class FragmentParentIdentity : HolderFragmentParentIdentity
+    private class FragmentChild(
+        val identity: HolderFragmentChildIdentity, val context: HolderConstructionContext,
+        val entry: HolderEntryOrigin, val parent: HolderFragmentParentIdentity,
+        val source: HolderFragmentSource,
+        var state: HolderFragmentState = HolderFragmentState.Dispatched,
+        var allocated: com.bitchat.android.mesh.FragmentManager? = null,
+        var binding: com.bitchat.android.mesh.OriginalFragmentBinding? = null,
+        var rootIdentity: com.bitchat.android.mesh.OriginalFragmentRootIdentity? = null
+    )
+    private val fragmentChildren = mutableListOf<FragmentChild>()
+    private class ProcessorStorePeerFragmentBatch(
+        val anchor: Any, val subject: HolderPanicSubject, val product: Any, val revision: Any,
+        override val peerBatch: HolderProcessorStorePeerBatch,
+        roots: List<com.bitchat.android.mesh.OriginalFragmentBinding>,
+        rows: List<HolderFragmentRow>, gaps: List<HolderFragmentGap>
+    ) : HolderProcessorStorePeerFragmentBatch {
+        private val originalRoots = roots.toList()
+        private val originalRows = rows.toList()
+        private val originalGaps = gaps.toList()
+        val eligible = peerBatch.processorStoreBatch.processorBatch.gaps.isEmpty() && peerBatch.processorStoreBatch.storeForwardGaps.isEmpty() && peerBatch.peerGaps.isEmpty() && originalGaps.isEmpty()
+        override val fragmentRoots get() = originalRoots.toList()
+        override val fragmentRows get() = originalRows.toList()
+        override val fragmentGaps get() = originalGaps.toList()
+    }
+
+    /** No registry monitor surrounds allocation or the manager-owned immutable binding read. */
+    fun constructBluetoothFragment(
+        context: HolderConstructionContext, creator: () -> com.bitchat.android.mesh.FragmentManager
+    ): com.bitchat.android.mesh.FragmentManager = constructFragment(
+        context, HolderConstructionKind.BLUETOOTH, HolderFragmentSource.BluetoothService, creator)
+
+    fun constructWifiFragment(
+        context: HolderWifiConstructionContext, creator: () -> com.bitchat.android.mesh.FragmentManager
+    ): com.bitchat.android.mesh.FragmentManager = constructFragment(
+        context, HolderConstructionKind.WIFI, HolderFragmentSource.WifiCore, creator)
+
+    private fun constructFragment(
+        context: HolderConstructionContext, expected: HolderConstructionKind, source: HolderFragmentSource,
+        creator: () -> com.bitchat.android.mesh.FragmentManager
+    ): com.bitchat.android.mesh.FragmentManager {
+        val (operation, child) = synchronized(registryMonitor) {
+            val operation = admit(HolderContextOperationKind.FragmentCreator, context, expected)
+            val parent = checkNotNull(constructionFor(context))
+            val child = FragmentChild(FragmentChildIdentity(), context, checkNotNull(operation.entry), parent.fragmentParent, source)
+            fragmentChildren += child
+            changed()
+            operation to child
+        }
+        val allocated = try { creator() } catch (failure: Throwable) {
+            synchronized(registryMonitor) { child.state = HolderFragmentState.Unknown; changed() }
+            finish(operation, false, failure = failureKind(failure))
+            throw failure
+        }
+        synchronized(registryMonitor) { child.allocated = allocated; changed() }
+        val binding = try { allocated.captureOriginalFragmentBinding() } catch (failure: Throwable) {
+            synchronized(registryMonitor) { child.state = HolderFragmentState.Unknown; changed() }
+            finish(operation, false, failure = failureKind(failure))
+            throw failure
+        }
+        val identity = binding.identity
+        synchronized(registryMonitor) {
+            child.binding = binding
+            child.rootIdentity = identity
+            child.state = HolderFragmentState.Returned
+            operation.state = HolderContextOperationState.Completed
+            changed()
+        }
+        return allocated
+    }
+
+    /** One reentrant JVM monitor observation; stored identities only, never an endpoint getter. */
+    fun captureOriginalProcessorStorePeerFragmentUnion(subject: HolderPanicSubject, product: Any): HolderFragmentCapture =
+        synchronized(registryMonitor) {
+            val peers = when (val captured = captureOriginalProcessorStorePeerUnion(subject, product)) {
+                is HolderPeerCapture.Invalid -> return@synchronized HolderFragmentCapture.Invalid(HolderFragmentGap.InheritedUnionUnavailable)
+                is HolderPeerCapture.Observed -> captured.batch
+            }
+            val roots = mutableListOf<com.bitchat.android.mesh.OriginalFragmentBinding>()
+            val seen = java.util.IdentityHashMap<com.bitchat.android.mesh.OriginalFragmentBinding, Unit>()
+            val gaps = mutableListOf<HolderFragmentGap>()
+            fragmentChildren.forEach { child ->
+                val parent = constructionFor(child.context)
+                val expected = if (child.source == HolderFragmentSource.BluetoothService) HolderConstructionKind.BLUETOOTH else HolderConstructionKind.WIFI
+                if (parent == null || parent.kind != expected || parent.entry !== child.entry ||
+                    parent.fragmentParent !== child.parent) gaps += HolderFragmentGap.ParentMismatch
+                if (child.state != HolderFragmentState.Returned || child.binding == null || child.rootIdentity == null) {
+                    gaps += HolderFragmentGap.UnknownFragment
+                }
+                child.binding?.let { binding ->
+                    if (seen.put(binding, Unit) == null) roots += binding else gaps += HolderFragmentGap.DuplicateFragment
+                }
+            }
+            constructions.values.filter { it.kind == HolderConstructionKind.BLUETOOTH || it.kind == HolderConstructionKind.WIFI }.forEach { parent ->
+                val source = if (parent.kind == HolderConstructionKind.BLUETOOTH) HolderFragmentSource.BluetoothService else HolderFragmentSource.WifiCore
+                val count = fragmentChildren.count { it.context === parent.context && it.entry === parent.entry && it.source == source &&
+                    it.state == HolderFragmentState.Returned && it.binding != null }
+                if (count != 1) gaps += if (count > 1) HolderFragmentGap.DuplicateFragment else HolderFragmentGap.MissingFragment
+            }
+            if (roots.isEmpty()) gaps += HolderFragmentGap.MissingFragment
+            HolderFragmentCapture.Observed(ProcessorStorePeerFragmentBatch(ownerAnchor, subject, product, censusRevision, peers,
+                roots, fragmentChildren.map { HolderFragmentRow(it.identity, it.parent, it.rootIdentity, it.state, it.source) }, gaps.distinct()))
+        }
+
+    fun validateOriginalProcessorStorePeerFragmentUnion(subject: HolderPanicSubject, product: Any, batch: HolderProcessorStorePeerFragmentBatch): Boolean =
+        synchronized(registryMonitor) {
+            batch is ProcessorStorePeerFragmentBatch && batch.anchor === ownerAnchor && batch.subject === subject &&
+                batch.product === product && batch.revision === censusRevision && batch.eligible &&
+                validateOriginalProcessorStorePeerUnion(subject, product, batch.peerBatch)
+        }
+
+    private class WifiProcessorStorePeerFragmentBatch(
+        val anchor: Any, val subject: HolderPanicSubject, val product: Any,
+        override val fragmentBatch: HolderProcessorStorePeerFragmentBatch, override val wifiBatch: HolderWifiHostBatch
+    ) : HolderWifiProcessorStorePeerFragmentBatch
+
+    /** Validate stored Fragment/Peer/PP/Store, then actual Wi-Fi, then the same stored witness. */
+    fun captureOriginalWifiProcessorStorePeerFragmentUnion(subject: HolderPanicSubject, product: Any): HolderWifiFragmentCapture {
+        val fragments = when (val captured = captureOriginalProcessorStorePeerFragmentUnion(subject, product)) {
+            is HolderFragmentCapture.Invalid -> return HolderWifiFragmentCapture.Invalid(captured.gap)
+            is HolderFragmentCapture.Observed -> captured.batch
+        }
+        val wifi = (captureOriginalWifiHosts(subject, product) as? HolderWifiHostCapture.Observed)?.batch
+            ?: return HolderWifiFragmentCapture.Invalid(HolderFragmentGap.WitnessChanged)
+        if (!validateOriginalProcessorStorePeerFragmentUnion(subject, product, fragments) || !validateOriginalWifiHosts(subject, product, wifi) ||
+            !validateOriginalProcessorStorePeerFragmentUnion(subject, product, fragments)) {
+            return HolderWifiFragmentCapture.Invalid(HolderFragmentGap.WitnessChanged)
+        }
+        return HolderWifiFragmentCapture.Observed(WifiProcessorStorePeerFragmentBatch(ownerAnchor, subject, product, fragments, wifi))
+    }
+    fun validateOriginalWifiProcessorStorePeerFragmentUnion(subject: HolderPanicSubject, product: Any, batch: HolderWifiProcessorStorePeerFragmentBatch): Boolean {
+        val original = batch as? WifiProcessorStorePeerFragmentBatch ?: return false
+        if (original.anchor !== ownerAnchor || original.subject !== subject || original.product !== product) return false
+        if (!validateOriginalProcessorStorePeerFragmentUnion(subject, product, original.fragmentBatch)) return false
+        if (!validateOriginalWifiHosts(subject, product, original.wifiBatch)) return false
+        return validateOriginalProcessorStorePeerFragmentUnion(subject, product, original.fragmentBatch)
     }
 
     /** The old entry point observes only original Bluetooth processor children. */

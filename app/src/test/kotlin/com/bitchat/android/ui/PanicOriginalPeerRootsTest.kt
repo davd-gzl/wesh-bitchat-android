@@ -549,6 +549,7 @@ class PanicOriginalPeerRootsTest {
                         override fun gcsMaxBytes() = 64
                         override fun gcsTargetFpr() = 0.01
                     }, recordFallbackGossip = { _ -> error("Shared inert manager prevents fallback") },
+                    recordFragmentManager = { creator -> creator() },
                     recordPeerManager = { creator ->
                         val make = { creator().also { rememberPeer(it); record.installPeer(it) } }
                         if (registerPeers) holder.constructWifiPeer(context, make) else make()

@@ -492,6 +492,7 @@ class PanicOriginalStoreForwardRootsTest {
                         override fun gcsTargetFpr() = 0.01
                     },
                     recordFallbackGossip = { _ -> error("Shared inert manager must prevent fallback") },
+                    recordFragmentManager = { creator -> creator() },
                     recordPeerManager = { creator -> creator() },
                     recordStoreForwardManager = { creator ->
                         holder.constructWifiStoreForward(context) { creator().also { stores += it } }.also(record::installStore)

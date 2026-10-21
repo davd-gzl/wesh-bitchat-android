@@ -9,6 +9,114 @@ import com.bitchat.android.model.FragmentPayload
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
 
+/** Authentic original Fragment identity, never a report-restorable Job handle. */
+internal sealed interface OriginalFragmentRootIdentity
+internal sealed interface OriginalFragmentBinding { val identity: OriginalFragmentRootIdentity }
+private class FragmentRootIdentity : OriginalFragmentRootIdentity
+private class FragmentRootBinding(val manager: FragmentManager, val root: Job) : OriginalFragmentBinding {
+    override val identity: OriginalFragmentRootIdentity = FragmentRootIdentity()
+    private val requestLock = Any()
+    private var requested = false
+    fun requested(): Boolean = synchronized(requestLock) { requested }
+    fun request() {
+        synchronized(requestLock) { requested = true }
+        // Cancellation handlers run outside the request lock and Holder/controller monitors.
+        root.cancel()
+    }
+}
+internal enum class OriginalFragmentGap {
+    MissingCaller, UninspectableCaller, CallerRelated, ForeignBinding, RequestUnavailable, ChangedCaller
+}
+internal sealed interface OriginalFragmentCaller { val gap: OriginalFragmentGap? }
+private class ActiveFragmentCaller(val invoking: Job, val chain: List<Job>) : OriginalFragmentCaller {
+    override val gap: OriginalFragmentGap? = null
+}
+private class UnconfirmedFragmentCaller(override val gap: OriginalFragmentGap) : OriginalFragmentCaller
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+internal suspend fun captureOriginalFragmentCaller(): OriginalFragmentCaller {
+    val context = currentCoroutineContext()
+    context.ensureActive()
+    val invoking = context[Job] ?: return UnconfirmedFragmentCaller(OriginalFragmentGap.MissingCaller)
+    val chain = mutableListOf<Job>()
+    val seen = java.util.IdentityHashMap<Job, Unit>()
+    try {
+        var current: Job? = invoking
+        while (current != null) {
+            if (!current.isActive || seen.put(current, Unit) != null) {
+                return UnconfirmedFragmentCaller(OriginalFragmentGap.UninspectableCaller)
+            }
+            chain += current
+            current = current.parent
+        }
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { return UnconfirmedFragmentCaller(OriginalFragmentGap.UninspectableCaller) }
+    context.ensureActive()
+    return ActiveFragmentCaller(invoking, chain.toList())
+}
+
+internal fun originalFragmentRelationshipGap(
+    binding: OriginalFragmentBinding, caller: OriginalFragmentCaller
+): OriginalFragmentGap? {
+    val original = binding as? FragmentRootBinding ?: return OriginalFragmentGap.ForeignBinding
+    val active = caller as? ActiveFragmentCaller ?: return caller.gap ?: OriginalFragmentGap.UninspectableCaller
+    return if (active.chain.any { it === original.root }) OriginalFragmentGap.CallerRelated else null
+}
+
+internal fun originalFragmentShutdownRequested(binding: OriginalFragmentBinding): Boolean {
+    val original = binding as? FragmentRootBinding ?: return false
+    return original.manager.captureOriginalFragmentBinding() === binding && original.requested()
+}
+
+/** Terminal cancellation request only: no cache clear and no completion acknowledgment. */
+internal fun requestOriginalFragmentShutdown(binding: OriginalFragmentBinding): Boolean {
+    val original = binding as? FragmentRootBinding ?: return false
+    if (original.manager.captureOriginalFragmentBinding() !== binding) return false
+    original.request()
+    return original.requested()
+}
+
+internal sealed interface OriginalFragmentAwaitPreparation
+private class PreparedFragmentAwait(
+    val original: FragmentRootBinding, val caller: ActiveFragmentCaller
+) : OriginalFragmentAwaitPreparation
+internal sealed interface OriginalFragmentPreparation {
+    class Ready(val preparation: OriginalFragmentAwaitPreparation) : OriginalFragmentPreparation
+    class Unconfirmed(val gap: OriginalFragmentGap) : OriginalFragmentPreparation
+}
+internal suspend fun prepareOriginalFragmentAwait(
+    binding: OriginalFragmentBinding, caller: OriginalFragmentCaller
+): OriginalFragmentPreparation {
+    val context = currentCoroutineContext()
+    context.ensureActive()
+    val gap = originalFragmentRelationshipGap(binding, caller)
+    if (gap != null) return OriginalFragmentPreparation.Unconfirmed(gap)
+    val active = caller as? ActiveFragmentCaller
+        ?: return OriginalFragmentPreparation.Unconfirmed(OriginalFragmentGap.UninspectableCaller)
+    if (context[Job] !== active.invoking) return OriginalFragmentPreparation.Unconfirmed(OriginalFragmentGap.ChangedCaller)
+    val original = binding as? FragmentRootBinding
+        ?: return OriginalFragmentPreparation.Unconfirmed(OriginalFragmentGap.ForeignBinding)
+    if (!originalFragmentShutdownRequested(binding) || !original.root.isCancelled) {
+        return OriginalFragmentPreparation.Unconfirmed(OriginalFragmentGap.RequestUnavailable)
+    }
+    return OriginalFragmentPreparation.Ready(PreparedFragmentAwait(original, active))
+}
+internal suspend fun validateOriginalFragmentPreparation(preparation: OriginalFragmentAwaitPreparation): Boolean {
+    val context = currentCoroutineContext()
+    context.ensureActive()
+    val prepared = preparation as? PreparedFragmentAwait ?: return false
+    return context[Job] === prepared.caller.invoking &&
+        originalFragmentRelationshipGap(prepared.original, prepared.caller) == null &&
+        originalFragmentShutdownRequested(prepared.original) && prepared.original.root.isCancelled
+}
+/** Returns only after the same immutable original root, retaining the original invoking identity. */
+internal suspend fun awaitOriginalFragment(preparation: OriginalFragmentAwaitPreparation): Boolean {
+    if (!validateOriginalFragmentPreparation(preparation)) return false
+    val prepared = preparation as? PreparedFragmentAwait ?: return false
+    prepared.original.root.join()
+    return validateOriginalFragmentPreparation(preparation)
+}
+
 /**
  * Manages message fragmentation and reassembly - 100% iOS Compatible
  * 
@@ -79,7 +187,10 @@ class FragmentManager(
     var delegate: FragmentManagerDelegate? = null
     
     // Coroutines
-    private val managerScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val managerJob = SupervisorJob()
+    private val managerScope = CoroutineScope(Dispatchers.IO + managerJob)
+    private val originalFragmentBinding = FragmentRootBinding(this, managerJob)
+    internal fun captureOriginalFragmentBinding(): OriginalFragmentBinding = originalFragmentBinding
     
     init {
         startPeriodicCleanup()

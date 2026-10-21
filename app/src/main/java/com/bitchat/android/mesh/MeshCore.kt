@@ -42,6 +42,7 @@ class MeshCore(
     recordPacketProcessor: ((() -> PacketProcessor) -> PacketProcessor),
     recordStoreForwardManager: ((() -> StoreForwardManager) -> StoreForwardManager),
     recordPeerManager: ((() -> PeerManager) -> PeerManager),
+    recordFragmentManager: ((() -> FragmentManager) -> FragmentManager),
     private val hooks: Hooks = Hooks(),
     // Passed in rather than read from BuildConfig: this file also compiles into the watch module.
     // Defaults to the stricter Wesh policy.
@@ -61,7 +62,7 @@ class MeshCore(
     )
 
     private val peerManager = recordPeerManager { PeerManager() }
-    val fragmentManager = FragmentManager(myPeerID).apply { acceptMediaFragments = !weshLocalOnly }
+    val fragmentManager = recordFragmentManager { FragmentManager(myPeerID) }.apply { acceptMediaFragments = !weshLocalOnly }
     private val readReceiptRetrySender = RetryingControlPacketSender(scope)
     private val authenticatedPeerStateStore = SecureAuthenticatedPeerStateStore(context)
     private val authenticatedPeerState by lazy {

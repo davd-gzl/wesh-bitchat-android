@@ -212,7 +212,8 @@ internal data class PanicRetirementReport(
     val transportCoreRadioAndHandlers: PanicOwnerRetirement,
     val startupAndRemainingSharedKeyUsers: PanicOwnerRetirement,
     val originalWifiHosts: PanicOriginalWifiEvidence = PanicOriginalWifiEvidence(),
-    val originalPeers: PanicOriginalPeerEvidence = PanicOriginalPeerEvidence()
+    val originalPeers: PanicOriginalPeerEvidence = PanicOriginalPeerEvidence(),
+    val originalFragments: PanicOriginalFragmentEvidence = PanicOriginalFragmentEvidence()
 ) {
     val confirmed: Boolean get() = facade === PanicOwnerRetirement.Confirmed &&
         wifiController === PanicOwnerRetirement.Confirmed &&
@@ -327,8 +328,180 @@ internal data class PanicOriginalPeerEvidence(
     val awaitReturnedRoots: List<com.bitchat.android.mesh.OriginalPeerRootIdentity> = emptyList()
 )
 
+internal data class PanicFragmentRequest(
+    val root: com.bitchat.android.mesh.OriginalFragmentRootIdentity,
+    val status: PanicProcessorRequestStatus
+)
+internal enum class PanicFragmentBatchStatus { NotCollected, Ineligible, NeedsExplicitRetry, RequestedNotAwaited, AwaitReturned }
+internal data class PanicOriginalFragmentEvidence(
+    val status: PanicFragmentBatchStatus = PanicFragmentBatchStatus.NotCollected,
+    val rows: List<com.bitchat.android.service.HolderFragmentRow> = emptyList(),
+    val requests: List<PanicFragmentRequest> = emptyList(),
+    val holderGaps: List<com.bitchat.android.service.HolderFragmentGap> = emptyList(),
+    val callerGaps: List<com.bitchat.android.mesh.OriginalFragmentGap> = emptyList(),
+    val awaitReturnedRoots: List<com.bitchat.android.mesh.OriginalFragmentRootIdentity> = emptyList()
+)
+
+private sealed interface FragmentRequirement {
+    data object None : FragmentRequirement
+    class Required(val frame: FragmentCollectionFrame) : FragmentRequirement
+}
+
+/** Same original references are retained for this one call; scalar rows cannot reinstall them. */
+private class FragmentCollectionFrame(
+    private val installed: PanicOriginalGossipInput.Installed,
+    private val facade: UnifiedMeshService,
+    private val caller: com.bitchat.android.mesh.OriginalFragmentCaller
+) {
+    val failures = mutableListOf<Throwable>()
+    private val initial = com.bitchat.android.service.captureHolderOriginalProcessorStorePeerFragmentUnion(installed.binding, facade)
+    private val requested = mutableListOf<com.bitchat.android.mesh.OriginalFragmentBinding>()
+    private val requests = mutableListOf<PanicFragmentRequest>()
+    private val holderGaps = mutableListOf<com.bitchat.android.service.HolderFragmentGap>()
+    private val callerGaps = mutableListOf<com.bitchat.android.mesh.OriginalFragmentGap>()
+    private var current: com.bitchat.android.service.HolderWifiProcessorStorePeerFragmentBatch? = null
+    private val preparations = mutableListOf<com.bitchat.android.mesh.OriginalFragmentAwaitPreparation>()
+    private var preparedIssued = false
+    private var preparedReady = false
+    private var protocolDebt = false
+    private var status = PanicFragmentBatchStatus.Ineligible
+    private var processors: List<com.bitchat.android.mesh.OriginalProcessorAwaitPreparation>? = null
+    private var stores: List<com.bitchat.android.mesh.OriginalStoreForwardAwaitPreparation>? = null
+    private var peers: List<com.bitchat.android.mesh.OriginalPeerAwaitPreparation>? = null
+    private var hosts: List<Pair<OriginalWifiHostBinding, WifiHostAwaitPreparation>>? = null
+
+    fun requestKnown() {
+        val batch = (initial as? com.bitchat.android.service.HolderFragmentCapture.Observed)?.batch
+        if (batch == null) {
+            holderGaps += (initial as com.bitchat.android.service.HolderFragmentCapture.Invalid).gap
+            return
+        }
+        batch.fragmentRoots.forEach { binding ->
+            val gap = com.bitchat.android.mesh.originalFragmentRelationshipGap(binding, caller)
+            if (gap != null) {
+                callerGaps += gap
+                requests += PanicFragmentRequest(binding.identity, PanicProcessorRequestStatus.UnsafeCaller)
+            } else try {
+                if (com.bitchat.android.mesh.requestOriginalFragmentShutdown(binding)) {
+                    requested += binding
+                    requests += PanicFragmentRequest(binding.identity, PanicProcessorRequestStatus.RequestReturned)
+                } else callerGaps += com.bitchat.android.mesh.OriginalFragmentGap.RequestUnavailable
+            } catch (failure: Throwable) { failures += failure }
+        }
+    }
+
+    fun gate(): Boolean {
+        if (current != null || protocolDebt) { protocolDebt = true; return false }
+        val captured = com.bitchat.android.service.captureHolderOriginalWifiProcessorStorePeerFragmentUnion(installed.binding, facade)
+        val full = (captured as? com.bitchat.android.service.HolderWifiFragmentCapture.Observed)?.batch
+        current = full
+        if (full == null) {
+            holderGaps += (captured as com.bitchat.android.service.HolderWifiFragmentCapture.Invalid).gap
+            return false
+        }
+        holderGaps += full.fragmentBatch.fragmentGaps
+        val roots = full.fragmentBatch.fragmentRoots
+        if (roots.isEmpty() || roots.size != requested.size || roots.any { root -> requested.count { it === root } != 1 }) {
+            status = PanicFragmentBatchStatus.NeedsExplicitRetry
+            return false
+        }
+        return admissionStillValid()
+    }
+
+    fun admissionStillValid(): Boolean {
+        val full = current ?: return false
+        return !protocolDebt && holderGaps.isEmpty() && callerGaps.isEmpty() &&
+            com.bitchat.android.service.validateHolderOriginalWifiProcessorStorePeerFragmentUnion(installed.binding, facade, full)
+    }
+
+    suspend fun prepare(): Boolean {
+        if (preparedIssued) { protocolDebt = true; return false }
+        preparedIssued = true
+        if (!admissionStillValid()) return false
+        val roots = current?.fragmentBatch?.fragmentRoots ?: return false
+        for (root in roots) {
+            when (val result = com.bitchat.android.mesh.prepareOriginalFragmentAwait(root, caller)) {
+                is com.bitchat.android.mesh.OriginalFragmentPreparation.Ready -> preparations += result.preparation
+                is com.bitchat.android.mesh.OriginalFragmentPreparation.Unconfirmed -> callerGaps += result.gap
+            }
+        }
+        preparedReady = callerGaps.isEmpty() && preparations.size == roots.size && roots.isNotEmpty()
+        return preparedStillValid()
+    }
+
+    fun installProcessorStorePreparations(
+        originalProcessors: List<com.bitchat.android.mesh.OriginalProcessorAwaitPreparation>,
+        originalStores: List<com.bitchat.android.mesh.OriginalStoreForwardAwaitPreparation>
+    ): Boolean {
+        val batch = current?.fragmentBatch?.peerBatch?.processorStoreBatch
+        if (processors != null || stores != null || batch == null || !preparedReady ||
+            originalProcessors.size != batch.processorBatch.roots.size || originalStores.size != batch.storeForwardRoots.size) {
+            protocolDebt = true
+            return false
+        }
+        processors = originalProcessors.toList()
+        stores = originalStores.toList()
+        return true
+    }
+
+    fun installPeerPreparations(originalPeers: List<com.bitchat.android.mesh.OriginalPeerAwaitPreparation>): Boolean {
+        val roots = current?.fragmentBatch?.peerBatch?.peerRoots
+        if (peers != null || roots == null || !preparedReady || originalPeers.size != roots.size) {
+            protocolDebt = true
+            return false
+        }
+        peers = originalPeers.toList()
+        return true
+    }
+
+    fun installWifiHostPreparations(originalHosts: List<Pair<OriginalWifiHostBinding, WifiHostAwaitPreparation>>): Boolean {
+        val roots = current?.wifiBatch?.hosts
+        if (hosts != null || roots == null || processors == null || stores == null || peers == null ||
+            originalHosts.size != roots.size || originalHosts.indices.any { originalHosts[it].first !== roots[it] }) {
+            protocolDebt = true
+            return false
+        }
+        // Only the actual stop-return/preparation phase may install even a genuinely empty list.
+        hosts = originalHosts.toList()
+        return true
+    }
+
+    /** Calls only original ports and Holder validators, never another collection frame. */
+    suspend fun preparedStillValid(): Boolean {
+        if (!preparedReady || !admissionStillValid()) return false
+        for (preparation in preparations) if (!com.bitchat.android.mesh.validateOriginalFragmentPreparation(preparation)) return false
+        processors?.let { values -> for (value in values) if (!com.bitchat.android.mesh.validateOriginalProcessorPreparation(value)) return false }
+        stores?.let { values -> for (value in values) if (!com.bitchat.android.mesh.validateOriginalStoreForwardPreparation(value)) return false }
+        peers?.let { values -> for (value in values) if (!com.bitchat.android.mesh.validateOriginalPeerPreparation(value)) return false }
+        hosts?.let { values -> for ((binding, value) in values) if (wifiHostOwner(binding)?.validatePrepared(value) != true) return false }
+        return admissionStillValid()
+    }
+
+    suspend fun beforeProcessorWaitValid(): Boolean =
+        processors != null && stores != null && peers != null && preparedStillValid()
+
+    suspend fun beforeFragmentWaitValid(): Boolean = hosts != null && beforeProcessorWaitValid()
+
+    suspend fun baselineReport(report: PanicRetirementReport): PanicRetirementReport {
+        currentCoroutineContext().ensureActive()
+        val inherited = (report.transportCoreRadioAndHandlers as? PanicOwnerRetirement.Unconfirmed)?.evidence
+            as? PanicUnconfirmedEvidence.OriginalProcessorStoreForwardUnion
+        if (report.facade === PanicOwnerRetirement.Confirmed &&
+            inherited != null && inherited.processorObservation.status == PanicProcessorBatchStatus.AwaitReturned &&
+            inherited.storeForwardObservation.status == PanicStoreForwardBatchStatus.AwaitReturned &&
+            (report.originalWifiHosts.status == WifiHostBatchStatus.AwaitReturned || report.originalWifiHosts.status == WifiHostBatchStatus.EmptyValidated) &&
+            report.originalPeers.status == PanicPeerBatchStatus.AwaitReturned && beforeFragmentWaitValid()) {
+            // Omission baseline: actual request/preparation is not an actual root await return.
+            status = PanicFragmentBatchStatus.RequestedNotAwaited
+        }
+        return report.copy(originalFragments = PanicOriginalFragmentEvidence(status,
+            current?.fragmentBatch?.fragmentRows ?: (initial as? com.bitchat.android.service.HolderFragmentCapture.Observed)?.batch?.fragmentRows ?: emptyList(),
+            requests.toList(), holderGaps.toList(), callerGaps.toList(), emptyList()))
+    }
+}
+
 /** Same real Peer contract in the lower typed scope and the full shipping Wi-Fi scope. */
-private enum class PeerCollectionScope { ProcessorStore, WifiProcessorStore }
+private enum class PeerCollectionScope { ProcessorStore, WifiProcessorStore, WifiProcessorStoreFragment }
 
 private class PeerCollectionFrame(
     val installed: PanicOriginalGossipInput.Installed, val facade: UnifiedMeshService,
@@ -336,7 +509,8 @@ private class PeerCollectionFrame(
     val ppCaller: com.bitchat.android.mesh.OriginalProcessorCaller,
     val storeCaller: com.bitchat.android.mesh.OriginalStoreForwardCaller,
     private val gossipCaller: GossipCallerFrame,
-    private val requireWifi: Boolean
+    private val requireWifi: Boolean,
+    private val fragmentRequirement: FragmentRequirement
 ) {
     val failures = mutableListOf<Throwable>()
     private val initial = com.bitchat.android.service.captureHolderOriginalProcessorStorePeerUnion(installed.binding, facade)
@@ -418,10 +592,12 @@ private class PeerCollectionFrame(
                 return false
             }
         }
+        if (fragmentRequirement is FragmentRequirement.Required && !fragmentRequirement.frame.installPeerPreparations(preparations)) return false
         return stillValid()
     }
 
     suspend fun stillValid(): Boolean {
+        if (fragmentRequirement is FragmentRequirement.Required && !fragmentRequirement.frame.preparedStillValid()) return false
         val batch = current ?: return false
         if (holderGaps.isNotEmpty() || callerGaps.isNotEmpty() || preparations.size != batch.peerRoots.size ||
             !com.bitchat.android.service.validateHolderOriginalProcessorStorePeerUnion(installed.binding, facade, batch)) return false
@@ -482,29 +658,43 @@ internal suspend fun collectPanicRetirementWithOriginalWifiProcessorStorePeerUni
     originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput
 ): PanicRetirementReport = collectOriginalPeerScope(originalFacade, originalGossip, PeerCollectionScope.WifiProcessorStore)
 
+/** Required original Fragment scope used by the captured shipping panic call. */
+internal suspend fun collectPanicRetirementWithOriginalWifiProcessorStorePeerFragmentUnion(
+    originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput
+): PanicRetirementReport = collectOriginalPeerScope(originalFacade, originalGossip, PeerCollectionScope.WifiProcessorStoreFragment)
+
 private suspend fun collectOriginalPeerScope(
     originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput, scope: PeerCollectionScope
 ): PanicRetirementReport {
-    val requireWifi = scope == PeerCollectionScope.WifiProcessorStore
+    val requireWifi = scope != PeerCollectionScope.ProcessorStore
+    val requireFragment = scope == PeerCollectionScope.WifiProcessorStoreFragment
     val installed = originalGossip as? PanicOriginalGossipInput.Installed
     if (installed == null || originalFacade == null || installed.exactOriginalMesh !== originalFacade) {
         return unconfirmedPanicReport(PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.OriginalHolderInputUnconfirmed),
-            PanicUnconfirmedEvidence.NotCollected).copy(originalPeers = PanicOriginalPeerEvidence(PanicPeerBatchStatus.Ineligible))
+            PanicUnconfirmedEvidence.NotCollected).copy(originalPeers = PanicOriginalPeerEvidence(PanicPeerBatchStatus.Ineligible),
+                originalFragments = PanicOriginalFragmentEvidence(if (requireFragment) PanicFragmentBatchStatus.Ineligible else PanicFragmentBatchStatus.NotCollected))
     }
     // All active caller chains precede the earliest cancellation in either required scope.
+    val fragmentCaller = if (requireFragment) com.bitchat.android.mesh.captureOriginalFragmentCaller() else null
     val peerCaller = com.bitchat.android.mesh.captureOriginalPeerCaller()
     val ppCaller = com.bitchat.android.mesh.captureOriginalProcessorCaller()
     val storeCaller = com.bitchat.android.mesh.captureOriginalStoreForwardCaller()
     val wifiCaller = if (requireWifi) captureOriginalWifiCaller() else null
     val gossipCaller = captureGossipCallerFrame(currentCoroutineContext()[Job])
-    val peer = PeerCollectionFrame(installed, originalFacade, peerCaller, ppCaller, storeCaller, gossipCaller, requireWifi)
+    val fragmentRequirement = if (requireFragment) FragmentRequirement.Required(
+        FragmentCollectionFrame(installed, originalFacade, checkNotNull(fragmentCaller))) else FragmentRequirement.None
+    val peer = PeerCollectionFrame(installed, originalFacade, peerCaller, ppCaller, storeCaller, gossipCaller, requireWifi, fragmentRequirement)
     val wifi = if (requireWifi) WifiCollectionFrame(installed, originalFacade, checkNotNull(wifiCaller), ppCaller,
-        storeCaller, gossipCaller, peer) else null
+        storeCaller, gossipCaller, peer, fragmentRequirement) else null
     wifi?.requestEarly()
     val inherited = collectOriginalProcessors(originalFacade, originalGossip, PanicProcessorScope.BluetoothAndCore,
-        StoreForwardCollection.RequiredOriginalUnion, wifi, peer)
+        StoreForwardCollection.RequiredOriginalUnion, wifi, peer, fragmentRequirement)
     val finished = wifi?.finish(inherited) ?: inherited
-    return peer.baselineReport(finished)
+    val peerReport = peer.baselineReport(finished)
+    return when (fragmentRequirement) {
+        FragmentRequirement.None -> peerReport
+        is FragmentRequirement.Required -> fragmentRequirement.frame.baselineReport(peerReport)
+    }
 }
 
 /** Original caller frames are call-scoped and captured before any new request or cancellation. */
@@ -513,7 +703,8 @@ private class WifiCollectionFrame(
     val caller: WifiHostCaller, val ppCaller: com.bitchat.android.mesh.OriginalProcessorCaller,
     val storeCaller: com.bitchat.android.mesh.OriginalStoreForwardCaller,
     val gossipCaller: GossipCallerFrame,
-    private val peerFrame: PeerCollectionFrame? = null
+    private val peerFrame: PeerCollectionFrame? = null,
+    private val fragmentRequirement: FragmentRequirement = FragmentRequirement.None
 ) {
     val failures = mutableListOf<Throwable>()
     private val requested = mutableListOf<OriginalWifiHostBinding>()
@@ -564,9 +755,12 @@ private class WifiCollectionFrame(
         }
         return com.bitchat.android.service.validateHolderOriginalWifiHosts(installed.binding, facade, batch)
     }
-    fun stillValid(): Boolean = current?.let {
+    fun stillValid(): Boolean = (current?.let {
         com.bitchat.android.service.validateHolderOriginalWifiHosts(installed.binding, facade, it)
-    } ?: false
+    } ?: false) && when (val required = fragmentRequirement) {
+        FragmentRequirement.None -> true
+        is FragmentRequirement.Required -> required.frame.admissionStillValid()
+    }
     fun scoped(report: PanicRetirementReport): PanicRetirementReport {
         val captured = current
         val rows = requested.mapNotNull { binding -> wifiHostOwner(binding)?.observation(binding) }
@@ -591,7 +785,11 @@ private class WifiCollectionFrame(
         inheritedPhase = WifiInheritedPhase.Returned
         return completed
     }
-    private suspend fun requiredStillValid(): Boolean = stillValid() && peerFrame?.stillValid() != false
+    private suspend fun requiredStillValid(): Boolean = stillValid() && peerFrame?.stillValid() != false &&
+        when (val required = fragmentRequirement) {
+            FragmentRequirement.None -> true
+            is FragmentRequirement.Required -> required.frame.beforeProcessorWaitValid()
+        }
     suspend fun finish(report: PanicRetirementReport): PanicRetirementReport {
         if (!inheritedEntered || !requiredStillValid() || report.facade !== PanicOwnerRetirement.Confirmed) return scoped(report)
         val inherited = (report.transportCoreRadioAndHandlers as? PanicOwnerRetirement.Unconfirmed)?.evidence
@@ -627,6 +825,7 @@ private class WifiCollectionFrame(
             }
         }
         if (!requiredStillValid() || preparations.size != batch.hosts.size) return scoped(report)
+        if (fragmentRequirement is FragmentRequirement.Required && !fragmentRequirement.frame.installWifiHostPreparations(preparations)) return scoped(report)
         preparations.forEach { (binding, preparation) ->
             try {
                 if (wifiHostOwner(binding)?.cancelPreparedHost(preparation) == true) cancelled += binding.identity
@@ -719,7 +918,8 @@ private fun validateOriginalProcessors(
 
 private suspend fun collectOriginalProcessors(
     originalFacade: UnifiedMeshService?, originalGossip: PanicOriginalGossipInput, scope: PanicProcessorScope,
-    storeCollection: StoreForwardCollection, wifiFrame: WifiCollectionFrame? = null, peerFrame: PeerCollectionFrame? = null
+    storeCollection: StoreForwardCollection, wifiFrame: WifiCollectionFrame? = null, peerFrame: PeerCollectionFrame? = null,
+    fragmentRequirement: FragmentRequirement = FragmentRequirement.None
 ): PanicRetirementReport {
     val installed = originalGossip as? PanicOriginalGossipInput.Installed
     val requireStore = storeCollection == StoreForwardCollection.RequiredOriginalUnion
@@ -799,6 +999,10 @@ private suspend fun collectOriginalProcessors(
     }
     peerFrame?.requestKnown()
     if (peerFrame != null && failures !== peerFrame.failures) failures += peerFrame.failures
+    if (fragmentRequirement is FragmentRequirement.Required) {
+        fragmentRequirement.frame.requestKnown()
+        if (failures !== fragmentRequirement.frame.failures) failures += fragmentRequirement.frame.failures
+    }
     if (wifiFrame != null) wifiFrame.restrictGossip() else peerFrame?.restrictLowerGossip()
     try { currentCoroutineContext().ensureActive() }
     catch (cancelled: CancellationException) { failures += cancelled }
@@ -816,6 +1020,12 @@ private suspend fun collectOriginalProcessors(
             callerGaps = storeCallerGaps.toList())
         return withEvidence(wifiFrame.notCollected(), empty(PanicProcessorBatchStatus.Ineligible).copy(
             rows = original.rows, requests = requests.toList(), callerGaps = callerGaps.toList()))
+    }
+    if (fragmentRequirement is FragmentRequirement.Required && !fragmentRequirement.frame.gate()) {
+        storeEvidence = storeEvidence.copy(rows = originalUnion?.storeForwardRows ?: emptyList(), requests = storeRequests.toList(),
+            holderGaps = originalUnion?.storeForwardGaps ?: emptyList(), callerGaps = storeCallerGaps.toList())
+        return withEvidence(wifiFrame?.notCollected() ?: checkNotNull(peerFrame).notCollected(),
+            empty(PanicProcessorBatchStatus.Ineligible).copy(rows = original.rows, requests = requests.toList(), callerGaps = callerGaps.toList()))
     }
     val report = wifiFrame?.inheritedReport() ?: peerFrame?.inheritedLowerReport() ?: collectPanicRetirementWithEndedDirectFrontiers(originalFacade, originalGossip)
     currentCoroutineContext().ensureActive()
@@ -841,7 +1051,11 @@ private suspend fun collectOriginalProcessors(
     val storeGaps = (readyUnion?.storeForwardGaps ?: originalUnion?.storeForwardGaps ?: emptyList()).toMutableList()
     val storePreparations = mutableListOf<com.bitchat.android.mesh.OriginalStoreForwardAwaitPreparation>()
     var storeEligible = !requireStore
-    val peerEligible = peerFrame?.prepare() != false
+    val fragmentEligible = when (fragmentRequirement) {
+        FragmentRequirement.None -> true
+        is FragmentRequirement.Required -> fragmentRequirement.frame.prepare()
+    }
+    val peerEligible = fragmentEligible && peerFrame?.prepare() != false
     if (requireStore && readyUnion != null && gaps.isEmpty() && storeGaps.isEmpty() &&
         callerGaps.isEmpty() && storeCallerGaps.isEmpty()) {
         val roots = readyUnion.storeForwardRoots
@@ -862,6 +1076,7 @@ private suspend fun collectOriginalProcessors(
     }
     suspend fun wholeUnionStillValid(): Boolean {
         if (peerFrame?.stillValid() == false) return false
+        if (fragmentRequirement is FragmentRequirement.Required && !fragmentRequirement.frame.beforeProcessorWaitValid()) return false
         if (!requireStore) return true
         if (!storeEligible || readyUnion == null || !com.bitchat.android.service.validateHolderOriginalProcessorStoreForwardUnion(
                 installed.binding, installed.exactOriginalMesh, readyUnion)) return false
@@ -883,7 +1098,11 @@ private suspend fun collectOriginalProcessors(
             }
             var valid = callerGaps.isEmpty() && preparations.size == roots.size
             preparations.forEach { if (!com.bitchat.android.mesh.validateOriginalProcessorPreparation(it)) valid = false }
-            if (valid && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) && wholeUnionStillValid()) {
+            val fragmentListsInstalled = when (fragmentRequirement) {
+                FragmentRequirement.None -> true
+                is FragmentRequirement.Required -> valid && fragmentRequirement.frame.installProcessorStorePreparations(preparations, storePreparations)
+            }
+            if (valid && fragmentListsInstalled && validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) && wholeUnionStillValid()) {
                 var allReturned = true
                 for ((index, preparation) in preparations.withIndex()) {
                     if (wifiFrame?.stillValid() == false || !wholeUnionStillValid() || !validateOriginalProcessors(scope, installed.binding, installed.exactOriginalMesh, ready) ||

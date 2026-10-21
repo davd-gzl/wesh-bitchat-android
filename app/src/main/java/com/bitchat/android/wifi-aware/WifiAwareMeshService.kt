@@ -182,6 +182,9 @@ class WifiAwareMeshService internal constructor(
             recordPeerManager = { creator ->
                 com.bitchat.android.service.MeshServiceHolder.constructWifiPeer(holderConstruction, creator)
             },
+            recordFragmentManager = { creator ->
+                com.bitchat.android.service.MeshServiceHolder.constructWifiFragment(holderConstruction, creator)
+            },
             recordStoreForwardManager = { creator ->
                 com.bitchat.android.service.MeshServiceHolder.constructWifiStoreForward(holderConstruction, creator)
             },
