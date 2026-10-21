@@ -1,7 +1,6 @@
 package com.bitchat.android.services
 
 import com.bitchat.android.nostr.Bech32
-import org.bouncycastle.crypto.ec.CustomNamedCurves
 
 /**
  * Enrollment checks for the npub carried by a signed QR. The parser stays permissive for
@@ -30,9 +29,8 @@ object WeshNpubPolicy {
     }.getOrDefault(false)
 
     /** BIP-340 lift_x: x below the field prime and x^3 + 7 a square. */
-    private fun isXOnlyPoint(x: ByteArray): Boolean = runCatching {
-        CustomNamedCurves.getByName("secp256k1").curve.decodePoint(byteArrayOf(0x02) + x).isValid
-    }.getOrDefault(false)
+    private fun isXOnlyPoint(x: ByteArray): Boolean =
+        com.bitchat.android.nostr.NostrCrypto.isValidPublicKey(x.joinToString("") { "%02x".format(it) })
 
     /**
      * Rules in NPUB-PROOF.md. [proof]: null when the QR had no `npubsig` (official BitChat),

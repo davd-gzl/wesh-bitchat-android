@@ -26,6 +26,7 @@ accompanist-permissions = "0.37.3"
 # Cryptography
 bouncycastle = "1.85"
 tink-android = "1.23.0"
+secp256k1-kmp = "0.24.0"
 
 # JSON
 gson = "2.14.0"
@@ -91,6 +92,10 @@ accompanist-permissions = { module = "com.google.accompanist:accompanist-permiss
 # Cryptography
 bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 google-tink-android = { module = "com.google.crypto.tink:tink-android", version.ref = "tink-android" }
+# libsecp256k1 (the library iOS also uses) for Nostr keys, BIP-340 signatures and the NIP-44 shared point.
+secp256k1-kmp-jni-android = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-android", version.ref = "secp256k1-kmp" }
+# The same native library for unit tests on the host JVM (macOS and Linux).
+secp256k1-kmp-jni-jvm = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-jvm", version.ref = "secp256k1-kmp" }
 
 # JSON
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
@@ -156,7 +161,8 @@ lifecycle = [
 
 cryptography = [
     "bouncycastle-bcprov",
-    "google-tink-android"
+    "google-tink-android",
+    "secp256k1-kmp-jni-android"
 ]
 
 testing = [
