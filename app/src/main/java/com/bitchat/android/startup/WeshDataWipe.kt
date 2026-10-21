@@ -3,6 +3,7 @@ package com.bitchat.android.startup
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import com.bitchat.android.ui.EncryptedWeshDraftBackend
 import java.io.File
@@ -17,7 +18,7 @@ import java.security.KeyStore
 
 /**
  * The app's own full wipe: every file in both data directories, then every Keystore key,
- * notification and conversation shortcut.
+ * notification and conversation shortcut (a pinned one is renamed and disabled).
  * The durable erase marker in no_backup survives it, so the next launch wipes again whatever
  * the old process wrote late, and only then lifts the marker.
  */
@@ -74,12 +75,27 @@ internal object WeshDataWipe {
     /** Keys, notifications and conversation shortcuts are kept by the system, outside the data directories. */
     private fun clearOutsideAppFiles(context: Context) {
         context.getSystemService(android.app.NotificationManager::class.java)?.cancelAll()
+        neutralizePinnedShortcuts(context)
         val conversations = ShortcutManagerCompat.getShortcuts(
             context, ShortcutManagerCompat.FLAG_MATCH_DYNAMIC or ShortcutManagerCompat.FLAG_MATCH_CACHED
         ).map { it.id }
         ShortcutManagerCompat.removeAllDynamicShortcuts(context)
         if (conversations.isNotEmpty()) ShortcutManagerCompat.removeLongLivedShortcuts(context, conversations)
         deleteKeystoreEntries()
+    }
+
+    /** Android cannot unpin a home-screen shortcut, so a pinned conversation loses its name and is disabled. */
+    internal fun neutralizePinnedShortcuts(context: Context) {
+        val shortcuts = context.getSystemService(android.content.pm.ShortcutManager::class.java) ?: return
+        val static = shortcuts.manifestShortcuts.map { it.id }.toSet()
+        val pinned = shortcuts.pinnedShortcuts.map { it.id } - static
+        if (pinned.isEmpty()) return
+        val name = context.packageManager.getApplicationLabel(context.applicationInfo).toString()
+        val open = Intent(Intent.ACTION_MAIN).setClassName(context, "com.bitchat.android.MainActivity")
+        ShortcutManagerCompat.updateShortcuts(context, pinned.map {
+            ShortcutInfoCompat.Builder(context, it).setShortLabel(name).setLongLabel(name).setIntent(open).build()
+        })
+        ShortcutManagerCompat.disableShortcuts(context, pinned, name)
     }
 
     private fun deleteKeystoreEntries() {
@@ -114,6 +130,7 @@ internal object WeshDataWipe {
 
     private fun entries(root: Path): List<Path> {
         if (!Files.exists(root)) return emptyList()
-        return Files.walk(root).use { paths -> paths.filter { it != root }.toList() }
+        // Stream.toList is API 34; the iterator works from API 26.
+        return Files.walk(root).use { paths -> paths.iterator().asSequence().filter { it != root }.toList() }
     }
 }
