@@ -20,7 +20,6 @@ import kotlinx.coroutines.Job
 import com.bitchat.android.mesh.BluetoothMeshDelegate
 import com.bitchat.android.mesh.BluetoothMeshService
 import com.bitchat.android.mesh.MeshService
-import com.bitchat.android.service.MeshServiceHolder
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.nostr.NostrIdentityBridge
@@ -31,7 +30,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import java.util.Date
-import kotlin.random.Random
 import com.bitchat.android.services.VerificationService
 import com.bitchat.android.identity.SecureIdentityStateManager
 import com.bitchat.android.noise.NoiseSession
@@ -55,10 +53,8 @@ class ChatViewModel(
     initialUnifiedMeshService: MeshService
 ) : AndroidViewModel(application), BluetoothMeshDelegate {
 
-    // Made var to support mesh service replacement after panic clear
-    var meshService: BluetoothMeshService = initialMeshService
-        private set
-    private var unifiedMeshService: MeshService = initialUnifiedMeshService
+    val meshService: BluetoothMeshService = initialMeshService
+    private val unifiedMeshService: MeshService = initialUnifiedMeshService
     private val mesh: MeshService
         get() = unifiedMeshService
     private val debugManager by lazy { try { com.bitchat.android.ui.debug.DebugSettingsManager.getInstance() } catch (e: Exception) { null } }
@@ -1258,16 +1254,12 @@ class ChatViewModel(
     // MARK: - Emergency Clear
 
     internal val weshPanicInProgress = MutableStateFlow(false)
-    private var weshPanicPreviousKey: ByteArray? = null
 
     fun panicClearAllData() {
         if (weshPanicInProgress.value) return
         weshPanicInProgress.value = true
-        val seenPanic = com.bitchat.android.services.SeenMessageStore.fenceReceiptAdmissionForPanic()
-        if (com.bitchat.android.BuildConfig.WESH_POLICY) {
-            weshPanicPreviousKey = mesh.getStaticNoisePublicKey()?.copyOf()
-            com.bitchat.android.startup.WeshRuntime.requirePanicRecovery()
-        }
+        com.bitchat.android.services.SeenMessageStore.fenceReceiptAdmissionForPanic()
+        if (com.bitchat.android.BuildConfig.WESH_POLICY) com.bitchat.android.startup.WeshRuntime.requirePanicRecovery()
         weshDraftStore.fenceForPanic()
         weshPreferences.fenceForPanic()
         com.bitchat.android.net.WeshInternetMode.get(getApplication()).fenceForPanic()
@@ -1276,196 +1268,26 @@ class ChatViewModel(
             { meshService.setBleTransportEnabled(false) },
             { com.bitchat.android.wifiaware.WifiAwareController.stop() }
         )
+        val app = getApplication<Application>()
+        val draftEpoch = weshDraftStore.epoch
         PanicResetCoordinator.launchPanic(viewModelScope) {
             try {
-                PanicResetCoordinator.eraseOrClearAppData(
-                    erase = { performPanicClearAllData(seenPanic) },
-                    clearAppData = { com.bitchat.android.startup.WeshRuntime.clearInterruptedPanic(getApplication()) }
+                PanicResetCoordinator.eraseAndRestart(
+                    establishIntent = {
+                        !com.bitchat.android.BuildConfig.WESH_POLICY || weshDraftStore.establishPanicIntent(draftEpoch)
+                    },
+                    wipe = {
+                        withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                            com.bitchat.android.startup.WeshDataWipe.wipe(app)
+                        }
+                    },
+                    restart = { com.bitchat.android.startup.WeshDataWipe.restart(app) },
+                    clearAppData = { com.bitchat.android.startup.WeshRuntime.clearInterruptedPanic(app) }
                 )
             } finally {
                 weshPanicInProgress.value = false
             }
         }
-    }
-
-    private suspend fun performPanicClearAllData(seenPanic: com.bitchat.android.services.SeenReceiptAdmission.Token): Boolean {
-        val draftEpoch = weshDraftStore.epoch
-        return PanicResetCoordinator.admitDestructivePanic(
-            establishIntent = {
-                !com.bitchat.android.BuildConfig.WESH_POLICY || weshDraftStore.establishPanicIntent(draftEpoch)
-            },
-            // Live transport work cannot be proven retired in-process, so the in-app wipe stays
-            // refused and eraseOrClearAppData hands every confirmed erase to Android.
-            retireOwner = { false },
-            eraseOwnedData = { retired -> clearPanicDataAfterAdmission(seenPanic, retired) }
-        )
-    }
-
-    private suspend fun clearPanicDataAfterAdmission(
-        seenPanic: com.bitchat.android.services.SeenReceiptAdmission.Token,
-        meshOwnerRetired: Boolean
-    ): Boolean {
-        // Stop all message admission before wiping storage. The AppStateStore gate also rejects
-        // any transport callback already in flight until the fresh identity is ready.
-        clearAllMeshServiceData()
-        val draftsCleared = !com.bitchat.android.BuildConfig.WESH_POLICY || weshDraftStore.panicClear(deferCompletion = true)
-        val conversationsCleared =
-            com.bitchat.android.services.AppStateStore
-                .panicClearPrivateConversations()
-
-        // Clear all UI managers
-        com.bitchat.android.services.AppStateStore.clear()
-        messageManager.clearAllMessages()
-        privateChatManager.clearAllPrivateChats()
-        val metadataCleared = clearPanicMetadata(dataManager, conversationListPreferences)
-        
-        // Clear seen message store and MessageRouter outbox
-        val seenCleared = clearSeenForPanic(seenPanic) {
-            com.bitchat.android.services.SeenMessageStore.getInstance(getApplication())
-        }
-        try {
-            com.bitchat.android.services.MessageRouter.tryGetInstance()?.clearAll()
-        } catch (_: Exception) { }
-        
-        // Clear all cryptographic data
-        verificationHandler.clearWeshVerifications()
-        weshContactStore.clear()
-        com.bitchat.android.services.WeshMessageRequests.clear()
-        com.bitchat.android.services.SessionHiddenPeers.clear()
-        val cryptographyErasure = clearAllCryptographicData()
-        
-        // Clear all notifications
-        notificationManager.clearAllNotifications(removeConversationShortcuts = true)
-
-        // Plaintext attachments need their own verified erasure before the panic marker is lifted.
-        val mediaCleared = withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
-            com.bitchat.android.features.file.FileUtils.clearAllMedia(getApplication())
-        }
-        
-        // Clear Nostr state, keys and connections, and reinitialize from scratch
-        try {
-            com.bitchat.android.nostr.GeohashAliasRegistry.clear()
-            try { NostrIdentityBridge.clearAllAssociations(getApplication()) } catch (_: Exception) {}
-            com.bitchat.android.nostr.NostrBackgroundRuntime.resetSubscriptions()
-            try { com.bitchat.android.nostr.NostrRelayManager.getInstance(getApplication()).clearAllOnPanic() } catch (_: Exception) {}
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to reset Nostr: ${e.message}")
-        }
-
-        // Reset nickname
-        val newNickname = "anon${Random.nextInt(1000, 9999)}"
-        state.setNickname(newNickname)
-        val nicknameSaved = savePanicNickname(dataManager, newNickname)
-
-        val legacyStoresCleared = withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
-            deleteLegacyFeaturePreferences(getApplication())
-        }
-        val internetCleared = com.bitchat.android.net.WeshInternetMode.get(getApplication()).panicReset()
-        val resumed = resumeAfterWeshPanicWipe(
-            draftsCleared = draftsCleared,
-            internetCleared = internetCleared,
-            conversationsCleared = conversationsCleared,
-            mediaCleared = mediaCleared,
-            legacyStoresCleared = legacyStoresCleared,
-            metadataCleared = metadataCleared && nicknameSaved,
-            seenCleared = seenCleared,
-            identityErasureConfirmed = cryptographyErasure.confirmed,
-            meshOwnerRetired = meshOwnerRetired,
-            clearPreferences = {
-                withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { weshPreferences.clearForPanic() }
-            },
-            // This also finishes the durable draft marker; never enter it on an uncertain wipe.
-            resume = { recreateMeshServiceAfterPanic(seenPanic) }
-        )
-        if (!resumed) return false
-        weshPreferences.loadMeetingNote()
-        return true
-    }
-
-    /**
-     * Recreate the mesh service with a fresh identity after panic clear.
-     * This ensures the new cryptographic keys are used for a new peer ID.
-     */
-    private suspend fun recreateMeshServiceAfterPanic(seenPanic: com.bitchat.android.services.SeenReceiptAdmission.Token): Boolean {
-        // Clear the holder so getOrCreate() returns a fresh instance
-        MeshServiceHolder.clear()
-
-        // Create fresh mesh service with new identity (keys were regenerated in clearAllCryptographicData)
-        val freshMeshService = MeshServiceHolder.getOrCreate(getApplication())
-        val freshUnifiedMeshService = MeshServiceHolder.getUnifiedOrCreate(getApplication())
-
-        // Replace our reference and set up the new service
-        meshService = freshMeshService
-        unifiedMeshService = freshUnifiedMeshService
-        mesh.delegate = this
-
-        // A failed identity reset must not remove the durable panic marker.
-        if (com.bitchat.android.BuildConfig.WESH_POLICY) {
-            val previous = weshPanicPreviousKey ?: return false
-            val fresh = mesh.getStaticNoisePublicKey()?.takeIf { it.size == 32 } ?: return false
-            if (previous.contentEquals(fresh)) return false
-        }
-        var preparedDrafts: WeshDraftStore.PanicPreparation? = null
-        return PanicResetCoordinator.resume(
-            prepareFreshDrafts = {
-                if (!com.bitchat.android.BuildConfig.WESH_POLICY) true else {
-                    com.bitchat.android.startup.WeshRuntime.get(getApplication()).awaitReady()
-                    val freshKey = mesh.getStaticNoisePublicKey()?.takeIf { it.size == 32 }
-                    preparedDrafts = freshKey?.let { weshDraftStore.prepareAfterVerifiedPanic(it.hexEncodedString()) }
-                    preparedDrafts != null
-                }
-            },
-            seenReady = { seenPanic.owner.canResumeAfterVerifiedPanic(seenPanic) },
-            startTransport = { mesh.startServices() },
-            announce = { mesh.sendBroadcastAnnounce() },
-            complete = {
-                val reopenAdmission = {
-                    weshPreferences.resumeAfterVerifiedPanic()
-                    com.bitchat.android.services.AppStateStore.resumePrivateConversationsAfterPanic()
-                    if (com.bitchat.android.BuildConfig.WESH_POLICY) com.bitchat.android.startup.WeshRuntime.normalPanicCompleted()
-                }
-                if (com.bitchat.android.BuildConfig.WESH_POLICY) {
-                    preparedDrafts?.let { PanicResetCoordinator.complete(weshDraftStore, it, seenPanic, reopenAdmission) } ?: false
-                } else synchronized(seenPanic.owner.monitor) {
-                    if (!seenPanic.owner.resumeAfterVerifiedPanic(seenPanic)) false else {
-                        reopenAdmission()
-                        true
-                    }
-                }
-            },
-            retainSeenFence = { seenPanic.owner.retainFenceAfterFailure(seenPanic) }
-        )
-    }
-    
-    /**
-     * Clear all mesh service related data
-     */
-    private fun clearAllMeshServiceData() {
-        try {
-            // Request mesh service to clear all its internal data
-            mesh.clearAllInternalData()
-            
-            Log.d(TAG, "✅ Cleared all mesh service data")
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error clearing mesh service data: ${e.message}")
-        }
-    }
-    
-    /**
-     * Clear all cryptographic data including persistent identity
-     */
-    private fun clearAllCryptographicData(): PanicCryptographyErasure {
-        var identityManager: SecureIdentityStateManager? = null
-        return clearPanicCryptography(
-            clearMesh = { mesh.clearAllEncryptionData() },
-            clearIdentity = {
-                SecureIdentityStateManager(getApplication()).also { identityManager = it }.clearIdentityDataForPanic()
-            },
-            clearFavoriteKeys = {
-                checkNotNull(identityManager).clearSecureValuesForPanic("favorite_relationships", "favorite_peerid_index")
-            },
-            clearFavorites = { FavoritesPersistenceService.shared.clearAllFavoritesForPanic() }
-        )
     }
 
     // MARK: - Navigation Management

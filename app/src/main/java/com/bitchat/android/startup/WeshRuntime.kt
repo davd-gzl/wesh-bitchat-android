@@ -55,7 +55,6 @@ internal object WeshRuntime {
     }
 
     fun requirePanicRecovery() { gate.requireRecovery() }
-    fun normalPanicCompleted() { gate.normalPanicCompleted() }
 
     fun clearInterruptedPanic(context: Context) {
         if (!draftWipeRequired.value) return

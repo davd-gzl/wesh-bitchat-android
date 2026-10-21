@@ -68,7 +68,7 @@ class PanicIntentOrderingTest {
 
         assertFalse(f.run())
 
-        assertEquals("unconfirmed durable intent cannot start the owner drain", 0, f.ownerCalls)
+        assertEquals("unconfirmed durable intent hands the erase to Android", 1, f.androidClears)
         assertEquals("no destructive stage before checked intent", 0, f.erases)
         assertEquals(0, f.cipher.destroys)
         f.assertRamClosed()
@@ -76,48 +76,17 @@ class PanicIntentOrderingTest {
         if (fault == Fault.Unreadable) assertFalse(f.coldAllows())
     }
 
-    @Test fun `known false retirement cannot enter the actual draft key wipe`() = runTest {
+    @Test fun `a wipe failure occurs only after intent is durable and Android clears all app data`() = runTest {
         val f = fixture(this)
         f.fence()
-        // Isolate the false-owner defect from the separate marker-ordering defect.
-        assertTrue(f.store.establishPanicIntent(f.store.epoch))
+        f.wipeFailure = IllegalStateException("Synthetic wipe failure")
 
-        assertFalse(f.run(retired = false))
+        assertFalse(f.run())
 
-        assertEquals(1, f.ownerCalls)
-        assertEquals("a known false facade result is not destruction authority", 0, f.erases)
-        assertEquals(0, f.cipher.destroys)
-        assertArrayEquals(f.opaque, f.data.readBytes())
-        assertFalse(f.coldAllows())
+        assertFalse("a cold process must find intent after a wipe failure", f.coldAllows())
+        assertEquals(1, f.erases)
+        assertEquals(1, f.androidClears)
         f.assertRamClosed()
-    }
-
-    @Test fun `retirement exception occurs only after intent is durable`() = runTest {
-        val f = fixture(this)
-        f.fence()
-        val failure = IllegalStateException("Synthetic retirement failure")
-        try {
-            PanicResetCoordinator.admitDestructivePanic(
-                establishIntent = { f.store.establishPanicIntent(f.store.epoch) },
-                retireOwner = { throw failure },
-                eraseOwnedData = { f.erases++; true }
-            )
-            fail("the actual retirement failure must propagate")
-        } catch (actual: IllegalStateException) { assertSame(failure, actual) }
-
-        assertFalse("a cold process must find intent after a retirement failure", f.coldAllows())
-        assertEquals(0, f.erases)
-        assertEquals(0, f.cipher.destroys)
-        f.assertRamClosed()
-    }
-
-    @Test fun `the actual destructive continuation false result is returned unchanged`() = runTest {
-        var calls = 0
-        assertFalse(PanicResetCoordinator.admitDestructivePanic(
-            establishIntent = { true }, retireOwner = { true },
-            eraseOwnedData = { retired -> assertTrue(retired); calls++; false }
-        ))
-        assertEquals(1, calls)
     }
 
     @Test fun `marker-only operation preserves opaque ciphertext without cipher access`() = runTest {
@@ -174,22 +143,17 @@ class PanicIntentOrderingTest {
         }
     }
 
-    @Test fun `explicit retry confirms intent before one owner drain and actual erasure`() = runTest {
+    @Test fun `confirmed intent precedes the wipe and the restart`() = runTest {
         val f = fixture(this)
         f.fence()
-        f.fault = Fault.Throw
-        assertFalse(f.run())
-        assertEquals("a failed first intent cannot consume retirement", 0, f.ownerCalls)
-        assertEquals(0, f.erases)
-        f.fault = null
 
         assertTrue(f.run())
 
-        assertEquals(1, f.ownerCalls)
         assertEquals(1, f.erases)
         assertEquals(1, f.cipher.destroys)
-        assertFalse(f.coldAllows())
-        assertEquals(listOf("intent", "intent", "owner", "erase", "intent"), f.order)
+        assertEquals(0, f.androidClears)
+        assertFalse("the marker survives the wipe for the relaunch", f.coldAllows())
+        assertEquals(listOf("intent", "erase", "intent", "restart"), f.order)
     }
 
     @Test fun `initial private fence rejects a retained callback before any IO await`() = runTest {
@@ -235,8 +199,9 @@ class PanicIntentOrderingTest {
         var fault: Fault? = null
         var afterMarker: () -> Unit = {}
         var markerCalls = 0
-        var ownerCalls = 0
         var erases = 0
+        var androidClears = 0
+        var wipeFailure: Exception? = null
         var preferencesBlocked = false
         val recovery = WeshRecoveryGate()
         val seen = SeenReceiptAdmission()
@@ -263,16 +228,21 @@ class PanicIntentOrderingTest {
             preferencesBlocked = true
         }
 
-        suspend fun run(retired: Boolean = true): Boolean = PanicResetCoordinator.admitDestructivePanic(
-            establishIntent = { store.establishPanicIntent(store.epoch) },
-            retireOwner = { order += "owner"; ownerCalls++; retired },
-            eraseOwnedData = { confirmed ->
-                order += "erase"
-                erases++
-                val erased = store.panicClear(deferCompletion = true)
-                confirmed && erased
-            }
-        )
+        suspend fun run(): Boolean {
+            var restarted = false
+            PanicResetCoordinator.eraseAndRestart(
+                establishIntent = { store.establishPanicIntent(store.epoch) },
+                wipe = {
+                    order += "erase"
+                    erases++
+                    wipeFailure?.let { throw it }
+                    check(store.panicClear(deferCompletion = true))
+                },
+                restart = { order += "restart"; restarted = true },
+                clearAppData = { androidClears++ }
+            )
+            return restarted
+        }
 
         fun coldAllows(): Boolean {
             val gate = WeshRecoveryGate()

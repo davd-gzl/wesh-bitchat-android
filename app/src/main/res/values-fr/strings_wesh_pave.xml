@@ -64,11 +64,6 @@
     <string name="wesh_pave_erase_confirm_question">Tout effacer de ce téléphone ?</string>
     <string name="wesh_pave_erase_confirm">Effacer maintenant</string>
     <string name="wesh_pave_erase_holding">Maintien en cours, %d %%</string>
-    <string name="wesh_pave_erased_title">Wesh est vide</string>
-    <string name="wesh_pave_erased_body">Tout a été effacé de ce téléphone.</string>
-    <string name="wesh_pave_erased_restart">Recommencer</string>
-    <string name="wesh_pave_erase_failed_title">L’effacement a échoué</string>
-    <string name="wesh_pave_erase_failed_body">Des données restent peut-être sur ce téléphone.</string>
     <string name="wesh_pave_cancel">Annuler</string>
     <string name="wesh_pave_close">Fermer</string>
     <string name="wesh_pave_back">Retour</string>
