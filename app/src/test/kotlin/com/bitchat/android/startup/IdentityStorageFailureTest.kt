@@ -41,7 +41,7 @@ class IdentityStorageFailureTest {
         assertFalse(prefs.contains("static_public_key"))
     }
 
-    @Test fun theRetiredSecondSigningKeyIsRemovedAndNeverRecreated() {
+    @Test fun theRetiredSecondSigningKeyIsRemovedAndStaysGone() {
         prefs.edit().putString("signing_private_key", encoded).putString("signing_public_key", encoded).commit()
         val manager = SecureIdentityStateManager(prefs, testOnly = true)
         assertTrue(manager.forgetRetiredSigningKey())
