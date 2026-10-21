@@ -362,7 +362,6 @@
     <string name="about_tor_disconnected">Déconnecté</string>
     <string name="chat_ui_matrix">Matrice</string>
     <string name="chat_ui_bubbles">Bulles</string>
-                                                                                            <string name="cd_direct_wifi_aware">Connexion directe Wi-Fi Aware</string>
     <string name="cd_direct_bluetooth">Connexion directe Bluetooth</string>
     <string name="cd_routed_mesh">Acheminement par le réseau maillé</string>
     <string name="notification_action_quit_bitchat">Quitter Wesh</string>

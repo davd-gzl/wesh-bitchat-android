@@ -22,8 +22,6 @@ object DebugPreferenceManager {
     private const val KEY_GCS_FPR = "gcs_filter_fpr_percent"
     // Transport master toggles
     private const val KEY_BLE_ENABLED = "ble_enabled"
-    private const val KEY_WIFI_AWARE_ENABLED = "wifi_aware_enabled"
-    private const val KEY_WIFI_AWARE_VERBOSE = "wifi_aware_verbose"
 
     private lateinit var prefs: SharedPreferences
 
@@ -113,17 +111,4 @@ object DebugPreferenceManager {
         if (ready()) prefs.edit().putBoolean(KEY_BLE_ENABLED, value).apply()
     }
 
-    fun getWifiAwareEnabled(default: Boolean = false): Boolean =
-        if (ready()) prefs.getBoolean(KEY_WIFI_AWARE_ENABLED, default) else default
-
-    fun setWifiAwareEnabled(value: Boolean) {
-        if (ready()) prefs.edit().putBoolean(KEY_WIFI_AWARE_ENABLED, value).apply()
-    }
-
-    fun getWifiAwareVerbose(default: Boolean = false): Boolean =
-        if (ready()) prefs.getBoolean(KEY_WIFI_AWARE_VERBOSE, default) else default
-
-    fun setWifiAwareVerbose(value: Boolean) {
-        if (ready()) prefs.edit().putBoolean(KEY_WIFI_AWARE_VERBOSE, value).apply()
-    }
 }
