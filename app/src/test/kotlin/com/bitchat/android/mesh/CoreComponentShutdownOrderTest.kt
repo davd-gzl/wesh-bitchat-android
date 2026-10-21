@@ -313,10 +313,6 @@ class CoreComponentShutdownOrderTest {
                     override fun gcsMaxBytes() = 64
                     override fun gcsTargetFpr() = 0.01
                 },
-                recordFallbackGossip = { _ -> throw AssertionError("Shared RAM gossip must prevent fallback construction") },
-                recordPeerManager = { creator -> creator() },
-                recordStoreForwardManager = { creator -> creator() },
-                recordPacketProcessor = { creator -> creator() },
                 hooks = MeshCore.Hooks(), weshLocalOnly = true
             )
             check(controllers.all { it.constructed().size == 1 }) { "All six real dependency constructions must be intercepted once" }

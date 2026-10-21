@@ -27,68 +27,64 @@ class ConversationNotificationReceiver : BroadcastReceiver() {
             ?: return
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            completeHolderReceiverWork(
-                body = receiverWork@{
-                    var acknowledged = false
-                    when (intent.action) {
-                        NotificationManager.ACTION_MARK_CONVERSATION_READ -> {
+            try {
+                var acknowledged = false
+                when (intent.action) {
+                    NotificationManager.ACTION_MARK_CONVERSATION_READ -> {
+                        acknowledged =
+                            AppStateStore.setPrivateConversationRead(conversationID, true)
+                    }
+
+                    NotificationManager.ACTION_REPLY_TO_CONVERSATION -> {
+                        val reply = RemoteInput.getResultsFromIntent(intent)
+                            ?.getCharSequence(NotificationManager.KEY_TEXT_REPLY)
+                            ?.toString()
+                            ?.trim()
+                            ?.takeIf(String::isNotEmpty)
+                            ?: return@launch
+                        // A notification can outlive the process/service that posted it. Promote
+                        // the mesh runtime before dispatch so Android keeps the transport alive
+                        // after this short-lived receiver finishes.
+                        MeshForegroundService.start(context.applicationContext)
+                        val mesh = MeshServiceHolder.getUnifiedOrCreate(
+                            context.applicationContext
+                        )
+                        val message = BitchatMessage(
+                            id = UUID.randomUUID().toString().uppercase(),
+                            sender = mesh.myPeerID,
+                            content = reply,
+                            timestamp = Date(),
+                            isPrivate = true,
+                            recipientNickname = intent.getStringExtra(
+                                NotificationManager.EXTRA_SENDER_NICKNAME
+                            ),
+                            senderPeerID = mesh.myPeerID,
+                            deliveryStatus = DeliveryStatus.Sending
+                        )
+                        val persisted = AppStateStore.addPrivateMessageDurably(
+                            peerID = conversationID,
+                            msg = message,
+                            forceRead = true
+                        )
+                        if (persisted) {
+                            MessageRouter.getInstance(context.applicationContext, mesh)
+                                .sendPrivate(
+                                    content = reply,
+                                    toPeerID = conversationID,
+                                    recipientNickname = message.recipientNickname.orEmpty(),
+                                    messageID = message.id
+                                )
                             acknowledged =
                                 AppStateStore.setPrivateConversationRead(conversationID, true)
                         }
-
-                        NotificationManager.ACTION_REPLY_TO_CONVERSATION -> {
-                            val reply = RemoteInput.getResultsFromIntent(intent)
-                                ?.getCharSequence(NotificationManager.KEY_TEXT_REPLY)
-                                ?.toString()
-                                ?.trim()
-                                ?.takeIf(String::isNotEmpty)
-                                ?: return@receiverWork
-                            // A notification can outlive the process/service that posted it. Promote
-                            // the mesh runtime before dispatch so Android keeps the transport alive
-                            // after this short-lived receiver finishes.
-                            MeshForegroundService.start(context.applicationContext)
-                            dispatchHolderAcquisition(
-                                acquire = { MeshServiceHolder.getUnifiedOrCreate(context.applicationContext) },
-                                available = { mesh ->
-                                    val message = BitchatMessage(
-                                        id = UUID.randomUUID().toString().uppercase(),
-                                        sender = mesh.myPeerID,
-                                        content = reply,
-                                        timestamp = Date(),
-                                        isPrivate = true,
-                                        recipientNickname = intent.getStringExtra(
-                                            NotificationManager.EXTRA_SENDER_NICKNAME
-                                        ),
-                                        senderPeerID = mesh.myPeerID,
-                                        deliveryStatus = DeliveryStatus.Sending
-                                    )
-                                    val persisted = AppStateStore.addPrivateMessageDurably(
-                                        peerID = conversationID,
-                                        msg = message,
-                                        forceRead = true
-                                    )
-                                    if (persisted) {
-                                        MessageRouter.getInstance(context.applicationContext, mesh)
-                                            .sendPrivate(
-                                                content = reply,
-                                                toPeerID = conversationID,
-                                                recipientNickname = message.recipientNickname.orEmpty(),
-                                                messageID = message.id
-                                            )
-                                        acknowledged =
-                                            AppStateStore.setPrivateConversationRead(conversationID, true)
-                                    }
-                                },
-                                refused = { }
-                            )
-                        }
                     }
-                    if (acknowledged) {
-                        NotificationManager.acknowledgeConversation(context, conversationID)
-                    }
-                },
-                finish = { pendingResult.finish() }
-            )
+                }
+                if (acknowledged) {
+                    NotificationManager.acknowledgeConversation(context, conversationID)
+                }
+            } finally {
+                pendingResult.finish()
+            }
         }
     }
 }

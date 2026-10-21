@@ -16,7 +16,6 @@ import com.bitchat.android.protocol.MessageType
 import com.bitchat.android.protocol.SpecialRecipients
 import com.bitchat.android.model.RequestSyncPacket
 import com.bitchat.android.sync.GossipSyncManager
-import com.bitchat.android.sync.launchOriginalGossipJob
 import com.bitchat.android.util.toHexString
 import com.bitchat.android.services.VerificationService
 import com.bitchat.android.service.TransportBridgeService
@@ -38,10 +37,9 @@ import kotlin.random.Random
  * - BluetoothConnectionManager: BLE connections and GATT operations
  * - PacketProcessor: Incoming packet routing
  */
-class BluetoothMeshService internal constructor(
+class BluetoothMeshService(
     private val context: Context,
-    private val encryptionService: EncryptionService = EncryptionService(context),
-    private val holderConstruction: com.bitchat.android.service.HolderConstructionContext
+    private val encryptionService: EncryptionService = EncryptionService(context)
 ) : TransportBridgeService.TransportLayer {
     private val debugManager by lazy { try { com.bitchat.android.ui.debug.DebugSettingsManager.getInstance() } catch (e: Exception) { null } }
     
@@ -55,7 +53,7 @@ class BluetoothMeshService internal constructor(
 
     // My peer identification - derived from persisted Noise identity fingerprint (first 16 hex chars)
     val myPeerID: String = encryptionService.getIdentityFingerprint().take(16)
-    private val peerManager = com.bitchat.android.service.MeshServiceHolder.constructBluetoothPeer(holderConstruction) { PeerManager() }
+    private val peerManager = PeerManager()
     private val fragmentManager = FragmentManager(myPeerID)
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val readReceiptRetrySender = RetryingControlPacketSender(serviceScope)
@@ -78,7 +76,7 @@ class BluetoothMeshService internal constructor(
         )
     }
     private val securityManager = SecurityManager(encryptionService, myPeerID)
-    private val storeForwardManager = com.bitchat.android.service.MeshServiceHolder.constructBluetoothStoreForward(holderConstruction) { StoreForwardManager() }
+    private val storeForwardManager = StoreForwardManager()
     private val messageHandler = MessageHandler(myPeerID, context.applicationContext)
 
     private fun admissionFingerprint(peerID: String): String? =
@@ -97,7 +95,7 @@ class BluetoothMeshService internal constructor(
         )
     } else null
     internal val connectionManager = BluetoothConnectionManager(context, myPeerID, fragmentManager) // Made internal for access
-    private val packetProcessor = com.bitchat.android.service.MeshServiceHolder.constructBluetoothProcessor(holderConstruction) { PacketProcessor(myPeerID) }
+    private val packetProcessor = PacketProcessor(myPeerID)
     private lateinit var gossipSyncManager: GossipSyncManager
     // Service-level notification manager for background (no-UI) DMs
     private val serviceNotificationManager = com.bitchat.android.ui.NotificationManager(
@@ -139,33 +137,25 @@ class BluetoothMeshService internal constructor(
         }
 
         // Initialize sync manager (needs serviceScope)
-        gossipSyncManager = com.bitchat.android.service.MeshServiceHolder.constructGossipManager(
-            com.bitchat.android.service.HolderGossipParent.Constructed(holderConstruction),
-            com.bitchat.android.service.HolderGossipSource.BLE_SERVICE
-        ) {
-            GossipSyncManager(
-                myPeerID = myPeerID,
-                scope = serviceScope,
-                workOwner = com.bitchat.android.sync.GossipWorkOwner(),
-                jobCreator = ::launchOriginalGossipJob,
-                configProvider = object : GossipSyncManager.ConfigProvider {
-                    override fun seenCapacity(): Int = try {
-                        com.bitchat.android.ui.debug.DebugPreferenceManager.getSeenPacketCapacity(500)
-                    } catch (_: Exception) { 500 }
+        gossipSyncManager = GossipSyncManager(
+            myPeerID = myPeerID,
+            scope = serviceScope,
+            configProvider = object : GossipSyncManager.ConfigProvider {
+                override fun seenCapacity(): Int = try {
+                    com.bitchat.android.ui.debug.DebugPreferenceManager.getSeenPacketCapacity(500)
+                } catch (_: Exception) { 500 }
 
-                    override fun gcsMaxBytes(): Int = try {
-                        com.bitchat.android.ui.debug.DebugPreferenceManager.getGcsMaxFilterBytes(400)
-                    } catch (_: Exception) { 400 }
+                override fun gcsMaxBytes(): Int = try {
+                    com.bitchat.android.ui.debug.DebugPreferenceManager.getGcsMaxFilterBytes(400)
+                } catch (_: Exception) { 400 }
 
-                    override fun gcsTargetFpr(): Double = try {
-                        com.bitchat.android.ui.debug.DebugPreferenceManager.getGcsFprPercent(1.0) / 100.0
-                    } catch (_: Exception) { 0.01 }
-                }
-            )
-        }
-        com.bitchat.android.service.MeshServiceHolder.setGossipManager(
-            com.bitchat.android.service.HolderManagerProvenance.Constructed(holderConstruction), gossipSyncManager
-        ) { packet ->
+                override fun gcsTargetFpr(): Double = try {
+                    com.bitchat.android.ui.debug.DebugPreferenceManager.getGcsFprPercent(1.0) / 100.0
+                } catch (_: Exception) { 0.01 }
+            }
+        )
+
+        com.bitchat.android.service.MeshServiceHolder.setGossipManager(gossipSyncManager) { packet ->
             com.bitchat.android.sync.signGossipPacket(packet, ::applyRouteIfAvailable, encryptionService::signData)
         }
         if (isBleTransportEnabled()) {

@@ -354,7 +354,7 @@ internal suspend fun resumeAfterWeshPanicWipe(
         false
     }
     if (!draftsCleared || !conversationsCleared || !mediaCleared || !internetCleared || !legacyStoresCleared ||
-        !metadataCleared || !seenCleared || !identityErasureConfirmed || !meshOwnerRetired || !preferencesCleared
+        !metadataCleared || !seenCleared || !identityErasureConfirmed || !preferencesCleared
     ) return false
     return resume()
 }
