@@ -47,6 +47,16 @@ class PanicResetCoordinatorTest {
     }
 
     @Test
+    fun `every transport is stopped even when an earlier stop throws`() {
+        val stopped = mutableListOf<String>()
+        PanicResetCoordinator.stopTransports(
+            { stopped += "ble"; error("radio busy") },
+            { stopped += "wifi" }
+        )
+        assertEquals(listOf("ble", "wifi"), stopped)
+    }
+
+    @Test
     fun `a cancelled in-app erase still clears all app data`() = runTest {
         var cleared = 0
         val erasing = async {

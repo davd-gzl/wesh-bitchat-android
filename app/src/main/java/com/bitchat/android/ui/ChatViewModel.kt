@@ -1272,6 +1272,10 @@ class ChatViewModel(
         weshPreferences.fenceForPanic()
         com.bitchat.android.net.WeshInternetMode.get(getApplication()).fenceForPanic()
         com.bitchat.android.services.AppStateStore.fencePrivateConversationAdmissionForPanic()
+        PanicResetCoordinator.stopTransports(
+            { meshService.setBleTransportEnabled(false) },
+            { com.bitchat.android.wifiaware.WifiAwareController.stop() }
+        )
         PanicResetCoordinator.launchPanic(viewModelScope) {
             try {
                 PanicResetCoordinator.eraseOrClearAppData(

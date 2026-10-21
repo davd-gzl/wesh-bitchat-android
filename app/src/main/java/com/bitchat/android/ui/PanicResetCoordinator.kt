@@ -12,6 +12,11 @@ import kotlinx.coroutines.withContext
 
 /** Restart remains provisional until the durable marker and every admission gate commit. */
 internal object PanicResetCoordinator {
+    /** Best effort and synchronous at the tap; the process kill and data clear follow anyway. */
+    fun stopTransports(vararg stops: () -> Unit) {
+        stops.forEach { stop -> try { stop() } catch (_: Exception) { } }
+    }
+
     fun launchPanic(scope: CoroutineScope, action: suspend () -> Unit): Job =
         scope.launch(start = CoroutineStart.UNDISPATCHED) { action() }
 
