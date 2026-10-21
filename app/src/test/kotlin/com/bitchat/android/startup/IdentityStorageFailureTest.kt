@@ -35,13 +35,19 @@ class IdentityStorageFailureTest {
     @Test fun absentKeysAreFirstUseButPartialKeysBlockWithoutOverwrite() {
         val manager = SecureIdentityStateManager(prefs, testOnly = true)
         assertNull(manager.loadStaticKey())
-        assertNull(manager.loadSigningKey())
         prefs.edit().putString("static_private_key", encoded).commit()
         assertThrows(IllegalStateException::class.java) { manager.loadStaticKey() }
         assertEquals(encoded, prefs.getString("static_private_key", null))
         assertFalse(prefs.contains("static_public_key"))
-        prefs.edit().putString("signing_public_key", encoded).commit()
-        assertThrows(IllegalStateException::class.java) { manager.loadSigningKey() }
+    }
+
+    @Test fun theRetiredSecondSigningKeyIsRemovedAndNeverRecreated() {
+        prefs.edit().putString("signing_private_key", encoded).putString("signing_public_key", encoded).commit()
+        val manager = SecureIdentityStateManager(prefs, testOnly = true)
+        assertTrue(manager.forgetRetiredSigningKey())
+        assertFalse(prefs.contains("signing_private_key"))
+        assertFalse(prefs.contains("signing_public_key"))
+        assertTrue(manager.forgetRetiredSigningKey())
     }
 
     @Test fun corruptKeysBlockAndAnUnchangedRestoredStoreKeepsIdentity() {
@@ -69,7 +75,6 @@ class IdentityStorageFailureTest {
         `when`(editor.commit()).thenReturn(false)
         val manager = SecureIdentityStateManager(broken, testOnly = true)
         assertThrows(IllegalStateException::class.java) { manager.saveStaticKey(ByteArray(32), ByteArray(32)) }
-        assertThrows(IllegalStateException::class.java) { manager.saveSigningKey(ByteArray(32), ByteArray(32)) }
         assertThrows(IllegalStateException::class.java) { service(broken).generateAndSaveEd25519KeyPair() }
     }
 

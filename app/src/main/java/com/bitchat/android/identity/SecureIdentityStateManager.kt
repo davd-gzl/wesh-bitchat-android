@@ -127,36 +127,20 @@ class SecureIdentityStateManager {
         }
     }
 
-    // MARK: - Signing Key Management
+    // MARK: - Retired signing key
 
     /**
-     * Load saved signing key pair
-     * Returns (privateKey, publicKey) or null if none exists
+     * Earlier builds made and stored a second Ed25519 pair here that nothing ever read; the identity
+     * signing key lives in EncryptionService. Removes it; true once neither entry is left.
      */
-    fun loadSigningKey(): Pair<ByteArray, ByteArray>? = readIdentityPair(KEY_SIGNING_PRIVATE_KEY, KEY_SIGNING_PUBLIC_KEY)
-
-    /**
-     * Save signing key pair to secure storage
-     */
-    fun saveSigningKey(privateKey: ByteArray, publicKey: ByteArray) {
-        try {
-            // Validate key sizes
-            if (privateKey.size != 32 || publicKey.size != 32) {
-                throw IllegalArgumentException("Invalid signing key sizes: private=${privateKey.size}, public=${publicKey.size}")
-            }
-            
-            val privateKeyString = android.util.Base64.encodeToString(privateKey, android.util.Base64.DEFAULT)
-            val publicKeyString = android.util.Base64.encodeToString(publicKey, android.util.Base64.DEFAULT)
-            
-            DurableIdentityPreferences.write(prefs, mapOf(
-                KEY_SIGNING_PRIVATE_KEY to privateKeyString, KEY_SIGNING_PUBLIC_KEY to publicKeyString
-            ))
-            
-            Log.d(TAG, "Saved Ed25519 signing key to secure storage")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to save signing key: ${e.message}")
-            throw e
-        }
+    fun forgetRetiredSigningKey(): Boolean = try {
+        val present = prefs.contains(KEY_SIGNING_PRIVATE_KEY) || prefs.contains(KEY_SIGNING_PUBLIC_KEY)
+        // Committed synchronously: the result says whether the key is really gone.
+        val committed = !present || prefs.edit().remove(KEY_SIGNING_PRIVATE_KEY).remove(KEY_SIGNING_PUBLIC_KEY).commit()
+        committed && !prefs.contains(KEY_SIGNING_PRIVATE_KEY) && !prefs.contains(KEY_SIGNING_PUBLIC_KEY)
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to remove the retired signing key: ${e.message}")
+        false
     }
     
     // MARK: - Fingerprint Generation

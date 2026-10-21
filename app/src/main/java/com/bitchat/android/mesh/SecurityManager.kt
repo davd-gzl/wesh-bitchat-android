@@ -189,18 +189,6 @@ class SecurityManager(private val encryptionService: EncryptionService, private 
     }
     
     /**
-     * Sign packet payload
-     */
-    fun signPacket(payload: ByteArray): ByteArray? {
-        return try {
-            encryptionService.sign(payload)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to sign packet: ${e.message}")
-            null
-        }
-    }
-    
-    /**
      * Encrypt payload for specific peer
      */
     fun encryptForPeer(data: ByteArray, recipientPeerID: String): ByteArray? {
