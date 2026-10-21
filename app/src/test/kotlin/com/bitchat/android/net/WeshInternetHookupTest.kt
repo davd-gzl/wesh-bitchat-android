@@ -122,6 +122,21 @@ class WeshInternetHookupTest {
         assertNull(WeshQrIdentity.mine(app))
     }
 
+    @Test fun `concurrent creators all end up with the one stored key`() {
+        val start = java.util.concurrent.CountDownLatch(1)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(8)
+        try {
+            val made = (1..8).map {
+                pool.submit<String?> { start.await(); com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(keys)?.npub }
+            }
+            start.countDown()
+            val npubs = made.map { it.get(10, java.util.concurrent.TimeUnit.SECONDS) }.toSet()
+            assertEquals(setOf(stored()!!.npub), npubs)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
     @Test fun `a stored key that cannot be read is never replaced by a new one`() = runBlocking {
         keys.storeSecureValue("nostr_private_key", "unparseable synthetic key")
         assertFalse(WeshQrIdentity.ensureKey(app))

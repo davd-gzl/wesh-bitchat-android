@@ -6,8 +6,6 @@ import com.bitchat.android.nostr.NostrIdentity
 import com.bitchat.android.nostr.NostrIdentityBridge
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -65,13 +63,9 @@ internal object WeshQrIdentity {
      * unconfirmed. Returns whether a key exists afterwards.
      */
     suspend fun ensureKey(context: Context): Boolean = withContext(io) {
-        // One creation at a time: two callers must not each make a key, the second overwriting the first.
-        keyCreation.withLock {
-            showsNpub() && runCatching { NostrIdentityBridge.getCurrentNostrIdentity(keyStore(context)) }.getOrNull() != null
-        }
+        // NostrIdentityBridge serializes every creator, Internet opt-in included.
+        showsNpub() && runCatching { NostrIdentityBridge.getCurrentNostrIdentity(keyStore(context)) }.getOrNull() != null
     }
-
-    private val keyCreation = Mutex()
 
     /** My signed QR, with my proven npub whenever the key exists and no erase is unconfirmed. */
     suspend fun myQR(context: Context, nickname: String): String? = withContext(io) {

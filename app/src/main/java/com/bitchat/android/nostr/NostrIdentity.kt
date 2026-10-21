@@ -105,6 +105,8 @@ object NostrIdentityBridge {
     fun getCurrentNostrIdentity(context: Context): NostrIdentity? =
         getCurrentNostrIdentity(SecureIdentityStateManager(context))
 
+    /** One creator at a time for the whole process: two callers must never each make and store a key. */
+    @Synchronized
     internal fun getCurrentNostrIdentity(stateManager: SecureIdentityStateManager): NostrIdentity? {
         // Try to load existing Nostr private key
         val existingKey = loadNostrPrivateKey(stateManager)
