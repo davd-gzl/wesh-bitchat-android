@@ -42,6 +42,7 @@ Contact: `support@samourai.coop`. Security issues: `security@samourai.coop`.
 - **Relaying:** your messages may pass through third-party phones (Wesh or BitChat). Each relaying phone sees the sender's and recipient's IDs, the time and the size of the message. It does not see the content of a private message, which is end-to-end encrypted.
 - **The local room is public.** Every Wesh and BitChat user in range can read, keep and relay it.
 - **Private messages:** only with contacts verified by QR code. They are end-to-end encrypted: only your contact can read them.
+- **Your QR code** also carries a key for the optional Internet mode, even while that mode is off. The key is created on the phone at the end of the welcome and is not used on the network unless you turn the mode on. Anyone who has your QR code knows it.
 
 ## 6. Permissions
 - **Bluetooth:** talk to nearby phones.
@@ -85,7 +86,7 @@ Any change is posted on this page with its date. Significant changes are flagged
 - It is used only for private messages to verified contacts whose QR code carries an Internet key.
 - Messages go through the **Tor** network, then through three public **Nostr** relays that Wesh does not run: `relay.damus.io`, `relay.primal.net` and `offchain.pub`. Wesh uses no other relay.
 - Relays see neither your IP address nor the content. They see the recipient's Internet key, the time and size of messages, and can link your sends to your key.
-- Your QR code always carries your Internet key, even while Internet mode is off. The key is created on the phone at the end of the welcome and is not used on the network until you turn the mode on. Anyone who has your QR code knows it.
+- Anyone who has your QR code knows your Internet key.
 - The Tor entry relay sees your IP address, but not which relays you reach or what you send.
 - Relays may keep the encrypted messages under their own rules. **These copies cannot be deleted**, not by you, not by Samouraï Coop, not by the emergency erase.
 - Samouraï Coop neither controls nor receives this data.

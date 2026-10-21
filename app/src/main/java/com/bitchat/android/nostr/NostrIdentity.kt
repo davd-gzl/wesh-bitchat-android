@@ -117,11 +117,14 @@ object NostrIdentityBridge {
             }
         }
         
+        // Never replace a key that exists but cannot be read: a new npub would strand every contact's binding.
+        if (runCatching { stateManager.hasSecureValue(NOSTR_PRIVATE_KEY) }.getOrDefault(true)) return null
+
         // Generate new identity
         val newIdentity = NostrIdentity.generate()
         saveNostrPrivateKey(stateManager, newIdentity.privateKeyHex)
         
-        Log.i(TAG, "Created new Nostr identity: ${newIdentity.getShortNpub()}")
+        Log.i(TAG, "Created new Nostr identity")
         return newIdentity
     }
     

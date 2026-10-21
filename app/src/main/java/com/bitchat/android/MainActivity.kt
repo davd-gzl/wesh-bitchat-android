@@ -221,7 +221,7 @@ class MainActivity : OrientationAwareActivity() {
         if (mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
             unifiedMeshService.delegate = chatViewModel
             dispatchPendingRoute()
-            // Phones onboarded before the key was made at onboarding get it now.
+            // A recreated activity skips initialization; making the key is idempotent.
             ensureWeshNostrKey()
         }
     }
@@ -748,9 +748,10 @@ class MainActivity : OrientationAwareActivity() {
                 // Small delay to ensure mesh service is fully initialized
                 delay(500)
                 Log.i("MainActivity", "App initialization complete")
+                // Before any screen can show my QR. Covers phones onboarded before keys were made here.
+                if (BuildConfig.WESH_POLICY) com.bitchat.android.services.WeshQrIdentity.ensureKey(applicationContext)
                 mainViewModel.updateOnboardingState(OnboardingState.COMPLETE)
                 dispatchPendingRoute()
-                ensureWeshNostrKey()
             } catch (e: Exception) {
                 Log.e("MainActivity", "Failed to initialize app", e)
                 handleOnboardingFailed(getString(R.string.wesh_pave_fluo_init_failed))

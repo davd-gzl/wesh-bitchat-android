@@ -223,8 +223,8 @@ class MessageRouter internal constructor(
 
     /**
      * Sends `[FAVORITED]:<my npub>` over the live Noise session with the enrolled key, so official
-     * BitChat peers learn where to reply over Internet. Only while Internet mode is active (my npub
-     * exists then), once per contact and npub. Never creates a key; a received notice is never trusted.
+     * BitChat peers learn where to reply over Internet. Only while Internet mode is active (my key
+     * exists from onboarding but is used only then), once per contact and npub. Never creates a key; a received notice is never trusted.
      */
     fun announceWeshInternetKey(peerID: String) {
         if (!enforceWeshPolicy) return

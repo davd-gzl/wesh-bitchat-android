@@ -122,6 +122,12 @@ class WeshInternetHookupTest {
         assertNull(WeshQrIdentity.mine(app))
     }
 
+    @Test fun `a stored key that cannot be read is never replaced by a new one`() = runBlocking {
+        keys.storeSecureValue("nostr_private_key", "unreadable synthetic key")
+        assertFalse(WeshQrIdentity.ensureKey(app))
+        assertEquals("unreadable synthetic key", keys.getSecureValue("nostr_private_key"))
+    }
+
     @Test fun `while an erase is unconfirmed no key is made and no npub is shown or owned`() = runBlocking {
         assertTrue(WeshQrIdentity.ensureKey(app))
         WeshQrIdentity.eraseUnconfirmed = { true }
