@@ -22,20 +22,15 @@ import kotlin.coroutines.CoroutineContext
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PanicResetCoordinatorTest {
-    private val unconfirmed = PanicOwnerRetirement.Unconfirmed(PanicRetirementGap.ProducerNotImplemented)
-    private val unconfirmedReport = PanicRetirementReport(
-        PanicOwnerRetirement.Confirmed, unconfirmed, unconfirmed, unconfirmed, unconfirmed, unconfirmed
-    )
-
     @Test
     fun `a refused in-app erase still clears all app data`() = runTest {
         var cleared = 0
         PanicResetCoordinator.eraseOrClearAppData(
             erase = {
-                PanicResetCoordinator.admitDestructivePanicOwners(
+                PanicResetCoordinator.admitDestructivePanic(
                     establishIntent = { true },
-                    retireOwners = { unconfirmedReport },
-                    eraseOwnedData = { error("unconfirmed owners never reach the in-app wipe") }
+                    retireOwner = { false },
+                    eraseOwnedData = { error("a refused retirement never reaches the in-app wipe") }
                 )
             },
             clearAppData = { cleared++ }
@@ -49,6 +44,16 @@ class PanicResetCoordinatorTest {
         PanicResetCoordinator.eraseOrClearAppData(erase = { throw RestartFailure() }, clearAppData = { cleared++ })
         PanicResetCoordinator.eraseOrClearAppData(erase = { false }, clearAppData = { cleared++ })
         assertEquals(2, cleared)
+    }
+
+    @Test
+    fun `every transport is stopped even when an earlier stop throws`() {
+        val stopped = mutableListOf<String>()
+        PanicResetCoordinator.stopTransports(
+            { stopped += "ble"; error("radio busy") },
+            { stopped += "wifi" }
+        )
+        assertEquals(listOf("ble", "wifi"), stopped)
     }
 
     @Test

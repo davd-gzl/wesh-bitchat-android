@@ -49,11 +49,10 @@ private data class ConversationLiveIdentityState(
  * Refactored ChatViewModel - Main coordinator for bitchat functionality
  * Delegates specific responsibilities to specialized managers while maintaining 100% iOS compatibility
  */
-class ChatViewModel internal constructor(
+class ChatViewModel(
     application: Application,
     initialMeshService: BluetoothMeshService,
-    initialUnifiedMeshService: MeshService,
-    private val originalHolderPanicBinding: com.bitchat.android.service.HolderPanicBinding
+    initialUnifiedMeshService: MeshService
 ) : AndroidViewModel(application), BluetoothMeshDelegate {
 
     // Made var to support mesh service replacement after panic clear
@@ -1263,10 +1262,6 @@ class ChatViewModel internal constructor(
 
     fun panicClearAllData() {
         if (weshPanicInProgress.value) return
-        val originalService = mesh
-        val originalFacade = originalService as? com.bitchat.android.mesh.UnifiedMeshService
-        val originalHolder = originalHolderPanicBinding
-        val originalGossip = PanicOriginalGossipInput.Installed(originalHolder, originalService)
         weshPanicInProgress.value = true
         val seenPanic = com.bitchat.android.services.SeenMessageStore.fenceReceiptAdmissionForPanic()
         if (com.bitchat.android.BuildConfig.WESH_POLICY) {
@@ -1276,12 +1271,15 @@ class ChatViewModel internal constructor(
         weshDraftStore.fenceForPanic()
         weshPreferences.fenceForPanic()
         com.bitchat.android.net.WeshInternetMode.get(getApplication()).fenceForPanic()
-        PanicResetCoordinator.fenceCapturedPanicOwners(originalFacade, originalHolder, originalService)
         com.bitchat.android.services.AppStateStore.fencePrivateConversationAdmissionForPanic()
+        PanicResetCoordinator.stopTransports(
+            { meshService.setBleTransportEnabled(false) },
+            { com.bitchat.android.wifiaware.WifiAwareController.stop() }
+        )
         PanicResetCoordinator.launchPanic(viewModelScope) {
             try {
                 PanicResetCoordinator.eraseOrClearAppData(
-                    erase = { performPanicClearAllData(seenPanic, originalFacade, originalGossip) },
+                    erase = { performPanicClearAllData(seenPanic) },
                     clearAppData = { com.bitchat.android.startup.WeshRuntime.clearInterruptedPanic(getApplication()) }
                 )
             } finally {
@@ -1290,20 +1288,16 @@ class ChatViewModel internal constructor(
         }
     }
 
-    private suspend fun performPanicClearAllData(
-        seenPanic: com.bitchat.android.services.SeenReceiptAdmission.Token,
-        originalFacade: com.bitchat.android.mesh.UnifiedMeshService?,
-        originalGossip: PanicOriginalGossipInput
-    ): Boolean {
+    private suspend fun performPanicClearAllData(seenPanic: com.bitchat.android.services.SeenReceiptAdmission.Token): Boolean {
         val draftEpoch = weshDraftStore.epoch
-        return PanicResetCoordinator.admitDestructivePanicOwners(
+        return PanicResetCoordinator.admitDestructivePanic(
             establishIntent = {
                 !com.bitchat.android.BuildConfig.WESH_POLICY || weshDraftStore.establishPanicIntent(draftEpoch)
             },
-            retireOwners = { collectPanicRetirementWithOriginalWifiProcessorStorePeerUnion(originalFacade, originalGossip) },
-            eraseOwnedData = { report ->
-                clearPanicDataAfterAdmission(seenPanic, report.facade === PanicOwnerRetirement.Confirmed)
-            }
+            // Live transport work cannot be proven retired in-process, so the in-app wipe stays
+            // refused and eraseOrClearAppData hands every confirmed erase to Android.
+            retireOwner = { false },
+            eraseOwnedData = { retired -> clearPanicDataAfterAdmission(seenPanic, retired) }
         )
     }
 
@@ -1397,18 +1391,13 @@ class ChatViewModel internal constructor(
         MeshServiceHolder.clear()
 
         // Create fresh mesh service with new identity (keys were regenerated in clearAllCryptographicData)
-        val acquired = com.bitchat.android.service.makeHolderRuntimePairAction(
-            acquireBluetooth = { MeshServiceHolder.getOrCreate(getApplication()) },
-            acquireUnified = { MeshServiceHolder.getUnifiedOrCreate(getApplication()) },
-            available = { freshMeshService, freshUnifiedMeshService ->
-                // Replace our reference and set up the new service
-                meshService = freshMeshService
-                unifiedMeshService = freshUnifiedMeshService
-                mesh.delegate = this
-            },
-            refused = { }
-        )()
-        if (!acquired) return false
+        val freshMeshService = MeshServiceHolder.getOrCreate(getApplication())
+        val freshUnifiedMeshService = MeshServiceHolder.getUnifiedOrCreate(getApplication())
+
+        // Replace our reference and set up the new service
+        meshService = freshMeshService
+        unifiedMeshService = freshUnifiedMeshService
+        mesh.delegate = this
 
         // A failed identity reset must not remove the durable panic marker.
         if (com.bitchat.android.BuildConfig.WESH_POLICY) {

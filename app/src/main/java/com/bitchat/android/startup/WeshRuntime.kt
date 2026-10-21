@@ -27,7 +27,6 @@ internal object WeshRuntime {
     @Synchronized
     fun get(context: Context): StartupCoordinator<Unit> = coordinator ?: run {
         val app = context.applicationContext as BitchatApplication
-        val original = app.requireOriginalPreparation().origin
         StartupCoordinator(processScope) {
             val encryption = withContext(Dispatchers.IO) {
                 val pendingWipe = try {
@@ -40,7 +39,7 @@ internal object WeshRuntime {
                     gate.requireRecovery()
                     error("Draft wipe requires explicit recovery")
                 }
-                app.initializeRuntime(original)
+                app.initializeRuntime()
                 SecureIdentityStateManager(app) // Opens and caches the shared encrypted store.
                 WeshContactStore.get(app)
                 ConversationListPreferences.getInstance(app)
@@ -49,14 +48,8 @@ internal object WeshRuntime {
                 EncryptionService(app)
             }
             withContext(Dispatchers.Main.immediate) {
-                com.bitchat.android.service.dispatchHolderAcquisition(
-                    acquire = { MeshServiceHolder.getUnifiedOrCreate(app, encryption) },
-                    available = { Unit },
-                    refused = {
-                        gate.requireRecovery()
-                        error("Secure startup unavailable")
-                    }
-                )
+                MeshServiceHolder.getUnifiedOrCreate(app, encryption)
+                Unit
             }
         }.also { coordinator = it }
     }

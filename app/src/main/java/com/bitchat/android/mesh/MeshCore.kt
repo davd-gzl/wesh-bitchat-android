@@ -17,7 +17,6 @@ import com.bitchat.android.protocol.MessageType
 import com.bitchat.android.protocol.SpecialRecipients
 import com.bitchat.android.service.TransportBridgeService
 import com.bitchat.android.sync.GossipSyncManager
-import com.bitchat.android.sync.launchOriginalGossipJob
 import com.bitchat.android.util.toHexString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -38,10 +37,6 @@ class MeshCore(
     private val maxTtl: UByte,
     sharedGossipManager: GossipSyncManager?,
     gossipConfigProvider: GossipSyncManager.ConfigProvider,
-    recordFallbackGossip: ((() -> GossipSyncManager) -> GossipSyncManager),
-    recordPacketProcessor: ((() -> PacketProcessor) -> PacketProcessor),
-    recordStoreForwardManager: ((() -> StoreForwardManager) -> StoreForwardManager),
-    recordPeerManager: ((() -> PeerManager) -> PeerManager),
     private val hooks: Hooks = Hooks(),
     // Passed in rather than read from BuildConfig: this file also compiles into the watch module.
     // Defaults to the stricter Wesh policy.
@@ -60,7 +55,7 @@ class MeshCore(
         val leavePayloadProvider: (() -> ByteArray)? = null
     )
 
-    private val peerManager = recordPeerManager { PeerManager() }
+    private val peerManager = PeerManager()
     val fragmentManager = FragmentManager(myPeerID).apply { acceptMediaFragments = !weshLocalOnly }
     private val readReceiptRetrySender = RetryingControlPacketSender(scope)
     private val authenticatedPeerStateStore = SecureAuthenticatedPeerStateStore(context)
@@ -82,19 +77,16 @@ class MeshCore(
         )
     }
     private val securityManager = SecurityManager(encryptionService, myPeerID)
-    private val storeForwardManager = recordStoreForwardManager { StoreForwardManager() }
+    private val storeForwardManager = StoreForwardManager()
     // Same inbound policy as Bluetooth.
     private val messageHandler = MessageHandler(myPeerID, context.applicationContext).apply {
         applyInboundPolicy(weshLocalOnly)
     }
-    private val packetProcessor = recordPacketProcessor { PacketProcessor(myPeerID) }
+    private val packetProcessor = PacketProcessor(myPeerID)
     private val directPeers = ConcurrentHashMap.newKeySet<String>()
 
     val gossipSyncManager: GossipSyncManager =
-        sharedGossipManager ?: recordFallbackGossip {
-            GossipSyncManager(myPeerID = myPeerID, scope = scope, configProvider = gossipConfigProvider,
-                workOwner = com.bitchat.android.sync.GossipWorkOwner(), jobCreator = ::launchOriginalGossipJob)
-        }
+        sharedGossipManager ?: GossipSyncManager(myPeerID = myPeerID, scope = scope, configProvider = gossipConfigProvider)
     private val ownsGossipManager: Boolean = sharedGossipManager == null
 
     var delegate: MeshDelegate? = null
