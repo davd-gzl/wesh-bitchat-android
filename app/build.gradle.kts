@@ -189,6 +189,7 @@ dependencies {
     
     // Testing
     testImplementation(libs.bundles.testing)
+    testImplementation(libs.secp256k1.kmp.jni.jvm)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.bundles.compose.testing)
     debugImplementation(libs.androidx.compose.ui.tooling)
