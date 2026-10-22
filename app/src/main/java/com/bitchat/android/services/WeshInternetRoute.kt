@@ -100,14 +100,15 @@ internal class WeshInternetRoute(
         return Send(outcome, wrap)
     }
 
-    /** DELIVERED or READ_RECEIPT for a message that arrived over Internet. */
-    fun sendAck(type: NoisePayloadType, messageID: String, conversationID: String): Boolean =
-        publish(conversationID) { contact ->
+    /** DELIVERED or READ_RECEIPT for a message that arrived over Internet; [allowed] is read right before it leaves. */
+    fun sendAck(type: NoisePayloadType, messageID: String, conversationID: String, allowed: () -> Boolean = { true }): Boolean =
+        publish(conversationID, allowed) { contact ->
             NostrEmbeddedBitChat.encodeAckForNostr(type, messageID, contact.noiseHex, myPeerID())
         }
 
-    private fun publish(conversationID: String, embed: (WeshContactStore.Contact) -> String?): Boolean = runCatching {
+    private fun publish(conversationID: String, allowed: () -> Boolean, embed: (WeshContactStore.Contact) -> String?): Boolean = runCatching {
         val events = envelope(conversationID, embed) ?: return@runCatching false
+        if (!runCatching(allowed).getOrDefault(false)) return@runCatching false
         events.forEach(link::publish)
         true
     }.getOrDefault(false)

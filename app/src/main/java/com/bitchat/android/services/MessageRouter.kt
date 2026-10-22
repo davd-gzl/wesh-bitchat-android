@@ -586,6 +586,46 @@ class MessageRouter internal constructor(
         }
     }
 
+    /** Records a READ as sent unless an erase came first; the seen store in production. */
+    internal var markWeshReadReceiptSent: (messageID: String, expectedToken: SeenReceiptAdmission.Token?) -> Boolean =
+        { messageID, expectedToken -> SeenMessageStore.getInstance(context).markReadReceiptSent(messageID, expectedToken) }
+    internal var hasWeshReadReceiptBeenSent: (messageID: String) -> Boolean =
+        { messageID -> SeenMessageStore.getInstance(context).hasReadReceiptBeenSent(messageID) }
+    /** READs being published: an open and an arrival racing for one message send it once. */
+    private val weshReadInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * READ for a message that arrived over Internet: it goes back over Internet (spec §3 rule 5), only
+     * to an enrolled contact while Internet is on. [expectedToken] is captured when the message was
+     * read; after an erase nothing leaves. Recorded as sent once published, so it goes out once.
+     */
+    internal fun sendWeshInternetReadReceipt(messageID: String, conversationID: String, expectedToken: SeenReceiptAdmission.Token?) {
+        if (!enforceWeshPolicy || expectedToken == null) return
+        schedulerScope.launch { sendWeshInternetReadReceiptNow(messageID, conversationID, expectedToken) }
+    }
+
+    internal suspend fun sendWeshInternetReadReceiptNow(
+        messageID: String,
+        conversationID: String,
+        expectedToken: SeenReceiptAdmission.Token?
+    ): Boolean {
+        if (expectedToken == null || !expectedToken.owner.admits(expectedToken)) return false
+        if (runCatching { hasWeshReadReceiptBeenSent(messageID) }.getOrDefault(true)) return false
+        if (!weshReadInFlight.add(messageID)) return false
+        try {
+            val route = weshInternet()
+            if (!route.canSend(conversationID)) return false
+            // Checked again right before it leaves: an erase while the wrap was built sends nothing.
+            if (!route.sendAck(com.bitchat.android.model.NoisePayloadType.READ_RECEIPT, messageID, conversationID) {
+                    expectedToken.owner.admits(expectedToken)
+                }) return false
+            runCatching { markWeshReadReceiptSent(messageID, expectedToken) }
+            return true
+        } finally {
+            weshReadInFlight.remove(messageID)
+        }
+    }
+
     fun sendDeliveryAck(messageID: String, toPeerID: String) {
         // Mesh delivery ACKs are sent by the receiver automatically.
         // Only route via Nostr when mesh path isn't available or when this is a Nostr alias
