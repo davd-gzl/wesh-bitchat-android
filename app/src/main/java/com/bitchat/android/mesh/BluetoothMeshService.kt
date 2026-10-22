@@ -482,7 +482,10 @@ class BluetoothMeshService(
             }
 
             /** Returns true when admission accepted the message and it was dispatched. */
-            private fun deliverIncoming(message: BitchatMessage): Boolean {
+            private fun deliverIncoming(received: BitchatMessage): Boolean {
+                val message = if (received.isPrivate) {
+                    received.copy(transport = com.bitchat.android.model.MessageTransport.BLUETOOTH)
+                } else received
                 // Private-message admission is authoritative. In particular, do not forward a
                 // callback or notify after panic mode rejected the message while wiping state.
                 if (
@@ -514,7 +517,8 @@ class BluetoothMeshService(
                 try {
                     com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(
                         messageID,
-                        com.bitchat.android.model.DeliveryStatus.Delivered(peerID, Date())
+                        com.bitchat.android.model.DeliveryStatus.Delivered(peerID, Date()),
+                        com.bitchat.android.model.MessageTransport.BLUETOOTH
                     )
                 } catch (_: Exception) { }
                 delegate?.didReceiveDeliveryAck(messageID, peerID)
@@ -524,7 +528,8 @@ class BluetoothMeshService(
                 try {
                     com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(
                         messageID,
-                        com.bitchat.android.model.DeliveryStatus.Read(peerID, Date())
+                        com.bitchat.android.model.DeliveryStatus.Read(peerID, Date()),
+                        com.bitchat.android.model.MessageTransport.BLUETOOTH
                     )
                 } catch (_: Exception) { }
                 delegate?.didReceiveReadReceipt(messageID, peerID)

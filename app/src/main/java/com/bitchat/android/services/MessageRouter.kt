@@ -202,7 +202,8 @@ class MessageRouter internal constructor(
                 val sent = weshInternet().sendPrivate(entry.content, conversationID, entry.messageID)
                 if (epoch != weshEpoch.get()) return@launch
                 if (sent) {
-                    AppStateStore.updatePrivateMessageStatus(entry.messageID, com.bitchat.android.model.DeliveryStatus.Sent)
+                    AppStateStore.updatePrivateMessageStatus(entry.messageID, com.bitchat.android.model.DeliveryStatus.Sent,
+                        com.bitchat.android.model.MessageTransport.INTERNET)
                 } else {
                     requeueWesh(entry, conversationID, epoch)
                 }

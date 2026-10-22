@@ -75,7 +75,8 @@ internal class WeshInternetInbox(
                     timestamp = Date(rumorSeconds * 1000L),
                     isPrivate = true,
                     senderPeerID = conversationID,
-                    senderNostrPubkey = rawSender.lowercase()
+                    senderNostrPubkey = rawSender.lowercase(),
+                    transport = com.bitchat.android.model.MessageTransport.INTERNET
                 )
                 if (!runCatching { deliver(conversationID, message) }.getOrDefault(false)) return Outcome.DROPPED
                 // The ack goes back over the transport the message came on (spec §3 rule 5), once.
@@ -198,7 +199,8 @@ internal object WeshInternetReceiver {
             },
             updateStatus = { conversationID, messageID, status ->
                 // Only that contact can reach here, only its own conversation, never a downgrade.
-                AppStateStore.updatePrivateMessageStatusIn(conversationID, messageID, status)
+                AppStateStore.updatePrivateMessageStatusIn(conversationID, messageID, status,
+                    com.bitchat.android.model.MessageTransport.INTERNET)
             },
             alreadyAcked = seen::hasDelivered,
             markAcked = seen::markDelivered,

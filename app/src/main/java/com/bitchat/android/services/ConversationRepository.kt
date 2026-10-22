@@ -10,6 +10,7 @@ import android.util.Log
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.model.DeliveryStatus
+import com.bitchat.android.model.MessageTransport
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -193,10 +194,10 @@ class ConversationRepository internal constructor(
         false
     }
 
-    fun updateDeliveryStatus(messageID: String, status: DeliveryStatus) {
+    fun updateDeliveryStatus(messageID: String, status: DeliveryStatus, transport: MessageTransport? = null) {
         enqueueMutation {
             try {
-                database.updateDeliveryStatus(messageID, status)
+                database.updateDeliveryStatus(messageID, status, transport)
             } catch (error: Exception) {
                 Log.e(TAG, "Unable to persist delivery status: ${error.message}")
             }
@@ -393,7 +394,7 @@ internal class ConversationDatabase(
         const val MAX_MEDIA_BYTES = 256L * 1024L * 1024L
 
         internal const val DEFAULT_DATABASE_NAME = "private_conversations.db"
-        internal const val DATABASE_VERSION = 4
+        internal const val DATABASE_VERSION = 5
         private const val PRUNE_INTERVAL = 64
         private const val PRUNE_BATCH_SIZE = 256
     }
@@ -479,6 +480,7 @@ internal class ConversationDatabase(
                 sender_nostr_pubkey TEXT,
                 payload_ciphertext BLOB NOT NULL,
                 is_read INTEGER NOT NULL DEFAULT 0,
+                transport INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY(conversation_id) REFERENCES conversations(conversation_id)
                     ON DELETE CASCADE ON UPDATE CASCADE
             )
@@ -531,7 +533,7 @@ internal class ConversationDatabase(
             createAttachmentsTable(db)
             db.query(
                 "private_messages",
-                MESSAGE_COLUMNS,
+                VERSION_4_MESSAGE_COLUMNS,
                 null,
                 null,
                 null,
@@ -543,6 +545,11 @@ internal class ConversationDatabase(
                 }
             }
             version = 4
+        }
+        if (version == 4) {
+            // 0 = unknown (history from before the label), 1 = Bluetooth, 2 = Internet.
+            db.execSQL("ALTER TABLE private_messages ADD COLUMN transport INTEGER NOT NULL DEFAULT 0")
+            version = 5
         }
         check(version == newVersion) {
             "Missing conversation database migration from $version to $newVersion"
@@ -860,7 +867,8 @@ internal class ConversationDatabase(
         )
     }
 
-    fun updateDeliveryStatus(messageID: String, status: DeliveryStatus) {
+    /** [transport] is recorded only when [status] is applied: a refused downgrade changes nothing. */
+    fun updateDeliveryStatus(messageID: String, status: DeliveryStatus, transport: MessageTransport? = null) {
         val db = writableDatabase
         var found = false
         val existing = db.rawQuery(
@@ -902,6 +910,7 @@ internal class ConversationDatabase(
                         "payload_ciphertext",
                         encryptMessagePayload(current.copy(deliveryStatus = status))
                     )
+                    if (transport != null) put("transport", transport.asColumn())
                 },
                 "message_id = ?",
                 arrayOf(messageID)
@@ -1645,7 +1654,23 @@ internal class ConversationDatabase(
         putNull("sender_nostr_pubkey")
         put("payload_ciphertext", encryptMessagePayload(this@toContentValues))
         put("is_read", isRead.asInt())
+        put("transport", transport.asColumn())
     }
+
+    private fun MessageTransport?.asColumn(): Int = when (this) {
+        null -> 0
+        MessageTransport.BLUETOOTH -> 1
+        MessageTransport.INTERNET -> 2
+    }
+
+    private fun Cursor.transportOrNull(): MessageTransport? =
+        getColumnIndex("transport").takeIf { it >= 0 }?.let { index ->
+            when (getInt(index)) {
+                1 -> MessageTransport.BLUETOOTH
+                2 -> MessageTransport.INTERNET
+                else -> null
+            }
+        }
 
     private fun deliveryValues(
         status: DeliveryStatus?,
@@ -1710,7 +1735,8 @@ internal class ConversationDatabase(
             encryptedContent = payload.encryptedContent,
             isEncrypted = boolean("is_encrypted"),
             deliveryStatus = toDeliveryStatus(payload.deliveryText),
-            senderNostrPubkey = payload.senderNostrPubkey
+            senderNostrPubkey = payload.senderNostrPubkey,
+            transport = transportOrNull()
         )
     }
 
@@ -1907,10 +1933,14 @@ internal class ConversationDatabase(
         "delivery_total",
         "sender_nostr_pubkey",
         "payload_ciphertext",
-        "is_read"
+        "is_read",
+        "transport"
     )
 
-    private val LEGACY_MESSAGE_COLUMNS = MESSAGE_COLUMNS.filterNot {
+    /** Upgrade steps before version 5 run while the transport column does not exist yet. */
+    private val VERSION_4_MESSAGE_COLUMNS = MESSAGE_COLUMNS.filterNot { it == "transport" }.toTypedArray()
+
+    private val LEGACY_MESSAGE_COLUMNS = VERSION_4_MESSAGE_COLUMNS.filterNot {
         it == "payload_ciphertext" || it == "received_at"
     }.toTypedArray()
 }
