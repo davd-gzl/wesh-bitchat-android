@@ -17,7 +17,7 @@ internal class WeshPrivateCompose(
         val result = runCatching { router().sendPrivate(content, conversationID, nickname, messageID) }
             .getOrDefault(MessageRouter.RouteResult.DROPPED)
         if (result == MessageRouter.RouteResult.DROPPED) {
-            AppStateStore.updatePrivateMessageStatus(messageID, DeliveryStatus.Failed("Contact retiré ou bloqué"))
+            AppStateStore.updatePrivateMessageStatus(conversationID, messageID, DeliveryStatus.Failed("Contact retiré ou bloqué"))
         }
         return result
     }

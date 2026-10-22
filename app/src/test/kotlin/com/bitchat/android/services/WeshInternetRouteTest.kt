@@ -432,7 +432,7 @@ class WeshInternetRouteTest {
         val router = MessageRouter(context, mesh, mock())
         router.weshInternetLink = alice.link
         val expired = CopyOnWriteArrayList<String>()
-        router.onMessageExpired = { expired += it }
+        router.onMessageExpired = { _, id -> expired += id }
         var now = 1_000_000L
         router.clock = { now }
         try {
@@ -703,7 +703,7 @@ class WeshInternetRouteTest {
     }
 
     @Test fun `with the conversation unloaded, a persisted Distribué stops the Internet resend`() = withPersistedRouter { router ->
-        AppStateStore.updatePrivateMessageStatus("p-old", DeliveryStatus.Delivered("Bob", java.util.Date()))
+        AppStateStore.updatePrivateMessageStatus(bobConversation, "p-old", DeliveryStatus.Delivered("Bob", java.util.Date()))
         AppStateStore.releasePrivateConversationHistory(bobConversation)
         assertTrue(AppStateStore.privateMessages.value.values.flatten().none { it.id == "p-old" })
         assertEquals(MessageRouter.RouteResult.NOSTR, router.sendPrivate("salut", bobConversation, "Bob", "p-old"))
@@ -712,7 +712,7 @@ class WeshInternetRouteTest {
     }
 
     @Test fun `with the conversation unloaded, a persisted Envoyé is resent over Internet`() = withPersistedRouter { router ->
-        AppStateStore.updatePrivateMessageStatus("p-old", DeliveryStatus.Sent)
+        AppStateStore.updatePrivateMessageStatus(bobConversation, "p-old", DeliveryStatus.Sent)
         AppStateStore.releasePrivateConversationHistory(bobConversation)
         assertEquals(MessageRouter.RouteResult.NOSTR, router.sendPrivate("salut", bobConversation, "Bob", "p-old"))
         waitFor { alice.link.published.size == 1 }
@@ -725,7 +725,7 @@ class WeshInternetRouteTest {
         try {
             assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
             Thread.sleep(300)
-            AppStateStore.updatePrivateMessageStatus("bw-1", DeliveryStatus.Delivered("Bob", java.util.Date()))
+            AppStateStore.updatePrivateMessageStatus(bobConversation, "bw-1", DeliveryStatus.Delivered("Bob", java.util.Date()))
             now += AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS
             router.tickOutbox(now)
             Thread.sleep(300)

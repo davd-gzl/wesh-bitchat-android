@@ -222,7 +222,7 @@ class MessageRouter internal constructor(
                     entry.copy(notBeforeMs = clock() + AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS),
                     conversationID, epoch, cancelled)
                 // The session or key no longer matches: never elsewhere.
-                com.bitchat.android.mesh.BoundSendOutcome.AUTH_FAILED -> AppStateStore.updatePrivateMessageStatus(messageID,
+                com.bitchat.android.mesh.BoundSendOutcome.AUTH_FAILED -> AppStateStore.updatePrivateMessageStatus(conversationID, messageID,
                     com.bitchat.android.model.DeliveryStatus.Failed(WeshPrivateSender.FAILED_WRITE))
             }
         }
@@ -237,7 +237,7 @@ class MessageRouter internal constructor(
         if (epoch != weshEpoch.get()) return
         val next = entry
         when {
-            (weshCancelled[conversationID] ?: 0L) != cancelled -> AppStateStore.updatePrivateMessageStatus(entry.messageID,
+            (weshCancelled[conversationID] ?: 0L) != cancelled -> AppStateStore.updatePrivateMessageStatus(conversationID, entry.messageID,
                 com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
             // Rule 3: no route now, so it waits (« En attente ») until the 24 h TTL.
             !weshInternet().canSend(conversationID) -> requeueWesh(next, conversationID, epoch, cancelled)
@@ -260,7 +260,7 @@ class MessageRouter internal constructor(
     ) {
         val cancelled = since
         if ((weshCancelled[conversationID] ?: 0L) != since) {
-            AppStateStore.updatePrivateMessageStatus(entry.messageID,
+            AppStateStore.updatePrivateMessageStatus(conversationID, entry.messageID,
                 com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
             return
         }
@@ -331,7 +331,7 @@ class MessageRouter internal constructor(
         // Deleted, blocked or removed since this attempt started: nothing more leaves, and the
         // message ends « Échec » (a no-op once it is deleted).
         if ((weshCancelled[conversationID] ?: 0L) != cancelled) {
-            AppStateStore.updatePrivateMessageStatus(entry.messageID,
+            AppStateStore.updatePrivateMessageStatus(conversationID, entry.messageID,
                 com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
             return
         }
