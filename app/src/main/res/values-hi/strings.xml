@@ -72,19 +72,6 @@
     <string name="about_system">सिस्टम</string>
     <string name="about_light">लाइट</string>
     <string name="about_dark">डार्क</string>
-    <string name="about_pow">प्रूफ़ ऑफ़ वर्क</string>
-    <string name="about_pow_off">PoW बंद</string>
-    <string name="about_pow_on">PoW चालू</string>
-    <string name="about_pow_tip">स्पैम को कठिन बनाने के लिए geohash संदेशों में Proof of Work जोड़ें।</string>
-    <string name="about_pow_difficulty">कठिनाई: %1$d बिट (~%2$s)</string>
-    <string name="about_pow_difficulty_attempts">कठिनाई %1$d के लिए ~%2$s हैश प्रयास</string>
-    <string name="about_pow_desc_none">Proof of Work आवश्यक नहीं</string>
-    <string name="about_pow_desc_very_low">बहुत कम – न्यूनतम स्पैम सुरक्षा</string>
-    <string name="about_pow_desc_low">कम – बुनियादी स्पैम सुरक्षा</string>
-    <string name="about_pow_desc_medium">मध्यम – अच्छी स्पैम सुरक्षा</string>
-    <string name="about_pow_desc_high">उच्च – मजबूत स्पैम सुरक्षा</string>
-    <string name="about_pow_desc_very_high">बहुत उच्च – विलंब हो सकता है</string>
-    <string name="about_pow_desc_extreme">अत्यधिक – काफ़ी गणनात्मक संसाधन चाहिए</string>
     <string name="about_network">नेटवर्क</string>
     <string name="about_tor_off">Tor बंद</string>
     <string name="about_tor_on">Tor चालू</string>
@@ -174,9 +161,7 @@
     <!-- ऑनबोर्डिंग स्क्रीन -->
     <string name="location_services_required">स्थान सेवाएँ आवश्यक</string>
     <string name="privacy_first">गोपनीयता पहले</string>
-    <string name="location_explanation">Wesh आपकी लोकेशन ट्रैक नहीं करती।\n\nBluetooth स्कैनिंग और geohash चैट फीचर के लिए स्थान सेवाएँ आवश्यक हैं।</string>
     <string name="location_needs_for">Wesh को इन कारणों से स्थान सेवाएँ चाहिए:</string>
-    <string name="location_needs_bullets">• Bluetooth डिवाइस स्कैनिंग\n• मेष नेटवर्क में पास के उपयोगकर्ताओं की खोज\n• geohash चैट फीचर\n• कोई ट्रैकिंग या लोकेशन संग्रह नहीं</string>
     <string name="open_location_settings">स्थान सेटिंग्स खोलें</string>
     <string name="check_again">फिर से जाँचें</string>
     <string name="location_services_unavailable">स्थान सेवाएँ उपलब्ध नहीं</string>
@@ -209,7 +194,6 @@
     <string name="location_tracking_warning">Wesh आपकी लोकेशन ट्रैक नहीं करती</string>
     <string name="nobody_around">आस‑पास कोई नहीं…</string>
     <string name="you_suffix"> (आप)</string>
-    <string name="pan_zoom_instruction">geohash चुनने के लिए पैन/ज़ूम करें</string>
     <string name="select">चयन करें</string>
     <string name="type_a_message_placeholder">संदेश लिखें…</string>
     <string name="mention">उल्लेख</string>

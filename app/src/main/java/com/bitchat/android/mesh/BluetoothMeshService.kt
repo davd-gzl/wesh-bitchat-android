@@ -1059,10 +1059,10 @@ class BluetoothMeshService(
     fun sendReadReceipt(messageID: String, recipientPeerID: String, readerNickname: String) {
         val receiptToken = com.bitchat.android.services.SeenMessageStore.captureReceiptToken()
         serviceScope.launch {
-            // Route geohash read receipts via MessageRouter instead of here
+            // Route read receipts for Nostr aliases via MessageRouter instead of here
             val geo = runCatching { com.bitchat.android.services.MessageRouter.tryGetInstance() }.getOrNull()
             val isGeoAlias = try {
-                val map = com.bitchat.android.nostr.GeohashAliasRegistry.snapshot()
+                val map = com.bitchat.android.nostr.NostrAliasRegistry.snapshot()
                 map.containsKey(recipientPeerID)
             } catch (_: Exception) { false }
             if (isGeoAlias && geo != null) {

@@ -72,19 +72,6 @@
     <string name="about_system">系统</string>
     <string name="about_light">浅色</string>
     <string name="about_dark">深色</string>
-    <string name="about_pow">工作量证明</string>
-    <string name="about_pow_off">pow 关</string>
-    <string name="about_pow_on">pow 开</string>
-    <string name="about_pow_tip">为 geohash 消息添加工作量证明以抑制垃圾信息。</string>
-    <string name="about_pow_difficulty">难度：%1$d 位 (~%2$s)</string>
-    <string name="about_pow_difficulty_attempts">难度 %1$d 约需 ~%2$s 次哈希尝试</string>
-    <string name="about_pow_desc_none">无需工作量证明</string>
-    <string name="about_pow_desc_very_low">很低——最低防护</string>
-    <string name="about_pow_desc_low">较低——基础防护</string>
-    <string name="about_pow_desc_medium">中等——良好防护</string>
-    <string name="about_pow_desc_high">高——强防护</string>
-    <string name="about_pow_desc_very_high">很高——可能延迟</string>
-    <string name="about_pow_desc_extreme">极高——需要大量计算</string>
     <string name="about_network">网络</string>
     <string name="about_tor_off">tor 关</string>
     <string name="about_tor_on">tor 开</string>
@@ -171,9 +158,7 @@
     <!-- 入门屏幕 -->
     <string name="location_services_required">需要定位服务</string>
     <string name="privacy_first">隐私优先</string>
-    <string name="location_explanation">Wesh 不会跟踪你的位置。\n\n蓝牙扫描和 geohash 聊天功能需要定位服务。</string>
     <string name="location_needs_for">Wesh 需要定位服务用于：</string>
-    <string name="location_needs_bullets">• 蓝牙设备扫描\n• 在 mesh 网络发现附近用户\n• Geohash 聊天\n• 不跟踪或收集位置</string>
     <string name="open_location_settings">打开定位设置</string>
     <string name="check_again">再次检查</string>
     <string name="location_services_unavailable">定位服务不可用</string>
@@ -207,7 +192,6 @@
     <string name="location_tracking_warning">Wesh 不会跟踪你的位置</string>
     <string name="nobody_around">附近无人…</string>
     <string name="you_suffix"> (你)</string>
-    <string name="pan_zoom_instruction">拖动/缩放以选择 geohash</string>
     <string name="select">选择</string>
     <string name="type_a_message_placeholder">输入消息…</string>
     <string name="mention">提及</string>

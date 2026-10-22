@@ -72,19 +72,6 @@
     <string name="about_system">Hệ thống</string>
     <string name="about_light">Sáng</string>
     <string name="about_dark">Tối</string>
-    <string name="about_pow">Proof of Work</string>
-    <string name="about_pow_off">PoW tắt</string>
-    <string name="about_pow_on">PoW bật</string>
-    <string name="about_pow_tip">Thêm proof of work vào tin nhắn geohash để làm cho spam khó hơn.</string>
-    <string name="about_pow_difficulty">Độ khó: %1$d bit (~%2$s)</string>
-    <string name="about_pow_difficulty_attempts">Độ khó %1$d cần ~%2$s lần thử hash</string>
-    <string name="about_pow_desc_none">không cần proof of work</string>
-    <string name="about_pow_desc_very_low">rất thấp – bảo vệ spam tối thiểu</string>
-    <string name="about_pow_desc_low">thấp – bảo vệ spam cơ bản</string>
-    <string name="about_pow_desc_medium">trung bình – bảo vệ spam tốt</string>
-    <string name="about_pow_desc_high">cao – bảo vệ spam mạnh</string>
-    <string name="about_pow_desc_very_high">rất cao – có thể gây độ trễ</string>
-    <string name="about_pow_desc_extreme">cực cao – cần sức mạnh tính toán đáng kể</string>
     <string name="about_network">Mạng lưới</string>
     <string name="about_tor_off">Tor tắt</string>
     <string name="about_tor_on">Tor bật</string>
@@ -174,9 +161,7 @@
     <!-- Màn hình onboarding -->
     <string name="location_services_required">Yêu cầu dịch vụ vị trí</string>
     <string name="privacy_first">Quyền riêng tư trước tiên</string>
-    <string name="location_explanation">Wesh KHÔNG theo dõi vị trí của bạn.\n\nDịch vụ vị trí cần thiết cho quét Bluetooth và tính năng geohash chat.</string>
     <string name="location_needs_for">Wesh cần dịch vụ vị trí cho:</string>
-    <string name="location_needs_bullets">• Quét thiết bị Bluetooth\n• Khám phá người dùng gần đó trong mạng mesh\n• Tính năng geohash chat\n• Không theo dõi hoặc thu thập vị trí</string>
     <string name="open_location_settings">Mở cài đặt vị trí</string>
     <string name="check_again">Kiểm tra lại</string>
     <string name="location_services_unavailable">Dịch vụ vị trí không có sẵn</string>
@@ -209,7 +194,6 @@
     <string name="location_tracking_warning">Wesh KHÔNG theo dõi vị trí của bạn</string>
     <string name="nobody_around">không có ai xung quanh …</string>
     <string name="you_suffix"> (bạn)</string>
-    <string name="pan_zoom_instruction">di chuyển và zoom để chọn geohash</string>
     <string name="select">chọn</string>
     <string name="type_a_message_placeholder">Nhập tin nhắn …</string>
     <string name="mention">nhắc đến</string>

@@ -99,7 +99,7 @@ object NostrEmbeddedBitChat {
     }
     
     /**
-     * Build a `bitchat1:` ACK (delivered/read) without an embedded recipient peer ID (geohash DMs).
+     * Build a `bitchat1:` ACK (delivered/read) without an embedded recipient peer ID (Nostr alias DMs).
      */
     fun encodeAckForNostrNoRecipient(
         type: NoisePayloadType,
@@ -120,7 +120,7 @@ object NostrEmbeddedBitChat {
                 version = 1u,
                 type = MessageType.NOISE_ENCRYPTED.value,
                 senderID = hexStringToByteArray(senderPeerID),
-                recipientID = null, // No recipient for geohash DMs
+                recipientID = null, // No recipient for Nostr alias DMs
                 timestamp = System.currentTimeMillis().toULong(),
                 payload = payload,
                 signature = null,
@@ -136,7 +136,7 @@ object NostrEmbeddedBitChat {
     }
     
     /**
-     * Build a `bitchat1:` payload without an embedded recipient peer ID (used for geohash DMs).
+     * Build a `bitchat1:` payload without an embedded recipient peer ID (used for Nostr alias DMs).
      */
     fun encodePMForNostrNoRecipient(
         content: String,
@@ -155,7 +155,7 @@ object NostrEmbeddedBitChat {
                 version = 1u,
                 type = MessageType.NOISE_ENCRYPTED.value,
                 senderID = hexStringToByteArray(senderPeerID),
-                recipientID = null, // No recipient for geohash DMs
+                recipientID = null, // No recipient for Nostr alias DMs
                 timestamp = System.currentTimeMillis().toULong(),
                 payload = payload,
                 signature = null,

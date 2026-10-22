@@ -72,19 +72,6 @@
     <string name="about_system">Sistema</string>
     <string name="about_light">Claro</string>
     <string name="about_dark">Oscuro</string>
-    <string name="about_pow">Prueba de trabajo</string>
-    <string name="about_pow_off">PoW desactivado</string>
-    <string name="about_pow_on">PoW activado</string>
-    <string name="about_pow_tip">Agregar prueba de trabajo a mensajes geohash para hacer el spam más difícil.</string>
-    <string name="about_pow_difficulty">Dificultad: %1$d bits (~%2$s)</string>
-    <string name="about_pow_difficulty_attempts">Dificultad %1$d requiere ~%2$s intentos de hash</string>
-    <string name="about_pow_desc_none">no se requiere prueba de trabajo</string>
-    <string name="about_pow_desc_very_low">muy bajo – protección mínima contra spam</string>
-    <string name="about_pow_desc_low">bajo – protección básica contra spam</string>
-    <string name="about_pow_desc_medium">medio – buena protección contra spam</string>
-    <string name="about_pow_desc_high">alto – protección fuerte contra spam</string>
-    <string name="about_pow_desc_very_high">muy alto – puede causar retrasos</string>
-    <string name="about_pow_desc_extreme">extremo – requiere potencia computacional significativa</string>
     <string name="about_network">Red</string>
     <string name="about_tor_off">Tor desactivado</string>
     <string name="about_tor_on">Tor activado</string>
@@ -174,9 +161,7 @@
     <!-- Pantallas de incorporación -->
     <string name="location_services_required">Servicios de ubicación requeridos</string>
     <string name="privacy_first">Privacidad primero</string>
-    <string name="location_explanation">Wesh NO rastrea tu ubicación.\n\nLos servicios de ubicación son requeridos para el escaneo Bluetooth y la función de chat geohash.</string>
     <string name="location_needs_for">Wesh necesita servicios de ubicación para:</string>
-    <string name="location_needs_bullets">• Escaneo de dispositivos Bluetooth\n• Descubrir usuarios cercanos en la red mesh\n• Función de chat geohash\n• Sin rastreo o recolección de ubicación</string>
     <string name="open_location_settings">Abrir configuraciones de ubicación</string>
     <string name="check_again">Verificar de nuevo</string>
     <string name="location_services_unavailable">Servicios de ubicación no disponibles</string>
@@ -209,7 +194,6 @@
     <string name="location_tracking_warning">Wesh NO rastrea tu ubicación</string>
     <string name="nobody_around">nadie por aquí…</string>
     <string name="you_suffix"> (tú)</string>
-    <string name="pan_zoom_instruction">desplaza y hace zoom para seleccionar un geohash</string>
     <string name="select">seleccionar</string>
     <string name="type_a_message_placeholder">Escribe un mensaje…</string>
     <string name="mention">mencionar</string>
