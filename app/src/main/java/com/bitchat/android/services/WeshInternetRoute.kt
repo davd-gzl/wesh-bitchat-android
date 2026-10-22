@@ -73,7 +73,9 @@ internal class WeshInternetRoute(
         conversationID: String,
         messageID: String,
         previousWrap: NostrEvent? = null,
-        nowSeconds: Long = System.currentTimeMillis() / 1000
+        nowSeconds: Long = System.currentTimeMillis() / 1000,
+        /** Checked right before the publish: false (deleted, blocked, erased meanwhile) sends nothing. */
+        allowed: () -> Boolean = { true }
     ): Send {
         val notSent = Send(RelayPublishOutcome.NOT_SENT, previousWrap)
         val contact = recipient(conversationID) ?: return notSent
@@ -87,6 +89,7 @@ internal class WeshInternetRoute(
             if (content.isBlank() || content.toByteArray().size > 2000) null
             else NostrEmbeddedBitChat.encodePMForNostr(content, messageID, c.noiseHex, myPeerID())
         }?.singleOrNull() ?: return notSent
+        if (!runCatching(allowed).getOrDefault(false)) return Send(RelayPublishOutcome.NOT_SENT, previousWrap)
         val outcome = try {
             link.publishConfirmed(wrap)
         } catch (e: kotlinx.coroutines.CancellationException) {
