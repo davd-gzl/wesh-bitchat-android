@@ -12,7 +12,14 @@ internal class WeshPrivateSender(private val contacts: WeshContactStore) {
         val live = ContactDirectory.resolve(conversationID).meshPeerID ?: return@runCatching false
         !contacts.isBlocked(contact.key) && mesh.getAuthenticatedRemoteStaticKey(live)?.contentEquals(contact.key) == true
     }.getOrDefault(false)
-    suspend fun dispatch(content: String, conversationID: String, messageID: String, mesh: MeshService): Boolean {
+    /** [markFailed] false: the caller (router) decides what a failed write becomes. */
+    suspend fun dispatch(
+        content: String,
+        conversationID: String,
+        messageID: String,
+        mesh: MeshService,
+        markFailed: Boolean = true
+    ): Boolean {
         val accepted = runCatching {
             val contact = contacts.contact(conversationID) ?: return@runCatching false
             val live = ContactDirectory.resolve(conversationID).meshPeerID ?: return@runCatching false
@@ -21,10 +28,13 @@ internal class WeshPrivateSender(private val contacts: WeshContactStore) {
         }.getOrDefault(false)
         if (accepted) {
             AppStateStore.updatePrivateMessageStatus(conversationID, messageID, DeliveryStatus.Sent, MessageTransport.BLUETOOTH)
-        } else {
-            AppStateStore.updatePrivateMessageStatus(conversationID, messageID,
-                DeliveryStatus.Failed("Connexion ou identité indisponible. Réessayez après vérification."))
+        } else if (markFailed) {
+            AppStateStore.updatePrivateMessageStatus(conversationID, messageID, DeliveryStatus.Failed(FAILED_WRITE))
         }
         return accepted
+    }
+
+    companion object {
+        const val FAILED_WRITE = "Connexion ou identité indisponible. Réessayez après vérification."
     }
 }

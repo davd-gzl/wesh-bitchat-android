@@ -234,6 +234,9 @@ class WeshInternetRouteTest {
                 noisePublicKey = bobNoise, isDirectConnection = true, signingPublicKey = ByteArray(32),
                 isVerifiedNickname = true, lastSeen = 1L))
             whenever(mesh.getAuthenticatedRemoteStaticKey(bobPeer)).thenReturn(bobNoise)
+            kotlinx.coroutines.runBlocking {
+                whenever(mesh.sendPrivateMessageBound(any(), any(), any(), any(), any())).thenReturn(true)
+            }
             assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("near", bobConversation, "Bob", "m-1"))
             Thread.sleep(200)
             assertEquals(2, alice.link.published.size)
@@ -439,6 +442,58 @@ class WeshInternetRouteTest {
         } finally {
             WeshContactStore.resetForTesting()
             MessageRouter.disableSchedulerForTesting = false
+        }
+    }
+
+    /** Bob in Bluetooth range over a bound session whose write fails. */
+    private fun failingBluetoothRouter(): MessageRouter {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        val bobPeer = ContactIdentityResolver.peerIdForNoiseKey(bobNoise)
+        whenever(mesh.getPeerNicknames()).thenReturn(mapOf(bobPeer to "Bob"))
+        whenever(mesh.getPeerInfo(bobPeer)).thenReturn(PeerInfo(id = bobPeer, nickname = "Bob", isConnected = true,
+            noisePublicKey = bobNoise, isDirectConnection = true, signingPublicKey = ByteArray(32),
+            isVerifiedNickname = true, lastSeen = 1L))
+        whenever(mesh.getAuthenticatedRemoteStaticKey(bobPeer)).thenReturn(bobNoise)
+        kotlinx.coroutines.runBlocking {
+            whenever(mesh.sendPrivateMessageBound(any(), any(), any(), any(), any())).thenReturn(false)
+        }
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        AppStateStore.clear()
+        AppStateStore.addPrivateMessage(bobConversation, BitchatMessage(id = "bw-1", sender = "me", content = "salut",
+            timestamp = java.util.Date(), isPrivate = true, recipientNickname = "Bob",
+            senderPeerID = alice.peerID, deliveryStatus = DeliveryStatus.Sending))
+        return MessageRouter(context, mesh, mock()).also { it.weshInternetLink = alice.link }
+    }
+
+    private fun bw1() = AppStateStore.privateMessages.value.values.flatten().single { it.id == "bw-1" }.deliveryStatus
+
+    @Test fun `a failed Bluetooth write goes over Internet when that route exists`() {
+        val router = failingBluetoothRouter()
+        try {
+            assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
+            waitFor { bw1() == DeliveryStatus.Sent }
+            assertEquals(1, alice.link.published.size)
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
+    @Test fun `a failed Bluetooth write without an Internet route ends Échec`() {
+        val router = failingBluetoothRouter()
+        alice.link.on = false
+        try {
+            assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
+            waitFor { bw1() is DeliveryStatus.Failed }
+            assertTrue(alice.link.published.isEmpty())
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
         }
     }
 

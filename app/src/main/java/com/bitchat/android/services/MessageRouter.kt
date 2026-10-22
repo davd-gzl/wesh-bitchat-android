@@ -200,10 +200,25 @@ class MessageRouter internal constructor(
     private fun dispatchWesh(content: String, conversationID: String, messageID: String, epoch: Long = weshEpoch.get()) {
         if (epoch != weshEpoch.get() || !weshInFlight.add(messageID)) return
         schedulerScope.launch {
-            try {
+            val written = try {
                 if (epoch != weshEpoch.get()) return@launch
-                WeshPrivateSender(WeshContactStore.get(context)).dispatch(content, conversationID, messageID, mesh)
+                WeshPrivateSender(WeshContactStore.get(context)).dispatch(content, conversationID, messageID, mesh, markFailed = false)
             } finally { weshInFlight.remove(messageID) }
+            if (!written) afterFailedBluetoothWrite(content, conversationID, messageID, epoch)
+        }
+    }
+
+    /**
+     * Rule 3 after a failed Bluetooth write: over Internet when that route exists for the contact
+     * (« Envoyé » on relay OK, else waiting with backoff), otherwise « Échec » with Réessayer.
+     */
+    private fun afterFailedBluetoothWrite(content: String, conversationID: String, messageID: String, epoch: Long) {
+        if (epoch != weshEpoch.get()) return
+        if (weshInternet().canSend(conversationID)) {
+            dispatchWeshInternet(QueuedMessage(content, "", messageID, clock()), conversationID, epoch)
+        } else {
+            AppStateStore.updatePrivateMessageStatus(messageID,
+                com.bitchat.android.model.DeliveryStatus.Failed(WeshPrivateSender.FAILED_WRITE))
         }
     }
 
