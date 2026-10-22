@@ -16,6 +16,7 @@ import com.bitchat.android.nostr.NostrProtocol
 import com.bitchat.android.nostr.NostrRelayManager
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.protocol.MessageType
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -187,6 +188,9 @@ internal class WeshInternetSubscription(
     }
 }
 
+/** Shows a new Internet message; [stillCurrent] turns false once an erase has started since it was stored. */
+internal typealias WeshInternetNotifier = (conversationID: String, message: BitchatMessage, stillCurrent: () -> Boolean) -> Unit
+
 /**
  * Keeps one gift-wrap subscription for my npub on the pinned relays while Internet mode is On.
  * It never opens a socket itself: NostrRelayManager does, behind Tor and the opt-in gate.
@@ -194,6 +198,8 @@ internal class WeshInternetSubscription(
 internal object WeshInternetReceiver {
     internal const val SUBSCRIPTION_ID = "wesh-internet-dm"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+    /** Lives with the process, like the receiver: background notifications have no UI scope. */
+    private val backgroundScope = CoroutineScope(SupervisorJob())
     @Volatile private var inbox: WeshInternetInbox? = null
 
     /**
@@ -201,11 +207,60 @@ internal object WeshInternetReceiver {
      * rule 4 resend) keeps its single bubble and still counts as delivered, so it is acked again.
      * Seen IDs outlive an unloaded history; IDs are random UUIDs, so a match is this message.
      */
-    internal suspend fun deliverOnce(conversationID: String, message: com.bitchat.android.model.BitchatMessage): Boolean =
-        AppStateStore.addPrivateMessageDurably(conversationID, message) || AppStateStore.hasSeenMessage(message.id)
+    internal suspend fun deliverOnce(
+        conversationID: String,
+        message: BitchatMessage,
+        notify: WeshInternetNotifier = ::notifyNew
+    ): Boolean {
+        // Captured before the store: an erase that starts after it turns stillCurrent false.
+        val generation = AppStateStore.capturePrivateConversationGeneration()
+        if (AppStateStore.addPrivateMessageDurably(conversationID, message)) {
+            // A new message only: a copy already here was notified when it first arrived.
+            if (generation != null) {
+                runCatching { notify(conversationID, message) { AppStateStore.isCurrentPrivateConversationGeneration(generation) } }
+            }
+            return true
+        }
+        return AppStateStore.hasSeenMessage(message.id)
+    }
+
+    /** Set while a UI is attached: its notifier knows the open chat and whether the app is in front. */
+    @Volatile internal var uiNotifier: WeshInternetNotifier? = null
+    /** Without a UI (app closed, service running): shown as a background notification, like Bluetooth. */
+    @Volatile private var backgroundNotifier: WeshInternetNotifier? = null
+
+    /**
+     * Same path and privacy rules as a Bluetooth private message: muted conversations stay silent and
+     * Wesh notifications are redacted by [com.bitchat.android.ui.NotificationManager].
+     */
+    private fun notifyNew(conversationID: String, message: BitchatMessage, stillCurrent: () -> Boolean) {
+        (uiNotifier ?: backgroundNotifier)?.invoke(conversationID, message, stillCurrent)
+    }
+
+    /**
+     * A notifier whose [show] runs on [main], where NotificationManager keeps its lists, and only if no
+     * erase started since the message was stored. Delivery runs on the receiver's IO thread.
+     */
+    internal fun postOnMain(
+        scope: CoroutineScope,
+        main: CoroutineDispatcher = Dispatchers.Main,
+        show: (String, BitchatMessage) -> Unit
+    ): WeshInternetNotifier = { conversationID, message, stillCurrent ->
+        scope.launch(main) { if (stillCurrent()) runCatching { show(conversationID, message) } }
+    }
 
     fun start(app: Application): Unit = synchronized(this) {
         if (inbox != null) return
+        val notifications = com.bitchat.android.ui.NotificationManager(
+            app.applicationContext,
+            androidx.core.app.NotificationManagerCompat.from(app.applicationContext)
+        )
+        // Shown on Main too, so whichever notifier posts, one thread owns each manager's lists.
+        backgroundNotifier = postOnMain(backgroundScope) { conversationID, message ->
+            notifications.setAppBackgroundState(true)
+            notifications.showPrivateMessageNotification(conversationID, message.sender.takeIf { it.isNotBlank() },
+                com.bitchat.android.ui.NotificationTextUtils.buildPrivateMessagePreview(message))
+        }
         val contacts = WeshContactStore.get(app)
         val seen = SeenMessageStore.getInstance(app)
         val created = WeshInternetInbox(
