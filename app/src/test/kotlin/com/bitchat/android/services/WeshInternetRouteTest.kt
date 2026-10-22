@@ -97,6 +97,7 @@ class WeshInternetRouteTest {
         assertEquals("msg-1", message.id)
         assertEquals("salut", message.content)
         assertTrue(message.isPrivate)
+        assertEquals(com.bitchat.android.model.MessageTransport.INTERNET, message.transport)
     }
 
     @Test fun `the delivery ack goes back over Internet and updates only Alice's conversation`() = runTest {

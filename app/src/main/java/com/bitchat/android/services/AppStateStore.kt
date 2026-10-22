@@ -3,6 +3,7 @@ package com.bitchat.android.services
 import android.content.Context
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.DeliveryStatus
+import com.bitchat.android.model.MessageTransport
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -404,17 +405,23 @@ object AppStateStore {
      * message must belong to [conversationID], so an ack can never touch another conversation.
      * Returns false (nothing written) when it does not, including when its history is unloaded.
      */
-    fun updatePrivateMessageStatusIn(conversationID: String, messageID: String, status: DeliveryStatus): Boolean {
+    fun updatePrivateMessageStatusIn(
+        conversationID: String,
+        messageID: String,
+        status: DeliveryStatus,
+        transport: MessageTransport? = null
+    ): Boolean {
         synchronized(this) {
             val canonical = ContactDirectory.canonicalConversationId(conversationID)
             if (_privateMessages.value[canonical].orEmpty().none { it.id == messageID }) return false
             // Message IDs are unique across conversations (UNIQUE column, seenMessageIds).
-            updatePrivateMessageStatus(messageID, status)
+            updatePrivateMessageStatus(messageID, status, transport)
             return true
         }
     }
 
-    fun updatePrivateMessageStatus(messageID: String, status: DeliveryStatus) {
+    /** [transport]: where this status came from; recorded only when the status is applied. */
+    fun updatePrivateMessageStatus(messageID: String, status: DeliveryStatus, transport: MessageTransport? = null) {
         synchronized(this) {
             if (privateConversationWritesSuspended) return
             val map = _privateMessages.value.toMutableMap()
@@ -433,7 +440,7 @@ object AppStateStore {
                         else -> statusPriority(status) >= statusPriority(current)
                     }
                     if (mayReplace) {
-                        list[idx] = list[idx].copy(deliveryStatus = status)
+                        list[idx] = list[idx].copy(deliveryStatus = status, transport = transport ?: list[idx].transport)
                         map[peer] = list
                         changed = true
                     }
@@ -445,7 +452,7 @@ object AppStateStore {
             // Full histories are unloaded after a chat closes, so the message may only exist in
             // SQLite. Always offer the update to the repository; it safely ignores unknown IDs
             // and enforces the same monotonic status rules as the in-memory path.
-            conversationRepository?.updateDeliveryStatus(messageID, status)
+            conversationRepository?.updateDeliveryStatus(messageID, status, transport)
         }
     }
 
