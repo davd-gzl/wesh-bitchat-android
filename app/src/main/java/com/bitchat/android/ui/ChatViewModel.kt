@@ -371,6 +371,8 @@ class ChatViewModel(
                     com.bitchat.android.model.DeliveryStatus.Failed("Message expired before delivery")
                 )
             }
+            // The outbox is memory only: after a relaunch, my waiting messages are queued again.
+            com.bitchat.android.services.MessageRouter.getInstance(getApplication(), mesh).restoreWeshOutboxOnce()
         } catch (_: Exception) { }
         // Hydrate UI state from process-wide AppStateStore to survive Activity recreation
         viewModelScope.launch {
