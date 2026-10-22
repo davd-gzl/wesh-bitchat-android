@@ -102,6 +102,16 @@ class WeshInternetModeTest {
         assertTrue(mode.allowsNetwork())
     }
 
+    @Test fun `an opt-in persisted while the product was unavailable stays off and never starts Tor`() = scope.runTest {
+        prefs.edit().putBoolean(WeshInternetMode.KEY_ENABLED, true).putBoolean(WeshInternetMode.KEY_DISCLOSURE, true).commit()
+        available = false
+        val mode = mode(); runCurrent()
+        assertFalse(mode.enabled.value)
+        assertFalse(mode.allowsNetwork())
+        assertFalse(tor.running)
+        assertEquals(WeshInternetState.Off, mode.state.value)
+    }
+
     @Test fun `startup installs a closed process gate and keeps Tor preference off`() {
         val app = RuntimeEnvironment.getApplication()
         WeshInternetMode.resetForTesting()
