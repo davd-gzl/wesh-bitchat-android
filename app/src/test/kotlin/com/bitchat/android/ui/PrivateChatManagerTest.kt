@@ -220,6 +220,20 @@ class PrivateChatManagerTest {
         // Only the unread Internet message: a Bluetooth one waits for Bluetooth (the ack goes back the way it came).
         assertEquals(listOf(Triple(internet.id, conversationID, token)), sent)
         verify(meshService, never()).sendReadReceipt(any(), any(), any())
+
+        // In Bluetooth range too: the Internet message still goes over Internet, the Bluetooth one over Bluetooth.
+        sent.clear()
+        val meshPeerID = ContactIdentityResolver.peerIdForNoiseKey(noiseKey)
+        whenever(meshService.getPeerInfo(meshPeerID)).thenReturn(
+            PeerInfo(id = meshPeerID, nickname = "alice", isConnected = true, isDirectConnection = true,
+                noisePublicKey = noiseKey, signingPublicKey = null, isVerifiedNickname = false,
+                lastSeen = System.currentTimeMillis())
+        )
+        whenever(meshService.hasEstablishedSession(meshPeerID)).thenReturn(true)
+        manager.sendReadReceiptsForPeer(conversationID, meshPeerID, meshService, expectedSeenToken = token)
+        assertEquals(listOf(Triple(internet.id, conversationID, token)), sent)
+        verify(meshService, never()).sendReadReceipt(eq(internet.id), any(), any())
+        verify(meshService).sendReadReceipt(overBluetooth.id, meshPeerID, "bob")
     }
 
     @Test

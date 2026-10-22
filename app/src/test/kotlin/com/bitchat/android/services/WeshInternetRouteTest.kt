@@ -215,6 +215,7 @@ class WeshInternetRouteTest {
         router.weshInternetLink = alice.link
         val recorded = mutableListOf<String>()
         router.markWeshReadReceiptSent = { id, _ -> recorded += id; true }
+        router.hasWeshReadReceiptBeenSent = { it in recorded }
         val admission = SeenReceiptAdmission()
         try {
             assertTrue(kotlinx.coroutines.runBlocking { router.sendWeshInternetReadReceiptNow("r-1", bobConversation, admission.capture()) })
@@ -227,6 +228,10 @@ class WeshInternetRouteTest {
             assertEquals(listOf("r-1"), recorded)
             // Never over Bluetooth: the ack goes back over the transport the message came on.
             verify(mesh, never()).sendReadReceipt(any(), any(), any())
+            // Once: a second open or arrival for the same message sends nothing.
+            assertFalse(kotlinx.coroutines.runBlocking { router.sendWeshInternetReadReceiptNow("r-1", bobConversation, admission.capture()) })
+            // An erase while the wrap is built: it is never published.
+            assertFalse(alice.route.sendAck(NoisePayloadType.READ_RECEIPT, "r-5", bobConversation) { false })
 
             // Internet off, or not an enrolled contact: nothing leaves, nothing is recorded.
             alice.link.on = false

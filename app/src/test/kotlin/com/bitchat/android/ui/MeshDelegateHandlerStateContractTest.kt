@@ -122,7 +122,9 @@ class MeshDelegateHandlerStateContractTest {
         verify(mesh, never()).sendReadReceipt(any(), any(), any())
 
         // Another chat open, or the app in the background: unread, no READ.
-        whenever(notifications.getCurrentPrivateChatPeer()).thenReturn(null)
+        whenever(notifications.getCurrentPrivateChatPeer()).thenReturn(
+            com.bitchat.android.services.ContactIdentityResolver.contactConversationIdForNoiseKey(ByteArray(32) { 4 })
+        )
         handler.readInternetMessageIfFocused(incoming.copy(id = "other-chat-open"))
         whenever(notifications.getCurrentPrivateChatPeer()).thenReturn(conversationID)
         whenever(notifications.getAppBackgroundState()).thenReturn(true)

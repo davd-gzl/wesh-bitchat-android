@@ -589,6 +589,10 @@ class MessageRouter internal constructor(
     /** Records a READ as sent unless an erase came first; the seen store in production. */
     internal var markWeshReadReceiptSent: (messageID: String, expectedToken: SeenReceiptAdmission.Token?) -> Boolean =
         { messageID, expectedToken -> SeenMessageStore.getInstance(context).markReadReceiptSent(messageID, expectedToken) }
+    internal var hasWeshReadReceiptBeenSent: (messageID: String) -> Boolean =
+        { messageID -> SeenMessageStore.getInstance(context).hasReadReceiptBeenSent(messageID) }
+    /** READs being published: an open and an arrival racing for one message send it once. */
+    private val weshReadInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     /**
      * READ for a message that arrived over Internet: it goes back over Internet (spec §3 rule 5), only
@@ -606,11 +610,20 @@ class MessageRouter internal constructor(
         expectedToken: SeenReceiptAdmission.Token?
     ): Boolean {
         if (expectedToken == null || !expectedToken.owner.admits(expectedToken)) return false
-        val route = weshInternet()
-        if (!route.canSend(conversationID)) return false
-        if (!route.sendAck(com.bitchat.android.model.NoisePayloadType.READ_RECEIPT, messageID, conversationID)) return false
-        runCatching { markWeshReadReceiptSent(messageID, expectedToken) }
-        return true
+        if (runCatching { hasWeshReadReceiptBeenSent(messageID) }.getOrDefault(true)) return false
+        if (!weshReadInFlight.add(messageID)) return false
+        try {
+            val route = weshInternet()
+            if (!route.canSend(conversationID)) return false
+            // Checked again right before it leaves: an erase while the wrap was built sends nothing.
+            if (!route.sendAck(com.bitchat.android.model.NoisePayloadType.READ_RECEIPT, messageID, conversationID) {
+                    expectedToken.owner.admits(expectedToken)
+                }) return false
+            runCatching { markWeshReadReceiptSent(messageID, expectedToken) }
+            return true
+        } finally {
+            weshReadInFlight.remove(messageID)
+        }
     }
 
     fun sendDeliveryAck(messageID: String, toPeerID: String) {
