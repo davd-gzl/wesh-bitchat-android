@@ -14,6 +14,7 @@ import com.bitchat.android.nostr.NostrProtocol
 import com.bitchat.android.nostr.RelayPublishOutcome
 import com.bitchat.android.util.AppConstants
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -721,7 +722,11 @@ class WeshInternetRouteTest {
     @Test fun `a new message received over Internet notifies once, a copy or an erased store never`() {
         AppStateStore.clear()
         val notified = mutableListOf<Pair<String, String>>()
-        val notify: (String, BitchatMessage) -> Unit = { conversationID, message -> notified += conversationID to message.id }
+        val stillCurrent = mutableListOf<() -> Boolean>()
+        val notify: WeshInternetNotifier = { conversationID, message, current ->
+            notified += conversationID to message.id
+            stillCurrent += current
+        }
         val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
         val name = "notify-${java.util.UUID.randomUUID()}.db"
         val repository = ConversationRepository(context = context, dispatcher = executor.asCoroutineDispatcher(),
@@ -734,8 +739,11 @@ class WeshInternetRouteTest {
             // The same ID again (relay replay, rule 4 copy, Bluetooth copy first): acked, no second notification.
             assertTrue(kotlinx.coroutines.runBlocking { WeshInternetReceiver.deliverOnce(aliceConversation, message.copy(), notify) })
             assertEquals(listOf(aliceConversation to "n-1"), notified)
-            // During an erase nothing is stored, so nothing is shown.
+            assertTrue(stillCurrent.single()())
+            // An erase after the store: a notification not shown yet is dropped.
             AppStateStore.fencePrivateConversationAdmissionForPanic()
+            assertFalse(stillCurrent.single()())
+            // During an erase nothing is stored, so nothing is shown.
             assertFalse(kotlinx.coroutines.runBlocking {
                 WeshInternetReceiver.deliverOnce(aliceConversation, message.copy(id = "n-2"), notify)
             })
@@ -747,6 +755,28 @@ class WeshInternetRouteTest {
             executor.shutdown()
             context.deleteDatabase(name)
             AppStateStore.clear()
+        }
+    }
+
+    @Test fun `the UI notifier shows on Main, never on the delivering thread, and not after an erase`() {
+        val main = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "test-main") }
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
+        try {
+            val shown = java.util.concurrent.LinkedBlockingQueue<Pair<String, String>>()
+            val notifier = WeshInternetReceiver.postOnMain(scope, main.asCoroutineDispatcher()) { _, message ->
+                shown += message.id to Thread.currentThread().name
+            }
+            val message = BitchatMessage(id = "m-1", sender = "Alice", content = "salut", timestamp = java.util.Date(),
+                isPrivate = true, senderPeerID = aliceConversation)
+            notifier(aliceConversation, message) { true }
+            notifier(aliceConversation, message.copy(id = "m-2")) { false }
+            notifier(aliceConversation, message.copy(id = "m-3")) { true }
+            assertEquals("m-1" to "test-main", shown.poll(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals("m-3" to "test-main", shown.poll(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue(shown.isEmpty())
+        } finally {
+            scope.cancel()
+            main.shutdown()
         }
     }
 
