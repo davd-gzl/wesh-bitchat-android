@@ -46,8 +46,7 @@
     <string name="wesh_pave_pill_connecting">Connexion à Tor…</string>
     <string name="wesh_pave_pill_on">Internet actif</string>
     <string name="wesh_pave_pill_failed">Internet indisponible — Réessayer</string>
-    <string name="wesh_pave_pill_hint">Ouvre Connexion</string>
-    <string name="wesh_pave_pill_retry_hint">Relance la connexion à Tor</string>
+    <string name="wesh_pave_pill_retry_hint">Relancer la connexion à Tor</string>
     <plurals name="wesh_pave_internet_on">
         <item quantity="one">Connecté via Tor · %d relais</item>
         <item quantity="many">Connecté via Tor · %d relais</item>

@@ -330,7 +330,12 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                     onExchange = { go(PaveRoute.Exchange) },
                     onOpenSettings = { go(PaveRoute.Settings) },
                     onRetryContacts = viewModel::retryWeshContacts,
-                    onInternetPill = { if (internetStatus.offersRetry) internet.retry() else connexionOpen = true },
+                    onInternetPill = {
+                        when (internetStatus.pillAction()) {
+                            PaveInternetPillAction.Retry -> internet.retry()
+                            PaveInternetPillAction.OpenConnexion -> connexionOpen = true
+                        }
+                    },
                 )
             }
             PaveRoute.Public -> {

@@ -103,3 +103,9 @@ fun PaveInternetStatus.pillLabel(): Int = when (this) {
 
 /** Only a failure turns the pill into a retry. */
 val PaveInternetStatus.offersRetry: Boolean get() = this is PaveInternetStatus.Error
+
+enum class PaveInternetPillAction { Retry, OpenConnexion }
+
+/** A touch on the pill: retry after a failure, otherwise open the Connexion sheet. */
+fun PaveInternetStatus.pillAction(): PaveInternetPillAction =
+    if (offersRetry) PaveInternetPillAction.Retry else PaveInternetPillAction.OpenConnexion

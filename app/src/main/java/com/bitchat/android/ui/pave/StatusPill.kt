@@ -103,7 +103,11 @@ fun InternetPill(status: PaveInternetStatus, onClick: () -> Unit, modifier: Modi
         is PaveInternetStatus.Error -> Icons.Rounded.Warning
     }
     val text = stringResource(status.pillLabel())
-    val hint = stringResource(if (failed) R.string.wesh_pave_pill_retry_hint else R.string.wesh_pave_pill_hint)
+    // Read as « Appuyez deux fois pour … »: an infinitive.
+    val hint = stringResource(when (status.pillAction()) {
+        PaveInternetPillAction.Retry -> R.string.wesh_pave_pill_retry_hint
+        PaveInternetPillAction.OpenConnexion -> R.string.wesh_pave_status_open
+    })
     val border = when {
         failed -> c.danger
         on || status is PaveInternetStatus.Connecting -> c.internet
