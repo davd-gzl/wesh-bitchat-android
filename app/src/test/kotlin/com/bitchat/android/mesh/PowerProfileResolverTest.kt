@@ -32,11 +32,6 @@ class PowerProfileResolverTest {
         val profile = resolve(battery = 20, background = true)
 
         assertEquals(PowerManager.BatteryBand.LOW, profile.batteryBand)
-        assertEquals(20_000L, profile.wifiAware.tcpKeepAliveMs)
-        assertEquals(120_000L, profile.wifiAware.discoveryKeepAliveMs)
-        assertEquals(120_000L, profile.wifiAware.connectionMaintenanceMs)
-        assertEquals(600_000L, profile.wifiAware.discoveryIdleRefreshMs)
-        assertEquals(900_000L, profile.wifiAware.discoveryStaleMs)
         assertEquals(600_000L, profile.nostr.presenceHeartbeatMinMs)
         assertEquals(600_000L, profile.nostr.subscriptionValidationMs)
         assertEquals(120_000L, profile.meshAnnouncementIntervalMs)
@@ -47,11 +42,6 @@ class PowerProfileResolverTest {
         val profile = resolve(battery = 10, background = true, peers = true)
 
         assertEquals(PowerManager.BatteryBand.CRITICAL, profile.batteryBand)
-        assertEquals(30_000L, profile.wifiAware.tcpKeepAliveMs)
-        assertEquals(180_000L, profile.wifiAware.discoveryKeepAliveMs)
-        assertEquals(180_000L, profile.wifiAware.connectionMaintenanceMs)
-        assertEquals(900_000L, profile.wifiAware.discoveryIdleRefreshMs)
-        assertEquals(1_200_000L, profile.wifiAware.discoveryStaleMs)
         assertEquals(900_000L, profile.nostr.presenceHeartbeatMinMs)
         assertEquals(900_000L, profile.nostr.subscriptionValidationMs)
         assertEquals(300_000L, profile.meshAnnouncementIntervalMs)
@@ -65,7 +55,6 @@ class PowerProfileResolverTest {
         assertEquals(PowerManager.PowerMode.BALANCED, profile.mode)
         assertEquals(8_000L, profile.ble.scanOnMs)
         assertEquals(2_000L, profile.ble.scanOffMs)
-        assertEquals(5_000L, profile.wifiAware.tcpKeepAliveMs)
         assertEquals(30_000L, profile.meshAnnouncementIntervalMs)
     }
 

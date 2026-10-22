@@ -39,7 +39,6 @@ import com.bitchat.android.onboarding.PermissionManager
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.OrientationAwareActivity
 import com.bitchat.android.ui.theme.BitchatTheme
-import com.bitchat.android.wifiaware.WifiAwareController
 import com.bitchat.android.nostr.PoWPreferenceManager
 import com.bitchat.android.services.VerificationService
 import kotlinx.coroutines.delay
@@ -188,17 +187,6 @@ class MainActivity : OrientationAwareActivity() {
             }
         }
 
-        // Keep the unified mesh delegate attached when Wi-Fi Aware starts after the UI.
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                WifiAwareController.running.collect { running ->
-                    if (runtimeAttached && running && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                        unifiedMeshService.delegate = chatViewModel
-                    }
-                }
-            }
-        }
-        
         if (BuildConfig.WESH_POLICY) {
             lifecycleScope.launch {
                 com.bitchat.android.startup.WeshRuntime.get(applicationContext).state.collect { state ->
@@ -539,8 +527,6 @@ class MainActivity : OrientationAwareActivity() {
         if (!requiresSystemLocationForMesh()) return
         mainViewModel.updateLocationLoading(false)
         mainViewModel.updateLocationStatus(LocationStatus.ENABLED)
-        // Ensure Wi-Fi Aware starts now that location is enabled
-        com.bitchat.android.wifiaware.WifiAwareController.startIfPossible()
         checkBatteryOptimizationAndProceed()
     }
 
@@ -836,9 +822,6 @@ class MainActivity : OrientationAwareActivity() {
                 mainViewModel.updateLocationStatus(currentLocationStatus)
                 mainViewModel.updateOnboardingState(OnboardingState.LOCATION_CHECK)
                 mainViewModel.updateLocationLoading(false)
-            } else {
-                // If location is enabled, ensure Wi-Fi Aware starts if it was blocked by location earlier
-                com.bitchat.android.wifiaware.WifiAwareController.startIfPossible()
             }
         }
     }

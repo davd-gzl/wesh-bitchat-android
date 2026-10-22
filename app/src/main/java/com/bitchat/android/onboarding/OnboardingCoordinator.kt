@@ -203,7 +203,6 @@ class OnboardingCoordinator(
         return when {
             permission.contains("BLUETOOTH") -> activity.getString(com.bitchat.android.R.string.wesh_permission_bluetooth)
             permission.contains("LOCATION") -> activity.getString(com.bitchat.android.R.string.wesh_permission_legacy_location)
-            permission.contains("NEARBY_WIFI") -> activity.getString(com.bitchat.android.R.string.wesh_permission_wifi)
             permission.contains("NOTIFICATION") -> activity.getString(com.bitchat.android.R.string.wesh_permission_notifications)
             else -> permission.substringAfterLast(".")
         }

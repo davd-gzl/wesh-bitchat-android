@@ -45,13 +45,6 @@ class DebugSettingsManager private constructor() {
     private val _bleEnabled = MutableStateFlow(true)
     val bleEnabled: StateFlow<Boolean> = _bleEnabled.asStateFlow()
 
-    private val _wifiAwareEnabled = MutableStateFlow(false)
-    val wifiAwareEnabled: StateFlow<Boolean> = _wifiAwareEnabled.asStateFlow()
-
-    // Master transport toggles
-    private val _wifiAwareVerbose = MutableStateFlow(false)
-    val wifiAwareVerbose: StateFlow<Boolean> = _wifiAwareVerbose.asStateFlow()
-
     // Visibility of the debug sheet; gates heavy work
     private val _debugSheetVisible = MutableStateFlow(false)
     val debugSheetVisible: StateFlow<Boolean> = _debugSheetVisible.asStateFlow()
@@ -77,8 +70,6 @@ class DebugSettingsManager private constructor() {
             _maxClientConnections.value = DebugPreferenceManager.getMaxConnectionsClient(8)
             // Transport toggles
             _bleEnabled.value = DebugPreferenceManager.getBleEnabled(true)
-            _wifiAwareEnabled.value = DebugPreferenceManager.getWifiAwareEnabled(false)
-            _wifiAwareVerbose.value = DebugPreferenceManager.getWifiAwareVerbose(false)
         } catch (_: Exception) {
             // Preferences not ready yet; keep defaults. They will be applied on first change.
         }
@@ -291,21 +282,6 @@ class DebugSettingsManager private constructor() {
         } catch (_: Exception) { }
     }
 
-    fun setWifiAwareEnabled(enabled: Boolean) {
-        DebugPreferenceManager.setWifiAwareEnabled(enabled)
-        _wifiAwareEnabled.value = enabled
-        addDebugMessage(DebugMessage.SystemMessage(if (enabled) "🟢 Wi‑Fi Aware enabled" else "🔴 Wi‑Fi Aware disabled"))
-        try {
-            com.bitchat.android.wifiaware.WifiAwareController.setEnabled(enabled)
-        } catch (_: Exception) { }
-    }
-
-    fun setWifiAwareVerbose(enabled: Boolean) {
-        DebugPreferenceManager.setWifiAwareVerbose(enabled)
-        _wifiAwareVerbose.value = enabled
-        addDebugMessage(DebugMessage.SystemMessage(if (enabled) "🔊 Wi‑Fi Aware verbose logging enabled" else "🔇 Wi‑Fi Aware verbose logging disabled"))
-    }
-
     fun setMaxConnectionsOverall(value: Int) {
         val clamped = value.coerceIn(1, 32)
         DebugPreferenceManager.setMaxConnectionsOverall(clamped)
@@ -364,16 +340,6 @@ class DebugSettingsManager private constructor() {
         _connectedDevices.value = devices
     }
 
-    // Wi‑Fi Aware debug collections
-    private val _wifiAwareDiscovered = MutableStateFlow<Map<String, String>>(emptyMap()) // peerID->nickname
-    val wifiAwareDiscovered: StateFlow<Map<String, String>> = _wifiAwareDiscovered.asStateFlow()
-
-    private val _wifiAwareConnected = MutableStateFlow<Map<String, String>>(emptyMap()) // peerID->ip
-    val wifiAwareConnected: StateFlow<Map<String, String>> = _wifiAwareConnected.asStateFlow()
-
-    fun updateWifiAwareDiscovered(map: Map<String, String>) { _wifiAwareDiscovered.value = map }
-    fun updateWifiAwareConnected(map: Map<String, String>) { _wifiAwareConnected.value = map }
-    
     fun updateRelayStats(stats: PacketRelayStats) {
         _relayStats.value = stats
     }

@@ -1,7 +1,6 @@
 package com.bitchat.android.ui.debug
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.outlined.Bluetooth
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -40,7 +39,7 @@ private const val PULSE_DECAY = 0.05f
 private const val ROUTE_DECAY = 0.02f
 private val EDGE_ICON_OFFSET = 14.dp
 
-private enum class EdgeTransport { WIFI, BLE }
+private enum class EdgeTransport { BLE }
 
 private data class EdgeMarker(val x: Float, val y: Float, val transport: EdgeTransport)
 
@@ -257,7 +256,6 @@ private class Simulation {
 fun ForceDirectedMeshGraph(
     nodes: List<MeshGraphService.GraphNode>,
     edges: List<MeshGraphService.GraphEdge>,
-    wifiAwarePeerIDs: Set<String> = emptySet(),
     blePeerIDs: Set<String> = emptySet(),
     localPeerID: String? = null,
     modifier: Modifier = Modifier
@@ -466,28 +464,15 @@ fun ForceDirectedMeshGraph(
                 val n2 = simulation.nodes[edge.b]
                 if (n1 == null || n2 == null) return@flatMap emptyList()
 
-                val isWifi = shouldMarkDirectEdge(edge, wifiAwarePeerIDs, localID)
-                val isBle = shouldMarkDirectEdge(edge, blePeerIDs, localID)
-                if (!isWifi && !isBle) return@flatMap emptyList()
-
-                val markers = mutableListOf<EdgeMarker>()
-                if (isWifi) {
-                    val (x, y) = edgeMarkerPosition(n1.x, n1.y, n2.x, n2.y, iconOffsetPx, sideSign = 1f)
-                    markers.add(EdgeMarker(x, y, EdgeTransport.WIFI))
-                }
-                if (isBle) {
-                    val side = if (isWifi) -1f else 1f
-                    val (x, y) = edgeMarkerPosition(n1.x, n1.y, n2.x, n2.y, iconOffsetPx, sideSign = side)
-                    markers.add(EdgeMarker(x, y, EdgeTransport.BLE))
-                }
-                markers
+                if (!shouldMarkDirectEdge(edge, blePeerIDs, localID)) return@flatMap emptyList()
+                val (x, y) = edgeMarkerPosition(n1.x, n1.y, n2.x, n2.y, iconOffsetPx, sideSign = 1f)
+                listOf(EdgeMarker(x, y, EdgeTransport.BLE))
             }
         }
 
         edgeMarkers.forEach { marker ->
             Icon(
                 imageVector = when (marker.transport) {
-                    EdgeTransport.WIFI -> Icons.Filled.Wifi
                     EdgeTransport.BLE -> Icons.Outlined.Bluetooth
                 },
                 contentDescription = null,
