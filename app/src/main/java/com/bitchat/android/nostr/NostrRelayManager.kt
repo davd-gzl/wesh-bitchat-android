@@ -214,10 +214,18 @@ class NostrRelayManager internal constructor(
         startSubscriptionValidation()
     }
 
-    /** Disconnect invalidates attempts before closing sockets, so late callbacks are harmless. */
+    /**
+     * Internet off: disconnect invalidates attempts before tearing sockets down, so late callbacks
+     * are harmless. Queued events are dropped, never flushed at the next on: the router still holds
+     * the message and decides how to resend it. Sockets are cancelled, not closed: a graceful close
+     * would first write the frames OkHttp still holds.
+     */
     fun disconnect() {
-        val sockets = synchronized(lifecycleLock) { disconnectLocked() }
-        sockets.forEach { it.close(1000, "Manual disconnect") }
+        val sockets = synchronized(lifecycleLock) {
+            messageQueue.clear()
+            disconnectLocked()
+        }
+        sockets.forEach(WebSocket::cancel)
     }
 
     /** Caller holds [lifecycleLock]; socket close is performed after releasing it. */
@@ -252,10 +260,15 @@ class NostrRelayManager internal constructor(
             .distinct()
         if (targetRelays.isEmpty()) return
 
-        val queueId = messageQueue.enqueue(
-            event = event,
-            relayUrls = targetRelays
-        ) ?: return
+        // Under the lifecycle lock: an off that closes the gate cannot clear the queue between
+        // this check and the enqueue.
+        val queueId = synchronized(lifecycleLock) {
+            if (!isNetworkActionAllowed()) return
+            messageQueue.enqueue(
+                event = event,
+                relayUrls = targetRelays
+            )
+        } ?: return
         scope.launch {
             if (!isNetworkActionAllowed()) return@launch
             targetRelays.forEach { relayUrl ->
