@@ -146,7 +146,26 @@ class NostrRelayManager internal constructor(
             else -> RelayPublishOutcome.UNCONFIRMED
         }
     }
-    private enum class RelayAnswer { ACCEPTED, REJECTED, NONE }
+    private enum class RelayAnswer {
+        ACCEPTED, REJECTED, NONE;
+
+        companion object {
+            /**
+             * Shared retry policy (spec « Retry policy »): `duplicate:` means stored; `rate-limited:`,
+             * `error:` and `auth-required:` leave it unknown, so the same event is retried; anything
+             * else is a refusal and the next attempt wraps the message again.
+             */
+            fun of(accepted: Boolean, message: String?): RelayAnswer {
+                if (accepted) return ACCEPTED
+                val prefix = message.orEmpty().trimStart().substringBefore(':').lowercase()
+                return when (prefix) {
+                    "duplicate" -> ACCEPTED
+                    "rate-limited", "error", "auth-required" -> NONE
+                    else -> REJECTED
+                }
+            }
+        }
+    }
     private val confirmedSends = HashMap<String, ConfirmedSend>()
 
     // Subscription validation timer
@@ -832,7 +851,7 @@ class NostrRelayManager internal constructor(
                 is NostrResponse.Ok -> {
                     synchronized(lifecycleLock) {
                         resolveConfirmedSendLocked(response.eventId, relayUrl,
-                            if (response.accepted) RelayAnswer.ACCEPTED else RelayAnswer.REJECTED)
+                            RelayAnswer.of(response.accepted, response.message))
                     }
                     val wasGiftWrap = pendingGiftWrapIDs.remove(response.eventId)
                     if (!response.accepted) {

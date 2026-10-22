@@ -487,6 +487,28 @@ class NostrRelayStateTest {
         assertEquals(RelayPublishOutcome.UNCONFIRMED, result.await())
     }
 
+    @Test
+    fun `OK false is classified as the shared retry policy says`() = runTest {
+        suspend fun TestScope.outcomeFor(message: String): RelayPublishOutcome {
+            val (manager, attempts) = connected()
+            val id = "cls-${message.substringBefore(':')}"
+            val result = async { manager.sendEventConfirmed(event(id)) }
+            runCurrent()
+            attempts.forEach { it.ok(id, accepted = false, message = message) }
+            runCurrent()
+            return result.await()
+        }
+        assertEquals(RelayPublishOutcome.ACCEPTED, outcomeFor("duplicate: already have this event"))
+        assertEquals(RelayPublishOutcome.UNCONFIRMED, outcomeFor("rate-limited: slow down"))
+        assertEquals(RelayPublishOutcome.UNCONFIRMED, outcomeFor("error: could not save"))
+        assertEquals(RelayPublishOutcome.UNCONFIRMED, outcomeFor("auth-required: log in"))
+        assertEquals(RelayPublishOutcome.REJECTED, outcomeFor("blocked: no"))
+        assertEquals(RelayPublishOutcome.REJECTED, outcomeFor("invalid: bad sig"))
+        assertEquals(RelayPublishOutcome.REJECTED, outcomeFor("pow: difficulty"))
+        assertEquals(RelayPublishOutcome.REJECTED, outcomeFor("restricted: members only"))
+        assertEquals(RelayPublishOutcome.REJECTED, outcomeFor("something else"))
+    }
+
     private fun TestScope.fixture(
         dispatcher: CoroutineDispatcher = UnconfinedTestDispatcher(testScheduler),
         onCreate: (Attempt) -> Unit = {}
@@ -505,8 +527,8 @@ class NostrRelayStateTest {
         val socket = IdleWebSocket(request)
         fun open() = listener.onOpen(socket, Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(101).message("Synthetic upgrade").build())
         fun fail() = listener.onFailure(socket, IOException("Synthetic connection failure"), null)
-        fun ok(eventId: String, accepted: Boolean) =
-            listener.onMessage(socket, """["OK","$eventId",$accepted,"${if (accepted) "" else "blocked: synthetic"}"]""")
+        fun ok(eventId: String, accepted: Boolean, message: String = if (accepted) "" else "blocked: synthetic") =
+            listener.onMessage(socket, """["OK","$eventId",$accepted,"$message"]""")
     }
 
     private class IdleWebSocket(private val request: Request) : WebSocket {
