@@ -41,7 +41,13 @@
     <string name="wesh_pave_bt_off_body">Activez Bluetooth pour parler aux téléphones autour.</string>
     <string name="wesh_pave_internet_mode">Mode Internet</string>
     <string name="wesh_pave_internet_off">Désactivé · tout passe par Bluetooth</string>
-    <string name="wesh_pave_internet_connecting">Connexion via Tor · %d %%</string>
+    <string name="wesh_pave_internet_connecting">Connexion à Tor…</string>
+    <string name="wesh_pave_pill_bluetooth_only">Bluetooth seulement</string>
+    <string name="wesh_pave_pill_connecting">Connexion à Tor…</string>
+    <string name="wesh_pave_pill_on">Internet actif</string>
+    <string name="wesh_pave_pill_failed">Internet indisponible — Réessayer</string>
+    <string name="wesh_pave_pill_hint">Ouvre Connexion</string>
+    <string name="wesh_pave_pill_retry_hint">Relance la connexion à Tor</string>
     <plurals name="wesh_pave_internet_on">
         <item quantity="one">Connecté via Tor · %d relais</item>
         <item quantity="many">Connecté via Tor · %d relais</item>

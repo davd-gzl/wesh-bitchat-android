@@ -195,6 +195,8 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
             scope,
         )
     }
+    val internetEnabled by internet.enabled.collectAsState()
+    val internetStatus by internet.status.collectAsState()
     val timeFormat = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
     fun time(message: BitchatMessage) = timeFormat.format(message.timestamp)
     fun peerFingerprint(peerID: String?) = paveSenderFingerprint(peerID, viewModel::weshAuthenticatedKey)
@@ -316,6 +318,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                         },
                         requestCount = requests.size,
                         contactStoreFailed = contactStoreFailed,
+                        internetPill = paveHomeInternetPill(internet.available, internetEnabled, internetStatus),
                     ),
                     onOpenPublicRoom = { viewModel.endPrivateChat(); go(PaveRoute.Public) },
                     onOpenContact = { id ->
@@ -327,6 +330,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                     onExchange = { go(PaveRoute.Exchange) },
                     onOpenSettings = { go(PaveRoute.Settings) },
                     onRetryContacts = viewModel::retryWeshContacts,
+                    onInternetPill = { if (internetStatus.offersRetry) internet.retry() else connexionOpen = true },
                 )
             }
             PaveRoute.Public -> {

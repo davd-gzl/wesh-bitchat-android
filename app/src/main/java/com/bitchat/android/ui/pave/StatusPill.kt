@@ -88,6 +88,63 @@ fun StatusPill(
     }
 }
 
+/**
+ * The Internet pill on Home (spec §3 « Pill »), shown while Internet mode is on. It never says a
+ * message was received. A touch retries after a failure and opens Connexion otherwise.
+ */
+@Composable
+fun InternetPill(status: PaveInternetStatus, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val c = WeshPave.colors
+    val on = status is PaveInternetStatus.On
+    val failed = status.offersRetry
+    val icon = when (status) {
+        PaveInternetStatus.Off -> Icons.Rounded.Sensors
+        is PaveInternetStatus.Connecting, is PaveInternetStatus.On -> Icons.Rounded.Public
+        is PaveInternetStatus.Error -> Icons.Rounded.Warning
+    }
+    val text = stringResource(status.pillLabel())
+    val hint = stringResource(if (failed) R.string.wesh_pave_pill_retry_hint else R.string.wesh_pave_pill_hint)
+    val border = when {
+        failed -> c.danger
+        on || status is PaveInternetStatus.Connecting -> c.internet
+        else -> c.lineStrong
+    }
+    Row(
+        modifier = modifier
+            .heightIn(min = WeshTouch.min)
+            .paveClickable(CircleShape, hint, onClick = onClick)
+            .clip(CircleShape)
+            .background(if (on) c.internet else c.surface)
+            .border(WeshStroke.s2, border, CircleShape)
+            .padding(horizontal = WeshSpace.s4),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = when {
+            on -> c.onInternet
+            failed -> c.danger
+            status is PaveInternetStatus.Connecting -> c.internet
+            else -> c.inkMuted
+        }, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(WeshSpace.s2))
+        Text(text, style = WeshType.label, color = when {
+            on -> c.onInternet
+            failed -> c.danger
+            else -> c.ink
+        })
+    }
+}
+
+@PavePreviews
+@Composable
+private fun InternetPillPreview() = PavePreview {
+    Column(verticalArrangement = Arrangement.spacedBy(WeshSpace.s3)) {
+        InternetPill(PaveInternetStatus.Connecting(0), onClick = {})
+        InternetPill(PaveInternetStatus.On(3), onClick = {})
+        InternetPill(PaveInternetStatus.Error(PaveInternetError.TorBlocked), onClick = {})
+    }
+}
+
 @PavePreviews
 @Composable
 private fun StatusPillPreview() = PavePreview {

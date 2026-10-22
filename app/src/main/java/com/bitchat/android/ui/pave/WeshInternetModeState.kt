@@ -84,3 +84,22 @@ internal fun confirmInternetDisclosure(internet: WeshInternetModeState): Interne
     internet.acceptDisclosure()
     return if (internet.setEnabled(true)) InternetToggleOutcome.Changed else InternetToggleOutcome.Refused
 }
+
+/** The Home Internet pill (spec §3 « Pill »): only while Internet mode is on, as on iOS. */
+fun paveHomeInternetPill(available: Boolean, enabled: Boolean, status: PaveInternetStatus): PaveInternetStatus? =
+    status.takeIf { available && enabled }
+
+/**
+ * « Bluetooth seulement », « Connexion à Tor… », « Internet actif », « Internet indisponible — Réessayer ».
+ * The Tor step shows no figure: Arti reports no real bootstrap progress.
+ */
+@androidx.annotation.StringRes
+fun PaveInternetStatus.pillLabel(): Int = when (this) {
+    PaveInternetStatus.Off -> com.bitchat.android.R.string.wesh_pave_pill_bluetooth_only
+    is PaveInternetStatus.Connecting -> com.bitchat.android.R.string.wesh_pave_pill_connecting
+    is PaveInternetStatus.On -> com.bitchat.android.R.string.wesh_pave_pill_on
+    is PaveInternetStatus.Error -> com.bitchat.android.R.string.wesh_pave_pill_failed
+}
+
+/** Only a failure turns the pill into a retry. */
+val PaveInternetStatus.offersRetry: Boolean get() = this is PaveInternetStatus.Error
