@@ -118,6 +118,12 @@ class ChatViewModel(
       NotificationManagerCompat.from(application.applicationContext)
     )
 
+    /** Internet-received private messages notify like Bluetooth ones while this UI is attached. */
+    private val weshInternetNotifier: (String, BitchatMessage) -> Unit = { conversationID, message ->
+        notificationManager.showPrivateMessageNotification(conversationID, message.sender.takeIf { it.isNotBlank() },
+            NotificationTextUtils.buildPrivateMessagePreview(message))
+    }
+
     private val verificationHandler = VerificationHandler(
         context = application.applicationContext,
         scope = viewModelScope,
@@ -371,6 +377,7 @@ class ChatViewModel(
                     com.bitchat.android.model.DeliveryStatus.Failed("Message expired before delivery")
                 )
             }
+            com.bitchat.android.services.WeshInternetReceiver.uiNotifier = weshInternetNotifier
             // The outbox is memory only: after a relaunch, my waiting messages are queued again.
             com.bitchat.android.services.MessageRouter.getInstance(getApplication(), mesh).restoreWeshOutboxOnce()
         } catch (_: Exception) { }
@@ -535,6 +542,9 @@ class ChatViewModel(
     }
     
     override fun onCleared() {
+        if (com.bitchat.android.services.WeshInternetReceiver.uiNotifier === weshInternetNotifier) {
+            com.bitchat.android.services.WeshInternetReceiver.uiNotifier = null
+        }
         if (favoriteRelationshipListenerRegistered) {
             runCatching {
                 FavoritesPersistenceService.shared.removeListener(

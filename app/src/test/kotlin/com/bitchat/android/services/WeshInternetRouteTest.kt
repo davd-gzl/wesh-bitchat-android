@@ -718,6 +718,38 @@ class WeshInternetRouteTest {
         } finally { cleanupRouter() }
     }
 
+    @Test fun `a new message received over Internet notifies once, a copy or an erased store never`() {
+        AppStateStore.clear()
+        val notified = mutableListOf<Pair<String, String>>()
+        val notify: (String, BitchatMessage) -> Unit = { conversationID, message -> notified += conversationID to message.id }
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val name = "notify-${java.util.UUID.randomUUID()}.db"
+        val repository = ConversationRepository(context = context, dispatcher = executor.asCoroutineDispatcher(),
+            databaseName = name, storageCipher = InMemoryConversationStorageCipher())
+        try {
+            AppStateStore.setConversationRepositoryForTest(repository)
+            val message = BitchatMessage(id = "n-1", sender = "Alice", content = "salut", timestamp = java.util.Date(),
+                isPrivate = true, senderPeerID = aliceConversation, transport = com.bitchat.android.model.MessageTransport.INTERNET)
+            assertTrue(kotlinx.coroutines.runBlocking { WeshInternetReceiver.deliverOnce(aliceConversation, message, notify) })
+            // The same ID again (relay replay, rule 4 copy, Bluetooth copy first): acked, no second notification.
+            assertTrue(kotlinx.coroutines.runBlocking { WeshInternetReceiver.deliverOnce(aliceConversation, message.copy(), notify) })
+            assertEquals(listOf(aliceConversation to "n-1"), notified)
+            // During an erase nothing is stored, so nothing is shown.
+            AppStateStore.fencePrivateConversationAdmissionForPanic()
+            assertFalse(kotlinx.coroutines.runBlocking {
+                WeshInternetReceiver.deliverOnce(aliceConversation, message.copy(id = "n-2"), notify)
+            })
+            assertEquals(1, notified.size)
+        } finally {
+            AppStateStore.resetPrivateConversationAdmissionForTest()
+            AppStateStore.setConversationRepositoryForTest(null)
+            repository.closeForTest()
+            executor.shutdown()
+            context.deleteDatabase(name)
+            AppStateStore.clear()
+        }
+    }
+
     @Test fun `rule 4 - the Internet copy of a message already received over Bluetooth makes no second bubble`() {
         AppStateStore.clear()
         try {

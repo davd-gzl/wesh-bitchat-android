@@ -201,11 +201,43 @@ internal object WeshInternetReceiver {
      * rule 4 resend) keeps its single bubble and still counts as delivered, so it is acked again.
      * Seen IDs outlive an unloaded history; IDs are random UUIDs, so a match is this message.
      */
-    internal suspend fun deliverOnce(conversationID: String, message: com.bitchat.android.model.BitchatMessage): Boolean =
-        AppStateStore.addPrivateMessageDurably(conversationID, message) || AppStateStore.hasSeenMessage(message.id)
+    internal suspend fun deliverOnce(
+        conversationID: String,
+        message: com.bitchat.android.model.BitchatMessage,
+        notify: (String, com.bitchat.android.model.BitchatMessage) -> Unit = ::notifyNew
+    ): Boolean {
+        if (AppStateStore.addPrivateMessageDurably(conversationID, message)) {
+            // A new message only: a copy already here was notified when it first arrived.
+            runCatching { notify(conversationID, message) }
+            return true
+        }
+        return AppStateStore.hasSeenMessage(message.id)
+    }
+
+    /** Set while a UI is attached: its notifier knows the open chat and whether the app is in front. */
+    @Volatile internal var uiNotifier: ((String, com.bitchat.android.model.BitchatMessage) -> Unit)? = null
+    /** Without a UI (app closed, service running): shown as a background notification, like Bluetooth. */
+    @Volatile private var backgroundNotifier: ((String, com.bitchat.android.model.BitchatMessage) -> Unit)? = null
+
+    /**
+     * Same path and privacy rules as a Bluetooth private message: muted conversations stay silent and
+     * Wesh notifications are redacted by [com.bitchat.android.ui.NotificationManager].
+     */
+    private fun notifyNew(conversationID: String, message: com.bitchat.android.model.BitchatMessage) {
+        (uiNotifier ?: backgroundNotifier)?.invoke(conversationID, message)
+    }
 
     fun start(app: Application): Unit = synchronized(this) {
         if (inbox != null) return
+        val notifications = com.bitchat.android.ui.NotificationManager(
+            app.applicationContext,
+            androidx.core.app.NotificationManagerCompat.from(app.applicationContext)
+        )
+        backgroundNotifier = { conversationID, message ->
+            notifications.setAppBackgroundState(true)
+            notifications.showPrivateMessageNotification(conversationID, message.sender.takeIf { it.isNotBlank() },
+                com.bitchat.android.ui.NotificationTextUtils.buildPrivateMessagePreview(message))
+        }
         val contacts = WeshContactStore.get(app)
         val seen = SeenMessageStore.getInstance(app)
         val created = WeshInternetInbox(
