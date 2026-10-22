@@ -6,7 +6,6 @@ import com.bitchat.android.identity.SecureIdentityStateManager
 import com.bitchat.android.mesh.PeerFingerprintManager
 import com.bitchat.android.noise.southernstorm.protocol.Noise
 import java.security.MessageDigest
-import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -31,9 +30,6 @@ class NoiseEncryptionService(private val context: Context) {
     private var staticIdentityPrivateKey: ByteArray
     private var staticIdentityPublicKey: ByteArray
     
-    // Ed25519 signing key (persistent across app restarts) - loaded from secure storage
-    private var signingPrivateKey: ByteArray
-    private var signingPublicKey: ByteArray
     
     // Session management
     private lateinit var sessionManager: NoiseSessionManager
@@ -55,8 +51,6 @@ class NoiseEncryptionService(private val context: Context) {
         // Load or create keys - temporary placeholders
         staticIdentityPrivateKey = ByteArray(32)
         staticIdentityPublicKey = ByteArray(32)
-        signingPrivateKey = ByteArray(32)
-        signingPublicKey = ByteArray(32)
         
         loadOrGenerateKeys()
         
@@ -95,20 +89,8 @@ class NoiseEncryptionService(private val context: Context) {
             identityStateManager.saveStaticKey(staticIdentityPrivateKey, staticIdentityPublicKey)
         }
         
-        // Load or create Ed25519 signing key (persistent across sessions)
-        val loadedSigningKeyPair = identityStateManager.loadSigningKey()
-        if (loadedSigningKeyPair != null) {
-            signingPrivateKey = loadedSigningKeyPair.first
-            signingPublicKey = loadedSigningKeyPair.second
-        } else {
-            // Generate new Ed25519 signing key pair
-            val signingKeyPair = generateEd25519KeyPair()
-            signingPrivateKey = signingKeyPair.first
-            signingPublicKey = signingKeyPair.second
-            
-            // Save to secure storage
-            identityStateManager.saveSigningKey(signingPrivateKey, signingPublicKey)
-        }
+        // The identity signing key is EncryptionService's; drop the unused pair earlier builds stored here.
+        identityStateManager.forgetRetiredSigningKey()
     }
 
     // MARK: - Public Interface
@@ -120,13 +102,6 @@ class NoiseEncryptionService(private val context: Context) {
         return staticIdentityPublicKey.clone()
     }
 
-    /**
-     * Get our signing public key data for sharing (32 bytes)
-     */
-    fun getSigningPublicKeyData(): ByteArray {
-        return signingPublicKey.clone()
-    }
-    
     /**
      * Get our identity fingerprint (SHA-256 hash of static public key)
      */
@@ -401,114 +376,6 @@ class NoiseEncryptionService(private val context: Context) {
         return hash.joinToString("") { "%02x".format(it) }
     }
     
-    // MARK: - Packet Signing/Verification
-
-    /**
-     * Sign a BitchatPacket using our Ed25519 signing key
-     */
-    fun signPacket(packet: com.bitchat.android.protocol.BitchatPacket): com.bitchat.android.protocol.BitchatPacket? {
-        // Create canonical packet bytes for signing
-        val packetData = packet.toBinaryDataForSigning() ?: return null
-        
-        // Sign with our Ed25519 signing private key
-        val signature = signData(packetData) ?: return null
-        
-        // Return new packet with signature
-        return packet.copy(signature = signature)
-    }
-
-    /**
-     * Verify a BitchatPacket signature using the provided public key
-     */
-    fun verifyPacketSignature(packet: com.bitchat.android.protocol.BitchatPacket, publicKey: ByteArray): Boolean {
-        val signature = packet.signature ?: return false
-        
-        // Create canonical packet bytes for verification (without signature)
-        val packetData = packet.toBinaryDataForSigning() ?: return false
-        
-        // Verify signature using the provided Ed25519 public key
-        return verifySignature(signature, packetData, publicKey)
-    }
-
-    /**
-     * Sign data with our Ed25519 signing key
-     */
-    fun signData(data: ByteArray): ByteArray? {
-        return try {
-            // For simplicity, we'll implement this using BouncyCastle which should be available
-            // In a production system, you might want to use the Android Keystore
-            signWithEd25519(data, signingPrivateKey)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to sign data: ${e.message}")
-            null
-        }
-    }
-
-    /**
-     * Verify signature with a public key
-     */
-    fun verifySignature(signature: ByteArray, data: ByteArray, publicKey: ByteArray): Boolean {
-        return try {
-            verifyWithEd25519(signature, data, publicKey)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to verify signature: ${e.message}")
-            false
-        }
-    }
-
-    /**
-     * Generate a new Ed25519 key pair for signing using BouncyCastle
-     * Returns (privateKey, publicKey) as 32-byte arrays
-     */
-    private fun generateEd25519KeyPair(): Pair<ByteArray, ByteArray> {
-        try {
-            // Use BouncyCastle for proper Ed25519 key generation
-            val keyGen = org.bouncycastle.crypto.generators.Ed25519KeyPairGenerator()
-            keyGen.init(org.bouncycastle.crypto.params.Ed25519KeyGenerationParameters(SecureRandom()))
-            val keyPair = keyGen.generateKeyPair()
-            
-            val privateKey = (keyPair.private as org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters).encoded
-            val publicKey = (keyPair.public as org.bouncycastle.crypto.params.Ed25519PublicKeyParameters).encoded
-            
-            return Pair(privateKey, publicKey)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to generate Ed25519 key pair: ${e.message}")
-            throw e
-        }
-    }
-
-    /**
-     * Sign data with Ed25519 private key using BouncyCastle
-     */
-    private fun signWithEd25519(data: ByteArray, privateKey: ByteArray): ByteArray {
-        try {
-            val privateKeyParams = org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters(privateKey, 0)
-            val signer = org.bouncycastle.crypto.signers.Ed25519Signer()
-            signer.init(true, privateKeyParams)
-            signer.update(data, 0, data.size)
-            return signer.generateSignature()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to sign data with Ed25519: ${e.message}")
-            throw e
-        }
-    }
-
-    /**
-     * Verify Ed25519 signature using BouncyCastle
-     */
-    private fun verifyWithEd25519(signature: ByteArray, data: ByteArray, publicKey: ByteArray): Boolean {
-        try {
-            val publicKeyParams = org.bouncycastle.crypto.params.Ed25519PublicKeyParameters(publicKey, 0)
-            val verifier = org.bouncycastle.crypto.signers.Ed25519Signer()
-            verifier.init(false, publicKeyParams)
-            verifier.update(data, 0, data.size)
-            return verifier.verifySignature(signature)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to verify Ed25519 signature: ${e.message}")
-            return false
-        }
-    }
-
     /**
      * Clean shutdown
      */
