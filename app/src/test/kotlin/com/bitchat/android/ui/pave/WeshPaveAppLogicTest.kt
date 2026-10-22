@@ -42,7 +42,7 @@ class WeshPaveAppLogicTest {
         assertFalse(paveComposerEnabled(conversationCanSend = true, sending = false, editable = false))
         // The composer's field and send button follow this state; the button alone checks the draft.
         val app = java.io.File("src/main/java/com/bitchat/android/ui/pave/WeshPaveApp.kt").readText()
-        assertTrue("canSend = paveComposerEnabled(" in app)
+        assertTrue("val composer = paveComposerState(" in app)
         val screens = java.io.File("src/main/java/com/bitchat/android/ui/pave/ConversationScreens.kt").readText()
         assertTrue("enabled = state.canSend" in screens)
         val composer = java.io.File("src/main/java/com/bitchat/android/ui/pave/Composer.kt").readText()

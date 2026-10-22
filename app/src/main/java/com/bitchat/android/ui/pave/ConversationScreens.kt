@@ -274,7 +274,7 @@ private fun MessageList(
 }
 
 @Composable
-private fun ComposerFooter(
+internal fun ComposerFooter(
     state: PaveComposerState,
     room: PaveRoom,
     recipient: String?,
