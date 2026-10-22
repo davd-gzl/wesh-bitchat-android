@@ -421,6 +421,31 @@ object AppStateStore {
         }
     }
 
+    /**
+     * My private messages still « En attente » (to rebuild the memory-only outbox after a relaunch),
+     * read after every pending write and behind the erase fence. Null when the store is unavailable.
+     */
+    suspend fun pendingOutgoingPrivateMessages(): List<Pair<String, BitchatMessage>>? {
+        val (repository, generation) = synchronized(this) {
+            if (privateConversationWritesSuspended) return null
+            val generation = capturePrivateConversationGeneration() ?: return null
+            val repository = conversationRepository
+                ?: return _privateMessages.value.flatMap { (conversationID, messages) ->
+                    messages.filter { it.isPrivate && it.deliveryStatus == DeliveryStatus.Sending }.map { conversationID to it }
+                }
+            repository to generation
+        }
+        val pending = try {
+            repository.pendingOutgoingAndWait()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return null
+        }
+        if (!isCurrentPrivateConversationGeneration(generation)) return null
+        return pending
+    }
+
     private fun DeliveryStatus?.toPersistedAck(): PersistedAck = when (this) {
         is DeliveryStatus.Delivered, is DeliveryStatus.Read -> PersistedAck.ACKED
         else -> PersistedAck.PENDING

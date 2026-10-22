@@ -214,8 +214,8 @@ private fun internetStatusText(available: Boolean, enabled: Boolean, status: Pav
     !available -> stringResource(R.string.wesh_pave_internet_unavailable)
     !enabled -> stringResource(R.string.wesh_pave_internet_off)
     else -> when (status) {
-        PaveInternetStatus.Off -> stringResource(R.string.wesh_pave_internet_connecting, 0)
-        is PaveInternetStatus.Connecting -> stringResource(R.string.wesh_pave_internet_connecting, status.torPercent.coerceIn(0, 100))
+        // Indeterminate: Arti reports no real bootstrap progress.
+        PaveInternetStatus.Off, is PaveInternetStatus.Connecting -> stringResource(R.string.wesh_pave_internet_connecting)
         is PaveInternetStatus.On -> pluralStringResource(R.plurals.wesh_pave_internet_on, status.relays, status.relays)
         is PaveInternetStatus.Error -> stringResource(
             when (status.reason) {

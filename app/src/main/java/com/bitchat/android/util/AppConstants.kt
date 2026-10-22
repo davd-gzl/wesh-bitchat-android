@@ -159,6 +159,12 @@ object AppConstants {
         /** Spec §3 rule 4: a Bluetooth message with no ack after this long is retried, same ID. */
         const val WESH_BLUETOOTH_ACK_TIMEOUT_MS: Long = 20_000L
 
+        /** Spec « Retry policy »: publications per message over its 24 h TTL, early retries and re-wraps included. */
+        const val WESH_INTERNET_MAX_PUBLICATIONS: Int = 60
+
+        /** Spec « Retry policy »: a relay reconnect or Internet On retries early only a message published this long ago. */
+        const val WESH_INTERNET_EARLY_RETRY_MIN_GAP_MS: Long = 5L * 60_000L
+
         /** Delay before the next attempt after [attempts] failed ones (1-based). */
         fun weshInternetRetryDelayMs(attempts: Int): Long {
             val doublings = (attempts - 1).coerceIn(0, 16)

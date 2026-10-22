@@ -116,6 +116,14 @@ internal fun paveDelivery(status: DeliveryStatus?, public: Boolean): PaveDeliver
     PaveDelivery.from(status, isPrivate = !public)
 
 /**
+ * Whether the composer takes typing: the conversation can send (Bluetooth ready, or a verified
+ * contact), no public send is in flight, and drafts can be stored. Never the draft itself: an empty
+ * field must take the first character, and the send button already checks the draft.
+ */
+internal fun paveComposerEnabled(conversationCanSend: Boolean, sending: Boolean, editable: Boolean): Boolean =
+    conversationCanSend && !sending && editable
+
+/**
  * The fingerprint shown under a remote nickname: from the key the peer proved in its Noise session
  * only. An announced key can be copied by anyone, so without proof the line reads "Empreinte
  * indisponible" (null here).
@@ -195,6 +203,8 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
             scope,
         )
     }
+    val internetEnabled by internet.enabled.collectAsState()
+    val internetStatus by internet.status.collectAsState()
     val timeFormat = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
     fun time(message: BitchatMessage) = timeFormat.format(message.timestamp)
     fun peerFingerprint(peerID: String?) = paveSenderFingerprint(peerID, viewModel::weshAuthenticatedKey)
@@ -251,7 +261,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
     }
     val composer = PaveComposerState(
         draft = draft,
-        canSend = canSendConversation && !publicSending && editable && draft.isNotBlank(),
+        canSend = paveComposerEnabled(canSendConversation, publicSending, editable),
         editable = editable,
         blockedReason = persistenceProblem ?: when {
             canSendConversation -> null
@@ -316,6 +326,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                         },
                         requestCount = requests.size,
                         contactStoreFailed = contactStoreFailed,
+                        internetPill = paveHomeInternetPill(internet.available, internetEnabled, internetStatus),
                     ),
                     onOpenPublicRoom = { viewModel.endPrivateChat(); go(PaveRoute.Public) },
                     onOpenContact = { id ->
@@ -327,6 +338,12 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                     onExchange = { go(PaveRoute.Exchange) },
                     onOpenSettings = { go(PaveRoute.Settings) },
                     onRetryContacts = viewModel::retryWeshContacts,
+                    onInternetPill = {
+                        when (internetStatus.pillAction()) {
+                            PaveInternetPillAction.Retry -> internet.retry()
+                            PaveInternetPillAction.OpenConnexion -> connexionOpen = true
+                        }
+                    },
                 )
             }
             PaveRoute.Public -> {
