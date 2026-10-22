@@ -513,25 +513,24 @@ class BluetoothMeshService(
             
             override fun onDeliveryAckReceived(messageID: String, peerID: String) {
                 // Status events can arrive while MainActivity has detached the UI delegate.
-                // Persist first so the next UI collector observes the advancement.
-                try {
-                    com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(
-                        messageID,
-                        com.bitchat.android.model.DeliveryStatus.Delivered(peerID, Date()),
-                        com.bitchat.android.model.MessageTransport.BLUETOOTH
+                // Persist first so the next UI collector observes the advancement. Only the
+                // message's own recipient may advance it.
+                if (!com.bitchat.android.services.AppStateStore.applyMeshAck(
+                        messageID = messageID,
+                        peerID = peerID,
+                        status = com.bitchat.android.model.DeliveryStatus.Delivered(peerID, Date())
                     )
-                } catch (_: Exception) { }
+                ) return
                 delegate?.didReceiveDeliveryAck(messageID, peerID)
             }
             
             override fun onReadReceiptReceived(messageID: String, peerID: String) {
-                try {
-                    com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(
-                        messageID,
-                        com.bitchat.android.model.DeliveryStatus.Read(peerID, Date()),
-                        com.bitchat.android.model.MessageTransport.BLUETOOTH
+                if (!com.bitchat.android.services.AppStateStore.applyMeshAck(
+                        messageID = messageID,
+                        peerID = peerID,
+                        status = com.bitchat.android.model.DeliveryStatus.Read(peerID, Date())
                     )
-                } catch (_: Exception) { }
+                ) return
                 delegate?.didReceiveReadReceipt(messageID, peerID)
             }
 

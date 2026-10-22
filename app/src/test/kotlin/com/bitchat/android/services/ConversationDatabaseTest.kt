@@ -420,6 +420,23 @@ class ConversationDatabaseTest {
     }
 
     @Test
+    fun `a status bound to a conversation never touches another conversation's message`() {
+        database.upsertMessage("contact_alice", setOf("contact_alice", "aaaa000000000001"), "alice",
+            BitchatMessage(id = "bound-1", sender = "me", content = "x", timestamp = Date(1), isPrivate = true,
+                deliveryStatus = DeliveryStatus.Sent), isRead = true)
+        database.updateDeliveryStatus("bound-1", DeliveryStatus.Read("mallory", Date(2)), MessageTransport.BLUETOOTH,
+            conversationID = "contact_mallory")
+        assertEquals(DeliveryStatus.Sent, database.loadSnapshot().chats.getValue("contact_alice").single().deliveryStatus)
+
+        // An alias of the right conversation is accepted.
+        database.updateDeliveryStatus("bound-1", DeliveryStatus.Delivered("alice", Date(3)), MessageTransport.BLUETOOTH,
+            conversationID = "aaaa000000000001")
+        val restored = database.loadSnapshot().chats.getValue("contact_alice").single()
+        assertEquals(DeliveryStatus.Delivered("alice", Date(3)), restored.deliveryStatus)
+        assertEquals(MessageTransport.BLUETOOTH, restored.transport)
+    }
+
+    @Test
     fun `version four database gains an empty transport column and keeps its history`() {
         database.upsertMessage("contact_alice", setOf("contact_alice"), "alice",
             BitchatMessage(id = "v4-message", sender = "alice", content = "avant", timestamp = Date(1),

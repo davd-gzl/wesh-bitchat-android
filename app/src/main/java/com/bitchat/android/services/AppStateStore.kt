@@ -403,7 +403,8 @@ object AppStateStore {
     /**
      * Status from a transport that authenticated the sender as this conversation's contact: the
      * message must belong to [conversationID], so an ack can never touch another conversation.
-     * Returns false (nothing written) when it does not, including when its history is unloaded.
+     * Returns false (nothing written) when it belongs elsewhere. When its history is unloaded, the
+     * database applies the same check.
      */
     fun updatePrivateMessageStatusIn(
         conversationID: String,
@@ -413,12 +414,31 @@ object AppStateStore {
     ): Boolean {
         synchronized(this) {
             val canonical = ContactDirectory.canonicalConversationId(conversationID)
-            if (_privateMessages.value[canonical].orEmpty().none { it.id == messageID }) return false
-            // Message IDs are unique across conversations (UNIQUE column, seenMessageIds).
-            updatePrivateMessageStatus(messageID, status, transport)
+            if (_privateMessages.value[canonical].orEmpty().any { it.id == messageID }) {
+                // Message IDs are unique across conversations (UNIQUE column, seenMessageIds).
+                updatePrivateMessageStatus(messageID, status, transport)
+                return true
+            }
+            if (_privateMessages.value.values.any { list -> list.any { it.id == messageID } }) return false
+            if (privateConversationWritesSuspended) return false
+            val repository = conversationRepository ?: return false
+            repository.updateDeliveryStatus(messageID, status, transport, conversationID = canonical)
             return true
         }
     }
+
+    /**
+     * A Bluetooth delivery ack or read receipt from [peerID]: applied only to a message of that
+     * peer's conversation, so a nearby peer that learnt a message ID cannot mark it « Distribué » or « Lu ».
+     */
+    fun applyMeshAck(
+        peerID: String,
+        messageID: String,
+        status: DeliveryStatus,
+        conversationOf: (String) -> String = ContactDirectory::canonicalConversationId
+    ): Boolean = runCatching {
+        updatePrivateMessageStatusIn(conversationOf(peerID), messageID, status, MessageTransport.BLUETOOTH)
+    }.getOrDefault(false)
 
     /** [transport]: where this status came from; recorded only when the status is applied. */
     fun updatePrivateMessageStatus(messageID: String, status: DeliveryStatus, transport: MessageTransport? = null) {

@@ -194,10 +194,15 @@ class ConversationRepository internal constructor(
         false
     }
 
-    fun updateDeliveryStatus(messageID: String, status: DeliveryStatus, transport: MessageTransport? = null) {
+    fun updateDeliveryStatus(
+        messageID: String,
+        status: DeliveryStatus,
+        transport: MessageTransport? = null,
+        conversationID: String? = null
+    ) {
         enqueueMutation {
             try {
-                database.updateDeliveryStatus(messageID, status, transport)
+                database.updateDeliveryStatus(messageID, status, transport, conversationID)
             } catch (error: Exception) {
                 Log.e(TAG, "Unable to persist delivery status: ${error.message}")
             }
@@ -867,10 +872,20 @@ internal class ConversationDatabase(
         )
     }
 
-    /** [transport] is recorded only when [status] is applied: a refused downgrade changes nothing. */
-    fun updateDeliveryStatus(messageID: String, status: DeliveryStatus, transport: MessageTransport? = null) {
+    /**
+     * [transport] is recorded only when [status] is applied: a refused downgrade changes nothing.
+     * [conversationID] set (an ack from an authenticated peer): applied only to a message of that
+     * conversation or one of its aliases.
+     */
+    fun updateDeliveryStatus(
+        messageID: String,
+        status: DeliveryStatus,
+        transport: MessageTransport? = null,
+        conversationID: String? = null
+    ) {
         val db = writableDatabase
         var found = false
+        var owner: String? = null
         val existing = db.rawQuery(
             """
             SELECT ${MESSAGE_COLUMNS.joinToString(",")}
@@ -880,6 +895,7 @@ internal class ConversationDatabase(
         ).use { cursor ->
             if (cursor.moveToFirst()) {
                 found = true
+                owner = cursor.string("conversation_id")
                 cursor.toMessage().deliveryStatus
             } else {
                 null
@@ -887,6 +903,9 @@ internal class ConversationDatabase(
         }
 
         if (!found) return
+        if (conversationID != null &&
+            !resolveStoredConversationLocked(db, conversationID).equals(owner, ignoreCase = true)
+        ) return
         val mayReplace = when {
             status is DeliveryStatus.Failed ->
                 existing !is DeliveryStatus.Delivered && existing !is DeliveryStatus.Read

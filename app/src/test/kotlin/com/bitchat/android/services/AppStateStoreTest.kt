@@ -41,6 +41,23 @@ class AppStateStoreTest {
     }
 
     @Test
+    fun `a Bluetooth ack from a third peer cannot mark another conversation's message`() {
+        AppStateStore.addPrivateMessage("contact_alice", BitchatMessage(id = "spoof-1", sender = "me", content = "x",
+            timestamp = Date(1), isPrivate = true, senderPeerID = "1111222233334444", deliveryStatus = DeliveryStatus.Sent))
+        val conversations = mapOf("aaaa000000000001" to "contact_alice", "eeee000000000009" to "contact_mallory")
+        val conversationOf = { peerID: String -> conversations.getValue(peerID) }
+        fun stored() = AppStateStore.privateMessages.value.values.flatten().single { it.id == "spoof-1" }
+
+        assertFalse(AppStateStore.applyMeshAck("eeee000000000009", "spoof-1", DeliveryStatus.Read("mallory", Date(2)), conversationOf))
+        assertEquals(DeliveryStatus.Sent, stored().deliveryStatus)
+        assertEquals(null, stored().transport)
+
+        assertTrue(AppStateStore.applyMeshAck("aaaa000000000001", "spoof-1", DeliveryStatus.Delivered("alice", Date(3)), conversationOf))
+        assertEquals(DeliveryStatus.Delivered("alice", Date(3)), stored().deliveryStatus)
+        assertEquals(MessageTransport.BLUETOOTH, stored().transport)
+    }
+
+    @Test
     fun `an ack status only touches the acking contact's own conversation`() {
         AppStateStore.addPrivateMessage("contact_alice", BitchatMessage(id = "status-1", sender = "me", content = "x",
             timestamp = Date(1), isPrivate = true, senderPeerID = "1111222233334444", deliveryStatus = DeliveryStatus.Sent))
