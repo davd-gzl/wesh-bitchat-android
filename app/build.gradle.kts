@@ -38,7 +38,7 @@ android {
         // runtime toggle (WeshNetworkPolicy.allowsNetwork()), which defaults off.
         // False until ArtiNative.stop() releases the Tor client: today Tor keeps running after "off".
         buildConfigField("boolean", "WESH_INTERNET_AVAILABLE", "false")
-        versionCode = 101
+        versionCode = 102
         versionName = "1.0.0"
         buildConfigField(
             "String",
