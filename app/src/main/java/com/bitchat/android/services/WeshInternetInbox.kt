@@ -198,6 +198,8 @@ internal typealias WeshInternetNotifier = (conversationID: String, message: Bitc
 internal object WeshInternetReceiver {
     internal const val SUBSCRIPTION_ID = "wesh-internet-dm"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+    /** Lives with the process, like the receiver: background notifications have no UI scope. */
+    private val backgroundScope = CoroutineScope(SupervisorJob())
     @Volatile private var inbox: WeshInternetInbox? = null
 
     /**
@@ -236,8 +238,8 @@ internal object WeshInternetReceiver {
     }
 
     /**
-     * The UI notifier: [show] runs on [main], where the UI's NotificationManager keeps its lists, and
-     * only if no erase started since the message was stored. Delivery runs on the receiver's IO thread.
+     * A notifier whose [show] runs on [main], where NotificationManager keeps its lists, and only if no
+     * erase started since the message was stored. Delivery runs on the receiver's IO thread.
      */
     internal fun postOnMain(
         scope: CoroutineScope,
@@ -253,13 +255,11 @@ internal object WeshInternetReceiver {
             app.applicationContext,
             androidx.core.app.NotificationManagerCompat.from(app.applicationContext)
         )
-        // Called on the receiver's single IO thread, the only user of this manager.
-        backgroundNotifier = { conversationID, message, stillCurrent ->
-            if (stillCurrent()) {
-                notifications.setAppBackgroundState(true)
-                notifications.showPrivateMessageNotification(conversationID, message.sender.takeIf { it.isNotBlank() },
-                    com.bitchat.android.ui.NotificationTextUtils.buildPrivateMessagePreview(message))
-            }
+        // Shown on Main too, so whichever notifier posts, one thread owns each manager's lists.
+        backgroundNotifier = postOnMain(backgroundScope) { conversationID, message ->
+            notifications.setAppBackgroundState(true)
+            notifications.showPrivateMessageNotification(conversationID, message.sender.takeIf { it.isNotBlank() },
+                com.bitchat.android.ui.NotificationTextUtils.buildPrivateMessagePreview(message))
         }
         val contacts = WeshContactStore.get(app)
         val seen = SeenMessageStore.getInstance(app)

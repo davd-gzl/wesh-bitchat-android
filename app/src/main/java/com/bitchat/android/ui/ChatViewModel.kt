@@ -62,6 +62,13 @@ class ChatViewModel(
     companion object {
         private const val TAG = "ChatViewModel"
         private const val CONVERSATION_DISCONNECT_GRACE_MS = 3_000L
+
+        /** Internet-received messages are shown on Main, where [notifications] keeps its lists. */
+        internal fun internetNotifierOnMain(scope: kotlinx.coroutines.CoroutineScope, notifications: NotificationManager) =
+            com.bitchat.android.services.WeshInternetReceiver.postOnMain(scope) { conversationID, message ->
+                notifications.showPrivateMessageNotification(conversationID, message.sender.takeIf { it.isNotBlank() },
+                    NotificationTextUtils.buildPrivateMessagePreview(message))
+            }
     }
 
     fun getCurrentNpub(): String? {
@@ -119,10 +126,7 @@ class ChatViewModel(
     )
 
     /** Internet-received private messages notify like Bluetooth ones while this UI is attached. */
-    private val weshInternetNotifier = com.bitchat.android.services.WeshInternetReceiver.postOnMain(viewModelScope) { conversationID, message ->
-        notificationManager.showPrivateMessageNotification(conversationID, message.sender.takeIf { it.isNotBlank() },
-            NotificationTextUtils.buildPrivateMessagePreview(message))
-    }
+    private val weshInternetNotifier = internetNotifierOnMain(viewModelScope, notificationManager)
 
     private val verificationHandler = VerificationHandler(
         context = application.applicationContext,
