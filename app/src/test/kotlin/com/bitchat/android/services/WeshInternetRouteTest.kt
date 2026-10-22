@@ -628,6 +628,52 @@ class WeshInternetRouteTest {
         }
     }
 
+    @Test fun `an attempt skipped while the store is unavailable never clears the in-flight mark of the next one`() {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        AppStateStore.clear()
+        val router = MessageRouter(context, mesh, mock())
+        router.weshInternetLink = alice.link
+        val hold = kotlinx.coroutines.CompletableDeferred<Unit>()
+        try {
+            // A full outbox: the skipped attempt's requeue evicts the oldest entry, and the eviction
+            // callback starts a second attempt at that exact point, before the first one has ended.
+            alice.link.on = false
+            repeat(AppConstants.Router.OUTBOX_MAX_PER_PEER) {
+                assertEquals(MessageRouter.RouteResult.QUEUED, router.sendPrivate("old", bobConversation, "Bob", "old-$it"))
+            }
+            alice.link.on = true
+            alice.link.hold = hold
+            val second = java.util.concurrent.CountDownLatch(1)
+            router.onMessageExpired = { _, _ ->
+                if (second.count == 1L) {
+                    AppStateStore.resetPrivateConversationAdmissionForTest()
+                    router.sendPrivate("salut", bobConversation, "Bob", "race-1")
+                    second.countDown()
+                }
+            }
+            AppStateStore.fencePrivateConversationAdmissionForPanic()
+            assertEquals(MessageRouter.RouteResult.NOSTR, router.sendPrivate("salut", bobConversation, "Bob", "race-1"))
+            assertTrue(second.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            waitFor { alice.link.published.size == 1 }
+            Thread.sleep(200)
+            // The second attempt is still in flight: a third one must not start a parallel publish.
+            router.sendPrivate("salut", bobConversation, "Bob", "race-1")
+            Thread.sleep(300)
+            assertEquals(1, alice.link.published.size)
+        } finally {
+            hold.complete(Unit)
+            alice.link.hold = null
+            AppStateStore.resetPrivateConversationAdmissionForTest()
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
     @Test fun `a block during an in-flight Internet send keeps it off the relays`() {
         val mesh: MeshService = mock()
         whenever(mesh.myPeerID).thenReturn(alice.peerID)
