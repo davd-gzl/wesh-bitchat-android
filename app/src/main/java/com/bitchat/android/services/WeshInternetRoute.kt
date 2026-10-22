@@ -10,6 +10,8 @@ import com.bitchat.android.nostr.NostrEvent
 import com.bitchat.android.nostr.NostrIdentity
 import com.bitchat.android.nostr.NostrProtocol
 import com.bitchat.android.nostr.NostrRelayManager
+import com.bitchat.android.nostr.RelayPublishOutcome
+import com.bitchat.android.util.AppConstants
 
 /** Nostr side of the Wesh Internet route; injectable so routing is testable without relays. */
 internal interface WeshInternetLink {
@@ -17,7 +19,10 @@ internal interface WeshInternetLink {
     fun isOn(): Boolean
     /** Read-only: the Internet route never creates key material (Internet mode does, on opt-in). */
     fun myIdentity(): NostrIdentity?
+    /** Fire and forget, through the relay queue: acks and receipts. */
     fun publish(event: NostrEvent)
+    /** Private messages: waits for a relay `OK`; never queued by the relay layer. */
+    suspend fun publishConfirmed(event: NostrEvent): RelayPublishOutcome
 
     class Live(private val context: Context) : WeshInternetLink {
         override fun isOn(): Boolean = runCatching {
@@ -27,6 +32,10 @@ internal interface WeshInternetLink {
         override fun publish(event: NostrEvent) {
             NostrRelayManager.registerPendingGiftWrap(event.id)
             NostrRelayManager.getInstance(context).sendEvent(event)
+        }
+        override suspend fun publishConfirmed(event: NostrEvent): RelayPublishOutcome {
+            NostrRelayManager.registerPendingGiftWrap(event.id)
+            return NostrRelayManager.getInstance(context).sendEventConfirmed(event)
         }
     }
 }
@@ -51,11 +60,36 @@ internal class WeshInternetRoute(
         link.isOn() && recipient(conversationID) != null
     }.getOrDefault(false)
 
-    fun sendPrivate(content: String, conversationID: String, messageID: String): Boolean =
-        publish(conversationID) { contact ->
+    /** One attempt and the signed gift wrap it published, kept so a retry can send it again. */
+    data class Send(val outcome: RelayPublishOutcome, val giftWrap: NostrEvent?)
+
+    /**
+     * « Envoyé » only on [RelayPublishOutcome.ACCEPTED]. [previousWrap], from an unconfirmed attempt,
+     * is published again unchanged, so relays deduplicate it; it is wrapped afresh when it no longer
+     * targets the contact's npub or is too old for the receivers' lookback.
+     */
+    suspend fun sendPrivate(
+        content: String,
+        conversationID: String,
+        messageID: String,
+        previousWrap: NostrEvent? = null,
+        nowSeconds: Long = System.currentTimeMillis() / 1000
+    ): Send {
+        val notSent = Send(RelayPublishOutcome.NOT_SENT, previousWrap)
+        val contact = recipient(conversationID) ?: return notSent
+        if (!link.isOn()) return notSent
+        val recipientHex = runCatching { ContactIdentityResolver.nostrPubkeyHex(contact.deliveryNpub ?: return notSent) }
+            .getOrNull() ?: return notSent
+        val wrap = previousWrap?.takeIf {
+            it.tags == listOf(listOf("p", recipientHex)) &&
+                nowSeconds - it.createdAt < AppConstants.Router.WESH_INTERNET_WRAP_REUSE_MAX_AGE_S
+        } ?: envelope(conversationID) { c ->
             if (content.isBlank() || content.toByteArray().size > 2000) null
-            else NostrEmbeddedBitChat.encodePMForNostr(content, messageID, contact.noiseHex, myPeerID())
-        }
+            else NostrEmbeddedBitChat.encodePMForNostr(content, messageID, c.noiseHex, myPeerID())
+        }?.singleOrNull() ?: return notSent
+        val outcome = runCatching { link.publishConfirmed(wrap) }.getOrDefault(RelayPublishOutcome.UNCONFIRMED)
+        return Send(outcome, wrap)
+    }
 
     /** DELIVERED or READ_RECEIPT for a message that arrived over Internet. */
     fun sendAck(type: NoisePayloadType, messageID: String, conversationID: String): Boolean =
@@ -64,13 +98,19 @@ internal class WeshInternetRoute(
         }
 
     private fun publish(conversationID: String, embed: (WeshContactStore.Contact) -> String?): Boolean = runCatching {
-        val contact = recipient(conversationID) ?: return@runCatching false
-        if (!link.isOn()) return@runCatching false
-        val identity = link.myIdentity() ?: return@runCatching false
-        val recipientHex = ContactIdentityResolver.nostrPubkeyHex(contact.deliveryNpub ?: return@runCatching false)
-            ?: return@runCatching false
-        val embedded = embed(contact) ?: return@runCatching false
-        NostrProtocol.createPrivateMessage(embedded, recipientHex, identity).forEach(link::publish)
+        val events = envelope(conversationID, embed) ?: return@runCatching false
+        events.forEach(link::publish)
         true
     }.getOrDefault(false)
+
+    /** The gift wraps for an enrolled contact while Internet is on; null when nothing may leave. */
+    private fun envelope(conversationID: String, embed: (WeshContactStore.Contact) -> String?): List<NostrEvent>? = runCatching {
+        val contact = recipient(conversationID) ?: return@runCatching null
+        if (!link.isOn()) return@runCatching null
+        val identity = link.myIdentity() ?: return@runCatching null
+        val recipientHex = ContactIdentityResolver.nostrPubkeyHex(contact.deliveryNpub ?: return@runCatching null)
+            ?: return@runCatching null
+        val embedded = embed(contact) ?: return@runCatching null
+        NostrProtocol.createPrivateMessage(embedded, recipientHex, identity).takeIf { it.isNotEmpty() }
+    }.getOrNull()
 }
