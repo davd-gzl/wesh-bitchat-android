@@ -35,7 +35,9 @@ class WeshPaveAppLogicTest {
     fun `the public room never claims a receipt`() {
         val delivered = DeliveryStatus.Delivered("synthetic", Date(0))
         assertEquals(PaveDelivery.Sent, paveDelivery(delivered, public = true))
-        assertEquals(PaveDelivery.Received, paveDelivery(delivered, public = false))
+        assertEquals(PaveDelivery.Delivered, paveDelivery(delivered, public = false))
+        assertEquals(PaveDelivery.Read, paveDelivery(DeliveryStatus.Read("synthetic", Date(1)), public = false))
+        assertEquals(PaveDelivery.Sent, paveDelivery(DeliveryStatus.Read("synthetic", Date(1)), public = true))
         assertEquals(PaveDelivery.Waiting, paveDelivery(null, public = false))
         assertEquals(PaveDelivery.Waiting, paveDelivery(DeliveryStatus.Sending, public = false))
         assertEquals(PaveDelivery.Failed, paveDelivery(DeliveryStatus.Failed("synthetic"), public = true))

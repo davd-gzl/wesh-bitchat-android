@@ -35,20 +35,27 @@ class PaveLogicTest {
     }
 
     @Test
-    fun `delivery maps to the four Pavé words`() {
+    fun `delivery maps to the spec words`() {
         assertEquals(PaveDelivery.Waiting, PaveDelivery.from(null, isPrivate = true))
         assertEquals(PaveDelivery.Waiting, PaveDelivery.from(DeliveryStatus.Sending, isPrivate = true))
         assertEquals(PaveDelivery.Sent, PaveDelivery.from(DeliveryStatus.Sent, isPrivate = true))
         assertEquals(PaveDelivery.Sent, PaveDelivery.from(DeliveryStatus.PartiallyDelivered(1, 3), isPrivate = false))
-        assertEquals(PaveDelivery.Received, PaveDelivery.from(DeliveryStatus.Delivered("n", Date(0)), isPrivate = true))
+        assertEquals(PaveDelivery.Delivered, PaveDelivery.from(DeliveryStatus.Delivered("n", Date(0)), isPrivate = true))
+        assertEquals(PaveDelivery.Read, PaveDelivery.from(DeliveryStatus.Read("n", Date(0)), isPrivate = true))
         assertEquals(PaveDelivery.Failed, PaveDelivery.from(DeliveryStatus.Failed("x"), isPrivate = false))
     }
 
     @Test
-    fun `read receipts are never shown and public never says received`() {
-        assertEquals(PaveDelivery.Received, PaveDelivery.from(DeliveryStatus.Read("n", Date(0)), isPrivate = true))
+    fun `public never says delivered or read`() {
         assertEquals(PaveDelivery.Sent, PaveDelivery.from(DeliveryStatus.Delivered("n", Date(0)), isPrivate = false))
         assertEquals(PaveDelivery.Sent, PaveDelivery.from(DeliveryStatus.Read("n", Date(0)), isPrivate = false))
+    }
+
+    @Test
+    fun `a private message shows the transport it last used`() {
+        assertEquals(PaveTransport.Bluetooth, PaveTransport.from(com.bitchat.android.model.MessageTransport.BLUETOOTH))
+        assertEquals(PaveTransport.Internet, PaveTransport.from(com.bitchat.android.model.MessageTransport.INTERNET))
+        assertEquals(null, PaveTransport.from(null))
     }
 
     @Test

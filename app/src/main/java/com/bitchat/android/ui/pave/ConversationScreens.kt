@@ -332,7 +332,7 @@ private fun PrivateChatScreenPreview() = PavePreview(padded = false) {
         verified = true,
         messages = listOf(
             PaveMessageItem("1", "T’es où ? Je vois plus personne du groupe.", false, "18:02", null, null, transport = PaveTransport.Bluetooth),
-            PaveMessageItem("2", "Au kiosque, côté métro.", true, "18:03", null, null, delivery = PaveDelivery.Received),
+            PaveMessageItem("2", "Au kiosque, côté métro.", true, "18:03", null, null, delivery = PaveDelivery.Delivered, transport = PaveTransport.Bluetooth),
             PaveMessageItem("3", "Bouge pas, j’arrive.", true, "18:07", null, null, delivery = PaveDelivery.Sent, transport = PaveTransport.Internet),
             PaveMessageItem("4", "Tu vois le kiosque vert ?", true, "18:08", null, null, delivery = PaveDelivery.Waiting),
         ),

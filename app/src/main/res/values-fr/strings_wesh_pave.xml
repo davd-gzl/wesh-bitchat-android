@@ -15,11 +15,12 @@
     <!-- Bulles et remise -->
     <string name="wesh_pave_delivery_waiting">En attente</string>
     <string name="wesh_pave_delivery_sent">Envoyé</string>
-    <string name="wesh_pave_delivery_received">Reçu</string>
+    <string name="wesh_pave_delivery_delivered">Distribué</string>
+    <string name="wesh_pave_delivery_read">Lu</string>
     <string name="wesh_pave_delivery_failed">Échec</string>
     <string name="wesh_pave_failed_retry">Échec · Réessayer</string>
     <string name="wesh_pave_retry">Réessayer</string>
-    <string name="wesh_pave_via_internet">via Internet</string>
+    <string name="wesh_pave_via_internet">Internet</string>
     <string name="wesh_pave_via_bluetooth">Bluetooth</string>
     <string name="wesh_pave_message_detail">Voir l’état du message</string>
     <string name="wesh_pave_message_from_you">Vous</string>

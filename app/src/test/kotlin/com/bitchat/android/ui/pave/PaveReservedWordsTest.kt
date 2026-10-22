@@ -56,7 +56,8 @@ class PaveReservedWordsTest {
         val words = PaveStringResources.reservedWords()
         listOf(
             "Vous", "You", "Sans surnom", "No nickname", "Sans surnom (réservé)", "No nickname (reserved)",
-            "Code vérifié", "Non vérifié", "En attente", "Envoyé", "Reçu", "Échec", "via Internet", "Bluetooth",
+            "Code vérifié", "Non vérifié", "En attente", "Envoyé", "Distribué", "Lu", "Échec", "Internet", "Bluetooth",
+            "Delivered", "Read",
             "Salon public", "Public room", "Échanger", "Exchange", "Demandes", "Requests",
             "Empreinte de la clé", "Key fingerprint", "Empreinte indisponible", "Fingerprint unavailable",
             "Vérifié", "Verified", "Code verified", "Not verified", "Réessayer", "Retry", "Échec · Réessayer", "Failed · Retry",
