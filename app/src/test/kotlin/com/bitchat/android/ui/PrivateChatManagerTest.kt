@@ -191,6 +191,38 @@ class PrivateChatManagerTest {
     }
 
     @Test
+    fun `opening a chat sends READ over Internet for Internet messages not read yet, out of Bluetooth range`() {
+        val noiseKey = ByteArray(32) { 9 }
+        val conversationID = ContactIdentityResolver.contactConversationIdForNoiseKey(noiseKey)
+        val internet = BitchatMessage(
+            id = "net-unread", sender = "alice", content = "salut", timestamp = Date(1), isPrivate = true,
+            senderPeerID = conversationID, transport = com.bitchat.android.model.MessageTransport.INTERNET
+        )
+        val alreadyRead = internet.copy(id = "net-read", timestamp = Date(2))
+        val overBluetooth = internet.copy(id = "ble-unread", timestamp = Date(3),
+            transport = com.bitchat.android.model.MessageTransport.BLUETOOTH)
+        val sent = mutableListOf<Triple<String, String, Any?>>()
+        val token = com.bitchat.android.services.SeenReceiptAdmission().capture()
+        manager = PrivateChatManager(
+            state = state,
+            messageManager = MessageManager(state),
+            dataManager = DataManager(RuntimeEnvironment.getApplication()),
+            noiseSessionDelegate = mock(),
+            hasReadReceiptBeenSent = { it == alreadyRead.id },
+            sendInternetReadReceipt = { id, conversation, expectedToken -> sent += Triple(id, conversation, expectedToken) }
+        )
+        state.setNickname("bob")
+        state.setPrivateChats(mapOf(conversationID to listOf(internet, alreadyRead, overBluetooth)))
+        val meshService = mock<MeshService>()
+
+        manager.sendReadReceiptsForPeer(conversationID, meshPeerID = null, meshService, expectedSeenToken = token)
+
+        // Only the unread Internet message: a Bluetooth one waits for Bluetooth (the ack goes back the way it came).
+        assertEquals(listOf(Triple(internet.id, conversationID, token)), sent)
+        verify(meshService, never()).sendReadReceipt(any(), any(), any())
+    }
+
+    @Test
     fun `opening chat skips messages whose receipt send already completed`() {
         val noiseKey = ByteArray(32) { 8 }
         val meshPeerID = ContactIdentityResolver.peerIdForNoiseKey(noiseKey)

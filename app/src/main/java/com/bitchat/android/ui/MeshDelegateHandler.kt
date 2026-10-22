@@ -26,7 +26,10 @@ class MeshDelegateHandler internal constructor(
     private val getMeshService: () -> MeshService,
     private val publicNotificationsMuted: () -> Boolean = { false },
     private val markMessageReadLocally: (messageID: String, expectedToken: SeenReceiptAdmission.Token?) -> Unit = { _, _ -> },
-    private val captureSeenToken: () -> SeenReceiptAdmission.Token? = { SeenMessageStore.captureReceiptToken() }
+    private val captureSeenToken: () -> SeenReceiptAdmission.Token? = { SeenMessageStore.captureReceiptToken() },
+    /** READ over Internet for a message that came over Internet (MessageRouter.sendWeshInternetReadReceipt). */
+    private val sendInternetReadReceipt: (messageID: String, conversationID: String, expectedToken: SeenReceiptAdmission.Token?) -> Unit =
+        { _, _, _ -> }
 ) : BluetoothMeshDelegate {
 
     override fun didReceiveMessage(message: BitchatMessage) {
@@ -203,6 +206,25 @@ class MeshDelegateHandler internal constructor(
             // Direct comparison for mesh mentions (no hash suffix to remove)
             mentionedUsername.equals(currentNickname, ignoreCase = true)
         }
+    }
+
+    /**
+     * An Internet message just stored while this UI is attached (called on Main): read at once if its
+     * chat is open in the foreground, like a Bluetooth one, and its READ goes back over Internet.
+     */
+    fun readInternetMessageIfFocused(message: BitchatMessage) {
+        val conversationID = message.senderPeerID?.let { ContactDirectory.canonicalConversationId(it) } ?: return
+        val focused = notificationManager.getCurrentPrivateChatPeer()?.let { ContactDirectory.canonicalConversationId(it) }
+        if (notificationManager.getAppBackgroundState() || focused != conversationID) return
+        val token = captureSeenToken()
+        try { markMessageReadLocally(message.id, token) } catch (_: Exception) { }
+        if (message.type == BitchatMessageType.Message) {
+            try { sendInternetReadReceipt(message.id, conversationID, token) } catch (_: Exception) { }
+        }
+        try {
+            val current = state.getUnreadPrivateMessagesValue()
+            if (conversationID in current) state.setUnreadPrivateMessages(current - conversationID)
+        } catch (_: Exception) { }
     }
 
     /**

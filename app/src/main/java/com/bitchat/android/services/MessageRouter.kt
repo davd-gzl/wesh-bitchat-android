@@ -586,6 +586,33 @@ class MessageRouter internal constructor(
         }
     }
 
+    /** Records a READ as sent unless an erase came first; the seen store in production. */
+    internal var markWeshReadReceiptSent: (messageID: String, expectedToken: SeenReceiptAdmission.Token?) -> Boolean =
+        { messageID, expectedToken -> SeenMessageStore.getInstance(context).markReadReceiptSent(messageID, expectedToken) }
+
+    /**
+     * READ for a message that arrived over Internet: it goes back over Internet (spec §3 rule 5), only
+     * to an enrolled contact while Internet is on. [expectedToken] is captured when the message was
+     * read; after an erase nothing leaves. Recorded as sent once published, so it goes out once.
+     */
+    internal fun sendWeshInternetReadReceipt(messageID: String, conversationID: String, expectedToken: SeenReceiptAdmission.Token?) {
+        if (!enforceWeshPolicy || expectedToken == null) return
+        schedulerScope.launch { sendWeshInternetReadReceiptNow(messageID, conversationID, expectedToken) }
+    }
+
+    internal suspend fun sendWeshInternetReadReceiptNow(
+        messageID: String,
+        conversationID: String,
+        expectedToken: SeenReceiptAdmission.Token?
+    ): Boolean {
+        if (expectedToken == null || !expectedToken.owner.admits(expectedToken)) return false
+        val route = weshInternet()
+        if (!route.canSend(conversationID)) return false
+        if (!route.sendAck(com.bitchat.android.model.NoisePayloadType.READ_RECEIPT, messageID, conversationID)) return false
+        runCatching { markWeshReadReceiptSent(messageID, expectedToken) }
+        return true
+    }
+
     fun sendDeliveryAck(messageID: String, toPeerID: String) {
         // Mesh delivery ACKs are sent by the receiver automatically.
         // Only route via Nostr when mesh path isn't available or when this is a Nostr alias

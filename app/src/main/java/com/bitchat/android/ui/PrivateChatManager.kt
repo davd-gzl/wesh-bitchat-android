@@ -3,6 +3,7 @@ package com.bitchat.android.ui
 import com.bitchat.android.favorites.FavoritesPersistenceService
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.BitchatMessageType
+import com.bitchat.android.model.MessageTransport
 import com.bitchat.android.model.DeliveryStatus
 import com.bitchat.android.mesh.PeerFingerprintManager
 import com.bitchat.android.mesh.MeshService
@@ -39,7 +40,10 @@ class PrivateChatManager internal constructor(
     private val trackUnreadMessages: Boolean = true,
     private val hasReadReceiptBeenSent: (messageID: String) -> Boolean = { false },
     private val markMessageReadLocally: (messageID: String, expectedToken: SeenReceiptAdmission.Token?) -> Unit = { _, _ -> },
-    private val weshPolicy: Boolean = com.bitchat.android.BuildConfig.WESH_POLICY
+    private val weshPolicy: Boolean = com.bitchat.android.BuildConfig.WESH_POLICY,
+    /** READ over Internet for a message that came over Internet (MessageRouter.sendWeshInternetReadReceipt). */
+    private val sendInternetReadReceipt: (messageID: String, conversationID: String, expectedToken: SeenReceiptAdmission.Token?) -> Unit =
+        { _, _, _ -> }
 ) {
 
     companion object {
@@ -400,6 +404,7 @@ class PrivateChatManager internal constructor(
             false
         }
         var sentCount = 0
+        var internetCount = 0
         messages.forEach { msg ->
             val senderPeerID = msg.senderPeerID
             val isFromTarget = senderPeerID != null && (
@@ -414,7 +419,17 @@ class PrivateChatManager internal constructor(
                 }
             }
             // A media placeholder stands for something never received: it is never reported read.
-            if (isFromTarget && msg.type == BitchatMessageType.Message && meshPeerID != null && !hasReadReceiptBeenSent(msg.id)) {
+            // An Internet message's READ goes back over Internet, the way it came (spec §3 rule 5).
+            if (isFromTarget && msg.type == BitchatMessageType.Message && msg.transport == MessageTransport.INTERNET &&
+                !hasReadReceiptBeenSent(msg.id)
+            ) {
+                try {
+                    sendInternetReadReceipt(msg.id, canonicalConversationID, expectedSeenToken)
+                    internetCount += 1
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to send Internet read receipt for message ${msg.id}: ${e.message}")
+                }
+            } else if (isFromTarget && msg.type == BitchatMessageType.Message && meshPeerID != null && !hasReadReceiptBeenSent(msg.id)) {
                 try {
                     if (hasMesh) {
                         meshService.sendReadReceipt(msg.id, meshPeerID, myNickname)
@@ -432,7 +447,8 @@ class PrivateChatManager internal constructor(
         try { messageManager.clearPrivateUnreadMessages(canonicalConversationID) } catch (_: Exception) { }
         Log.d(
             TAG,
-            "Sent $sentCount read receipts for conversation $canonicalConversationID via mesh peer $meshPeerID"
+            "Sent $sentCount read receipts for conversation $canonicalConversationID via mesh peer $meshPeerID, " +
+                "$internetCount over Internet"
         )
     }
 

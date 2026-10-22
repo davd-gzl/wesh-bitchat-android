@@ -64,10 +64,15 @@ class ChatViewModel(
         private const val CONVERSATION_DISCONNECT_GRACE_MS = 3_000L
 
         /** Internet-received messages are shown on Main, where [notifications] keeps its lists. */
-        internal fun internetNotifierOnMain(scope: kotlinx.coroutines.CoroutineScope, notifications: NotificationManager) =
+        internal fun internetNotifierOnMain(
+            scope: kotlinx.coroutines.CoroutineScope,
+            notifications: NotificationManager,
+            onShown: (BitchatMessage) -> Unit = {}
+        ) =
             com.bitchat.android.services.WeshInternetReceiver.postOnMain(scope) { conversationID, message ->
                 notifications.showPrivateMessageNotification(conversationID, message.sender.takeIf { it.isNotBlank() },
                     NotificationTextUtils.buildPrivateMessagePreview(message))
+                onShown(message)
             }
     }
 
@@ -118,7 +123,8 @@ class ChatViewModel(
         },
         markMessageReadLocally = { messageID, seenToken ->
             seenMessageStore.markReadLocally(messageID, seenToken)
-        }
+        },
+        sendInternetReadReceipt = ::sendWeshInternetReadReceipt
     )
     private val notificationManager = NotificationManager(
       application.applicationContext,
@@ -126,7 +132,9 @@ class ChatViewModel(
     )
 
     /** Internet-received private messages notify like Bluetooth ones while this UI is attached. */
-    private val weshInternetNotifier = internetNotifierOnMain(viewModelScope, notificationManager)
+    private val weshInternetNotifier = internetNotifierOnMain(viewModelScope, notificationManager) { message ->
+        meshDelegateHandler.readInternetMessageIfFocused(message)
+    }
 
     private val verificationHandler = VerificationHandler(
         context = application.applicationContext,
@@ -167,8 +175,18 @@ class ChatViewModel(
         publicNotificationsMuted = { weshPreferences.publicMuted },
         markMessageReadLocally = { messageID, seenToken ->
             seenMessageStore.markReadLocally(messageID, seenToken)
-        }
+        },
+        sendInternetReadReceipt = ::sendWeshInternetReadReceipt
     )
+
+    private fun sendWeshInternetReadReceipt(
+        messageID: String,
+        conversationID: String,
+        expectedToken: com.bitchat.android.services.SeenReceiptAdmission.Token?
+    ) {
+        com.bitchat.android.services.MessageRouter.getInstance(getApplication(), mesh)
+            .sendWeshInternetReadReceipt(messageID, conversationID, expectedToken)
+    }
 
 
 
