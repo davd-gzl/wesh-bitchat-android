@@ -32,6 +32,24 @@ class WeshPaveAppLogicTest {
     }
 
     @Test
+    fun `an empty composer takes typing in a private chat with a verified contact and in the public room`() {
+        // Nothing typed yet, in a private chat with a verified contact or in the public room with
+        // Bluetooth ready (both make the conversation able to send): the first character must go in.
+        assertTrue(paveComposerEnabled(conversationCanSend = true, sending = false, editable = true))
+        // Still closed when the conversation cannot send, a public send is in flight, or drafts cannot be stored.
+        assertFalse(paveComposerEnabled(conversationCanSend = false, sending = false, editable = true))
+        assertFalse(paveComposerEnabled(conversationCanSend = true, sending = true, editable = true))
+        assertFalse(paveComposerEnabled(conversationCanSend = true, sending = false, editable = false))
+        // The composer's field and send button follow this state; the button alone checks the draft.
+        val app = java.io.File("src/main/java/com/bitchat/android/ui/pave/WeshPaveApp.kt").readText()
+        assertTrue("canSend = paveComposerEnabled(" in app)
+        val screens = java.io.File("src/main/java/com/bitchat/android/ui/pave/ConversationScreens.kt").readText()
+        assertTrue("enabled = state.canSend" in screens)
+        val composer = java.io.File("src/main/java/com/bitchat/android/ui/pave/Composer.kt").readText()
+        assertTrue("val canSend = enabled && ComposerLimits.canSend(value)" in composer)
+    }
+
+    @Test
     fun `the public room never claims a receipt`() {
         val delivered = DeliveryStatus.Delivered("synthetic", Date(0))
         assertEquals(PaveDelivery.Sent, paveDelivery(delivered, public = true))
