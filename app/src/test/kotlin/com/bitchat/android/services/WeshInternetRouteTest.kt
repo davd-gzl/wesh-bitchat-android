@@ -205,6 +205,53 @@ class WeshInternetRouteTest {
         assertEquals(1, bob.stored.size)
     }
 
+    @Test fun `a READ for an Internet message goes back over Internet once, only to an enrolled contact, never after an erase`() {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        val router = MessageRouter(context, mesh, mock())
+        router.weshInternetLink = alice.link
+        val recorded = mutableListOf<String>()
+        router.markWeshReadReceiptSent = { id, _ -> recorded += id; true }
+        router.hasWeshReadReceiptBeenSent = { it in recorded }
+        val admission = SeenReceiptAdmission()
+        try {
+            assertTrue(kotlinx.coroutines.runBlocking { router.sendWeshInternetReadReceiptNow("r-1", bobConversation, admission.capture()) })
+            assertEquals(WeshInternetInbox.Outcome.ACK_APPLIED,
+                kotlinx.coroutines.runBlocking { bob.inbox.onGiftWrap(alice.link.published.single(), expectedToken = null) })
+            val (conversation, id, status) = bob.statuses.single()
+            assertEquals(aliceConversation, conversation)
+            assertEquals("r-1", id)
+            assertTrue(status is DeliveryStatus.Read)
+            assertEquals(listOf("r-1"), recorded)
+            // Never over Bluetooth: the ack goes back over the transport the message came on.
+            verify(mesh, never()).sendReadReceipt(any(), any(), any())
+            // Once: a second open or arrival for the same message sends nothing.
+            assertFalse(kotlinx.coroutines.runBlocking { router.sendWeshInternetReadReceiptNow("r-1", bobConversation, admission.capture()) })
+            // An erase while the wrap is built: it is never published.
+            assertFalse(alice.route.sendAck(NoisePayloadType.READ_RECEIPT, "r-5", bobConversation) { false })
+
+            // Internet off, or not an enrolled contact: nothing leaves, nothing is recorded.
+            alice.link.on = false
+            assertFalse(kotlinx.coroutines.runBlocking { router.sendWeshInternetReadReceiptNow("r-2", bobConversation, admission.capture()) })
+            alice.link.on = true
+            val stranger = ContactIdentityResolver.contactConversationIdForNoiseKey(ByteArray(32) { 9 })
+            assertFalse(kotlinx.coroutines.runBlocking { router.sendWeshInternetReadReceiptNow("r-3", stranger, admission.capture()) })
+            // Read before an erase, sent after it started: nothing leaves.
+            val readBeforeErase = admission.capture()
+            admission.fenceForPanic()
+            assertFalse(kotlinx.coroutines.runBlocking { router.sendWeshInternetReadReceiptNow("r-4", bobConversation, readBeforeErase) })
+            assertEquals(1, alice.link.published.size)
+            assertEquals(listOf("r-1"), recorded)
+        } finally {
+            router.stopOutboxScheduler()
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+        }
+    }
+
     @Test fun `router prefers the live Bluetooth session, then Internet, else queues`() {
         val mesh: MeshService = mock()
         whenever(mesh.myPeerID).thenReturn(alice.peerID)

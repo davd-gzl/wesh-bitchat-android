@@ -89,6 +89,51 @@ class MeshDelegateHandlerStateContractTest {
     }
 
     @Test
+    fun `an Internet message arriving in the open chat is read, and its READ goes back over Internet`() {
+        val conversationID = com.bitchat.android.services.ContactIdentityResolver.contactConversationIdForNoiseKey(ByteArray(32) { 3 })
+        val incoming = BitchatMessage(
+            id = "focused-internet-message", sender = "alice", content = "salut", timestamp = Date(1),
+            isPrivate = true, senderPeerID = conversationID, transport = com.bitchat.android.model.MessageTransport.INTERNET
+        )
+        val sent = mutableListOf<Pair<String, String>>()
+        val token = com.bitchat.android.services.SeenReceiptAdmission().capture()
+        handler = MeshDelegateHandler(
+            state = state,
+            messageManager = messages,
+            privateChatManager = privateChats,
+            notificationManager = notifications,
+            coroutineScope = TestScope(UnconfinedTestDispatcher()),
+            onHapticFeedback = {},
+            getMeshService = { mesh },
+            markMessageReadLocally = { id, _ -> locallyReadMessageIDs.add(id) },
+            captureSeenToken = { token },
+            sendInternetReadReceipt = { id, conversation, expectedToken ->
+                assertTrue(expectedToken === token)
+                sent += id to conversation
+            }
+        )
+        whenever(notifications.getAppBackgroundState()).thenReturn(false)
+        whenever(notifications.getCurrentPrivateChatPeer()).thenReturn(conversationID)
+
+        handler.readInternetMessageIfFocused(incoming)
+
+        assertEquals(listOf(incoming.id to conversationID), sent)
+        assertEquals(listOf(incoming.id), locallyReadMessageIDs)
+        verify(mesh, never()).sendReadReceipt(any(), any(), any())
+
+        // Another chat open, or the app in the background: unread, no READ.
+        whenever(notifications.getCurrentPrivateChatPeer()).thenReturn(
+            com.bitchat.android.services.ContactIdentityResolver.contactConversationIdForNoiseKey(ByteArray(32) { 4 })
+        )
+        handler.readInternetMessageIfFocused(incoming.copy(id = "other-chat-open"))
+        whenever(notifications.getCurrentPrivateChatPeer()).thenReturn(conversationID)
+        whenever(notifications.getAppBackgroundState()).thenReturn(true)
+        handler.readInternetMessageIfFocused(incoming.copy(id = "in-background"))
+        assertEquals(1, sent.size)
+        assertEquals(1, locallyReadMessageIDs.size)
+    }
+
+    @Test
     fun `focused private message schedules receipt and records local read independently`() {
         val peerID = "1122334455667788"
         val incoming = BitchatMessage(

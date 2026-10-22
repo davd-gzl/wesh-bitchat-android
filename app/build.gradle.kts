@@ -189,6 +189,9 @@ dependencies {
     // Testing
     testImplementation(libs.bundles.testing)
     testImplementation(libs.secp256k1.kmp.jni.jvm)
+    // Compose UI tests of single screens on Robolectric, with the JVM unit tests.
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.bundles.compose.testing)
     debugImplementation(libs.androidx.compose.ui.tooling)
