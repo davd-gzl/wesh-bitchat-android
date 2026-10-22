@@ -297,11 +297,20 @@ class MessageRouter internal constructor(
         }
     }
 
-    /** In memory: an ack known here ends any further attempt. */
-    private fun isAcked(conversationID: String, messageID: String): Boolean =
-        AppStateStore.privateMessages.value[conversationID].orEmpty().firstOrNull { it.id == messageID }?.deliveryStatus.let {
-            it is com.bitchat.android.model.DeliveryStatus.Delivered || it is com.bitchat.android.model.DeliveryStatus.Read
+    private enum class AckState { ACKED, NOT_ACKED, UNKNOWN }
+
+    /** From the loaded conversation, keyed like the store; UNKNOWN when its history is not loaded. */
+    private fun ackState(conversationID: String, messageID: String): AckState {
+        val canonical = ContactDirectory.canonicalConversationId(conversationID)
+        val status = AppStateStore.privateMessages.value[canonical].orEmpty().firstOrNull { it.id == messageID }
+            ?: return AckState.UNKNOWN
+        return when (status.deliveryStatus) {
+            is com.bitchat.android.model.DeliveryStatus.Delivered, is com.bitchat.android.model.DeliveryStatus.Read -> AckState.ACKED
+            else -> AckState.NOT_ACKED
         }
+    }
+
+    private fun isAcked(conversationID: String, messageID: String): Boolean = ackState(conversationID, messageID) == AckState.ACKED
 
     /** Under the router monitor: never after a panic clear, never for a removed or blocked contact. */
     @Synchronized private fun requeueWesh(entry: QueuedMessage, conversationID: String, epoch: Long, cancelled: Long) {
@@ -471,6 +480,9 @@ class MessageRouter internal constructor(
                     iterator.remove()
                 } else if (entry.notBeforeMs > clock()) {
                     // Inside the ack window of a Bluetooth write that may have left.
+                } else if (entry.notBeforeMs != 0L && ackState(conversationID, entry.messageID) == AckState.UNKNOWN) {
+                    // It may have left and its ack cannot be checked (history unloaded): no resend.
+                    // It stays until the TTL, whose « Échec » never replaces a stored « Distribué ».
                 } else if (sender.canSend(conversationID, mesh)) {
                     // Bluetooth first whenever the contact is in range again, same message ID.
                     dispatchWesh(entry, conversationID, epoch, weshCancelled[conversationID] ?: 0L)

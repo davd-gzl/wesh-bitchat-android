@@ -669,6 +669,32 @@ class WeshInternetRouteTest {
         }
     }
 
+    @Test fun `a message that may have left is not resent while its history is unloaded`() {
+        val router = failingBluetoothRouter(com.bitchat.android.mesh.BoundSendOutcome.UNCONFIRMED)
+        var now = 1_000_000L
+        router.clock = { now }
+        try {
+            AppStateStore.addPrivateMessage(bobConversation, BitchatMessage(id = "bw-2", sender = "me", content = "plus tard",
+                timestamp = java.util.Date(), isPrivate = true, recipientNickname = "Bob",
+                senderPeerID = alice.peerID, deliveryStatus = DeliveryStatus.Sending))
+            assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
+            Thread.sleep(300)
+            // The chat is closed: bw-1's status (maybe acked meanwhile) is no longer known here.
+            AppStateStore.releasePrivateConversationHistory(bobConversation)
+            assertTrue(AppStateStore.privateMessages.value.values.flatten().none { it.id == "bw-1" })
+            whenever(router.meshForTesting.getAuthenticatedRemoteStaticKey(ContactIdentityResolver.peerIdForNoiseKey(bobNoise)))
+                .thenReturn(null)
+            now += AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS
+            router.tickOutbox(now)
+            Thread.sleep(300)
+            assertTrue(alice.link.published.isEmpty())
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
     @Test fun `a message acked during the ack window is never sent again`() {
         val router = failingBluetoothRouter(com.bitchat.android.mesh.BoundSendOutcome.UNCONFIRMED)
         var now = 1_000_000L
