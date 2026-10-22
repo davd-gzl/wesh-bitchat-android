@@ -255,6 +255,8 @@ class MessageRouter internal constructor(
     fun announceWeshInternetKey(peerID: String) {
         if (!enforceWeshPolicy) return
         val conversationID = ContactDirectory.canonicalConversationId(peerID)
+        // Captured first: an erase from here on stops the notice, up to the radio write.
+        val epoch = weshEpoch.get()
         schedulerScope.launch {
             val contacts = WeshContactStore.get(context)
             val sender = WeshPrivateSender(contacts)
@@ -266,7 +268,11 @@ class MessageRouter internal constructor(
             if (!weshAnnounced.add(announced)) return@launch
             val sent = runCatching {
                 mesh.sendPrivateMessageBound(FavoriteControlMessage.encode(true, npub), live, contact.key,
-                    java.util.UUID.randomUUID().toString()) { sender.canSend(conversationID, mesh) }
+                    java.util.UUID.randomUUID().toString()) {
+                    // Re-checked right before the write: still that contact, no erase, still my npub.
+                    sender.canSend(conversationID, mesh) && epoch == weshEpoch.get() &&
+                        runCatching { weshMyNpub() }.getOrNull() == npub
+                }
             }.getOrDefault(false)
             if (!sent) weshAnnounced.remove(announced)
         }

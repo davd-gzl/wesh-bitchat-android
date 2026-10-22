@@ -410,6 +410,47 @@ class WeshInternetRouteTest {
         assertEquals(3, events.size)
     }
 
+    @Test fun `an erase or a new npub during the npub notice stops it before the radio`() {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        val bobPeer = ContactIdentityResolver.peerIdForNoiseKey(bobNoise)
+        whenever(mesh.getPeerNicknames()).thenReturn(mapOf(bobPeer to "Bob"))
+        whenever(mesh.getPeerInfo(bobPeer)).thenReturn(PeerInfo(id = bobPeer, nickname = "x", isConnected = true,
+            noisePublicKey = bobNoise, isDirectConnection = true, signingPublicKey = ByteArray(32),
+            isVerifiedNickname = true, lastSeen = 1L))
+        whenever(mesh.getAuthenticatedRemoteStaticKey(bobPeer)).thenReturn(bobNoise)
+        whenever(mesh.hasEstablishedSession(bobPeer)).thenReturn(true)
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        val router = MessageRouter(context, mesh, mock())
+        var myNpub: String? = alice.nostr.npub
+        router.weshMyNpub = { myNpub }
+        // What the send guard answers once the change lands, right before the radio write.
+        val guards = CopyOnWriteArrayList<Boolean>()
+        var change: () -> Unit = {}
+        kotlinx.coroutines.runBlocking {
+            whenever(mesh.sendPrivateMessageBound(any(), any(), any(), any(), any())).thenAnswer { call ->
+                change()
+                val allowed = call.getArgument<() -> Boolean>(4)()
+                guards += allowed
+                allowed
+            }
+        }
+        try {
+            change = { router.clearAll() }
+            router.announceWeshInternetKey(bobPeer)
+            waitFor { guards.size == 1 }
+            change = { myNpub = NostrIdentity.generate().npub }
+            router.announceWeshInternetKey(bobPeer)
+            waitFor { guards.size == 2 }
+            assertEquals(listOf(false, false), guards.toList())
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+        }
+    }
+
     @Test fun `my npub goes only to an enrolled contact over its bound session, and never with a favorite star`() {
         val mesh: MeshService = mock()
         whenever(mesh.myPeerID).thenReturn(alice.peerID)
