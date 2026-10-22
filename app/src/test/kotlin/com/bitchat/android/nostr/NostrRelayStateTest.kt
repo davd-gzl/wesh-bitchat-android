@@ -281,6 +281,127 @@ class NostrRelayStateTest {
         assertTrue(attempts.all { it.socket.closed })
     }
 
+    @Test
+    fun `an event queued while relays are down is dropped when Internet goes off`() = runTest {
+        val (manager, attempts) = fixture()
+        manager.sendEvent(event("queued-before-off"))
+        runCurrent()
+
+        manager.disconnect()
+        manager.connect()
+        runCurrent()
+        attempts.forEach(Attempt::open)
+
+        assertEquals(NostrRelayManager.WESH_PINNED_RELAYS.size, attempts.size)
+        assertEquals(emptyList<String>(), attempts.sentEvents())
+    }
+
+    @Test
+    fun `an event queued while relays are down is dropped by the erase`() = runTest {
+        val (manager, attempts) = fixture()
+        manager.sendEvent(event("queued-before-erase"))
+        runCurrent()
+
+        manager.clearAllOnPanic()
+        manager.connect()
+        runCurrent()
+        attempts.forEach(Attempt::open)
+
+        assertEquals(emptyList<String>(), attempts.sentEvents())
+    }
+
+    @Test
+    fun `off cancels open sockets so unwritten frames never leave`() = runTest {
+        val (manager, attempts) = fixture()
+        manager.connect()
+        runCurrent()
+        attempts.forEach(Attempt::open)
+
+        manager.disconnect()
+
+        assertTrue(attempts.all { it.socket.cancelled })
+    }
+
+    @Test
+    fun `a relay reset keeps queued events for the reconnected sockets`() = runTest {
+        val (manager, attempts) = fixture()
+        manager.connect()
+        runCurrent()
+        manager.sendEvent(event("queued-across-reset"))
+        runCurrent()
+
+        manager.resetAllConnections()
+        runCurrent()
+        attempts.drop(NostrRelayManager.WESH_PINNED_RELAYS.size).forEach(Attempt::open)
+
+        assertEquals(NostrRelayManager.WESH_PINNED_RELAYS.size, attempts.sentEvents().size)
+    }
+
+    @Test
+    fun `a send launched before an off and on cycle cannot publish the dropped event`() = runTest {
+        val held = mutableListOf<Runnable>()
+        val manual = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) { held += block }
+        }
+        fun drain(except: Runnable? = null) {
+            while (true) {
+                val next = held.firstOrNull { it !== except } ?: return
+                held.remove(next)
+                next.run()
+            }
+        }
+        val (manager, attempts) = fixture(dispatcher = manual)
+        manager.connect()
+        drain()
+        attempts.forEach(Attempt::open)
+
+        manager.sendEvent(event("delayed-across-off"))
+        val delayedSend = held.single()
+        manager.disconnect()
+        manager.connect()
+        drain(except = delayedSend)
+        attempts.drop(NostrRelayManager.WESH_PINNED_RELAYS.size).forEach(Attempt::open)
+        drain()
+
+        assertEquals(emptyList<String>(), attempts.sentEvents())
+    }
+
+    @Test
+    fun `a send launched before its queue entry is evicted still leaves`() = runTest {
+        val held = mutableListOf<Runnable>()
+        val manual = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) { held += block }
+        }
+        val (manager, attempts) = fixture(dispatcher = manual)
+        manager.connect()
+        while (held.isNotEmpty()) held.removeAt(0).run()
+        attempts.forEach(Attempt::open)
+
+        manager.sendEvent(event("evicted-in-flight"))
+        val firstSend = held.single()
+        // Fill the bounded queue past its capacity: the first entry is evicted, its send is not.
+        repeat(QUEUE_CAPACITY) { manager.sendEvent(event("filler-$it")) }
+        held.remove(firstSend)
+        firstSend.run()
+
+        assertEquals(NostrRelayManager.WESH_PINNED_RELAYS.size,
+            attempts.sentEvents().count { it.contains("evicted-in-flight") })
+    }
+
+    @Test
+    fun `a socket rejected after off is cancelled, not closed gracefully`() = runTest {
+        lateinit var manager: NostrRelayManager
+        val fixture = fixture {
+            WeshNetworkPolicy.gate = WeshNetworkGate { false }
+            manager.disconnect()
+        }
+        manager = fixture.first
+        manager.connect()
+        runCurrent()
+
+        assertTrue(fixture.second.single().socket.cancelled)
+    }
+
     private fun TestScope.fixture(
         dispatcher: CoroutineDispatcher = UnconfinedTestDispatcher(testScheduler),
         onCreate: (Attempt) -> Unit = {}
@@ -304,15 +425,27 @@ class NostrRelayStateTest {
     private class IdleWebSocket(private val request: Request) : WebSocket {
         var closed = false
             private set
+        /** Cancel drops frames OkHttp has not written yet; a graceful close still flushes them. */
+        var cancelled = false
+            private set
+        val sent = mutableListOf<String>()
         override fun request(): Request = request
         override fun queueSize(): Long = 0
-        override fun send(text: String): Boolean = !closed
+        override fun send(text: String): Boolean = !closed && sent.add(text)
         override fun send(bytes: ByteString): Boolean = !closed
         override fun close(code: Int, reason: String?): Boolean { closed = true; return true }
-        override fun cancel() { closed = true }
+        override fun cancel() { closed = true; cancelled = true }
     }
+
+    private fun event(id: String) = NostrEvent(
+        id = id, pubkey = "a".repeat(64), createdAt = 1, kind = 1059, tags = emptyList(), content = "x", sig = "s"
+    )
+
+    private fun List<Attempt>.sentEvents(): List<String> =
+        flatMap { it.socket.sent }.filter { it.startsWith("[\"EVENT\"") }
 
     companion object {
         private const val RELAY = "wss://relay.damus.io"
+        private const val QUEUE_CAPACITY = 500
     }
 }
