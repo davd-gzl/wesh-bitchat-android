@@ -2,6 +2,7 @@ package com.bitchat.android.services
 
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.DeliveryStatus
+import com.bitchat.android.model.MessageTransport
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -21,6 +22,22 @@ class AppStateStoreTest {
     fun tearDown() {
         AppStateStore.resetPrivateConversationAdmissionForTest()
         AppStateStore.clear()
+    }
+
+    @Test
+    fun `a status update records the transport it came over, unless it is a downgrade`() {
+        AppStateStore.addPrivateMessage("contact_alice", BitchatMessage(id = "transport-1", sender = "me", content = "x",
+            timestamp = Date(1), isPrivate = true, senderPeerID = "1111222233334444", deliveryStatus = DeliveryStatus.Sending))
+        fun stored() = AppStateStore.privateMessages.value.values.flatten().single { it.id == "transport-1" }
+        AppStateStore.updatePrivateMessageStatus("transport-1", DeliveryStatus.Sent, MessageTransport.BLUETOOTH)
+        assertEquals(MessageTransport.BLUETOOTH, stored().transport)
+        assertTrue(AppStateStore.updatePrivateMessageStatusIn("contact_alice", "transport-1",
+            DeliveryStatus.Delivered("alice", Date(2)), MessageTransport.INTERNET))
+        assertEquals(MessageTransport.INTERNET, stored().transport)
+        AppStateStore.updatePrivateMessageStatus("transport-1", DeliveryStatus.Sent, MessageTransport.BLUETOOTH)
+        assertEquals(MessageTransport.INTERNET, stored().transport)
+        AppStateStore.updatePrivateMessageStatus("transport-1", DeliveryStatus.Read("alice", Date(3)))
+        assertEquals(MessageTransport.INTERNET, stored().transport)
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.bitchat.android.services
 
 import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.model.DeliveryStatus
+import com.bitchat.android.model.MessageTransport
 
 /** Shared by the UI/router; every effect must recheck enrollment and the authenticated key. */
 internal class WeshPrivateSender(private val contacts: WeshContactStore) {
@@ -18,8 +19,12 @@ internal class WeshPrivateSender(private val contacts: WeshContactStore) {
             if (content.isBlank() || content.toByteArray().size > 2000 || !canSend(conversationID, mesh)) return@runCatching false
             mesh.sendPrivateMessageBound(content, live, contact.key, messageID) { canSend(conversationID, mesh) }
         }.getOrDefault(false)
-        AppStateStore.updatePrivateMessageStatus(messageID, if (accepted) DeliveryStatus.Sent
-            else DeliveryStatus.Failed("Connexion ou identité indisponible. Réessayez après vérification."))
+        if (accepted) {
+            AppStateStore.updatePrivateMessageStatus(messageID, DeliveryStatus.Sent, MessageTransport.BLUETOOTH)
+        } else {
+            AppStateStore.updatePrivateMessageStatus(messageID,
+                DeliveryStatus.Failed("Connexion ou identité indisponible. Réessayez après vérification."))
+        }
         return accepted
     }
 }

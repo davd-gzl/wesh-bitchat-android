@@ -83,6 +83,8 @@ class WeshPrivateSenderTest {
         whenever(mesh.sendPrivateMessageBound(any(), any(), any(), any(), any())).thenReturn(true)
         assertTrue(sender.dispatch(message.content, destination, message.id, mesh))
         assertEquals(DeliveryStatus.Sent, AppStateStore.privateMessages.value[destination]!!.single().deliveryStatus)
+        assertEquals(com.bitchat.android.model.MessageTransport.BLUETOOTH,
+            AppStateStore.privateMessages.value[destination]!!.single().transport)
         assertEquals(1, AppStateStore.privateMessages.value[destination]!!.size)
     }
     @Test fun `router cannot enqueue or dispatch an unverified or blocked notification destination`() {
