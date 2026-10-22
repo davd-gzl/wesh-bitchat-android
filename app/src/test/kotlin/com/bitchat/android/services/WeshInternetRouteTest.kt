@@ -11,10 +11,14 @@ import com.bitchat.android.model.NoisePayloadType
 import com.bitchat.android.nostr.NostrEvent
 import com.bitchat.android.nostr.NostrIdentity
 import com.bitchat.android.nostr.NostrProtocol
+import com.bitchat.android.nostr.RelayPublishOutcome
+import com.bitchat.android.util.AppConstants
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -35,9 +39,15 @@ import java.util.concurrent.CopyOnWriteArrayList
 class WeshInternetRouteTest {
     private class FakeLink(var on: Boolean, val identity: NostrIdentity?) : WeshInternetLink {
         val published = CopyOnWriteArrayList<NostrEvent>()
+        /** What the relays answer to a confirmed publish. */
+        @Volatile var answer = RelayPublishOutcome.ACCEPTED
         override fun isOn() = on
         override fun myIdentity() = identity
         override fun publish(event: NostrEvent) { published += event }
+        override suspend fun publishConfirmed(event: NostrEvent): RelayPublishOutcome {
+            if (answer != RelayPublishOutcome.NOT_SENT) published += event
+            return answer
+        }
     }
 
     /** One phone: its contact list, its Nostr key, its relay link, what it stored. */
@@ -86,7 +96,7 @@ class WeshInternetRouteTest {
 
     @Test fun `a QR contact with a bound npub gets a BitChat private envelope Bob can open`() = runTest {
         assertTrue(alice.route.canSend(bobConversation))
-        assertTrue(alice.route.sendPrivate("salut", bobConversation, "msg-1"))
+        assertEquals(RelayPublishOutcome.ACCEPTED, alice.route.sendPrivate("salut", bobConversation, "msg-1").outcome)
         val wrap = alice.link.published.single()
         val (content, sender, _) = NostrProtocol.decryptPrivateMessage(wrap, bob.nostr)!!
         assertEquals(alice.nostr.publicKeyHex, sender)
@@ -114,21 +124,21 @@ class WeshInternetRouteTest {
     @Test fun `Tor or relays not ready fails closed and nothing is published`() = runTest {
         alice.link.on = false
         assertFalse(alice.route.canSend(bobConversation))
-        assertFalse(alice.route.sendPrivate("salut", bobConversation, "msg-3"))
+        assertEquals(RelayPublishOutcome.NOT_SENT, alice.route.sendPrivate("salut", bobConversation, "msg-3").outcome)
         assertFalse(alice.route.sendAck(NoisePayloadType.DELIVERED, "msg-3", bobConversation))
         assertTrue(alice.link.published.isEmpty())
     }
 
     @Test fun `no npub, a conflict flag, a block or no enrollment never reach Internet`() = runTest {
         val strangerConversation = ContactIdentityResolver.contactConversationIdForNoiseKey(ByteArray(32) { 9 })
-        assertFalse(alice.route.sendPrivate("x", strangerConversation, "stranger"))
+        assertEquals(RelayPublishOutcome.NOT_SENT, alice.route.sendPrivate("x", strangerConversation, "stranger").outcome)
         alice.enroll(bobNoise, null)
-        assertFalse(alice.route.sendPrivate("x", bobConversation, "bluetooth-only"))
+        assertEquals(RelayPublishOutcome.NOT_SENT, alice.route.sendPrivate("x", bobConversation, "bluetooth-only").outcome)
         alice.enroll(bobNoise, bob.nostr.npub, warning = true)
-        assertFalse(alice.route.sendPrivate("x", bobConversation, "flagged"))
+        assertEquals(RelayPublishOutcome.NOT_SENT, alice.route.sendPrivate("x", bobConversation, "flagged").outcome)
         alice.enroll(bobNoise, bob.nostr.npub)
         alice.blocks.edit().putStringSet("blocked_users", setOf(ContactIdentityResolver.fingerprintHex(bobNoise))).commit()
-        assertFalse(alice.route.sendPrivate("x", bobConversation, "blocked"))
+        assertEquals(RelayPublishOutcome.NOT_SENT, alice.route.sendPrivate("x", bobConversation, "blocked").outcome)
         assertTrue(alice.link.published.isEmpty())
     }
 
@@ -226,6 +236,95 @@ class WeshInternetRouteTest {
             assertEquals(2, alice.link.published.size)
         } finally {
             router.stopOutboxScheduler()
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
+    @Test fun `an unconfirmed send is republished as the same signed gift wrap`() = runTest {
+        alice.link.answer = RelayPublishOutcome.UNCONFIRMED
+        val first = alice.route.sendPrivate("salut", bobConversation, "same-1")
+        assertEquals(RelayPublishOutcome.UNCONFIRMED, first.outcome)
+        alice.link.answer = RelayPublishOutcome.ACCEPTED
+        val second = alice.route.sendPrivate("salut", bobConversation, "same-1", previousWrap = first.giftWrap)
+
+        assertEquals(RelayPublishOutcome.ACCEPTED, second.outcome)
+        assertEquals(2, alice.link.published.size)
+        assertEquals(alice.link.published[0].id, alice.link.published[1].id)
+    }
+
+    @Test fun `a wrap too old for the receivers' lookback, or for an old npub, is wrapped again`() = runTest {
+        alice.link.answer = RelayPublishOutcome.UNCONFIRMED
+        val wrap = alice.route.sendPrivate("salut", bobConversation, "old-1").giftWrap!!
+        val stale = wrap.createdAt + AppConstants.Router.WESH_INTERNET_WRAP_REUSE_MAX_AGE_S
+        alice.route.sendPrivate("salut", bobConversation, "old-1", previousWrap = wrap, nowSeconds = stale.toLong())
+        val newNpub = NostrIdentity.generate()
+        alice.enroll(bobNoise, newNpub.npub)
+        alice.route.sendPrivate("salut", bobConversation, "old-1", previousWrap = wrap)
+
+        assertEquals(3, alice.link.published.map { it.id }.distinct().size)
+        assertNotNull(NostrProtocol.decryptPrivateMessage(alice.link.published[2], newNpub))
+    }
+
+    @Test fun `the Internet retry backs off from 30 s and is capped at 30 min`() {
+        val delays = (1..10).map(AppConstants.Router::weshInternetRetryDelayMs)
+        assertEquals(listOf(30_000L, 60_000L, 120_000L, 240_000L, 480_000L, 960_000L,
+            1_800_000L, 1_800_000L, 1_800_000L, 1_800_000L), delays)
+    }
+
+    @Test fun `Envoyé only after a relay OK, and failed publishes stay pending with a backoff`() {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        AppStateStore.clear()
+        val router = MessageRouter(context, mesh, mock())
+        router.weshInternetLink = alice.link
+        var now = 1_000_000L
+        router.clock = { now }
+        fun status() = AppStateStore.privateMessages.value.values.flatten().single { it.id == "ok-1" }.deliveryStatus
+        fun tickUntil(count: Int) {
+            router.tickOutbox(now)
+            waitFor { alice.link.published.size == count }
+            Thread.sleep(100)
+        }
+        try {
+            AppStateStore.addPrivateMessage(bobConversation, BitchatMessage(id = "ok-1", sender = "me", content = "salut",
+                timestamp = java.util.Date(), isRelay = false, isPrivate = true, recipientNickname = "Bob",
+                senderPeerID = alice.peerID, deliveryStatus = DeliveryStatus.Sending))
+            // Explicit rejection: pending, then a fresh wrap after 30 s.
+            alice.link.answer = RelayPublishOutcome.REJECTED
+            assertEquals(MessageRouter.RouteResult.NOSTR, router.sendPrivate("salut", bobConversation, "Bob", "ok-1"))
+            waitFor { alice.link.published.size == 1 }
+            Thread.sleep(100)
+            assertEquals(DeliveryStatus.Sending, status())
+            now += 29_999
+            router.tickOutbox(now)
+            Thread.sleep(200)
+            assertEquals(1, alice.link.published.size)
+
+            // Timeout: the same signed wrap goes out again, 60 s later.
+            alice.link.answer = RelayPublishOutcome.UNCONFIRMED
+            now += 1
+            tickUntil(2)
+            assertNotEquals(alice.link.published[0].id, alice.link.published[1].id)
+            now += 59_999
+            router.tickOutbox(now)
+            Thread.sleep(200)
+            assertEquals(2, alice.link.published.size)
+
+            // Nothing could leave (no relay connected): no backoff step is spent.
+            alice.link.answer = RelayPublishOutcome.NOT_SENT
+            now += 1
+            router.tickOutbox(now)
+            Thread.sleep(200)
+            alice.link.answer = RelayPublishOutcome.ACCEPTED
+            tickUntil(3)
+            assertEquals(alice.link.published[1].id, alice.link.published[2].id)
+            waitFor { status() == DeliveryStatus.Sent }
+        } finally {
             WeshContactStore.resetForTesting()
             MessageRouter.disableSchedulerForTesting = false
             AppStateStore.clear()

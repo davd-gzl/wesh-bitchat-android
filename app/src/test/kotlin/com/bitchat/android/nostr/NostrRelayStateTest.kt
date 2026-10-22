@@ -6,7 +6,9 @@ import com.bitchat.android.net.WeshNetworkPolicy
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
@@ -402,6 +404,111 @@ class NostrRelayStateTest {
         assertTrue(fixture.second.single().socket.cancelled)
     }
 
+    private fun TestScope.connected(): Pair<NostrRelayManager, MutableList<Attempt>> {
+        val (manager, attempts) = fixture()
+        manager.connect()
+        runCurrent()
+        attempts.forEach(Attempt::open)
+        return manager to attempts
+    }
+
+    @Test
+    fun `a confirmed send succeeds only once a relay answers OK`() = runTest {
+        val (manager, attempts) = connected()
+        val result = async { manager.sendEventConfirmed(event("confirmed-1")) }
+        runCurrent()
+
+        assertEquals(NostrRelayManager.WESH_PINNED_RELAYS.size, attempts.sentEvents().size)
+        assertFalse(result.isCompleted)
+        attempts[1].ok("confirmed-1", accepted = false)
+        runCurrent()
+        assertFalse(result.isCompleted)
+        attempts[0].ok("confirmed-1", accepted = true)
+        runCurrent()
+        assertEquals(RelayPublishOutcome.ACCEPTED, result.await())
+    }
+
+    @Test
+    fun `a confirmed send every relay explicitly rejects is rejected`() = runTest {
+        val (manager, attempts) = connected()
+        val result = async { manager.sendEventConfirmed(event("rejected-1")) }
+        runCurrent()
+        attempts.forEach { it.ok("rejected-1", accepted = false) }
+        runCurrent()
+
+        assertEquals(RelayPublishOutcome.REJECTED, result.await())
+    }
+
+    @Test
+    fun `a confirmed send with no OK is unconfirmed at the timeout, not rejected`() = runTest {
+        val (manager, _) = connected()
+        val result = async { manager.sendEventConfirmed(event("silent-1")) }
+        advanceTimeBy(NostrRelayManager.CONFIRMED_SEND_TIMEOUT_MS - 1)
+        assertFalse(result.isCompleted)
+        advanceTimeBy(2)
+
+        assertEquals(RelayPublishOutcome.UNCONFIRMED, result.await())
+    }
+
+    @Test
+    fun `a confirmed send without a connected relay is not sent and never queued`() = runTest {
+        val (manager, attempts) = fixture()
+
+        assertEquals(RelayPublishOutcome.NOT_SENT, manager.sendEventConfirmed(event("offline-1")))
+        manager.connect()
+        runCurrent()
+        attempts.forEach(Attempt::open)
+        assertEquals(emptyList<String>(), attempts.sentEvents())
+    }
+
+    @Test
+    fun `off ends a confirmed send that is still waiting as unconfirmed`() = runTest {
+        val (manager, _) = connected()
+        val result = async { manager.sendEventConfirmed(event("off-1")) }
+        runCurrent()
+        manager.disconnect()
+        runCurrent()
+
+        assertTrue(result.isCompleted)
+        assertEquals(RelayPublishOutcome.UNCONFIRMED, result.await())
+    }
+
+    @Test
+    fun `relays that drop without an answer leave the send unconfirmed`() = runTest {
+        val (manager, attempts) = connected()
+        val result = async { manager.sendEventConfirmed(event("dropped-1")) }
+        runCurrent()
+        attempts[0].fail()
+        attempts[1].fail()
+        attempts[2].ok("dropped-1", accepted = false)
+        runCurrent()
+
+        assertTrue(result.isCompleted)
+        assertEquals(RelayPublishOutcome.UNCONFIRMED, result.await())
+    }
+
+    @Test
+    fun `OK false is classified as the shared retry policy says`() = runTest {
+        suspend fun TestScope.outcomeFor(message: String): RelayPublishOutcome {
+            val (manager, attempts) = connected()
+            val id = "cls-${message.substringBefore(':')}"
+            val result = async { manager.sendEventConfirmed(event(id)) }
+            runCurrent()
+            attempts.forEach { it.ok(id, accepted = false, message = message) }
+            runCurrent()
+            return result.await()
+        }
+        assertEquals(RelayPublishOutcome.ACCEPTED, outcomeFor("duplicate: already have this event"))
+        assertEquals(RelayPublishOutcome.UNCONFIRMED, outcomeFor("rate-limited: slow down"))
+        assertEquals(RelayPublishOutcome.UNCONFIRMED, outcomeFor("error: could not save"))
+        assertEquals(RelayPublishOutcome.UNCONFIRMED, outcomeFor("auth-required: log in"))
+        assertEquals(RelayPublishOutcome.REJECTED, outcomeFor("blocked: no"))
+        assertEquals(RelayPublishOutcome.REJECTED, outcomeFor("invalid: bad sig"))
+        assertEquals(RelayPublishOutcome.REJECTED, outcomeFor("pow: difficulty"))
+        assertEquals(RelayPublishOutcome.REJECTED, outcomeFor("restricted: members only"))
+        assertEquals(RelayPublishOutcome.REJECTED, outcomeFor("something else"))
+    }
+
     private fun TestScope.fixture(
         dispatcher: CoroutineDispatcher = UnconfinedTestDispatcher(testScheduler),
         onCreate: (Attempt) -> Unit = {}
@@ -420,6 +527,8 @@ class NostrRelayStateTest {
         val socket = IdleWebSocket(request)
         fun open() = listener.onOpen(socket, Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(101).message("Synthetic upgrade").build())
         fun fail() = listener.onFailure(socket, IOException("Synthetic connection failure"), null)
+        fun ok(eventId: String, accepted: Boolean, message: String = if (accepted) "" else "blocked: synthetic") =
+            listener.onMessage(socket, """["OK","$eventId",$accepted,"$message"]""")
     }
 
     private class IdleWebSocket(private val request: Request) : WebSocket {

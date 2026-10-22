@@ -15,6 +15,9 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
+/** What a confirmed publish learned from the relays; see [NostrRelayManager.sendEventConfirmed]. */
+enum class RelayPublishOutcome { ACCEPTED, REJECTED, UNCONFIRMED, NOT_SENT }
+
 /**
  * Manages WebSocket connections to Nostr relays
  * Compatible with iOS implementation with Android-specific optimizations
@@ -40,6 +43,8 @@ class NostrRelayManager internal constructor(
         
         private const val TAG = "NostrRelayManager"
         private const val MAX_QUEUED_EVENTS = 500
+        /** Same as iOS `TransportConfig.nostrConfirmedSendAckTimeoutSeconds`. */
+        const val CONFIRMED_SEND_TIMEOUT_MS = 10_000L
         const val OWNER_LEGACY = "legacy"
         const val OWNER_BACKGROUND = "background"
         
@@ -129,6 +134,40 @@ class NostrRelayManager internal constructor(
      */
     private var dropGeneration = 0L
     
+    /** Confirmed sends waiting for a relay `OK`, by event ID; guarded by [lifecycleLock]. */
+    private class ConfirmedSend(val awaitingRelays: MutableSet<String>) {
+        val result = CompletableDeferred<RelayPublishOutcome>()
+        var written = 0
+        var rejected = 0
+        /** Nothing written: not sent. Every written copy explicitly refused: rejected. Else unknown. */
+        fun settle(): RelayPublishOutcome = when {
+            written == 0 -> RelayPublishOutcome.NOT_SENT
+            rejected == written -> RelayPublishOutcome.REJECTED
+            else -> RelayPublishOutcome.UNCONFIRMED
+        }
+    }
+    private enum class RelayAnswer {
+        ACCEPTED, REJECTED, NONE;
+
+        companion object {
+            /**
+             * Shared retry policy (spec « Retry policy »): `duplicate:` means stored; `rate-limited:`,
+             * `error:` and `auth-required:` leave it unknown, so the same event is retried; anything
+             * else is a refusal and the next attempt wraps the message again.
+             */
+            fun of(accepted: Boolean, message: String?): RelayAnswer {
+                if (accepted) return ACCEPTED
+                val prefix = message.orEmpty().trimStart().substringBefore(':').lowercase()
+                return when (prefix) {
+                    "duplicate" -> ACCEPTED
+                    "rate-limited", "error", "auth-required" -> NONE
+                    else -> REJECTED
+                }
+            }
+        }
+    }
+    private val confirmedSends = HashMap<String, ConfirmedSend>()
+
     // Subscription validation timer
     private var subscriptionValidationJob: Job? = null
     private val powerManager: com.bitchat.android.mesh.PowerManager?
@@ -242,6 +281,9 @@ class NostrRelayManager internal constructor(
     /** Caller holds [lifecycleLock]; socket close is performed after releasing it. */
     private fun disconnectLocked(): List<WebSocket> {
         desiredConnected.set(false)
+        // Their sockets are going away: no OK can arrive any more.
+        confirmedSends.values.forEach { it.result.complete(it.settle()) }
+        confirmedSends.clear()
         connectionAttempts.clear()
         stopSubscriptionValidation()
         reconnectJobs.values.forEach(Job::cancel)
@@ -294,6 +336,60 @@ class NostrRelayManager internal constructor(
         }
     }
     
+    /**
+     * Sends [event] to the relays connected now and waits for the first `OK` true, at most
+     * [timeoutMs]. Never queued: the caller keeps the message and decides when to retry. A socket
+     * write alone is not acceptance (same contract as iOS `sendEventImmediately`).
+     * - [RelayPublishOutcome.ACCEPTED]: a relay stored it.
+     * - [RelayPublishOutcome.REJECTED]: every relay it reached refused it explicitly.
+     * - [RelayPublishOutcome.UNCONFIRMED]: written, but no `OK` (timeout, drop, Internet off): a
+     *   relay may hold it, so a retry should republish the same signed event.
+     * - [RelayPublishOutcome.NOT_SENT]: no relay connected or Internet off; nothing left.
+     */
+    suspend fun sendEventConfirmed(
+        event: NostrEvent,
+        timeoutMs: Long = CONFIRMED_SEND_TIMEOUT_MS
+    ): RelayPublishOutcome {
+        val state: ConfirmedSend
+        synchronized(lifecycleLock) {
+            if (!isNetworkActionAllowed()) return RelayPublishOutcome.NOT_SENT
+            val targets = relaysList.map { it.url }.filter { connections.containsKey(it) }
+            if (targets.isEmpty()) return RelayPublishOutcome.NOT_SENT
+            state = ConfirmedSend(targets.toMutableSet())
+            confirmedSends.put(event.id, state)?.let { it.result.complete(it.settle()) }
+            for (relayUrl in targets) {
+                val webSocket = connections[relayUrl]
+                if (webSocket != null && sendToRelay(event, webSocket, relayUrl)) {
+                    state.written++
+                } else {
+                    resolveConfirmedSendLocked(event.id, relayUrl, RelayAnswer.NONE)
+                }
+            }
+        }
+        return try {
+            withTimeoutOrNull(timeoutMs) { state.result.await() } ?: run {
+                // No-op when an OK landed as the timeout fired: that answer still counts.
+                synchronized(lifecycleLock) { state.result.complete(state.settle()) }
+                state.result.await()
+            }
+        } finally {
+            synchronized(lifecycleLock) {
+                if (confirmedSends[event.id] === state) confirmedSends.remove(event.id)
+            }
+        }
+    }
+
+    /** Caller holds [lifecycleLock]. The first accept wins; otherwise the last answer settles it. */
+    private fun resolveConfirmedSendLocked(eventId: String, relayUrl: String, answer: RelayAnswer) {
+        val state = confirmedSends[eventId] ?: return
+        if (!state.awaitingRelays.remove(relayUrl)) return
+        if (answer == RelayAnswer.REJECTED) state.rejected++
+        if (answer == RelayAnswer.ACCEPTED || state.awaitingRelays.isEmpty()) {
+            confirmedSends.remove(eventId)
+            state.result.complete(if (answer == RelayAnswer.ACCEPTED) RelayPublishOutcome.ACCEPTED else state.settle())
+        }
+    }
+
     /**
      * Subscribe to events matching a filter
      * The subscription will be automatically re-established on reconnection
@@ -753,6 +849,10 @@ class NostrRelayManager internal constructor(
                 }
 
                 is NostrResponse.Ok -> {
+                    synchronized(lifecycleLock) {
+                        resolveConfirmedSendLocked(response.eventId, relayUrl,
+                            RelayAnswer.of(response.accepted, response.message))
+                    }
                     val wasGiftWrap = pendingGiftWrapIDs.remove(response.eventId)
                     if (!response.accepted) {
                         val level = if (wasGiftWrap) Log.WARN else Log.ERROR
@@ -784,6 +884,7 @@ class NostrRelayManager internal constructor(
         connectionAttempts.remove(relayUrl)
         connections.remove(relayUrl, webSocket)
         subscriptions.remove(relayUrl)
+        confirmedSends.keys.toList().forEach { resolveConfirmedSendLocked(it, relayUrl, RelayAnswer.NONE) }
         handleCurrentDisconnection(relayUrl, error)
     }
 
