@@ -142,6 +142,25 @@ object AppConstants {
         const val OUTBOX_TICK_MS: Long = 2_000L
         const val OUTBOX_MESSAGE_TTL_MS: Long = 86_400_000L // 24 hours
         const val OUTBOX_MAX_PER_PEER: Int = 100
+        /**
+         * Wesh Internet retry schedule, mirrored on iOS: a publish no relay accepted waits
+         * BASE × 2^(attempts − 1), capped at MAX, until the 24 h outbox TTL. 30 s, 1, 2, 4, 8,
+         * 16 min, then every 30 min: about 50 attempts over 24 h.
+         */
+        const val WESH_INTERNET_RETRY_BASE_MS: Long = 30_000L
+        const val WESH_INTERNET_RETRY_MAX_MS: Long = 30L * 60_000L
+        /**
+         * An unconfirmed gift wrap is republished unchanged (relays deduplicate its ID) while it
+         * is younger than this; its created_at is already up to 22 h in the past, and iOS looks
+         * back 24 h. Older, or explicitly rejected: wrapped again (same message ID).
+         */
+        const val WESH_INTERNET_WRAP_REUSE_MAX_AGE_S: Long = 22L * 3600L
+
+        /** Delay before the next attempt after [attempts] failed ones (1-based). */
+        fun weshInternetRetryDelayMs(attempts: Int): Long {
+            val doublings = (attempts - 1).coerceIn(0, 16)
+            return (WESH_INTERNET_RETRY_BASE_MS shl doublings).coerceAtMost(WESH_INTERNET_RETRY_MAX_MS)
+        }
         val HANDSHAKE_RETRY_BACKOFF_MS: LongArray = longArrayOf(5_000L, 15_000L, 30_000L, 60_000L)
     }
 

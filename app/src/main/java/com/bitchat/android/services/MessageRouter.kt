@@ -6,6 +6,7 @@ import com.bitchat.android.favorites.FavoriteControlMessage
 import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.model.ReadReceipt
 import com.bitchat.android.nostr.NostrTransport
+import com.bitchat.android.nostr.RelayPublishOutcome
 import com.bitchat.android.util.AppConstants
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +36,13 @@ class MessageRouter internal constructor(
         val content: String,
         val nickname: String,
         val messageID: String,
-        val enqueuedAtMs: Long
+        val enqueuedAtMs: Long,
+        /** Internet attempts no relay accepted; drives the backoff. */
+        val internetAttempts: Int = 0,
+        /** Earliest next Internet attempt. */
+        val internetRetryAtMs: Long = 0L,
+        /** Signed gift wrap of an unconfirmed attempt, republished unchanged; memory only. */
+        val giftWrap: com.bitchat.android.nostr.NostrEvent? = null
     )
 
     private data class ConversationRetry(
@@ -193,21 +200,39 @@ class MessageRouter internal constructor(
         }
     }
 
-    /** Tor or the relays may drop between the check and the send: the message goes back in the queue. */
+    /**
+     * « Envoyé » only once a relay answered `OK`. Otherwise the message goes back in the queue
+     * (« En attente ») until the 24 h TTL: with a backoff step after anything that reached a relay,
+     * keeping an unconfirmed wrap for the retry and dropping a rejected one.
+     */
     private fun dispatchWeshInternet(entry: QueuedMessage, conversationID: String, epoch: Long = weshEpoch.get()) {
         if (epoch != weshEpoch.get() || !weshInFlight.add(entry.messageID)) return
         schedulerScope.launch {
-            try {
+            // Requeued only after leaving the in-flight set: a flush in between could otherwise
+            // take the entry out of the outbox and then refuse to dispatch it.
+            val retry = try {
                 if (epoch != weshEpoch.get()) return@launch
-                val sent = weshInternet().sendPrivate(entry.content, conversationID, entry.messageID)
+                val send = weshInternet().sendPrivate(entry.content, conversationID, entry.messageID, entry.giftWrap)
                 if (epoch != weshEpoch.get()) return@launch
-                if (sent) {
-                    AppStateStore.updatePrivateMessageStatus(entry.messageID, com.bitchat.android.model.DeliveryStatus.Sent,
-                        com.bitchat.android.model.MessageTransport.INTERNET)
-                } else {
-                    requeueWesh(entry, conversationID, epoch)
+                when (send.outcome) {
+                    RelayPublishOutcome.ACCEPTED -> {
+                        AppStateStore.updatePrivateMessageStatus(entry.messageID, com.bitchat.android.model.DeliveryStatus.Sent,
+                            com.bitchat.android.model.MessageTransport.INTERNET)
+                        null
+                    }
+                    // Nothing left: no backoff step, and the signed wrap is kept rather than re-signed.
+                    RelayPublishOutcome.NOT_SENT -> entry.copy(giftWrap = send.giftWrap ?: entry.giftWrap)
+                    RelayPublishOutcome.REJECTED, RelayPublishOutcome.UNCONFIRMED -> {
+                        val attempts = entry.internetAttempts + 1
+                        entry.copy(
+                            internetAttempts = attempts,
+                            internetRetryAtMs = clock() + AppConstants.Router.weshInternetRetryDelayMs(attempts),
+                            giftWrap = send.giftWrap.takeIf { send.outcome == RelayPublishOutcome.UNCONFIRMED }
+                        )
+                    }
                 }
             } finally { weshInFlight.remove(entry.messageID) }
+            retry?.let { requeueWesh(it, conversationID, epoch) }
         }
     }
 
@@ -358,7 +383,7 @@ class MessageRouter internal constructor(
                 } else if (sender.canSend(conversationID, mesh)) {
                     dispatchWesh(entry.content, conversationID, entry.messageID, epoch)
                     iterator.remove()
-                } else if (weshInternet().canSend(conversationID)) {
+                } else if (entry.internetRetryAtMs <= clock() && weshInternet().canSend(conversationID)) {
                     iterator.remove()
                     dispatchWeshInternet(entry, conversationID, epoch)
                 }
