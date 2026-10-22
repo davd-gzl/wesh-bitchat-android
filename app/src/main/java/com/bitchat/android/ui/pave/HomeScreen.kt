@@ -54,6 +54,8 @@ data class PaveHomeState(
     val contacts: List<PaveContactItem>,
     val requestCount: Int,
     val contactStoreFailed: Boolean = false,
+    /** Shown on Home only while Internet mode is on (spec §3 « Pill »); null hides it. */
+    val internetPill: PaveInternetStatus? = null,
 )
 
 /**
@@ -71,6 +73,7 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onRetryContacts: () -> Unit,
     modifier: Modifier = Modifier,
+    onInternetPill: () -> Unit = {},
 ) {
     val c = WeshPave.colors
     Column(
@@ -97,6 +100,7 @@ fun HomeScreen(
                 }
             }
             item(key = "reach") { PaveReachCard(state.phonesInReach, state.bluetoothOn) }
+            state.internetPill?.let { pill -> item(key = "internet") { InternetPill(pill, onInternetPill) } }
             item(key = "public") {
                 PublicRoomCard(
                     phonesInRange = state.phonesInReach,
