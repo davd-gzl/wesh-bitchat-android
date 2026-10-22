@@ -15,6 +15,9 @@ interface MeshService {
     /** Fail closed by default; implementations must pin the actual encryption generation. */
     suspend fun sendPrivateMessageBound(content: String, recipientPeerID: String, expectedKey: ByteArray,
         messageID: String, authorized: () -> Boolean): Boolean = false
+    /** Fail closed by default: an unknown transport never lets the message move to Internet. */
+    suspend fun sendPrivateMessageBoundOutcome(content: String, recipientPeerID: String, expectedKey: ByteArray,
+        messageID: String, authorized: () -> Boolean): BoundSendOutcome = BoundSendOutcome.AUTH_FAILED
     fun sendReadReceipt(messageID: String, recipientPeerID: String, readerNickname: String)
     fun sendDeliveryAck(messageID: String, recipientPeerID: String) {}
     fun sendFavoriteNotification(peerID: String, isFavorite: Boolean) {}

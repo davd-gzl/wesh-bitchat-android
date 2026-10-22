@@ -235,7 +235,8 @@ class WeshInternetRouteTest {
                 isVerifiedNickname = true, lastSeen = 1L))
             whenever(mesh.getAuthenticatedRemoteStaticKey(bobPeer)).thenReturn(bobNoise)
             kotlinx.coroutines.runBlocking {
-                whenever(mesh.sendPrivateMessageBound(any(), any(), any(), any(), any())).thenReturn(true)
+                whenever(mesh.sendPrivateMessageBoundOutcome(any(), any(), any(), any(), any()))
+                    .thenReturn(com.bitchat.android.mesh.BoundSendOutcome.SENT)
             }
             assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("near", bobConversation, "Bob", "m-1"))
             Thread.sleep(200)
@@ -445,8 +446,10 @@ class WeshInternetRouteTest {
         }
     }
 
-    /** Bob in Bluetooth range over a bound session whose write fails. */
-    private fun failingBluetoothRouter(): MessageRouter {
+    /** Bob in Bluetooth range over a bound session whose write ends with [outcome]. */
+    private fun failingBluetoothRouter(
+        outcome: com.bitchat.android.mesh.BoundSendOutcome = com.bitchat.android.mesh.BoundSendOutcome.NOT_SENT
+    ): MessageRouter {
         val mesh: MeshService = mock()
         whenever(mesh.myPeerID).thenReturn(alice.peerID)
         val bobPeer = ContactIdentityResolver.peerIdForNoiseKey(bobNoise)
@@ -456,7 +459,7 @@ class WeshInternetRouteTest {
             isVerifiedNickname = true, lastSeen = 1L))
         whenever(mesh.getAuthenticatedRemoteStaticKey(bobPeer)).thenReturn(bobNoise)
         kotlinx.coroutines.runBlocking {
-            whenever(mesh.sendPrivateMessageBound(any(), any(), any(), any(), any())).thenReturn(false)
+            whenever(mesh.sendPrivateMessageBoundOutcome(any(), any(), any(), any(), any())).thenReturn(outcome)
         }
         ContactDirectory.initialize(context) { mesh }
         WeshContactStore.installForTesting(alice.contacts)
@@ -488,8 +491,8 @@ class WeshInternetRouteTest {
         val bobPeer = ContactIdentityResolver.peerIdForNoiseKey(bobNoise)
         try {
             kotlinx.coroutines.runBlocking {
-                whenever(router.meshForTesting.sendPrivateMessageBound(any(), any(), any(), any(), any())).thenAnswer {
-                    router.cancelWeshConversation(bobConversation); false
+                whenever(router.meshForTesting.sendPrivateMessageBoundOutcome(any(), any(), any(), any(), any())).thenAnswer {
+                    router.cancelWeshConversation(bobConversation); com.bitchat.android.mesh.BoundSendOutcome.NOT_SENT
                 }
             }
             assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
@@ -531,6 +534,34 @@ class WeshInternetRouteTest {
             waitFor { bw1() == DeliveryStatus.Sent }
             assertEquals(2, alice.link.published.size)
             assertEquals(alice.link.published[0].id, alice.link.published[1].id)
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
+    @Test fun `a Bluetooth write that may have left stays waiting and never goes over Internet`() {
+        val router = failingBluetoothRouter(com.bitchat.android.mesh.BoundSendOutcome.UNCONFIRMED)
+        try {
+            assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
+            Thread.sleep(300)
+            assertEquals(DeliveryStatus.Sending, bw1())
+            assertTrue(alice.link.published.isEmpty())
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
+    @Test fun `a Bluetooth write refused for a changed key ends Échec and never goes over Internet`() {
+        val router = failingBluetoothRouter(com.bitchat.android.mesh.BoundSendOutcome.AUTH_FAILED)
+        try {
+            assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
+            waitFor { bw1() is DeliveryStatus.Failed }
+            Thread.sleep(200)
+            assertTrue(alice.link.published.isEmpty())
         } finally {
             WeshContactStore.resetForTesting()
             MessageRouter.disableSchedulerForTesting = false

@@ -975,23 +975,34 @@ class BluetoothMeshService(
      */
     /** Wesh handoff has a result and pins the generation at encryption, without changing the wire. */
     suspend fun sendPrivateMessageBound(content: String, recipientPeerID: String, expectedKey: ByteArray,
-        messageID: String, authorized: () -> Boolean): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        if (content.isBlank() || content.toByteArray().size > 2000 || expectedKey.size != 32 || !authorized()) return@withContext false
-        val session = encryptionService.getAuthenticatedSession(recipientPeerID) ?: return@withContext false
-        if (!session.remoteStaticKey.contentEquals(expectedKey)) return@withContext false
-        runCatching {
-            val encoded = com.bitchat.android.model.PrivateMessagePacket(messageID, content).encode() ?: return@withContext false
+        messageID: String, authorized: () -> Boolean): Boolean =
+        sendPrivateMessageBoundOutcome(content, recipientPeerID, expectedKey, messageID, authorized) == BoundSendOutcome.SENT
+
+    /** Same send, telling apart nothing sent, maybe sent and a session or key that no longer matches. */
+    suspend fun sendPrivateMessageBoundOutcome(content: String, recipientPeerID: String, expectedKey: ByteArray,
+        messageID: String, authorized: () -> Boolean): BoundSendOutcome = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (content.isBlank() || content.toByteArray().size > 2000 || expectedKey.size != 32) return@withContext BoundSendOutcome.NOT_SENT
+        if (!authorized()) return@withContext BoundSendOutcome.AUTH_FAILED
+        val session = encryptionService.getAuthenticatedSession(recipientPeerID) ?: return@withContext BoundSendOutcome.NOT_SENT
+        if (!session.remoteStaticKey.contentEquals(expectedKey)) return@withContext BoundSendOutcome.AUTH_FAILED
+        val sessionStillValid = { authorized() && encryptionService.getAuthenticatedSession(recipientPeerID) == session }
+        try {
+            val encoded = com.bitchat.android.model.PrivateMessagePacket(messageID, content).encode()
+                ?: return@withContext BoundSendOutcome.NOT_SENT
             val payload = com.bitchat.android.model.NoisePayload(com.bitchat.android.model.NoisePayloadType.PRIVATE_MESSAGE, encoded)
             // encryptForSession atomically refuses a replacement generation, even for the same alias.
             val encrypted = encryptionService.encryptForSession(payload.encode(), recipientPeerID, session)
-            if (!authorized()) return@withContext false
+            if (!authorized()) return@withContext BoundSendOutcome.AUTH_FAILED
             val packet = BitchatPacket(version = 1u, type = MessageType.NOISE_ENCRYPTED.value,
                 senderID = hexStringToByteArray(myPeerID), recipientID = hexStringToByteArray(recipientPeerID),
                 timestamp = System.currentTimeMillis().toULong(), payload = encrypted, signature = null, ttl = MAX_TTL)
-            connectionManager.broadcastPacketAndAwaitAcceptance(RoutedPacket(signPacketBeforeBroadcast(packet))) {
-                authorized() && encryptionService.getAuthenticatedSession(recipientPeerID) == session
-            }
-        }.getOrDefault(false)
+            connectionManager.broadcastPacketAndAwaitOutcome(RoutedPacket(signPacketBeforeBroadcast(packet)), sessionStillValid)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Before any write: a refused encryption means the session changed under us.
+            if (sessionStillValid()) BoundSendOutcome.NOT_SENT else BoundSendOutcome.AUTH_FAILED
+        }
     }
 
     fun sendPrivateMessage(content: String, recipientPeerID: String, recipientNickname: String, messageID: String? = null) {

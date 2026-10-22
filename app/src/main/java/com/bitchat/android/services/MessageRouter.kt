@@ -207,17 +207,25 @@ class MessageRouter internal constructor(
         // Captured at the write: a delete or block during it stops any Internet fallback.
         val cancelled = weshCancelled[conversationID] ?: 0L
         schedulerScope.launch {
-            val written = try {
+            val outcome = try {
                 if (epoch != weshEpoch.get()) return@launch
-                WeshPrivateSender(WeshContactStore.get(context))
-                    .dispatch(entry.content, conversationID, messageID, mesh, markFailed = false)
+                WeshPrivateSender(WeshContactStore.get(context)).dispatchOutcome(entry.content, conversationID, messageID, mesh)
             } finally { weshInFlight.remove(messageID) }
-            if (!written) afterFailedBluetoothWrite(entry, conversationID, epoch, cancelled)
+            when (outcome) {
+                com.bitchat.android.mesh.BoundSendOutcome.SENT -> Unit
+                // Nothing reached the radio: another route may take it.
+                com.bitchat.android.mesh.BoundSendOutcome.NOT_SENT -> afterFailedBluetoothWrite(entry, conversationID, epoch, cancelled)
+                // Some bytes may have left: it stays « En attente », under the same ID, for the ack.
+                com.bitchat.android.mesh.BoundSendOutcome.UNCONFIRMED -> Unit
+                // The session or key no longer matches: never elsewhere.
+                com.bitchat.android.mesh.BoundSendOutcome.AUTH_FAILED -> AppStateStore.updatePrivateMessageStatus(messageID,
+                    com.bitchat.android.model.DeliveryStatus.Failed(WeshPrivateSender.FAILED_WRITE))
+            }
         }
     }
 
     /**
-     * After a failed Bluetooth write, when an Internet route exists for the contact: over Internet
+     * After a Bluetooth write that reached nothing, when an Internet route exists for the contact: over Internet
      * from now on, with its deadline, backoff and wrap (« Envoyé » on relay OK, else waiting).
      * Without that route: « Échec » with Réessayer. Deleted, blocked or removed meanwhile: « Échec ».
      */

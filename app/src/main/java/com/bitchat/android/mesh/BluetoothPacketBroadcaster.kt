@@ -191,23 +191,30 @@ class BluetoothPacketBroadcaster(
 
     /** Wesh texts keep the existing bounded fragment plan and report concrete GATT acceptance. */
     suspend fun broadcastPacketAndAwaitAcceptance(routed: RoutedPacket, gattServer: BluetoothGattServer?,
-        characteristic: BluetoothGattCharacteristic?, authorized: () -> Boolean): Boolean {
-        val packets = fragmentingSender.packetsForTransport(routed) ?: return false
+        characteristic: BluetoothGattCharacteristic?, authorized: () -> Boolean): Boolean =
+        broadcastPacketAndAwaitOutcome(routed, gattServer, characteristic, authorized) == BoundSendOutcome.SENT
+
+    suspend fun broadcastPacketAndAwaitOutcome(routed: RoutedPacket, gattServer: BluetoothGattServer?,
+        characteristic: BluetoothGattCharacteristic?, authorized: () -> Boolean): BoundSendOutcome {
+        val packets = fragmentingSender.packetsForTransport(routed) ?: return BoundSendOutcome.NOT_SENT
         for ((index, packet) in packets.withIndex()) {
-            if (!authorized()) return false
+            if (!authorized()) return BoundSendOutcome.AUTH_FAILED
             val accepted = CompletableDeferred<Boolean>()
-            val result = try {
+            val result: Boolean? = try {
                 kotlinx.coroutines.withTimeoutOrNull(5_000) {
                     broadcasterActor.send(BroadcastRequest(routed.copy(packet = packet),
                         gattServer, characteristic, accepted, true, authorized))
                     accepted.await()
-                } == true
+                }
             } catch (cancelled: CancellationException) { accepted.cancel(); throw cancelled }
-            catch (_: Exception) { false }
-            if (!result) { accepted.cancel(); return false }
+            catch (_: Exception) { null }
+            BoundSendOutcome.afterFragment(index, result, authorized())?.let { outcome ->
+                accepted.cancel()
+                return outcome
+            }
             if (index < packets.lastIndex) delay(20)
         }
-        return true
+        return BoundSendOutcome.SENT
     }
 
     /**
