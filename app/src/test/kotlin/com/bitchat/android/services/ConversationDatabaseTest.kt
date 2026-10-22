@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.model.DeliveryStatus
+import com.bitchat.android.model.MessageTransport
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -399,6 +400,72 @@ class ConversationDatabaseTest {
             assertEquals(2, database.loadSnapshot().arrivalOrder.size)
         } finally {
             shared.delete()
+        }
+    }
+
+    @Test
+    fun `the message transport survives reopen and follows the ack`() {
+        val message = BitchatMessage(id = "transport-1", sender = "me", content = "salut", timestamp = Date(1),
+            isPrivate = true, deliveryStatus = DeliveryStatus.Sent, transport = MessageTransport.BLUETOOTH)
+        database.upsertMessage("contact_alice", setOf("contact_alice"), "alice", message, isRead = true)
+        database.updateDeliveryStatus(message.id, DeliveryStatus.Delivered("alice", Date(2)), MessageTransport.INTERNET)
+        // A late lower status never rewrites where the message went.
+        database.updateDeliveryStatus(message.id, DeliveryStatus.Sent, MessageTransport.BLUETOOTH)
+        database.close()
+
+        database = ConversationDatabase(context, databaseName, storageCipher = storageCipher)
+        val restored = database.loadSnapshot().chats.getValue("contact_alice").single()
+        assertEquals(MessageTransport.INTERNET, restored.transport)
+        assertEquals(DeliveryStatus.Delivered("alice", Date(2)), restored.deliveryStatus)
+    }
+
+    @Test
+    fun `version four database gains an empty transport column and keeps its history`() {
+        database.upsertMessage("contact_alice", setOf("contact_alice"), "alice",
+            BitchatMessage(id = "v4-message", sender = "alice", content = "avant", timestamp = Date(1),
+                isPrivate = true, deliveryStatus = DeliveryStatus.Sent), isRead = false)
+        database.close()
+        downgradeToVersionFour()
+
+        database = ConversationDatabase(context, databaseName, storageCipher = storageCipher)
+        val migrated = database.loadSnapshot().chats.getValue("contact_alice").single()
+        assertEquals("avant", migrated.content)
+        assertNull(migrated.transport)
+        database.updateDeliveryStatus("v4-message", DeliveryStatus.Delivered("alice", Date(2)), MessageTransport.BLUETOOTH)
+        assertEquals(MessageTransport.BLUETOOTH,
+            database.loadSnapshot().chats.getValue("contact_alice").single().transport)
+        database.readableDatabase.rawQuery("PRAGMA user_version", null).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(ConversationDatabase.DATABASE_VERSION, cursor.getInt(0))
+        }
+    }
+
+    /**
+     * Rebuilds private_messages with the exact version 5 DDL minus the transport column (same
+     * constraints, collation, foreign key and indexes) and stamps the file as version 4.
+     */
+    private fun downgradeToVersionFour() {
+        context.openOrCreateDatabase(databaseName, Context.MODE_PRIVATE, null).use { db ->
+            fun schema(type: String) = db.rawQuery(
+                "SELECT sql FROM sqlite_master WHERE type = ? AND tbl_name = 'private_messages' AND sql IS NOT NULL",
+                arrayOf(type)
+            ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+            val table = schema("table").single()
+            val indexes = schema("index")
+            val columnLine = Regex(",\\s*transport INTEGER NOT NULL DEFAULT 0")
+            assertTrue(columnLine.containsMatchIn(table))
+            val versionFour = table.replace(columnLine, "").replaceFirst("private_messages", "private_messages_v4")
+            val columns = db.rawQuery("PRAGMA table_info(private_messages)", null).use { cursor ->
+                buildList { while (cursor.moveToNext()) add(cursor.getString(1)) }
+            }.filterNot { it == "transport" }
+            assertEquals(25, columns.size)
+            db.execSQL(versionFour)
+            db.execSQL("INSERT INTO private_messages_v4 (${columns.joinToString(",")}) " +
+                "SELECT ${columns.joinToString(",")} FROM private_messages")
+            db.execSQL("DROP TABLE private_messages")
+            db.execSQL("ALTER TABLE private_messages_v4 RENAME TO private_messages")
+            indexes.forEach(db::execSQL)
+            db.execSQL("PRAGMA user_version = 4")
         }
     }
 

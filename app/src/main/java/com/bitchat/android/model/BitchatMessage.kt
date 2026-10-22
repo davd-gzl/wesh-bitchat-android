@@ -7,6 +7,10 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.*
 
+/** Where a private message last went or came from (spec §3 label): last attempt, then the ack. */
+@Parcelize
+enum class MessageTransport : Parcelable { BLUETOOTH, INTERNET }
+
 @Parcelize
 enum class BitchatMessageType : Parcelable {
     Message,
@@ -77,7 +81,9 @@ data class BitchatMessage(
      * surfaces color the sender by the same stable key while [senderPeerID] remains available for
      * mesh IDs and private-chat routing aliases.
      */
-    val senderNostrPubkey: String? = null
+    val senderNostrPubkey: String? = null,
+    /** Local metadata, never on the wire; null for public messages and for history before DB v5. */
+    val transport: MessageTransport? = null
 ) : Parcelable {
 
     /**
@@ -339,6 +345,7 @@ data class BitchatMessage(
         } else if (other.encryptedContent != null) return false
         if (isEncrypted != other.isEncrypted) return false
         if (deliveryStatus != other.deliveryStatus) return false
+        if (transport != other.transport) return false
 
         return true
     }
@@ -359,6 +366,7 @@ data class BitchatMessage(
         result = 31 * result + (encryptedContent?.contentHashCode() ?: 0)
         result = 31 * result + isEncrypted.hashCode()
         result = 31 * result + (deliveryStatus?.hashCode() ?: 0)
+        result = 31 * result + (transport?.hashCode() ?: 0)
         return result
     }
 }
