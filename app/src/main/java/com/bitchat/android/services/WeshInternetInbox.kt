@@ -140,6 +140,16 @@ internal class WeshInternetInbox(
  * Lifecycle of the gift-wrap subscription for my npub: subscribed only while Internet mode is
  * On and my key exists; on Off (toggle or panic) unsubscribed and the inbox forgotten.
  */
+/** Calls [onOn] once per transition into [WeshInternetState.On]. */
+internal class WeshInternetOnWatcher(private val onOn: () -> Unit) {
+    private var wasOn = false
+    @Synchronized fun apply(state: WeshInternetState) {
+        val on = state == WeshInternetState.On
+        if (on && !wasOn) runCatching(onOn)
+        wasOn = on
+    }
+}
+
 internal class WeshInternetSubscription(
     private val myIdentity: () -> NostrIdentity?,
     private val subscribe: (filter: NostrFilter, handler: (NostrEvent) -> Unit) -> Unit,
@@ -212,7 +222,13 @@ internal object WeshInternetReceiver {
             },
             onOff = created::clear
         )
-        scope.launch { WeshInternetMode.get(app).state.collect(subscription::apply) }
+        val announcer = WeshInternetOnWatcher { MessageRouter.tryGetInstance()?.onWeshInternetOn() }
+        scope.launch {
+            WeshInternetMode.get(app).state.collect { state ->
+                subscription.apply(state)
+                announcer.apply(state)
+            }
+        }
         Unit
     }
 }
