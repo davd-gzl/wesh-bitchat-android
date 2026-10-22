@@ -220,26 +220,35 @@ class MessageRouter internal constructor(
         if (epoch != weshEpoch.get() || !weshInFlight.add(messageID)) return
         schedulerScope.launch {
             val outcome = try {
-                if (epoch != weshEpoch.get()) return@launch
-                WeshPrivateSender(WeshContactStore.get(context)).dispatchOutcome(entry.content, conversationID, messageID, mesh)
-            } finally { weshInFlight.remove(messageID) }
-            when (outcome) {
-                // Rule 4: without an ack within the window, the same message ID goes over Internet once
-                // (if that route exists then). Only for a contact with a QR-bound npub.
-                com.bitchat.android.mesh.BoundSendOutcome.SENT -> if (weshInternet().recipient(conversationID) != null) {
-                    enqueueWesh(conversationID, entry.copy(notBeforeMs = clock() + AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS,
-                        internetRetryAtMs = 0L, afterBluetoothWrite = true), epoch, cancelled)
+                if (epoch != weshEpoch.get()) null
+                else WeshPrivateSender(WeshContactStore.get(context)).dispatchOutcome(entry.content, conversationID, messageID, mesh)
+            } catch (e: Throwable) {
+                synchronized(this@MessageRouter) { weshInFlight.remove(messageID) }
+                throw e
+            }
+            // Leaving the in-flight set and the next step are one step under the router monitor:
+            // a relaunch restore or a flush never sees this message as neither in flight nor queued.
+            synchronized(this@MessageRouter) {
+                weshInFlight.remove(messageID)
+                when (outcome) {
+                    null -> Unit
+                    // Rule 4: without an ack within the window, the same message ID goes over Internet once
+                    // (if that route exists then). Only for a contact with a QR-bound npub.
+                    com.bitchat.android.mesh.BoundSendOutcome.SENT -> if (weshInternet().recipient(conversationID) != null) {
+                        enqueueWesh(conversationID, entry.copy(notBeforeMs = clock() + AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS,
+                            internetRetryAtMs = 0L, afterBluetoothWrite = true), epoch, cancelled)
+                    }
+                    // Nothing reached the radio: another route may take it.
+                    com.bitchat.android.mesh.BoundSendOutcome.NOT_SENT -> afterFailedBluetoothWrite(entry, conversationID, epoch, cancelled)
+                    // Some bytes may have left: « En attente » under the same ID; after the ack window
+                    // (rule 4) it is retried, over Bluetooth if in range, else Internet; receivers dedup.
+                    com.bitchat.android.mesh.BoundSendOutcome.UNCONFIRMED -> requeueWesh(
+                        entry.copy(notBeforeMs = clock() + AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS),
+                        conversationID, epoch, cancelled)
+                    // The session or key no longer matches: never elsewhere.
+                    com.bitchat.android.mesh.BoundSendOutcome.AUTH_FAILED -> AppStateStore.updatePrivateMessageStatus(conversationID, messageID,
+                        com.bitchat.android.model.DeliveryStatus.Failed(WeshPrivateSender.FAILED_WRITE))
                 }
-                // Nothing reached the radio: another route may take it.
-                com.bitchat.android.mesh.BoundSendOutcome.NOT_SENT -> afterFailedBluetoothWrite(entry, conversationID, epoch, cancelled)
-                // Some bytes may have left: « En attente » under the same ID; after the ack window
-                // (rule 4) it is retried, over Bluetooth if in range, else Internet; receivers dedup.
-                com.bitchat.android.mesh.BoundSendOutcome.UNCONFIRMED -> requeueWesh(
-                    entry.copy(notBeforeMs = clock() + AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS),
-                    conversationID, epoch, cancelled)
-                // The session or key no longer matches: never elsewhere.
-                com.bitchat.android.mesh.BoundSendOutcome.AUTH_FAILED -> AppStateStore.updatePrivateMessageStatus(conversationID, messageID,
-                    com.bitchat.android.model.DeliveryStatus.Failed(WeshPrivateSender.FAILED_WRITE))
             }
         }
     }
@@ -292,14 +301,14 @@ class MessageRouter internal constructor(
             // take the entry out of the outbox and then refuse to dispatch it.
             val retry = try {
                 run attempt@{
-                    if (epoch != weshEpoch.get()) return@launch
+                    if (epoch != weshEpoch.get()) return@attempt null
                     // Internet only (Bluetooth resends are always allowed, receivers deduplicate): the
                     // stored status decides. Acked or deleted: stop. Store unavailable: next tick.
                     when (AppStateStore.persistedAck(conversationID, entry.messageID)) {
-                        AppStateStore.PersistedAck.ACKED -> return@launch
+                        AppStateStore.PersistedAck.ACKED -> return@attempt null
                         AppStateStore.PersistedAck.GONE -> {
                             Log.d(TAG, "Queued msg_id=${entry.messageID.take(8)}… no longer in its conversation; not sent")
-                            return@launch
+                            return@attempt null
                         }
                         // Skips this attempt only: requeued unchanged once its in-flight mark is gone.
                         AppStateStore.PersistedAck.UNAVAILABLE -> return@attempt entry
@@ -309,7 +318,7 @@ class MessageRouter internal constructor(
                     val stillWanted = { epoch == weshEpoch.get() && (weshCancelled[conversationID] ?: 0L) == cancelled }
                     val send = weshInternet().sendPrivate(entry.content, conversationID, entry.messageID, entry.giftWrap,
                         allowed = stillWanted)
-                    if (epoch != weshEpoch.get()) return@launch
+                    if (epoch != weshEpoch.get()) return@attempt null
                     val now = clock()
                     when (send.outcome) {
                         RelayPublishOutcome.ACCEPTED -> {
@@ -340,8 +349,16 @@ class MessageRouter internal constructor(
                         }
                     }
                 }
-            } finally { weshInFlight.remove(entry.messageID) }
-            retry?.let { requeueWesh(it, conversationID, epoch, cancelled) }
+            } catch (e: Throwable) {
+                synchronized(this@MessageRouter) { weshInFlight.remove(entry.messageID) }
+                throw e
+            }
+            // One step under the router monitor: a relaunch restore or a flush never sees this
+            // message as neither in flight nor queued, so its backoff and publication count hold.
+            synchronized(this@MessageRouter) {
+                weshInFlight.remove(entry.messageID)
+                retry?.let { requeueWesh(it, conversationID, epoch, cancelled) }
+            }
         }
     }
 
@@ -523,7 +540,8 @@ class MessageRouter internal constructor(
             enqueuedAtMs = minOf(a.enqueuedAtMs, b.enqueuedAtMs),
             internetAttempts = maxOf(a.internetAttempts, b.internetAttempts),
             internetRetryAtMs = maxOf(a.internetRetryAtMs, b.internetRetryAtMs),
-            giftWrap = latest.giftWrap ?: a.giftWrap ?: b.giftWrap,
+            // The copy that published last decides (it may have dropped a rejected wrap).
+            giftWrap = if (a.publications != b.publications) latest.giftWrap else a.giftWrap ?: b.giftWrap,
             notBeforeMs = maxOf(a.notBeforeMs, b.notBeforeMs),
             publications = maxOf(a.publications, b.publications),
             lastPublishedAtMs = maxOf(a.lastPublishedAtMs, b.lastPublishedAtMs),

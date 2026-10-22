@@ -852,15 +852,15 @@ class WeshInternetRouteTest {
         var now = System.currentTimeMillis()
         router.clock = { now }
         alice.link.answer = RelayPublishOutcome.UNCONFIRMED
-        // Holding the router monitor parks the attempt between leaving the in-flight set and its
-        // requeue: the relaunch restore lands exactly there with a fresh copy.
+        // Holding the router monitor parks the attempt right after its publish, before it leaves the
+        // in-flight set and is requeued: the relaunch restore lands exactly there and adds nothing.
         synchronized(router) {
             router.sendPrivate("salut", bobConversation, "Bob", "p-old")
-            waitFor { alice.link.published.size == 1 && router.weshIdleForTesting }
-            assertEquals(1, kotlinx.coroutines.runBlocking { router.restoreWeshOutbox() })
+            waitFor { alice.link.published.size == 1 }
+            Thread.sleep(100)
+            assertEquals(0, kotlinx.coroutines.runBlocking { router.restoreWeshOutbox() })
         }
         router.settle()
-        Thread.sleep(200)
         // The 30 s step of the first failed publication still holds.
         router.tickOutbox(now)
         router.settle()
