@@ -123,6 +123,24 @@ internal fun paveDelivery(status: DeliveryStatus?, public: Boolean): PaveDeliver
 internal fun paveComposerEnabled(conversationCanSend: Boolean, sending: Boolean, editable: Boolean): Boolean =
     conversationCanSend && !sending && editable
 
+/** The open conversation's composer: [draft] fills the field, it never decides whether the field takes typing. */
+internal fun paveComposerState(
+    draft: String,
+    conversationCanSend: Boolean,
+    sending: Boolean,
+    editable: Boolean,
+    blockedReason: String?,
+    feedback: String?,
+    onRetryPersistence: (() -> Unit)?,
+) = PaveComposerState(
+    draft = draft,
+    canSend = paveComposerEnabled(conversationCanSend, sending, editable),
+    editable = editable,
+    blockedReason = blockedReason,
+    feedback = feedback,
+    onRetryPersistence = onRetryPersistence,
+)
+
 /**
  * The fingerprint shown under a remote nickname: from the key the peer proved in its Noise session
  * only. An announced key can be copied by anyone, so without proof the line reads "Empreinte
@@ -259,9 +277,10 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
         WeshDraftStore.Persistence.WipeRequired -> stringResource(R.string.wesh_pave_fluo_draft_wipe_required)
         else -> null
     }
-    val composer = PaveComposerState(
+    val composer = paveComposerState(
         draft = draft,
-        canSend = paveComposerEnabled(canSendConversation, publicSending, editable),
+        conversationCanSend = canSendConversation,
+        sending = publicSending,
         editable = editable,
         blockedReason = persistenceProblem ?: when {
             canSendConversation -> null
