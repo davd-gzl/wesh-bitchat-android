@@ -62,6 +62,13 @@ class ChatViewModel(
     companion object {
         private const val TAG = "ChatViewModel"
         private const val CONVERSATION_DISCONNECT_GRACE_MS = 3_000L
+
+        /** Internet-received messages are shown on Main, where [notifications] keeps its lists. */
+        internal fun internetNotifierOnMain(scope: kotlinx.coroutines.CoroutineScope, notifications: NotificationManager) =
+            com.bitchat.android.services.WeshInternetReceiver.postOnMain(scope) { conversationID, message ->
+                notifications.showPrivateMessageNotification(conversationID, message.sender.takeIf { it.isNotBlank() },
+                    NotificationTextUtils.buildPrivateMessagePreview(message))
+            }
     }
 
     fun getCurrentNpub(): String? {
@@ -117,6 +124,9 @@ class ChatViewModel(
       application.applicationContext,
       NotificationManagerCompat.from(application.applicationContext)
     )
+
+    /** Internet-received private messages notify like Bluetooth ones while this UI is attached. */
+    private val weshInternetNotifier = internetNotifierOnMain(viewModelScope, notificationManager)
 
     private val verificationHandler = VerificationHandler(
         context = application.applicationContext,
@@ -362,6 +372,7 @@ class ChatViewModel(
         com.bitchat.android.services.AppStateStore.reloadConversationPersistence(
             getApplication()
         )
+        com.bitchat.android.services.WeshInternetReceiver.uiNotifier = weshInternetNotifier
         // Mark queued private messages as failed when the router gives up on them
         try {
             com.bitchat.android.services.MessageRouter.getInstance(getApplication(), mesh).onMessageExpired = { conversationID, messageID ->
@@ -535,6 +546,9 @@ class ChatViewModel(
     }
     
     override fun onCleared() {
+        if (com.bitchat.android.services.WeshInternetReceiver.uiNotifier === weshInternetNotifier) {
+            com.bitchat.android.services.WeshInternetReceiver.uiNotifier = null
+        }
         if (favoriteRelationshipListenerRegistered) {
             runCatching {
                 FavoritesPersistenceService.shared.removeListener(
