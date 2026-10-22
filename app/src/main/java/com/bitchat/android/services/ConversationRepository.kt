@@ -251,6 +251,19 @@ class ConversationRepository internal constructor(
         }
     }
 
+    /** My messages still « En attente », after every queued write; null when unreadable or erased since. */
+    internal suspend fun pendingOutgoingAndWait(
+        expectedGeneration: Long = captureWriteGeneration()
+    ): List<Pair<String, BitchatMessage>>? = withContext(dispatcher) {
+        if (expectedGeneration != captureWriteGeneration()) return@withContext null
+        try {
+            database.pendingOutgoing()
+        } catch (error: Exception) {
+            Log.e(TAG, "Unable to read waiting messages: ${error.message}")
+            null
+        }
+    }
+
     fun markRead(messageID: String) {
         enqueueMutation {
             try {
@@ -708,6 +721,21 @@ internal class ConversationDatabase(
             displayNameConversationID = null
         )
     }
+
+    /** Private messages whose stored status is « En attente » (only mine carry it), oldest first. */
+    fun pendingOutgoing(): List<Pair<String, BitchatMessage>> =
+        loadMessages(
+            selection = "delivery_type = 1 AND is_private = 1",
+            selectionArgs = null,
+            orderBy = "arrival_sequence ASC",
+            displayNameConversationID = null
+        ).let { snapshot ->
+            snapshot.arrivalOrder.mapNotNull { id ->
+                snapshot.chats.entries.firstNotNullOfOrNull { (conversationID, messages) ->
+                    messages.firstOrNull { it.id == id }?.let { conversationID to it }
+                }
+            }
+        }
 
     fun loadConversation(conversationID: String): PersistedConversationSnapshot {
         val resolved = resolveStoredConversationLocked(readableDatabase, conversationID)
