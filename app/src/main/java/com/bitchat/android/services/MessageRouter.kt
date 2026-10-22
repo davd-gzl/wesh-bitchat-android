@@ -246,6 +246,17 @@ class MessageRouter internal constructor(
         }
     }
 
+    /**
+     * Internet just turned On: every enrolled contact with a live Bluetooth session learns my npub
+     * now, not only at the next session (official BitChat replies over Internet only once it has it).
+     * Once per contact and npub, like [announceWeshInternetKey].
+     */
+    fun onWeshInternetOn() {
+        if (!enforceWeshPolicy) return
+        runCatching { WeshContactStore.get(context).contacts.value }.getOrDefault(emptyList())
+            .forEach { contact -> announceWeshInternetKey(contact.conversationID) }
+    }
+
     /** Queues only if no panic happened since [epoch]; false means nothing is kept. */
     @Synchronized private fun enqueueWesh(conversationID: String, entry: QueuedMessage, epoch: Long): Boolean {
         if (epoch != weshEpoch.get()) return false

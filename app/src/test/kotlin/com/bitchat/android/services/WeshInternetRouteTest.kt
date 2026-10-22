@@ -358,6 +358,56 @@ class WeshInternetRouteTest {
         }
     }
 
+    @Test fun `turning Internet on tells every enrolled contact in Bluetooth range my npub, once`() {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        val bobPeer = ContactIdentityResolver.peerIdForNoiseKey(bobNoise)
+        val strangerKey = ByteArray(32) { 9 }
+        val strangerPeer = ContactIdentityResolver.peerIdForNoiseKey(strangerKey)
+        whenever(mesh.getPeerNicknames()).thenReturn(mapOf(bobPeer to "Bob", strangerPeer to "Stranger"))
+        for ((peer, key) in listOf(bobPeer to bobNoise, strangerPeer to strangerKey)) {
+            whenever(mesh.getPeerInfo(peer)).thenReturn(PeerInfo(id = peer, nickname = "x", isConnected = true,
+                noisePublicKey = key, isDirectConnection = true, signingPublicKey = ByteArray(32),
+                isVerifiedNickname = true, lastSeen = 1L))
+            whenever(mesh.getAuthenticatedRemoteStaticKey(peer)).thenReturn(key)
+            whenever(mesh.hasEstablishedSession(peer)).thenReturn(true)
+        }
+        val sent = CopyOnWriteArrayList<Pair<String, ByteArray>>()
+        kotlinx.coroutines.runBlocking {
+            whenever(mesh.sendPrivateMessageBound(any(), any(), any(), any(), any())).thenAnswer { call ->
+                sent += call.getArgument<String>(0) to call.getArgument<ByteArray>(2); true
+            }
+        }
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        val router = MessageRouter(context, mesh, mock())
+        router.weshMyNpub = { alice.nostr.npub }
+        try {
+            router.onWeshInternetOn()
+            waitFor { sent.size == 1 }
+            assertEquals("[FAVORITED]:${alice.nostr.npub}", sent.single().first)
+            assertTrue(sent.single().second.contentEquals(bobNoise))
+            router.onWeshInternetOn()
+            Thread.sleep(200)
+            assertEquals(1, sent.size)
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+        }
+    }
+
+    @Test fun `the receiver calls the router once per transition to On`() {
+        var calls = 0
+        val watcher = WeshInternetOnWatcher { calls++ }
+        watcher.apply(com.bitchat.android.net.WeshInternetState.Connecting(40))
+        watcher.apply(com.bitchat.android.net.WeshInternetState.On)
+        watcher.apply(com.bitchat.android.net.WeshInternetState.On)
+        watcher.apply(com.bitchat.android.net.WeshInternetState.Connecting(90))
+        watcher.apply(com.bitchat.android.net.WeshInternetState.On)
+        assertEquals(2, calls)
+    }
+
     private fun embed(type: NoisePayloadType, data: ByteArray): String {
         val packet = com.bitchat.android.protocol.BitchatPacket(
             version = 1u, type = com.bitchat.android.protocol.MessageType.NOISE_ENCRYPTED.value,
