@@ -99,6 +99,8 @@ class MessageRouter internal constructor(
     /** Bumped by every clear (panic): an Internet send that fails afterwards is never requeued. */
     private val weshEpoch = java.util.concurrent.atomic.AtomicLong()
     private val weshInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    /** Bumped per conversation by a cancel (delete, block, remove): an attempt started before never requeues. */
+    private val weshCancelled = ConcurrentHashMap<String, Long>()
     /** Conversation + npub pairs already told my npub in this process (re-sent after a panic). */
     private val weshAnnounced = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
@@ -160,13 +162,15 @@ class MessageRouter internal constructor(
             val epoch = weshEpoch.get()
             val sender = WeshPrivateSender(WeshContactStore.get(context))
             if (!sender.enrolled(conversationID) || content.isBlank() || content.toByteArray().size > 2000) return RouteResult.DROPPED
-            // A retry of a waiting message replaces its queued copy: one message, one route.
-            dequeueWesh(conversationID, messageID)
+            // A retry of a waiting message replaces its queued copy: one message, one route. It
+            // keeps its 24 h deadline, its backoff count and its signed wrap.
+            val previous = dequeueWesh(conversationID, messageID)
             if (sender.canSend(conversationID, mesh)) {
                 dispatchWesh(content, conversationID, messageID, epoch)
                 return RouteResult.MESH
             }
-            val queued = QueuedMessage(content, recipientNickname, messageID, clock())
+            val queued = QueuedMessage(content, recipientNickname, messageID, previous?.enqueuedAtMs ?: clock(),
+                internetAttempts = previous?.internetAttempts ?: 0, giftWrap = previous?.giftWrap)
             if (weshInternet().canSend(conversationID)) {
                 dispatchWeshInternet(queued, conversationID, epoch)
                 return RouteResult.NOSTR
@@ -209,6 +213,7 @@ class MessageRouter internal constructor(
      */
     private fun dispatchWeshInternet(entry: QueuedMessage, conversationID: String, epoch: Long = weshEpoch.get()) {
         if (epoch != weshEpoch.get() || !weshInFlight.add(entry.messageID)) return
+        val cancelled = weshCancelled[conversationID] ?: 0L
         schedulerScope.launch {
             // Requeued only after leaving the in-flight set: a flush in between could otherwise
             // take the entry out of the outbox and then refuse to dispatch it.
@@ -234,13 +239,17 @@ class MessageRouter internal constructor(
                     }
                 }
             } finally { weshInFlight.remove(entry.messageID) }
-            retry?.let { requeueWesh(it, conversationID, epoch) }
+            retry?.let { requeueWesh(it, conversationID, epoch, cancelled) }
         }
     }
 
     /** Under the router monitor: never after a panic clear, never for a removed or blocked contact. */
-    @Synchronized private fun requeueWesh(entry: QueuedMessage, conversationID: String, epoch: Long) {
+    @Synchronized private fun requeueWesh(entry: QueuedMessage, conversationID: String, epoch: Long, cancelled: Long) {
         if (epoch != weshEpoch.get()) return
+        // Deleted, blocked or removed since this attempt started: nothing more leaves.
+        if ((weshCancelled[conversationID] ?: 0L) != cancelled) return
+        // A retry took over meanwhile (in flight again, or queued): one copy only.
+        if (entry.messageID in weshInFlight || outbox[conversationID].orEmpty().any { it.messageID == entry.messageID }) return
         if (WeshPrivateSender(WeshContactStore.get(context)).enrolled(conversationID)) {
             enqueueWesh(conversationID, entry, epoch)
         } else {
@@ -297,11 +306,15 @@ class MessageRouter internal constructor(
         return true
     }
 
-    @Synchronized private fun dequeueWesh(conversationID: String, messageID: String) {
-        outbox[conversationID]?.removeAll { it.messageID == messageID }
+    @Synchronized private fun dequeueWesh(conversationID: String, messageID: String): QueuedMessage? {
+        val queue = outbox[conversationID] ?: return null
+        val previous = queue.firstOrNull { it.messageID == messageID } ?: return null
+        queue.removeAll { it.messageID == messageID }
+        return previous
     }
 
     @Synchronized fun cancelWeshConversation(conversationID: String) {
+        weshCancelled.merge(conversationID, 1L, Long::plus)
         outbox.remove(conversationID)?.forEach { entry ->
             AppStateStore.updatePrivateMessageStatus(conversationID, entry.messageID, com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré"))
         }

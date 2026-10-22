@@ -44,8 +44,11 @@ class WeshInternetRouteTest {
         override fun isOn() = on
         override fun myIdentity() = identity
         override fun publish(event: NostrEvent) { published += event }
+        /** Set to hold a confirmed publish in flight until completed. */
+        @Volatile var hold: kotlinx.coroutines.CompletableDeferred<Unit>? = null
         override suspend fun publishConfirmed(event: NostrEvent): RelayPublishOutcome {
             if (answer != RelayPublishOutcome.NOT_SENT) published += event
+            hold?.await()
             return answer
         }
     }
@@ -372,6 +375,64 @@ class WeshInternetRouteTest {
             WeshContactStore.resetForTesting()
             MessageRouter.disableSchedulerForTesting = false
             AppStateStore.clear()
+        }
+    }
+
+    @Test fun `a conversation deleted while its Internet send is in flight never sends it again`() {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        AppStateStore.clear()
+        val router = MessageRouter(context, mesh, mock())
+        router.weshInternetLink = alice.link
+        var now = 1_000_000L
+        router.clock = { now }
+        try {
+            val hold = kotlinx.coroutines.CompletableDeferred<Unit>()
+            alice.link.hold = hold
+            alice.link.answer = RelayPublishOutcome.UNCONFIRMED
+            assertEquals(MessageRouter.RouteResult.NOSTR, router.sendPrivate("salut", bobConversation, "Bob", "del-1"))
+            waitFor { alice.link.published.size == 1 }
+            router.cancelWeshConversation(bobConversation)
+            hold.complete(Unit)
+            Thread.sleep(200)
+            alice.link.hold = null
+            now += AppConstants.Router.WESH_INTERNET_RETRY_MAX_MS
+            router.tickOutbox(now)
+            Thread.sleep(200)
+            assertEquals(1, alice.link.published.size)
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
+    @Test fun `Réessayer on a waiting message keeps its 24 h deadline`() {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        val router = MessageRouter(context, mesh, mock())
+        router.weshInternetLink = alice.link
+        val expired = CopyOnWriteArrayList<String>()
+        router.onMessageExpired = { expired += it }
+        var now = 1_000_000L
+        router.clock = { now }
+        try {
+            alice.link.on = false
+            assertEquals(MessageRouter.RouteResult.QUEUED, router.sendPrivate("salut", bobConversation, "Bob", "ttl-1"))
+            now += 23L * 3600_000L
+            assertEquals(MessageRouter.RouteResult.QUEUED, router.sendPrivate("salut", bobConversation, "Bob", "ttl-1"))
+            now += 3600_000L + 1
+            router.tickOutbox(now)
+            assertEquals(listOf("ttl-1"), expired)
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
         }
     }
 
