@@ -281,7 +281,8 @@ class MessageRouter internal constructor(
             return
         }
         if (entry.publications >= AppConstants.Router.WESH_INTERNET_MAX_PUBLICATIONS) {
-            // Past the hard cap: it waits for its TTL, then fails.
+            // Past the hard cap: it waits for its TTL, then fails. Never reached from flushOutboxFor,
+            // which checks the cap first (an enqueue here would mutate the list it iterates).
             enqueueWesh(conversationID, entry, epoch, since)
             return
         }
@@ -328,7 +329,9 @@ class MessageRouter internal constructor(
                             )
                             // An early retry leaves the backoff where it was; a scheduled one takes the next step.
                             if (entry.scheduledRetryAtMs != null) {
-                                published.copy(internetRetryAtMs = entry.scheduledRetryAtMs)
+                                // Never in the past (an early attempt that left late): at least the first step.
+                                published.copy(internetRetryAtMs = maxOf(entry.scheduledRetryAtMs,
+                                    now + AppConstants.Router.weshInternetRetryDelayMs(1)))
                             } else {
                                 val attempts = entry.internetAttempts + 1
                                 published.copy(internetAttempts = attempts,
@@ -465,6 +468,8 @@ class MessageRouter internal constructor(
     internal suspend fun restoreWeshOutbox(): Int {
         if (!enforceWeshPolicy) return 0
         val epoch = weshEpoch.get()
+        // Captured before the read: a delete or block during it keeps that conversation's messages out.
+        val cancelledBefore = synchronized(this) { HashMap(weshCancelled) }
         val pending = AppStateStore.pendingOutgoingPrivateMessages() ?: return 0
         val sender = WeshPrivateSender(WeshContactStore.get(context))
         var restored = 0
@@ -481,7 +486,7 @@ class MessageRouter internal constructor(
                     continue
                 }
                 val entry = QueuedMessage(message.content, message.recipientNickname ?: "", message.id, enqueuedAt)
-                if (enqueueWesh(conversationID, entry, epoch, weshCancelled[conversationID] ?: 0L)) restored++
+                if (enqueueWesh(conversationID, entry, epoch, cancelledBefore[conversationID] ?: 0L)) restored++
             }
         }
         if (restored > 0) Log.d(TAG, "Restored $restored waiting private message(s) to the outbox")
@@ -495,6 +500,8 @@ class MessageRouter internal constructor(
         if (epoch != weshEpoch.get()) return false
         // Deleted or blocked since the send began: nothing is kept.
         if (cancelled != null && (weshCancelled[conversationID] ?: 0L) != cancelled) return false
+        // Already waiting (a restore racing a requeue): one copy only.
+        if (outbox[conversationID].orEmpty().any { it.messageID == entry.messageID }) return true
         enqueue(conversationID, entry)
         // clearAll bumps the epoch before clearing: a clear that raced this enqueue removes it here.
         if (epoch != weshEpoch.get()) {

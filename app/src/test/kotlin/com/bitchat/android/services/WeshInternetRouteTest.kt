@@ -842,8 +842,28 @@ class WeshInternetRouteTest {
         now = start + 30_000
         router.tickOutbox(now)
         waitFor { alice.link.published.size == 4 }
+        router.settle()
         // Restoring again in the same process adds nothing.
         assertEquals(0, kotlinx.coroutines.runBlocking { router.restoreWeshOutbox() })
+    }
+
+    @Test fun `a conversation deleted while the relaunch restore reads the store gets nothing queued`() = withPersistedRouter { router ->
+        AppStateStore.releasePrivateConversationHistory(bobConversation)
+        kotlinx.coroutines.runBlocking { AppStateStore.awaitConversationPersistence() }
+        val gate = java.util.concurrent.CountDownLatch(1)
+        persistedExecutor!!.execute { gate.await() }
+        val restore = java.util.concurrent.CompletableFuture.supplyAsync {
+            kotlinx.coroutines.runBlocking { router.restoreWeshOutbox() }
+        }
+        Thread.sleep(100)
+        // The user deletes the conversation while the waiting messages are being read.
+        router.cancelWeshConversation(bobConversation)
+        gate.countDown()
+        assertEquals(0, restore.get(5, java.util.concurrent.TimeUnit.SECONDS))
+        router.tickOutbox()
+        router.settle()
+        Thread.sleep(200)
+        assertTrue(alice.link.published.isEmpty())
     }
 
     @Test fun `only a relay seen down that comes back counts as a reconnect`() {
@@ -982,6 +1002,9 @@ class WeshInternetRouteTest {
     }
 
     /** Alice's router with a real conversation database; Bob is out of Bluetooth range. */
+    /** The store's single writer thread in [withPersistedRouter], to hold a read behind it. */
+    private var persistedExecutor: java.util.concurrent.ExecutorService? = null
+
     private fun withPersistedRouter(body: (MessageRouter) -> Unit) {
         val mesh: MeshService = mock()
         whenever(mesh.myPeerID).thenReturn(alice.peerID)
@@ -989,7 +1012,7 @@ class WeshInternetRouteTest {
         WeshContactStore.installForTesting(alice.contacts)
         MessageRouter.disableSchedulerForTesting = true
         AppStateStore.clear()
-        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor().also { persistedExecutor = it }
         val name = "ack-${java.util.UUID.randomUUID()}.db"
         val repository = ConversationRepository(context = context, dispatcher = executor.asCoroutineDispatcher(),
             databaseName = name, storageCipher = InMemoryConversationStorageCipher())
