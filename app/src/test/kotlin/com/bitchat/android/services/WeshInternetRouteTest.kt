@@ -483,6 +483,61 @@ class WeshInternetRouteTest {
         }
     }
 
+    @Test fun `a conversation deleted during a failing Bluetooth write never goes over Internet`() {
+        val router = failingBluetoothRouter()
+        val bobPeer = ContactIdentityResolver.peerIdForNoiseKey(bobNoise)
+        try {
+            kotlinx.coroutines.runBlocking {
+                whenever(router.meshForTesting.sendPrivateMessageBound(any(), any(), any(), any(), any())).thenAnswer {
+                    router.cancelWeshConversation(bobConversation); false
+                }
+            }
+            assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
+            waitFor { bw1() is DeliveryStatus.Failed }
+            Thread.sleep(200)
+            assertTrue(alice.link.published.isEmpty())
+            assertNotNull(bobPeer)
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
+    @Test fun `a queued message whose Bluetooth write fails keeps its wrap, backoff and deadline over Internet`() {
+        val router = failingBluetoothRouter()
+        val mesh = router.meshForTesting
+        val bobPeer = ContactIdentityResolver.peerIdForNoiseKey(bobNoise)
+        var now = 1_000_000L
+        router.clock = { now }
+        try {
+            // No Bluetooth session yet: the first attempt goes over Internet and is not confirmed.
+            whenever(mesh.getAuthenticatedRemoteStaticKey(bobPeer)).thenReturn(null)
+            alice.link.answer = RelayPublishOutcome.UNCONFIRMED
+            assertEquals(MessageRouter.RouteResult.NOSTR, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
+            waitFor { alice.link.published.size == 1 }
+            Thread.sleep(100)
+            // Bob comes into range but the write fails: no Internet send before the backoff.
+            whenever(mesh.getAuthenticatedRemoteStaticKey(bobPeer)).thenReturn(bobNoise)
+            router.tickOutbox(now)
+            Thread.sleep(200)
+            router.tickOutbox(now)
+            Thread.sleep(200)
+            assertEquals(1, alice.link.published.size)
+            // After the backoff: the same signed wrap, then « Envoyé ».
+            alice.link.answer = RelayPublishOutcome.ACCEPTED
+            now += AppConstants.Router.WESH_INTERNET_RETRY_BASE_MS
+            router.tickOutbox(now)
+            waitFor { bw1() == DeliveryStatus.Sent }
+            assertEquals(2, alice.link.published.size)
+            assertEquals(alice.link.published[0].id, alice.link.published[1].id)
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
     @Test fun `a failed Bluetooth write without an Internet route ends Échec`() {
         val router = failingBluetoothRouter()
         alice.link.on = false
