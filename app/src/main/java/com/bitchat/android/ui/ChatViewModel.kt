@@ -790,7 +790,7 @@ class ChatViewModel(
                 selectedPeerID = targetKey,
                 connectedPeers = state.getConnectedPeersValue(),
                 meshNoiseKeyForPeer = { pid -> mesh.getPeerInfo(pid)?.noisePublicKey },
-                nostrPubHexForAlias = { alias -> com.bitchat.android.nostr.GeohashAliasRegistry.get(alias) },
+                nostrPubHexForAlias = { alias -> com.bitchat.android.nostr.NostrAliasRegistry.get(alias) },
                 findNoiseKeyForNostr = { key -> com.bitchat.android.favorites.FavoritesPersistenceService.shared.findNoiseKey(key) }
                 )
                 canonical ?: targetKey

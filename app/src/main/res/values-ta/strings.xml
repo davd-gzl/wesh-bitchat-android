@@ -106,19 +106,6 @@
   <string name="about_system">சிஸ்டம்</string>
   <string name="about_light">ஒளி</string>
   <string name="about_dark">இருள்</string>
-  <string name="about_pow">ப்ரூஃப் ஆஃப் வொர்க்</string>
-  <string name="about_pow_off">pow ஆஃப்</string>
-  <string name="about_pow_on">pow ஆன்</string>
-  <string name="about_pow_tip">ஸ்பேம் தடுப்புக்காக ஜியோஹாஷ் செய்திகளுக்கு ப்ரூஃப் ஆஃப் வொர்க் சேர்க்கவும்.</string>
-  <string name="about_pow_difficulty">சிரமம்: %1$d பிட்ஸ் (~%2$s)</string>
-  <string name="about_pow_difficulty_attempts">சிரமம் %1$d க்கு ~%2$s ஹாஷ் முயற்சிகள் தேவை</string>
-  <string name="about_pow_desc_none">ப்ரூஃப் ஆஃப் வொர்க் தேவையில்லை</string>
-  <string name="about_pow_desc_very_low">மிகக் குறைவு - குறைந்தபட்ச ஸ்பேம் பாதுகாப்பு</string>
-  <string name="about_pow_desc_low">குறைவு - அடிப்படை ஸ்பேம் பாதுகாப்பு</string>
-  <string name="about_pow_desc_medium">நடுத்தரம் - நல்ல ஸ்பேம் பாதுகாப்பு</string>
-  <string name="about_pow_desc_high">அதிகம் - வலுவான ஸ்பேம் பாதுகாப்பு</string>
-  <string name="about_pow_desc_very_high">மிக அதிகம் - தாமதங்களை ஏற்படுத்தலாம்</string>
-  <string name="about_pow_desc_extreme">தீவிரம் - கணிசமான கணக்கீடு தேவை</string>
   <string name="about_network">நெட்வொர்க்</string>
   <string name="about_tor_off">tor ஆஃப்</string>
   <string name="about_tor_on">tor ஆன்</string>
@@ -203,9 +190,7 @@
   <string name="debug_role_client">கிளையன்டாக (நாங்கள் இணைக்கிறோம்)</string>
   <string name="location_services_required">இருப்பிட சேவைகள் தேவை</string>
   <string name="privacy_first">தனியுரிமை முதலில்</string>
-  <string name="location_explanation">Wesh உங்கள் இருப்பிடத்தை கண்காணிக்காது.\n\nBluetooth ஸ்கேனிங் மற்றும் ஜியோஹாஷ் அரட்டை அம்சத்திற்கு இருப்பிட சேவைகள் தேவை.</string>
   <string name="location_needs_for">Wesh க்கு இருப்பிட சேவைகள் தேவைப்படுவது:</string>
-  <string name="location_needs_bullets">• Bluetooth சாதன ஸ்கேனிங்\n• மெஷ் நெட்வொர்க்கில் அருகிலுள்ள பயனர்களைக் கண்டறிதல்\n• ஜியோஹாஷ் அரட்டை அம்சம்\n• கண்காணிப்பு அல்லது இருப்பிட சேகரிப்பு இல்லை</string>
   <string name="open_location_settings">இருப்பிட அமைப்புகளைத் திற</string>
   <string name="check_again">மீண்டும் சரிபார்க்கவும்</string>
   <string name="location_services_unavailable">இருப்பிட சேவைகள் கிடைக்கவில்லை</string>
@@ -240,7 +225,6 @@
   <string name="location_tracking_warning">Wesh உங்கள் இருப்பிடத்தை கண்காணிக்காது</string>
   <string name="nobody_around">யாரும் அருகில் இல்லை…</string>
   <string name="you_suffix"> (நீங்கள்)</string>
-  <string name="pan_zoom_instruction">ஜியோஹாஷைத் தேர்ந்தெடுக்க பான் செய்து ஜூம் செய்யவும்</string>
   <string name="select">தேர்ந்தெடு</string>
   <string name="type_a_message_placeholder">செய்தியை உள்ளிடவும்…</string>
   <string name="mention">குறிப்பிடு</string>

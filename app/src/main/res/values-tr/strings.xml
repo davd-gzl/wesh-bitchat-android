@@ -62,19 +62,6 @@
     <string name="about_system">sistem</string>
     <string name="about_light">açık</string>
     <string name="about_dark">koyu</string>
-    <string name="about_pow">proof of work</string>
-    <string name="about_pow_off">pow kapalı</string>
-    <string name="about_pow_on">pow açık</string>
-    <string name="about_pow_tip">geohash mesajlarına spam’e karşı proof of work ekle.</string>
-    <string name="about_pow_difficulty">zorluk: %1$d bit (~%2$s)</string>
-    <string name="about_pow_difficulty_attempts">%1$d zorluğu ~%2$s hash denemesi gerektirir</string>
-    <string name="about_pow_desc_none">proof of work gerekmez</string>
-    <string name="about_pow_desc_very_low">çok düşük – en az koruma</string>
-    <string name="about_pow_desc_low">düşük – temel koruma</string>
-    <string name="about_pow_desc_medium">orta – iyi koruma</string>
-    <string name="about_pow_desc_high">yüksek – güçlü koruma</string>
-    <string name="about_pow_desc_very_high">çok yüksek – gecikme olabilir</string>
-    <string name="about_pow_desc_extreme">aşırı – ciddi hesaplama gerekir</string>
     <string name="about_network">ağ</string>
     <string name="about_tor_off">tor kapalı</string>
     <string name="about_tor_on">tor açık</string>
@@ -155,9 +142,7 @@
 
     <string name="location_services_required">Konum servisleri gerekli</string>
     <string name="privacy_first">Önce gizlilik</string>
-    <string name="location_explanation">Wesh KONUMUNU takip etmez.\n\nBluetooth tarama ve Geohash sohbet için konum servisleri gerekir.</string>
     <string name="location_needs_for">Wesh konum servislerini şunlar için kullanır:</string>
-    <string name="location_needs_bullets">• Bluetooth cihaz tarama\n• Mesh ağında yakın kullanıcıları bulma\n• Geohash sohbet özelliği\n• Takip veya konum toplama yok</string>
     <string name="open_location_settings">Konum ayarlarını aç</string>
     <string name="check_again">Tekrar kontrol et</string>
     <string name="location_services_unavailable">Konum servisleri kullanılamıyor</string>
@@ -191,7 +176,6 @@
     <string name="location_tracking_warning">Wesh konumunu takip etmez</string>
     <string name="nobody_around">yakında kimse yok…</string>
     <string name="you_suffix"> (sen)</string>
-    <string name="pan_zoom_instruction">geohash seçmek için kaydır/zoom yap</string>
     <string name="select">seç</string>
     <string name="type_a_message_placeholder">mesaj yaz…</string>
     <string name="mention">bahset</string>

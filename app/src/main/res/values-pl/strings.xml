@@ -102,19 +102,6 @@
     <string name="about_system">systemowy</string>
     <string name="about_light">jasny</string>
     <string name="about_dark">ciemny</string>
-    <string name="about_pow">dowód pracy</string>
-    <string name="about_pow_off">pow wyłączony</string>
-    <string name="about_pow_on">pow włączony</string>
-    <string name="about_pow_tip">dodaj dowód pracy do wiadomości geohash, aby zniechęcić do spamu.</string>
-    <string name="about_pow_difficulty">trudność: %1$d bitów (~%2$s)</string>
-    <string name="about_pow_difficulty_attempts">trudność %1$d wymaga ~%2$s prób hashowania</string>
-    <string name="about_pow_desc_none">dowód pracy niewymagany</string>
-    <string name="about_pow_desc_very_low">bardzo niska - minimalna ochrona przed spamem</string>
-    <string name="about_pow_desc_low">niska - podstawowa ochrona przed spamem</string>
-    <string name="about_pow_desc_medium">średnia - dobra ochrona przed spamem</string>
-    <string name="about_pow_desc_high">wysoka - silna ochrona przed spamem</string>
-    <string name="about_pow_desc_very_high">bardzo wysoka - może powodować opóźnienia</string>
-    <string name="about_pow_desc_extreme">ekstremalna - wymaga znacznych obliczeń</string>
     <string name="about_network">sieć</string>
     <string name="about_tor_off">tor wyłączony</string>
     <string name="about_tor_on">tor włączony</string>
@@ -198,9 +185,7 @@
     <string name="debug_role_client">jako klient (łączymy się)</string>
     <string name="location_services_required">Wymagane usługi lokalizacji</string>
     <string name="privacy_first">Prywatność przede wszystkim</string>
-    <string name="location_explanation">Wesh NIE śledzi Twojej lokalizacji.\n\nUsługi lokalizacji są wymagane do skanowania Bluetooth oraz do funkcji czatu Geohash.</string>
     <string name="location_needs_for">Wesh potrzebuje usług lokalizacji do:</string>
-    <string name="location_needs_bullets">• Skanowania urządzeń Bluetooth\n• Wykrywania pobliskich użytkowników w sieci mesh\n• Funkcji czatu geohash\n• Brak śledzenia lub gromadzenia lokalizacji</string>
     <string name="open_location_settings">Otwórz ustawienia lokalizacji</string>
     <string name="check_again">Sprawdź ponownie</string>
     <string name="location_services_unavailable">Usługi lokalizacji niedostępne</string>
@@ -235,7 +220,6 @@
     <string name="location_tracking_warning">Wesh NIE śledzi Twojej lokalizacji</string>
     <string name="nobody_around">nikogo w pobliżu…</string>
     <string name="you_suffix"> (ty)</string>
-    <string name="pan_zoom_instruction">przesuwaj i powiększaj, aby wybrać geohash</string>
     <string name="select">wybierz</string>
     <string name="type_a_message_placeholder">napisz wiadomość…</string>
     <string name="mention">wzmianka</string>

@@ -72,19 +72,6 @@
     <string name="about_system">시스템</string>
     <string name="about_light">라이트</string>
     <string name="about_dark">다크</string>
-    <string name="about_pow">작업증명</string>
-    <string name="about_pow_off">PoW 끔</string>
-    <string name="about_pow_on">PoW 켬</string>
-    <string name="about_pow_tip">스팸을 어렵게 만들기 위해 geohash 메시지에 작업증명을 추가하세요.</string>
-    <string name="about_pow_difficulty">난이도: %1$d 비트 (~%2$s)</string>
-    <string name="about_pow_difficulty_attempts">난이도 %1$d는 ~%2$s 해시 시도가 필요합니다</string>
-    <string name="about_pow_desc_none">작업증명 필요 없음</string>
-    <string name="about_pow_desc_very_low">매우 낮음 – 최소 스팸 보호</string>
-    <string name="about_pow_desc_low">낮음 – 기본 스팸 보호</string>
-    <string name="about_pow_desc_medium">중간 – 좋은 스팸 보호</string>
-    <string name="about_pow_desc_high">높음 – 강한 스팸 보호</string>
-    <string name="about_pow_desc_very_high">매우 높음 – 지연이 발생할 수 있음</string>
-    <string name="about_pow_desc_extreme">매우 극단 – 상당한 연산 능력 필요</string>
     <string name="about_network">네트워크</string>
     <string name="about_tor_off">Tor 끔</string>
     <string name="about_tor_on">Tor 켬</string>
@@ -174,9 +161,7 @@
     <!-- 온보딩 화면 -->
     <string name="location_services_required">위치 서비스 필요</string>
     <string name="privacy_first">개인정보 우선</string>
-    <string name="location_explanation">Wesh은 사용자의 위치를 추적하지 않습니다.\n\n블루투스 스캔 및 geohash 채팅 기능에 위치 서비스가 필요합니다.</string>
     <string name="location_needs_for">Wesh은 다음을 위해 위치 서비스가 필요합니다:</string>
-    <string name="location_needs_bullets">• 블루투스 기기 스캔\n• 메쉬 네트워크에서 근처 사용자 발견\n• geohash 채팅 기능\n• 추적 또는 위치 수집 없음</string>
     <string name="open_location_settings">위치 설정 열기</string>
     <string name="check_again">다시 확인</string>
     <string name="location_services_unavailable">위치 서비스를 사용할 수 없음</string>
@@ -209,7 +194,6 @@
     <string name="location_tracking_warning">Wesh은 사용자의 위치를 추적하지 않습니다</string>
     <string name="nobody_around">주변에 아무도 없음 …</string>
     <string name="you_suffix"> (나)</string>
-    <string name="pan_zoom_instruction">geohash를 선택하려면 이동하고 확대/축소하세요</string>
     <string name="select">선택</string>
     <string name="type_a_message_placeholder">메시지 입력 …</string>
     <string name="mention">멘션</string>

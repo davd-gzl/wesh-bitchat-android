@@ -6,7 +6,7 @@ import com.bitchat.android.favorites.FavoritesPersistenceService
 import com.bitchat.android.identity.SecureIdentityStateManager
 import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.model.BitchatMessage
-import com.bitchat.android.nostr.GeohashAliasRegistry
+import com.bitchat.android.nostr.NostrAliasRegistry
 
 object ContactDirectory {
     data class ContactResolution(
@@ -198,7 +198,7 @@ object ContactDirectory {
         }
 
     private fun nostrPubkeyHexForAlias(alias: String): String? {
-        GeohashAliasRegistry.get(alias)?.let { return it.lowercase() }
+        NostrAliasRegistry.get(alias)?.let { return it.lowercase() }
         val prefix = alias.removePrefix("nostr_").removePrefix("nostr:")
         if (prefix.isBlank()) return null
         return try {

@@ -103,19 +103,6 @@
   <string name="about_system">系統</string>
   <string name="about_light">淺色</string>
   <string name="about_dark">深色</string>
-  <string name="about_pow">工作量證明</string>
-  <string name="about_pow_off">工作量證明已關閉</string>
-  <string name="about_pow_on">工作量證明已開啟</string>
-  <string name="about_pow_tip">為地理雜湊訊息新增工作量證明以遏止垃圾訊息。</string>
-  <string name="about_pow_difficulty">難度：%1$d 位元（約 %2$s）</string>
-  <string name="about_pow_difficulty_attempts">難度 %1$d 需要約 %2$s 次雜湊嘗試</string>
-  <string name="about_pow_desc_none">不需要工作量證明</string>
-  <string name="about_pow_desc_very_low">極低 - 最低限度的垃圾訊息防護</string>
-  <string name="about_pow_desc_low">低 - 基本垃圾訊息防護</string>
-  <string name="about_pow_desc_medium">中 - 良好的垃圾訊息防護</string>
-  <string name="about_pow_desc_high">高 - 強力垃圾訊息防護</string>
-  <string name="about_pow_desc_very_high">極高 - 可能造成延遲</string>
-  <string name="about_pow_desc_extreme">極端 - 需要大量運算</string>
   <string name="about_network">網路</string>
   <string name="about_tor_off">Tor 已關閉</string>
   <string name="about_tor_on">Tor 已開啟</string>
@@ -199,9 +186,7 @@
   <string name="debug_role_client">作為客戶端（我們連線）</string>
   <string name="location_services_required">需要位置服務</string>
   <string name="privacy_first">隱私優先</string>
-  <string name="location_explanation">Wesh 不會追蹤你的位置。\n\n藍牙掃描與地理雜湊聊天功能都需要位置服務。</string>
   <string name="location_needs_for">Wesh 需要位置服務以進行：</string>
-  <string name="location_needs_bullets">• 藍牙裝置掃描\n• 在 mesh 網路上探索附近的使用者\n• 地理雜湊聊天功能\n• 不會追蹤或收集位置資訊</string>
   <string name="open_location_settings">開啟位置設定</string>
   <string name="check_again">再次檢查</string>
   <string name="location_services_unavailable">位置服務無法使用</string>
@@ -236,7 +221,6 @@
   <string name="location_tracking_warning">Wesh 不會追蹤你的位置</string>
   <string name="nobody_around">附近沒有人…</string>
   <string name="you_suffix"> （你）</string>
-  <string name="pan_zoom_instruction">平移並縮放以選擇地理雜湊</string>
   <string name="select">選擇</string>
   <string name="type_a_message_placeholder">輸入訊息…</string>
   <string name="mention">提及</string>

@@ -39,7 +39,6 @@ import com.bitchat.android.onboarding.PermissionManager
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.OrientationAwareActivity
 import com.bitchat.android.ui.theme.BitchatTheme
-import com.bitchat.android.nostr.PoWPreferenceManager
 import com.bitchat.android.services.VerificationService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -711,9 +710,6 @@ class MainActivity : OrientationAwareActivity() {
                 // This solves the issue where app needs restart to work on first install
                 delay(1000) // Give the system time to process permission grants
 
-                // Initialize PoW preferences early in the initialization process
-                PoWPreferenceManager.init(this@MainActivity)
-                
                 // Ensure all permissions are still granted (user might have revoked in settings)
                 if (!permissionManager.areAllPermissionsGranted()) {
                     val missing = permissionManager.getMissingPermissions()

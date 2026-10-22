@@ -18,7 +18,7 @@ import kotlin.math.pow
  * So the backoff grows exponentially and then *saturates* rather than
  * terminating. Retrying forever at the ceiling costs one connection attempt per
  * relay per [AppConstants.Nostr.MAX_BACKOFF_INTERVAL_MS]; giving up costs the
- * user every internet DM, delivery receipt and geohash channel until they
+ * user every internet DM, delivery receipt and channel until they
  * notice and restart the app.
  */
 internal object RelayReconnectPolicy {
