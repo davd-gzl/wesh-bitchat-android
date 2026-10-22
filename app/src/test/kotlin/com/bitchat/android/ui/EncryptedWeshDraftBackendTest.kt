@@ -60,25 +60,13 @@ class EncryptedWeshDraftBackendTest {
         }
     }
 
-    @Test fun `panic marker survives wipe until explicit finish and fresh load remains empty`() {
+    @Test fun `panic intent marker is durable and blocks load without deleting ciphertext`() {
         backend().write(owner, mapOf("public" to "synthetic"))
-        backend().wipe()
-        assertFalse(data().exists())
+        val encrypted = data().readBytes()
+        backend().markPanicPending()
         assertTrue(marker().exists())
         assertTrue(runCatching { backend().load(owner) }.exceptionOrNull() is DraftWipePending)
-        backend().finishVerifiedWipe()
-        assertFalse(marker().exists())
-        assertTrue(backend().load(otherOwner).isEmpty())
-    }
-
-    @Test fun `failed key erasure leaves marker and blocks resurrection in another instance`() {
-        val failing = object : com.bitchat.android.services.ConversationStorageCipher by cipher {
-            override fun destroyKey() { error("synthetic key unavailable") }
-        }
-        backend().write(owner, mapOf("public" to "synthetic"))
-        assertTrue(runCatching { EncryptedWeshDraftBackend(directory.root, failing).wipe() }.isFailure)
-        assertTrue(marker().exists())
-        assertTrue(runCatching { backend().load(owner) }.exceptionOrNull() is DraftWipePending)
+        assertArrayEquals(encrypted, data().readBytes())
     }
 
     @Test fun `access probe errors cannot masquerade as absent files or authorize encryption`() {

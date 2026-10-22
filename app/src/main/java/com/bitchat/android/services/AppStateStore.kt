@@ -114,6 +114,10 @@ object AppStateStore {
         conversationRepository = repository
     }
 
+    internal fun resetPrivateConversationAdmissionForTest() {
+        synchronized(this) { privateConversationWritesSuspended = false }
+    }
+
     suspend fun awaitConversationPersistence() {
         conversationRepository?.awaitPendingWrites()
     }
@@ -805,30 +809,6 @@ object AppStateStore {
                         retainedConversationIDs
                 }
             _readPrivateMessageIDs.value = _readPrivateMessageIDs.value - messageID
-        }
-    }
-
-    /**
-     * Atomically hides all conversations, rejects in-flight transport deliveries, then waits for
-     * every earlier database write and the panic wipe itself to finish.
-     */
-    suspend fun panicClearPrivateConversations(): Boolean {
-        val repository = synchronized(this) {
-            privateConversationWritesSuspended = true
-            privateConversationGeneration += 1
-            _privateMessages.value = emptyMap()
-            _readPrivateMessageIDs.value = emptySet()
-            _unreadPrivateMessageCounts.value = emptyMap()
-            _privateConversationDisplayNames.value = emptyMap()
-            _selectedPrivateChatPeer.value = null
-            conversationRepository
-        }
-        return repository?.clearAllAndWait() ?: true
-    }
-
-    fun resumePrivateConversationsAfterPanic() {
-        synchronized(this) {
-            privateConversationWritesSuspended = false
         }
     }
 

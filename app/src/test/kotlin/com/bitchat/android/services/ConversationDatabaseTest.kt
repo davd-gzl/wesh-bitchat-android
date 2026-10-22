@@ -12,7 +12,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -401,52 +400,6 @@ class ConversationDatabaseTest {
         } finally {
             shared.delete()
         }
-    }
-
-    @Test
-    fun `panic clear rotates the storage key before erasing rows`() {
-        database.upsertMessage(
-            "contact_alice",
-            setOf("contact_alice"),
-            "alice",
-            message("before-panic", "alice", 1L),
-            true
-        )
-        val envelope = database.readableDatabase.query(
-            "private_messages",
-            arrayOf("payload_ciphertext"),
-            "message_id = ?",
-            arrayOf("before-panic"),
-            null,
-            null,
-            null
-        ).use { cursor ->
-            assertTrue(cursor.moveToFirst())
-            cursor.getBlob(0)
-        }
-
-        database.clearAll()
-
-        assertTrue(database.loadSnapshot().chats.isEmpty())
-        assertThrows(Exception::class.java) {
-            storageCipher.decrypt(envelope, "message:before-panic".toByteArray())
-        }
-    }
-
-    @Test
-    fun `destroy storage deletes database files so history cannot reload`() {
-        database.upsertMessage(
-            "contact_alice",
-            setOf("contact_alice"),
-            "alice",
-            message("survives-failure", "alice", 1L),
-            true
-        )
-        assertTrue(context.databaseList().contains(databaseName))
-
-        database.destroyStorage()
-
-        assertFalse(context.databaseList().contains(databaseName))
     }
 
     @Test

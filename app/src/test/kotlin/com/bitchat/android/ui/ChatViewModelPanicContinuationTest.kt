@@ -27,7 +27,6 @@ import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -71,7 +70,7 @@ class ChatViewModelPanicContinuationTest {
         ContactDirectory.initialize(context) { null }
         repository = ConversationRepository(context, writer, databaseName, cipher)
         AppStateStore.setConversationRepositoryForTest(repository)
-        AppStateStore.resumePrivateConversationsAfterPanic()
+        AppStateStore.resetPrivateConversationAdmissionForTest()
         AppStateStore.clear()
         val storage = context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
         preferences = ConversationListPreferences(
@@ -94,7 +93,7 @@ class ChatViewModelPanicContinuationTest {
         stateScope.cancel()
         runBlocking { repository.awaitPendingWrites() }
         AppStateStore.setConversationRepositoryForTest(null)
-        AppStateStore.resumePrivateConversationsAfterPanic()
+        AppStateStore.resetPrivateConversationAdmissionForTest()
         AppStateStore.clear()
         repository.closeForTest()
         writer.close()
@@ -106,26 +105,16 @@ class ChatViewModelPanicContinuationTest {
     }
 
     @Test
-    fun `successful undo held at Main return cannot restore draft or preferences after panic`() = runBlocking {
-        assertHeldUndo(crossPanic = true)
-    }
-
-    @Test
     fun `successful undo in the current session restores draft preferences and unread state`() = runBlocking {
-        assertHeldUndo(crossPanic = false)
-    }
-
-    @Test
-    fun `successful read held at Main return cannot clear a fresh sessions unread state`() = runBlocking {
-        assertHeldRead(crossPanic = true)
+        assertHeldUndo()
     }
 
     @Test
     fun `successful read in the current session clears unread state`() = runBlocking {
-        assertHeldRead(crossPanic = false)
+        assertHeldRead()
     }
 
-    private suspend fun assertHeldRead(crossPanic: Boolean) {
+    private suspend fun assertHeldRead() {
         val old = BitchatMessage(
             id = "synthetic-old-unread", sender = "Synthetic sender", content = "Synthetic private fixture",
             timestamp = Date(100), isPrivate = true, senderPeerID = CONTACT
@@ -151,35 +140,17 @@ class ChatViewModelPanicContinuationTest {
             assertFalse(reading.isCompleted)
             assertTrue(AppStateStore.isPrivateMessageRead(old.id))
 
-            val fresh = old.copy(id = "synthetic-fresh-unread")
-            if (crossPanic) {
-                assertTrue(AppStateStore.panicClearPrivateConversations())
-                state.setPrivateChats(emptyMap())
-                state.setUnreadPrivateMessages(emptySet())
-                AppStateStore.resumePrivateConversationsAfterPanic()
-                assertTrue(AppStateStore.addPrivateMessageDurably(CONTACT, fresh))
-                state.setPrivateChats(AppStateStore.privateMessages.value)
-                state.setUnreadPrivateMessages(setOf(CONTACT))
-            }
-
             main.release()
             val updated = withTimeout(5_000) { reading.await() }
-            if (crossPanic) {
-                assertEquals("An old read result cannot mark the new conversation read", setOf(CONTACT), state.getUnreadPrivateMessagesValue())
-                assertFalse(AppStateStore.isPrivateMessageRead(fresh.id))
-                assertEquals(listOf(fresh.id), state.getPrivateChatsValue()[CONTACT]?.map { it.id })
-                assertFalse(updated)
-            } else {
-                assertTrue(updated)
-                assertTrue(state.getUnreadPrivateMessagesValue().isEmpty())
-                assertTrue(AppStateStore.isPrivateMessageRead(old.id))
-            }
+            assertTrue(updated)
+            assertTrue(state.getUnreadPrivateMessagesValue().isEmpty())
+            assertTrue(AppStateStore.isPrivateMessageRead(old.id))
         } finally {
             released.countDown()
         }
     }
 
-    private suspend fun assertHeldUndo(crossPanic: Boolean) {
+    private suspend fun assertHeldUndo() {
         val message = BitchatMessage(
             id = "synthetic-before-delete", sender = "Synthetic sender", content = "Synthetic private fixture",
             timestamp = Date(100), isPrivate = true, senderPeerID = CONTACT
@@ -203,33 +174,14 @@ class ChatViewModelPanicContinuationTest {
         assertFalse(undo.isCompleted)
         assertEquals(listOf(message.id), repository.loadConversationAndWait(CONTACT)?.chats?.get(CONTACT)?.map { it.id })
 
-        if (crossPanic) {
-            assertTrue(AppStateStore.panicClearPrivateConversations())
-            assertTrue(preferences.clearAll())
-            state.setPrivateChats(emptyMap())
-            state.setUnreadPrivateMessages(emptySet())
-            AppStateStore.resumePrivateConversationsAfterPanic()
-        }
-
         main.release()
         val restored = withTimeout(5_000) { undo.await() }
-        if (crossPanic) {
-            // Check every caller-owned effect before checking its reported result.
-            assertNull("A completed old undo must not recreate its private draft", preferences.draftFor(CONTACT))
-            assertFalse(preferences.isPinned(CONTACT))
-            assertFalse(preferences.isMuted(CONTACT))
-            assertTrue(state.getPrivateChatsValue().isEmpty())
-            assertTrue(state.getUnreadPrivateMessagesValue().isEmpty())
-            assertTrue(repository.loadConversationAndWait(CONTACT)?.chats.orEmpty().isEmpty())
-            assertFalse(restored)
-        } else {
-            assertTrue(restored)
-            assertEquals(deletion.draft, preferences.draftFor(CONTACT))
-            assertTrue(preferences.isPinned(CONTACT))
-            assertTrue(preferences.isMuted(CONTACT))
-            assertEquals(listOf(message.id), state.getPrivateChatsValue()[CONTACT]?.map { it.id })
-            assertEquals(setOf(CONTACT), state.getUnreadPrivateMessagesValue())
-        }
+        assertTrue(restored)
+        assertEquals(deletion.draft, preferences.draftFor(CONTACT))
+        assertTrue(preferences.isPinned(CONTACT))
+        assertTrue(preferences.isMuted(CONTACT))
+        assertEquals(listOf(message.id), state.getPrivateChatsValue()[CONTACT]?.map { it.id })
+        assertEquals(setOf(CONTACT), state.getUnreadPrivateMessagesValue())
     }
 
     private fun inject(name: String, value: Any) {

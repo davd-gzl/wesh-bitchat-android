@@ -8,19 +8,18 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import kotlinx.coroutines.runBlocking
 import java.util.Date
 
 class AppStateStoreTest {
     @Before
     fun setUp() {
-        AppStateStore.resumePrivateConversationsAfterPanic()
+        AppStateStore.resetPrivateConversationAdmissionForTest()
         AppStateStore.clear()
     }
 
     @After
     fun tearDown() {
-        AppStateStore.resumePrivateConversationsAfterPanic()
+        AppStateStore.resetPrivateConversationAdmissionForTest()
         AppStateStore.clear()
     }
 
@@ -371,7 +370,7 @@ class AppStateStoreTest {
     }
 
     @Test
-    fun `panic clear rejects private messages until explicitly resumed`() {
+    fun `panic fence rejects new private messages`() {
         val beforePanic = BitchatMessage(
             id = "before-panic",
             sender = "alice",
@@ -380,22 +379,12 @@ class AppStateStoreTest {
             isPrivate = true
         )
         val duringPanic = beforePanic.copy(id = "during-panic")
-        val afterPanic = beforePanic.copy(id = "after-panic")
 
         assertTrue(AppStateStore.addPrivateMessage("peer-a", beforePanic))
-        AppStateStore.updatePrivateConversationDisplayNames(
-            mapOf("peer-a" to "Alice")
-        )
-        assertTrue(runBlocking { AppStateStore.panicClearPrivateConversations() })
-        assertTrue(AppStateStore.privateMessages.value.isEmpty())
-        assertTrue(AppStateStore.privateConversationDisplayNames.value.isEmpty())
+        AppStateStore.fencePrivateConversationAdmissionForPanic()
         assertFalse(AppStateStore.addPrivateMessage("peer-a", duringPanic))
-
-        AppStateStore.resumePrivateConversationsAfterPanic()
-
-        assertTrue(AppStateStore.addPrivateMessage("peer-a", afterPanic))
         assertEquals(
-            listOf(afterPanic),
+            listOf(beforePanic),
             AppStateStore.privateMessages.value.getValue("peer-a")
         )
     }

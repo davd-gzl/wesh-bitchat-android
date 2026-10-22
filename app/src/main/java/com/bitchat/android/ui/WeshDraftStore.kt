@@ -21,7 +21,7 @@ internal class WeshDraftStore(
     private val scope: CoroutineScope? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
-    enum class Persistence { Loading, Unconfirmed, Confirmed, Error, WipeRequired, Wiped }
+    enum class Persistence { Loading, Unconfirmed, Confirmed, Error, WipeRequired }
 
     private val lock = Any()
     private val io = Mutex()
@@ -36,9 +36,6 @@ internal class WeshDraftStore(
     private var confirmedRevision = -1L
     private var loaded = backend == null
     private var fenced = false
-    private var wipeVerified = false
-    private var panicCompletionDeferred = false
-    private var preparedPanic: PanicPreparation? = null
     private val beforeLoad = linkedMapOf<String, String>()
     private val destinationVersions = linkedMapOf<String, Long>()
     val epoch: Long get() = synchronized(lock) { generation }
@@ -99,7 +96,7 @@ internal class WeshDraftStore(
         require(validOwner(identity))
         val token = synchronized(lock) {
             if (expectedGeneration != null && (generation != expectedGeneration || owner != identity)) return
-            if (fenced && (!wipeVerified || panicCompletionDeferred)) return
+            if (fenced) return
             if (owner != null && owner != identity) {
                 generation++
                 revision++
@@ -118,10 +115,6 @@ internal class WeshDraftStore(
             io.withLock {
                 if (!isCurrent(token, identity) || synchronized(lock) { loaded }) return@withLock
                 try {
-                    if (synchronized(lock) { wipeVerified }) {
-                        backend?.finishVerifiedWipe()
-                        synchronized(lock) { if (generation == token) { wipeVerified = false; fenced = false } }
-                    }
                     val stored = backend?.load(identity).orEmpty()
                     validate(stored)
                     synchronized(lock) {
@@ -199,16 +192,13 @@ internal class WeshDraftStore(
         }
     }
 
-    /** RAM is fenced synchronously before awaiting IO; only a verified wipe permits reactivation. */
+    /** RAM is fenced synchronously before awaiting IO and stays fenced for the rest of the process. */
     fun fenceForPanic() {
         synchronized(lock) {
             generation++
             revision++
             fenced = true
             loaded = false
-            wipeVerified = false
-            panicCompletionDeferred = false
-            preparedPanic = null
             _drafts.value = emptyMap()
             beforeLoad.clear()
             destinationVersions.clear()
@@ -230,78 +220,6 @@ internal class WeshDraftStore(
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) { false }
-            }
-        }
-    }
-
-    suspend fun panicClear(deferCompletion: Boolean = false): Boolean {
-        fenceForPanic()
-        synchronized(lock) { panicCompletionDeferred = deferCompletion }
-        return withContext(NonCancellable + ioDispatcher) {
-            io.withLock {
-                try {
-                    backend?.wipe()
-                    synchronized(lock) {
-                        owner = null
-                        wipeVerified = true
-                        _persistence.value = Persistence.Wiped
-                    }
-                    true
-                } catch (_: Exception) {
-                    false
-                }
-            }
-        }
-    }
-
-    internal class PanicPreparation internal constructor(internal val generation: Long, internal val identity: String)
-
-    /** Prepare only RAM; ordinary loads and writers stay fenced until global completion. */
-    fun prepareAfterVerifiedPanic(identity: String): PanicPreparation? = synchronized(lock) {
-        require(validOwner(identity))
-        if (!fenced || !wipeVerified || !panicCompletionDeferred) return@synchronized null
-        val prepared = preparedPanic
-        if (prepared != null) return@synchronized prepared.takeIf { it.identity == identity }
-        PanicPreparation(generation, identity).also { preparedPanic = it }
-    }
-
-    /**
-     * The caller serializes its remaining admission token before invoking finishDrafts.
-     * Both marker completion and synchronous admission reopening run in the enclosing
-     * non-cancellable final commit; no IO-to-caller cancellation can split them.
-     */
-    suspend fun completePreparedPanic(
-        prepared: PanicPreparation,
-        commitAdmission: (finishDrafts: () -> Unit) -> Boolean
-    ): Boolean = withContext(ioDispatcher) {
-        io.withLock {
-            synchronized(lock) {
-                if (preparedPanic !== prepared || generation != prepared.generation ||
-                    !fenced || !wipeVerified || !panicCompletionDeferred
-                ) return@synchronized false
-                try {
-                    val completed = commitAdmission {
-                        backend?.finishVerifiedWipe()
-                        owner = prepared.identity
-                        loaded = true
-                        wipeVerified = false
-                        panicCompletionDeferred = false
-                        preparedPanic = null
-                        confirmedRevision = revision
-                        fenced = false
-                    }
-                    // Publish only after synchronous admission reopening; observers cannot
-                    // supersede the Seen token between durable finish and its release.
-                    if (completed && generation == prepared.generation && !fenced) {
-                        _persistence.value = Persistence.Confirmed
-                    }
-                    completed
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    _persistence.value = Persistence.WipeRequired
-                    false
-                }
             }
         }
     }
@@ -339,8 +257,6 @@ internal class WeshDraftStore(
             override fun load(owner: String) = delegate.load(owner)
             override fun write(owner: String, drafts: Map<String, String>) = delegate.write(owner, drafts)
             override fun markPanicPending() = delegate.markPanicPending()
-            override fun wipe() = delegate.wipe()
-            override fun finishVerifiedWipe() = delegate.finishVerifiedWipe()
         }
 
         @Volatile private var instance: WeshDraftStore? = null

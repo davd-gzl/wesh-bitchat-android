@@ -161,13 +161,12 @@ class WeshDraftStoreTest {
         assertEquals("same synthetic", store.drafts.value["public"])
     }
 
-    @Test fun `panic fences queued writes clears RAM and keeps failed wipe visibly blocked`() = runTest {
+    @Test fun `panic fences queued writes clears RAM and stays visibly blocked`() = runTest {
         val backend = FakeBackend()
         val store = WeshDraftStore(backend, backgroundScope, StandardTestDispatcher(testScheduler))
         store.load(owner)
         store.save(store.epoch, "public", "never resurrect")
-        backend.failWipe = true
-        assertFalse(store.panicClear())
+        store.fenceForPanic()
         runCurrent()
         assertEquals(0, backend.writes)
         assertTrue(store.drafts.value.isEmpty())
@@ -175,23 +174,6 @@ class WeshDraftStoreTest {
         store.load(secondOwner)
         assertEquals(WeshDraftStore.Persistence.WipeRequired, store.persistence.value)
         assertEquals(1, backend.readOwners.size)
-    }
-
-    @Test fun `successful panic requires marker finish before new owner can write`() = runTest {
-        val backend = FakeBackend()
-        val store = WeshDraftStore(backend, backgroundScope, StandardTestDispatcher(testScheduler))
-        store.load(owner)
-        assertTrue(store.panicClear())
-        backend.failFinish = true
-        store.load(secondOwner)
-        assertFalse(store.save(store.epoch, "public", "blocked"))
-        assertEquals(WeshDraftStore.Persistence.WipeRequired, store.persistence.value)
-        backend.failFinish = false
-        assertTrue(store.panicClear())
-        store.load(secondOwner)
-        store.save(store.epoch, "public", "fresh")
-        runCurrent()
-        assertEquals(mapOf("public" to "fresh"), backend.stored[secondOwner])
     }
 
     @Test fun `changing local owner retires an old edit token without requiring panic`() = runTest {
@@ -217,7 +199,7 @@ class WeshDraftStoreTest {
         store.retry()
         runCurrent()
         assertEquals(WeshDraftStore.Persistence.WipeRequired, store.persistence.value)
-        assertEquals(0, backend.wipes)
+        assertEquals(mapOf(owner to mapOf("public" to "old")), backend.stored)
         assertFalse(store.save(store.epoch, "public", "blocked"))
     }
 
@@ -237,12 +219,9 @@ class WeshDraftStoreTest {
         val stored = mutableMapOf<String, Map<String, String>>()
         val readOwners = mutableListOf<String>()
         var writes = 0
-        var wipes = 0
         var failRead = false
         var failWrite = false
         var dropWrite = false
-        var failWipe = false
-        var failFinish = false
         var marker = false
         override fun load(owner: String): Map<String, String> {
             readOwners += owner
@@ -257,16 +236,5 @@ class WeshDraftStoreTest {
             check(!failWrite)
         }
         override fun markPanicPending() { marker = true }
-        override fun wipe() {
-            wipes++
-            marker = true
-            check(!failWipe)
-            stored.clear()
-        }
-        override fun finishVerifiedWipe() {
-            check(marker && !failFinish)
-            stored.clear()
-            marker = false
-        }
     }
 }

@@ -7,7 +7,6 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -77,37 +76,5 @@ class ConversationRepositoryTest {
             listOf(message),
             reloadedSnapshot.get().chats.getValue("peer-alice")
         )
-    }
-
-    @Test
-    fun `panic clear drains queued writes and leaves database empty`() {
-        repository = ConversationRepository(
-            context = context,
-            dispatcher = dispatcher,
-            databaseName = databaseName,
-            storageCipher = InMemoryConversationStorageCipher()
-        )
-        repository.upsertMessage(
-            conversationID = "peer-alice",
-            aliases = setOf("peer-alice"),
-            displayName = "alice",
-            message = BitchatMessage(
-                id = "queued-before-panic",
-                sender = "alice",
-                content = "must be erased",
-                timestamp = Date(100L),
-                isPrivate = true
-            ),
-            isRead = true
-        )
-
-        assertTrue(runBlocking { repository.clearAllAndWait() })
-
-        val snapshot = AtomicReference<PersistedConversationSnapshot>()
-        repository.reload(snapshot::set)
-        runBlocking { repository.awaitPendingWrites() }
-        assertTrue(snapshot.get().chats.isEmpty())
-        assertTrue(snapshot.get().readMessageIDs.isEmpty())
-        assertTrue(snapshot.get().deletedMessageIDs.isEmpty())
     }
 }

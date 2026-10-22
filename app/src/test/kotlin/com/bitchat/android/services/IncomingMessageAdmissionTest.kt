@@ -42,14 +42,14 @@ class IncomingMessageAdmissionTest {
         )
         repositoriesToClose += repository
         AppStateStore.setConversationRepositoryForTest(repository)
-        AppStateStore.resumePrivateConversationsAfterPanic()
+        AppStateStore.resetPrivateConversationAdmissionForTest()
         AppStateStore.clear()
         IncomingMessageAdmission.installForTesting { emptySet() }
     }
 
     @After
     fun tearDown() {
-        AppStateStore.resumePrivateConversationsAfterPanic()
+        AppStateStore.resetPrivateConversationAdmissionForTest()
         AppStateStore.clear()
         AppStateStore.setConversationRepositoryForTest(null)
         repositoriesToClose.forEach(ConversationRepository::closeForTest)
@@ -71,7 +71,7 @@ class IncomingMessageAdmissionTest {
 
     @Test
     fun `private message rejected during panic cannot continue transport dispatch`() {
-        assertTrue(runBlocking { AppStateStore.panicClearPrivateConversations() })
+        AppStateStore.fencePrivateConversationAdmissionForPanic()
 
         assertFalse(
             IncomingMessageAdmission.admitToAppState(
