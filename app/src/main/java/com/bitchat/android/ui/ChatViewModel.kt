@@ -141,7 +141,9 @@ class ChatViewModel(
     val weshContactSheet = kotlinx.coroutines.flow.MutableStateFlow(false)
     val weshIncomingQR = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     private val weshPrivateSender = com.bitchat.android.services.WeshPrivateSender(weshContactStore)
-    private val weshSending = mutableSetOf<String>()
+    private val weshPrivateCompose = com.bitchat.android.services.WeshPrivateCompose(weshPrivateSender) {
+        com.bitchat.android.services.MessageRouter.getInstance(getApplication(), mesh)
+    }
 
     // Delegate handler for mesh callbacks
     private val meshDelegateHandler = MeshDelegateHandler(
@@ -638,6 +640,8 @@ class ChatViewModel(
             !com.bitchat.android.services.AppStateStore.isCurrentPrivateConversationGeneration(generation)
         ) return null
         conversationListPreferences.removeConversation(canonicalID)
+        // Nothing queued for a deleted conversation keeps leaving; an undo shows it with Réessayer.
+        com.bitchat.android.services.MessageRouter.tryGetInstance()?.cancelWeshConversation(canonicalID)
 
         state.setPrivateChats(
             ContactDirectory.canonicalizePrivateChats(
@@ -845,7 +849,8 @@ class ChatViewModel(
         }.getOrDefault(false)
     }
 
-    fun weshCanSendPrivate(peerID: String): Boolean = weshPrivateSender.canSend(ContactDirectory.canonicalConversationId(peerID), mesh)
+    /** Any enrolled, unblocked contact: the router sends over Bluetooth or Internet, or queues. */
+    fun weshCanSendPrivate(peerID: String): Boolean = weshPrivateCompose.canCompose(ContactDirectory.canonicalConversationId(peerID))
 
     fun weshIsBlocked(peerID: String): Boolean = privateChatManager.isPeerBlocked(peerID)
     fun weshBlockedFingerprints(): Set<String> = weshContactStore.blockedFingerprints()
@@ -920,10 +925,8 @@ class ChatViewModel(
             persistedID?.let { dispatchWeshPrivate(content, destination, it) }
         }
     }
-    private suspend fun dispatchWeshPrivate(content: String, destination: String, messageID: String) {
-        if (!weshSending.add(messageID)) return
-        try { weshPrivateSender.dispatch(content, destination, messageID, mesh) }
-        finally { weshSending.remove(messageID) }
+    private fun dispatchWeshPrivate(content: String, destination: String, messageID: String) {
+        weshPrivateCompose.route(content, destination, nicknameForPeer(destination).orEmpty(), messageID)
     }
     fun retryWeshPrivate(peerID: String, messageID: String) {
         val destination = ContactDirectory.canonicalConversationId(peerID)
@@ -931,7 +934,7 @@ class ChatViewModel(
             ?.firstOrNull { it.id == messageID && it.senderPeerID == meshService.myPeerID } ?: return
         if ((message.deliveryStatus !is com.bitchat.android.model.DeliveryStatus.Failed &&
                 message.deliveryStatus !is com.bitchat.android.model.DeliveryStatus.Sending) || !weshCanSendPrivate(destination)) return
-        viewModelScope.launch { dispatchWeshPrivate(message.content, destination, messageID) }
+        dispatchWeshPrivate(message.content, destination, messageID)
     }
 
     // MARK: - Utility Functions

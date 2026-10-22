@@ -331,6 +331,50 @@ class WeshInternetRouteTest {
         }
     }
 
+    @Test fun `the composer sends to any enrolled contact, queued without a route, over Internet once it is on`() {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        AppStateStore.clear()
+        val router = MessageRouter(context, mesh, mock())
+        router.weshInternetLink = alice.link
+        val compose = WeshPrivateCompose(WeshPrivateSender(alice.contacts)) { router }
+        fun status(id: String) = AppStateStore.privateMessages.value.values.flatten().single { it.id == id }.deliveryStatus
+        fun own(id: String) = AppStateStore.addPrivateMessage(bobConversation, BitchatMessage(id = id, sender = "me",
+            content = "salut", timestamp = java.util.Date(), isPrivate = true, recipientNickname = "Bob",
+            senderPeerID = alice.peerID, deliveryStatus = DeliveryStatus.Sending))
+        try {
+            // No Bluetooth session, Internet off: the contact is still writable and the message waits.
+            alice.link.on = false
+            assertTrue(compose.canCompose(bobConversation))
+            own("c-1")
+            assertEquals(MessageRouter.RouteResult.QUEUED, compose.route("salut", bobConversation, "Bob", "c-1"))
+            // Réessayer on a waiting message replaces it in the queue instead of adding a copy.
+            assertEquals(MessageRouter.RouteResult.QUEUED, compose.route("salut", bobConversation, "Bob", "c-1"))
+            assertEquals(DeliveryStatus.Sending, status("c-1"))
+
+            alice.link.on = true
+            router.tickOutbox()
+            waitFor { status("c-1") == DeliveryStatus.Sent }
+            Thread.sleep(200)
+            assertEquals(1, alice.link.published.size)
+
+            // A stranger is never writable; a forced send fails visibly.
+            val stranger = ContactIdentityResolver.contactConversationIdForNoiseKey(ByteArray(32) { 9 })
+            assertFalse(compose.canCompose(stranger))
+            own("c-2")
+            alice.contacts.remove(bobConversation)
+            assertEquals(MessageRouter.RouteResult.DROPPED, compose.route("salut", bobConversation, "Bob", "c-2"))
+            assertTrue(status("c-2") is DeliveryStatus.Failed)
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
     @Test fun `a message replayed by the lookback after a restart is not acked again`() = runTest {
         alice.route.sendPrivate("salut", bobConversation, "ack-once")
         val wrap = alice.link.published.single()

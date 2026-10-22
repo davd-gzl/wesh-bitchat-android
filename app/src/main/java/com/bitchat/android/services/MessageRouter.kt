@@ -160,6 +160,8 @@ class MessageRouter internal constructor(
             val epoch = weshEpoch.get()
             val sender = WeshPrivateSender(WeshContactStore.get(context))
             if (!sender.enrolled(conversationID) || content.isBlank() || content.toByteArray().size > 2000) return RouteResult.DROPPED
+            // A retry of a waiting message replaces its queued copy: one message, one route.
+            dequeueWesh(conversationID, messageID)
             if (sender.canSend(conversationID, mesh)) {
                 dispatchWesh(content, conversationID, messageID, epoch)
                 return RouteResult.MESH
@@ -293,6 +295,10 @@ class MessageRouter internal constructor(
             return false
         }
         return true
+    }
+
+    @Synchronized private fun dequeueWesh(conversationID: String, messageID: String) {
+        outbox[conversationID]?.removeAll { it.messageID == messageID }
     }
 
     @Synchronized fun cancelWeshConversation(conversationID: String) {
