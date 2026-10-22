@@ -103,6 +103,10 @@ class UnifiedMeshService(
         messageID: String, authorized: () -> Boolean): Boolean =
         bluetooth.sendPrivateMessageBound(content, recipientPeerID, expectedKey, messageID, authorized)
 
+    override suspend fun sendPrivateMessageBoundOutcome(content: String, recipientPeerID: String, expectedKey: ByteArray,
+        messageID: String, authorized: () -> Boolean): BoundSendOutcome =
+        bluetooth.sendPrivateMessageBoundOutcome(content, recipientPeerID, expectedKey, messageID, authorized)
+
     override fun sendReadReceipt(messageID: String, recipientPeerID: String, readerNickname: String) {
         if (isBleReady(recipientPeerID)) bluetooth.sendReadReceipt(messageID, recipientPeerID, readerNickname)
     }

@@ -37,6 +37,9 @@ import java.util.concurrent.atomic.AtomicLong
  * writer so a delete/merge followed by a newly arriving message is applied in the same order that
  * [AppStateStore] publishes it.
  */
+/** A message's delivery status as stored; [status] null means none recorded yet. */
+data class StoredDeliveryStatus(val status: DeliveryStatus?)
+
 class ConversationRepository internal constructor(
     context: Context,
     private val dispatcher: CoroutineDispatcher = Executors
@@ -224,6 +227,27 @@ class ConversationRepository internal constructor(
         } catch (error: Exception) {
             Log.e(TAG, "Unable to persist delivery status: ${error.message}")
             false
+        }
+    }
+
+    sealed interface StatusRead {
+        data class Found(val status: DeliveryStatus?) : StatusRead
+        data object Missing : StatusRead
+        data object Unavailable : StatusRead
+    }
+
+    /** After every queued write (same single-thread dispatcher); an erase since the call wins. */
+    internal suspend fun deliveryStatusAndWait(
+        conversationID: String,
+        messageID: String,
+        expectedGeneration: Long = captureWriteGeneration()
+    ): StatusRead = withContext(dispatcher) {
+        if (expectedGeneration != captureWriteGeneration()) return@withContext StatusRead.Unavailable
+        try {
+            database.deliveryStatusIn(conversationID, messageID)?.let { StatusRead.Found(it.status) } ?: StatusRead.Missing
+        } catch (error: Exception) {
+            Log.e(TAG, "Unable to read delivery status: ${error.message}")
+            StatusRead.Unavailable
         }
     }
 
@@ -953,6 +977,19 @@ internal class ConversationDatabase(
             )
         }
         return true
+    }
+
+    /** A message's stored status; null when it is not in [conversationID] (or an alias). */
+    fun deliveryStatusIn(conversationID: String, messageID: String): StoredDeliveryStatus? {
+        val db = readableDatabase
+        val owner = resolveStoredConversationLocked(db, conversationID)
+        return db.rawQuery(
+            "SELECT delivery_type, delivery_at, delivery_reached, delivery_total FROM private_messages " +
+                "WHERE message_id = ? AND conversation_id = ? COLLATE NOCASE",
+            arrayOf(messageID, owner)
+        ).use { cursor ->
+            if (cursor.moveToFirst()) StoredDeliveryStatus(cursor.toDeliveryStatus(deliveryText = null)) else null
+        }
     }
 
     fun markRead(messageID: String) {

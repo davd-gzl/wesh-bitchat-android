@@ -49,7 +49,7 @@ class WeshPrivateSenderTest {
     @Test fun `generic verification and parsed contact key cannot grant QR enrollment`() = runTest {
         assertFalse(sender.canSend(destination, mesh))
         assertFalse(sender.dispatch("synthetic", destination, "not-enrolled", mesh))
-        verify(mesh, never()).sendPrivateMessageBound(any(), any(), any(), any(), any())
+        verify(mesh, never()).sendPrivateMessageBoundOutcome(any(), any(), any(), any(), any())
     }
     @Test fun `changed session blocked identity and revoked contact all prevent effects`() = runTest {
         store.record(key, "Synthetic")
@@ -62,13 +62,14 @@ class WeshPrivateSenderTest {
         blocks.edit().clear().commit()
         store.remove(destination)
         assertFalse(sender.dispatch("synthetic", destination, "removed", mesh))
-        verify(mesh, never()).sendPrivateMessageBound(any(), any(), any(), any(), any())
+        verify(mesh, never()).sendPrivateMessageBoundOutcome(any(), any(), any(), any(), any())
     }
     @Test fun `revocation between admission and encryption is rechecked by effect callback`() = runTest {
         store.record(key, "Synthetic")
-        whenever(mesh.sendPrivateMessageBound(any(), any(), any(), any(), any())).thenAnswer { call ->
+        whenever(mesh.sendPrivateMessageBoundOutcome(any(), any(), any(), any(), any())).thenAnswer { call ->
             store.remove(destination)
-            call.getArgument<() -> Boolean>(4).invoke()
+            if (call.getArgument<() -> Boolean>(4).invoke()) com.bitchat.android.mesh.BoundSendOutcome.SENT
+            else com.bitchat.android.mesh.BoundSendOutcome.AUTH_FAILED
         }
         assertFalse(sender.dispatch("synthetic", destination, "revocation", mesh))
     }
@@ -77,10 +78,10 @@ class WeshPrivateSenderTest {
         val message = BitchatMessage(id = "retry", sender = "Synthetic self", content = "synthetic", timestamp = Date(1),
             senderPeerID = mesh.myPeerID, isPrivate = true, deliveryStatus = DeliveryStatus.Sending)
         AppStateStore.addPrivateMessage(destination, message)
-        whenever(mesh.sendPrivateMessageBound(any(), any(), any(), any(), any())).thenReturn(false)
+        whenever(mesh.sendPrivateMessageBoundOutcome(any(), any(), any(), any(), any())).thenReturn(com.bitchat.android.mesh.BoundSendOutcome.NOT_SENT)
         assertFalse(sender.dispatch(message.content, destination, message.id, mesh))
         assertTrue(AppStateStore.privateMessages.value[destination]!!.single().deliveryStatus is DeliveryStatus.Failed)
-        whenever(mesh.sendPrivateMessageBound(any(), any(), any(), any(), any())).thenReturn(true)
+        whenever(mesh.sendPrivateMessageBoundOutcome(any(), any(), any(), any(), any())).thenReturn(com.bitchat.android.mesh.BoundSendOutcome.SENT)
         assertTrue(sender.dispatch(message.content, destination, message.id, mesh))
         assertEquals(DeliveryStatus.Sent, AppStateStore.privateMessages.value[destination]!!.single().deliveryStatus)
         assertEquals(com.bitchat.android.model.MessageTransport.BLUETOOTH,
@@ -105,7 +106,7 @@ class WeshPrivateSenderTest {
         store.remove(destination)
         whenever(mesh.getAuthenticatedRemoteStaticKey(peer)).thenReturn(key)
         router.flushOutboxFor(destination)
-        verify(mesh, never()).sendPrivateMessageBound(any(), any(), any(), any(), any())
+        verify(mesh, never()).sendPrivateMessageBoundOutcome(any(), any(), any(), any(), any())
         verify(mesh, never()).sendPrivateMessage(any(), any(), any(), anyOrNull())
     }
     @Test fun `failed session inspection refuses outgoing effects`() = runTest {
@@ -113,7 +114,7 @@ class WeshPrivateSenderTest {
         whenever(mesh.getAuthenticatedRemoteStaticKey(peer)).thenThrow(IllegalStateException("Synthetic unavailable session"))
         assertFalse(sender.canSend(destination, mesh))
         assertFalse(sender.dispatch("synthetic", destination, "unavailable", mesh))
-        verify(mesh, never()).sendPrivateMessageBound(any(), any(), any(), any(), any())
+        verify(mesh, never()).sendPrivateMessageBoundOutcome(any(), any(), any(), any(), any())
     }
     @Test fun `offline QR enrollment restores key and nickname separately from conversation history`() {
         store.record(key, "Synthetic")

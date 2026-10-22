@@ -386,6 +386,46 @@ object AppStateStore {
             ContactDirectory.aliasesForConversation(conversationID)
     }.getOrDefault(setOf(peerID, conversationID))
 
+    /** What the stored status of one of my messages allows (spec « Retry policy »). */
+    enum class PersistedAck { ACKED, PENDING, GONE, UNAVAILABLE }
+
+    /**
+     * Status of [messageID] in [conversationID] as persisted, read after every pending write and
+     * behind the erase fence; never from the in-memory snapshot when a database exists.
+     * [PersistedAck.UNAVAILABLE] (erase in progress, store unreadable) means: skip this attempt only.
+     */
+    suspend fun persistedAck(conversationID: String, messageID: String): PersistedAck {
+        val canonical = ContactDirectory.canonicalConversationId(conversationID)
+        val (repository, generation) = synchronized(this) {
+            if (privateConversationWritesSuspended) return PersistedAck.UNAVAILABLE
+            val generation = capturePrivateConversationGeneration() ?: return PersistedAck.UNAVAILABLE
+            val repository = conversationRepository
+                // No database configured: the in-memory store is the only one.
+                ?: return _privateMessages.value[canonical].orEmpty().firstOrNull { it.id == messageID }
+                    ?.deliveryStatus.toPersistedAck()
+            repository to generation
+        }
+        val stored = try {
+            repository.deliveryStatusAndWait(canonical, messageID)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Store closed or replaced (erase, shutdown): skip this attempt only.
+            return PersistedAck.UNAVAILABLE
+        }
+        if (!isCurrentPrivateConversationGeneration(generation)) return PersistedAck.UNAVAILABLE
+        return when (stored) {
+            is ConversationRepository.StatusRead.Found -> stored.status.toPersistedAck()
+            ConversationRepository.StatusRead.Missing -> PersistedAck.GONE
+            ConversationRepository.StatusRead.Unavailable -> PersistedAck.UNAVAILABLE
+        }
+    }
+
+    private fun DeliveryStatus?.toPersistedAck(): PersistedAck = when (this) {
+        is DeliveryStatus.Delivered, is DeliveryStatus.Read -> PersistedAck.ACKED
+        else -> PersistedAck.PENDING
+    }
+
     fun hasSeenMessage(messageID: String): Boolean = synchronized(this) {
         messageID in seenMessageIds
     }
