@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.os.Build
 import com.bitchat.android.model.DeliveryStatus
+import com.bitchat.android.model.MessageTransport
 import com.bitchat.android.util.AppConstants
 import kotlin.random.Random
 
@@ -18,26 +19,34 @@ object ComposerLimits {
     fun canSend(text: String): Boolean = text.isNotBlank() && !isOverLimit(byteCount(text))
 }
 
-/** The four delivery words of the design system. */
+/** Delivery words of the spec (§3): En attente, Envoyé, Distribué, Lu, Échec. */
 enum class PaveDelivery {
-    Waiting, Sent, Received, Failed;
+    Waiting, Sent, Delivered, Read, Failed;
 
     companion object {
-        /**
-         * "Reçu" exists for private messages only; there are no read receipts,
-         * so Read collapses into Received.
-         */
+        /** Distribué and Lu exist for private messages only: the public room has no receipts. */
         fun from(status: DeliveryStatus?, isPrivate: Boolean): PaveDelivery = when (status) {
             null, DeliveryStatus.Sending -> Waiting
             DeliveryStatus.Sent, is DeliveryStatus.PartiallyDelivered -> Sent
-            is DeliveryStatus.Delivered, is DeliveryStatus.Read -> if (isPrivate) Received else Sent
+            is DeliveryStatus.Delivered -> if (isPrivate) Delivered else Sent
+            is DeliveryStatus.Read -> if (isPrivate) Read else Sent
             is DeliveryStatus.Failed -> Failed
         }
     }
 }
 
-/** How a message travelled. Shown under a bubble; "Internet" only when it went through Tor. */
-enum class PaveTransport { Bluetooth, Internet }
+/** How a private message travelled, from its last attempt and then its ack (spec §3 label). */
+enum class PaveTransport {
+    Bluetooth, Internet;
+
+    companion object {
+        fun from(transport: MessageTransport?): PaveTransport? = when (transport) {
+            MessageTransport.BLUETOOTH -> Bluetooth
+            MessageTransport.INTERNET -> Internet
+            null -> null
+        }
+    }
+}
 
 /** Hold-to-erase timing: three seconds, with haptic pulses that come closer and closer. */
 object HoldToEraseTiming {

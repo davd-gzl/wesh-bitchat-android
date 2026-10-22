@@ -20,9 +20,9 @@ internal class WeshPrivateSender(private val contacts: WeshContactStore) {
             mesh.sendPrivateMessageBound(content, live, contact.key, messageID) { canSend(conversationID, mesh) }
         }.getOrDefault(false)
         if (accepted) {
-            AppStateStore.updatePrivateMessageStatus(messageID, DeliveryStatus.Sent, MessageTransport.BLUETOOTH)
+            AppStateStore.updatePrivateMessageStatus(conversationID, messageID, DeliveryStatus.Sent, MessageTransport.BLUETOOTH)
         } else {
-            AppStateStore.updatePrivateMessageStatus(messageID,
+            AppStateStore.updatePrivateMessageStatus(conversationID, messageID,
                 DeliveryStatus.Failed("Connexion ou identité indisponible. Réessayez après vérification."))
         }
         return accepted

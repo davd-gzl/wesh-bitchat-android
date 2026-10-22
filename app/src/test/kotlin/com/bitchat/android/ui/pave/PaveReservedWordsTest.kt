@@ -1,6 +1,7 @@
 package com.bitchat.android.ui.pave
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -66,5 +67,7 @@ class PaveReservedWordsTest {
             "Échange réussi", "Exchange done", "Votre code", "Son code", "Fait", "Ouvrir la discussion", "Profil",
         ).forEach { word -> assertTrue("$word is not reserved", word in words) }
         assertEquals(PaveReservedWords.keys.size, PaveReservedWords.keys.toSet().size)
+        // The v1 display-name rule is frozen and shared with iOS: footer-only words stay usable as nicknames.
+        listOf("Distribué", "Lu", "Internet", "Delivered", "Read").forEach { word -> assertFalse("$word is reserved", word in words) }
     }
 }

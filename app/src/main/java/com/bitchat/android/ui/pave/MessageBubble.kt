@@ -40,7 +40,8 @@ fun PaveDelivery.label(): String = stringResource(
     when (this) {
         PaveDelivery.Waiting -> R.string.wesh_pave_delivery_waiting
         PaveDelivery.Sent -> R.string.wesh_pave_delivery_sent
-        PaveDelivery.Received -> R.string.wesh_pave_delivery_received
+        PaveDelivery.Delivered -> R.string.wesh_pave_receipt_delivered
+        PaveDelivery.Read -> R.string.wesh_pave_receipt_read
         PaveDelivery.Failed -> R.string.wesh_pave_delivery_failed
     }
 )
@@ -51,7 +52,7 @@ private fun PaveDelivery.color(): Color {
     return when (this) {
         PaveDelivery.Waiting -> c.deliveryWaiting
         PaveDelivery.Sent -> c.deliverySent
-        PaveDelivery.Received -> c.deliveryReceived
+        PaveDelivery.Delivered, PaveDelivery.Read -> c.deliveryReceived
         PaveDelivery.Failed -> c.deliveryFailed
     }
 }
@@ -93,13 +94,13 @@ fun MessageBubble(
     val shape = if (own) RoundedCornerShape(r, r, WeshRadius.tail, r) else RoundedCornerShape(r, r, r, WeshRadius.tail)
 
     val you = stringResource(R.string.wesh_pave_message_from_you)
-    val viaInternet = stringResource(R.string.wesh_pave_via_internet)
+    val viaInternet = stringResource(R.string.wesh_pave_label_internet)
     val viaBluetooth = stringResource(R.string.wesh_pave_via_bluetooth)
     val detailLabel = stringResource(R.string.wesh_pave_message_detail)
     val deliveryText = delivery?.takeIf { own }?.label()
     val transportText = when (transport) {
         PaveTransport.Internet -> viaInternet
-        PaveTransport.Bluetooth -> if (own) null else viaBluetooth
+        PaveTransport.Bluetooth -> viaBluetooth
         null -> null
     }
     // Received in the public room: "Coquelicot · 17:40" above the bubble.
@@ -214,7 +215,7 @@ private fun MetaLine(parts: List<String>, deliveryText: String?, delivery: PaveD
 private fun MessageBubblePreview() = PavePreview {
     Column(verticalArrangement = Arrangement.spacedBy(WeshSpace.s2)) {
         MessageBubble("On se retrouve devant la fontaine à 18 h ?", own = false, room = PaveRoom.Private, time = "17:52", transport = PaveTransport.Bluetooth)
-        MessageBubble("Oui, j’arrive par la rue de la Paix.", own = true, room = PaveRoom.Private, time = "17:53", delivery = PaveDelivery.Received)
+        MessageBubble("Oui, j’arrive par la rue de la Paix.", own = true, room = PaveRoom.Private, time = "17:53", delivery = PaveDelivery.Delivered, transport = PaveTransport.Bluetooth)
         MessageBubble("Je suis là.", own = true, room = PaveRoom.Private, time = "17:59", delivery = PaveDelivery.Sent, transport = PaveTransport.Internet)
         MessageBubble("Vous me voyez ?", own = true, room = PaveRoom.Private, time = null, delivery = PaveDelivery.Failed, onRetry = {})
         MessageBubble("Cortège bloqué au pont, on contourne par le quai.", own = false, room = PaveRoom.Public, time = "17:40", sender = "Coquelicot", senderFingerprint = "0E7A 4C19 B2D8 66F1")

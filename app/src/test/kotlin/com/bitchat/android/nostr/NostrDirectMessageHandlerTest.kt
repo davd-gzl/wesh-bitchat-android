@@ -88,7 +88,7 @@ class NostrDirectMessageHandlerTest {
             application = application,
             state = state,
             privateChatManager = privateChatManager,
-            updateDeliveryStatus = { _, _ -> },
+            updateDeliveryStatus = { _, _, _ -> },
             scope = scope,
             seenStoreProvider = { seenStore }
         )
@@ -157,7 +157,7 @@ class NostrDirectMessageHandlerTest {
             application = application,
             state = state,
             privateChatManager = privateChatManager,
-            updateDeliveryStatus = { _, _ -> },
+            updateDeliveryStatus = { _, _, _ -> },
             scope = scope,
             seenStoreProvider = { seenStore }
         )

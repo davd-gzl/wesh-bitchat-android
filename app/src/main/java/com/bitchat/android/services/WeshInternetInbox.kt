@@ -199,7 +199,7 @@ internal object WeshInternetReceiver {
             },
             updateStatus = { conversationID, messageID, status ->
                 // Only that contact can reach here, only its own conversation, never a downgrade.
-                AppStateStore.updatePrivateMessageStatusIn(conversationID, messageID, status,
+                AppStateStore.updatePrivateMessageStatus(conversationID, messageID, status,
                     com.bitchat.android.model.MessageTransport.INTERNET)
             },
             alreadyAcked = seen::hasDelivered,

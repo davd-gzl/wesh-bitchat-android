@@ -404,20 +404,20 @@ class MeshCore(
 
             override fun onDeliveryAckReceived(messageID: String, peerID: String) {
                 try {
-                    com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(
-                        messageID,
-                        com.bitchat.android.model.DeliveryStatus.Delivered(peerID, java.util.Date())
-                    )
+                    if (!com.bitchat.android.services.AppStateStore.applyMeshAck(
+                            peerID, messageID, com.bitchat.android.model.DeliveryStatus.Delivered(peerID, java.util.Date())
+                        )
+                    ) return
                 } catch (_: Exception) { }
                 delegate?.didReceiveDeliveryAck(messageID, peerID)
             }
 
             override fun onReadReceiptReceived(messageID: String, peerID: String) {
                 try {
-                    com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(
-                        messageID,
-                        com.bitchat.android.model.DeliveryStatus.Read(peerID, java.util.Date())
-                    )
+                    if (!com.bitchat.android.services.AppStateStore.applyMeshAck(
+                            peerID, messageID, com.bitchat.android.model.DeliveryStatus.Read(peerID, java.util.Date())
+                        )
+                    ) return
                 } catch (_: Exception) { }
                 delegate?.didReceiveReadReceipt(messageID, peerID)
             }

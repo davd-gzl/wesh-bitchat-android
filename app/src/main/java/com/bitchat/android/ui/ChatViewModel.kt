@@ -362,8 +362,9 @@ class ChatViewModel(
         )
         // Mark queued private messages as failed when the router gives up on them
         try {
-            com.bitchat.android.services.MessageRouter.getInstance(getApplication(), mesh).onMessageExpired = { messageID ->
-                messageManager.updateMessageDeliveryStatus(
+            com.bitchat.android.services.MessageRouter.getInstance(getApplication(), mesh).onMessageExpired = { conversationID, messageID ->
+                com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(
+                    conversationID,
                     messageID,
                     com.bitchat.android.model.DeliveryStatus.Failed("Message expired before delivery")
                 )

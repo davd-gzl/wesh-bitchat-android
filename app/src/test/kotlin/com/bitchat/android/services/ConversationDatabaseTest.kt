@@ -73,6 +73,7 @@ class ConversationDatabaseTest {
         )
         database.markRead(message.id)
         database.updateDeliveryStatus(
+            "contact_alice",
             message.id,
             DeliveryStatus.Read("me", Date(124_000L))
         )
@@ -408,15 +409,32 @@ class ConversationDatabaseTest {
         val message = BitchatMessage(id = "transport-1", sender = "me", content = "salut", timestamp = Date(1),
             isPrivate = true, deliveryStatus = DeliveryStatus.Sent, transport = MessageTransport.BLUETOOTH)
         database.upsertMessage("contact_alice", setOf("contact_alice"), "alice", message, isRead = true)
-        database.updateDeliveryStatus(message.id, DeliveryStatus.Delivered("alice", Date(2)), MessageTransport.INTERNET)
+        database.updateDeliveryStatus("contact_alice", message.id, DeliveryStatus.Delivered("alice", Date(2)), MessageTransport.INTERNET)
         // A late lower status never rewrites where the message went.
-        database.updateDeliveryStatus(message.id, DeliveryStatus.Sent, MessageTransport.BLUETOOTH)
+        database.updateDeliveryStatus("contact_alice", message.id, DeliveryStatus.Sent, MessageTransport.BLUETOOTH)
         database.close()
 
         database = ConversationDatabase(context, databaseName, storageCipher = storageCipher)
         val restored = database.loadSnapshot().chats.getValue("contact_alice").single()
         assertEquals(MessageTransport.INTERNET, restored.transport)
         assertEquals(DeliveryStatus.Delivered("alice", Date(2)), restored.deliveryStatus)
+    }
+
+    @Test
+    fun `a status bound to a conversation never touches another conversation's message`() {
+        database.upsertMessage("contact_alice", setOf("contact_alice", "aaaa000000000001"), "alice",
+            BitchatMessage(id = "bound-1", sender = "me", content = "x", timestamp = Date(1), isPrivate = true,
+                deliveryStatus = DeliveryStatus.Sent), isRead = true)
+        assertFalse(database.updateDeliveryStatus("contact_mallory", "bound-1", DeliveryStatus.Read("mallory", Date(2)),
+            MessageTransport.BLUETOOTH))
+        assertEquals(DeliveryStatus.Sent, database.loadSnapshot().chats.getValue("contact_alice").single().deliveryStatus)
+
+        // An alias of the right conversation is accepted.
+        assertTrue(database.updateDeliveryStatus("aaaa000000000001", "bound-1", DeliveryStatus.Delivered("alice", Date(3)),
+            MessageTransport.BLUETOOTH))
+        val restored = database.loadSnapshot().chats.getValue("contact_alice").single()
+        assertEquals(DeliveryStatus.Delivered("alice", Date(3)), restored.deliveryStatus)
+        assertEquals(MessageTransport.BLUETOOTH, restored.transport)
     }
 
     @Test
@@ -431,7 +449,7 @@ class ConversationDatabaseTest {
         val migrated = database.loadSnapshot().chats.getValue("contact_alice").single()
         assertEquals("avant", migrated.content)
         assertNull(migrated.transport)
-        database.updateDeliveryStatus("v4-message", DeliveryStatus.Delivered("alice", Date(2)), MessageTransport.BLUETOOTH)
+        database.updateDeliveryStatus("contact_alice", "v4-message", DeliveryStatus.Delivered("alice", Date(2)), MessageTransport.BLUETOOTH)
         assertEquals(MessageTransport.BLUETOOTH,
             database.loadSnapshot().chats.getValue("contact_alice").single().transport)
         database.readableDatabase.rawQuery("PRAGMA user_version", null).use { cursor ->

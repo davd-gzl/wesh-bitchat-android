@@ -401,59 +401,101 @@ object AppStateStore {
     }
 
     /**
-     * Status from a transport that authenticated the sender as this conversation's contact: the
-     * message must belong to [conversationID], so an ack can never touch another conversation.
-     * Returns false (nothing written) when it does not, including when its history is unloaded.
+     * Status of my message [messageID] in [conversationID] (router, sender, Internet ack from the
+     * contact the seal authenticated). Every status update is bound to a conversation: the message
+     * must belong to it, in memory and in the database, so nothing can touch another conversation.
+     * [transport] is recorded only when the status is applied. Returns true only when it was
+     * verified and applied in memory; an unloaded history is updated in the database, with the
+     * same check, without waiting.
      */
-    fun updatePrivateMessageStatusIn(
+    fun updatePrivateMessageStatus(
         conversationID: String,
         messageID: String,
         status: DeliveryStatus,
         transport: MessageTransport? = null
-    ): Boolean {
-        synchronized(this) {
-            val canonical = ContactDirectory.canonicalConversationId(conversationID)
-            if (_privateMessages.value[canonical].orEmpty().none { it.id == messageID }) return false
-            // Message IDs are unique across conversations (UNIQUE column, seenMessageIds).
-            updatePrivateMessageStatus(messageID, status, transport)
-            return true
+    ): Boolean = synchronized(this) {
+        if (privateConversationWritesSuspended) return false
+        val canonical = ContactDirectory.canonicalConversationId(conversationID)
+        when (ownerInMemoryLocked(canonical, messageID)) {
+            Owner.THIS -> {
+                applyInMemoryLocked(canonical, messageID, status, transport)
+                conversationRepository?.updateDeliveryStatus(canonical, messageID, status, transport)
+                true
+            }
+            Owner.OTHER -> false
+            Owner.UNLOADED -> {
+                conversationRepository?.updateDeliveryStatus(canonical, messageID, status, transport)
+                false
+            }
         }
     }
 
-    /** [transport]: where this status came from; recorded only when the status is applied. */
-    fun updatePrivateMessageStatus(messageID: String, status: DeliveryStatus, transport: MessageTransport? = null) {
-        synchronized(this) {
-            if (privateConversationWritesSuspended) return
-            val map = _privateMessages.value.toMutableMap()
-            var changed = false
-            map.keys.toList().forEach { peer ->
-                val list = map[peer]?.toMutableList() ?: mutableListOf()
-                val idx = list.indexOfFirst { it.id == messageID }
-                if (idx >= 0) {
-                    val current = list[idx].deliveryStatus
-                    // Do not downgrade (e.g., Read -> Delivered)
-                    val mayReplace = when {
-                        status is DeliveryStatus.Failed ->
-                            current !is DeliveryStatus.Delivered &&
-                                current !is DeliveryStatus.Read
-                        current is DeliveryStatus.Failed -> true
-                        else -> statusPriority(status) >= statusPriority(current)
-                    }
-                    if (mayReplace) {
-                        list[idx] = list[idx].copy(deliveryStatus = status, transport = transport ?: list[idx].transport)
-                        map[peer] = list
-                        changed = true
-                    }
+    /**
+     * A peer's ack or read receipt for [messageID]: true only once the message is verified to be
+     * in [conversationID], the conversation of the peer that authenticated the ack. An unloaded
+     * history waits for the database's bound update.
+     */
+    suspend fun applyPeerStatus(
+        conversationID: String,
+        messageID: String,
+        status: DeliveryStatus,
+        transport: MessageTransport
+    ): Boolean {
+        val (canonical, repository) = synchronized(this) {
+            if (privateConversationWritesSuspended) return false
+            val canonical = ContactDirectory.canonicalConversationId(conversationID)
+            when (ownerInMemoryLocked(canonical, messageID)) {
+                Owner.THIS -> {
+                    applyInMemoryLocked(canonical, messageID, status, transport)
+                    conversationRepository?.updateDeliveryStatus(canonical, messageID, status, transport)
+                    return true
                 }
+                Owner.OTHER -> return false
+                Owner.UNLOADED -> canonical to (conversationRepository ?: return false)
             }
-            if (changed) {
-                _privateMessages.value = map
-            }
-            // Full histories are unloaded after a chat closes, so the message may only exist in
-            // SQLite. Always offer the update to the repository; it safely ignores unknown IDs
-            // and enforces the same monotonic status rules as the in-memory path.
-            conversationRepository?.updateDeliveryStatus(messageID, status, transport)
         }
+        return repository.updateDeliveryStatusAndWait(canonical, messageID, status, transport)
+    }
+
+    /**
+     * A Bluetooth delivery ack or read receipt from [peerID]: applied only to a message of that
+     * peer's conversation, so a nearby peer that learnt a message ID cannot mark it « Distribué »
+     * or « Lu ». Runs on the mesh worker thread, which may wait for the database.
+     */
+    fun applyMeshAck(
+        peerID: String,
+        messageID: String,
+        status: DeliveryStatus,
+        conversationOf: (String) -> String = ContactDirectory::canonicalConversationId
+    ): Boolean = runCatching {
+        kotlinx.coroutines.runBlocking {
+            applyPeerStatus(conversationOf(peerID), messageID, status, MessageTransport.BLUETOOTH)
+        }
+    }.getOrDefault(false)
+
+    private enum class Owner { THIS, OTHER, UNLOADED }
+
+    private fun ownerInMemoryLocked(canonical: String, messageID: String): Owner = when {
+        _privateMessages.value[canonical].orEmpty().any { it.id == messageID } -> Owner.THIS
+        _privateMessages.value.values.any { list -> list.any { it.id == messageID } } -> Owner.OTHER
+        else -> Owner.UNLOADED
+    }
+
+    /** Caller holds the monitor and checked the owner. Never downgrades (e.g. Read -> Delivered). */
+    private fun applyInMemoryLocked(canonical: String, messageID: String, status: DeliveryStatus, transport: MessageTransport?) {
+        val list = _privateMessages.value[canonical]?.toMutableList() ?: return
+        val idx = list.indexOfFirst { it.id == messageID }
+        if (idx < 0) return
+        val current = list[idx].deliveryStatus
+        val mayReplace = when {
+            status is DeliveryStatus.Failed ->
+                current !is DeliveryStatus.Delivered && current !is DeliveryStatus.Read
+            current is DeliveryStatus.Failed -> true
+            else -> statusPriority(status) >= statusPriority(current)
+        }
+        if (!mayReplace) return
+        list[idx] = list[idx].copy(deliveryStatus = status, transport = transport ?: list[idx].transport)
+        _privateMessages.value = _privateMessages.value + (canonical to list)
     }
 
     fun unifyPrivateChatsIntoPeer(targetPeerID: String, keysToMerge: List<String>) {

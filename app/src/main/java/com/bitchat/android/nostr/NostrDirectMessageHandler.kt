@@ -26,7 +26,7 @@ class NostrDirectMessageHandler(
     private val application: Application,
     private val state: ChatState,
     private val privateChatManager: PrivateChatManager,
-    private val updateDeliveryStatus: (String, DeliveryStatus) -> Unit,
+    private val updateDeliveryStatus: (conversationID: String, messageID: String, DeliveryStatus) -> Unit,
     private val scope: CoroutineScope,
     private val seenStoreProvider: () -> SeenMessageStore = {
         SeenMessageStore.getInstance(application)
@@ -170,6 +170,7 @@ class NostrDirectMessageHandler(
                 val messageId = String(payload.data, Charsets.UTF_8)
                 withContext(Dispatchers.Main) {
                     updateDeliveryStatus(
+                        conversationID,
                         messageId,
                         DeliveryStatus.Delivered(conversationID, Date())
                     )
@@ -179,6 +180,7 @@ class NostrDirectMessageHandler(
                 val messageId = String(payload.data, Charsets.UTF_8)
                 withContext(Dispatchers.Main) {
                     updateDeliveryStatus(
+                        conversationID,
                         messageId,
                         DeliveryStatus.Read(conversationID, Date())
                     )

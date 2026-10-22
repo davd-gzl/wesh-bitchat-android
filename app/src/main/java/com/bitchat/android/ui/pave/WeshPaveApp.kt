@@ -111,13 +111,9 @@ internal fun paveShortFingerprintFromHex(hex: String?): String? {
     return clean.take(16).uppercase(Locale.ROOT).chunked(4).joinToString(" ")
 }
 
-/** Delivery states as Pavé names them. The public room has no receipts: never "Reçu" there. */
-internal fun paveDelivery(status: DeliveryStatus?, public: Boolean): PaveDelivery = when (status) {
-    null, DeliveryStatus.Sending -> PaveDelivery.Waiting
-    is DeliveryStatus.Failed -> PaveDelivery.Failed
-    is DeliveryStatus.Delivered, is DeliveryStatus.Read -> if (public) PaveDelivery.Sent else PaveDelivery.Received
-    else -> PaveDelivery.Sent
-}
+/** Delivery states as the spec names them. The public room has no receipts: never "Distribué" there. */
+internal fun paveDelivery(status: DeliveryStatus?, public: Boolean): PaveDelivery =
+    PaveDelivery.from(status, isPrivate = !public)
 
 /**
  * The fingerprint shown under a remote nickname: from the key the peer proved in its Noise session
@@ -372,6 +368,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                         PaveMessageItem(
                             id = m.id, text = text, own = own, time = time(m), sender = null, senderFingerprint = null,
                             delivery = if (own) paveDelivery(m.deliveryStatus, public = false) else null,
+                            transport = PaveTransport.from(m.transport),
                             canRetry = own && canSendConversation &&
                                 (m.deliveryStatus is DeliveryStatus.Failed || m.deliveryStatus is DeliveryStatus.Sending),
                         )
