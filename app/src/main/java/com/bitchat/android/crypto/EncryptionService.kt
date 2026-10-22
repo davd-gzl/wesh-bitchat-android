@@ -224,28 +224,6 @@ open class EncryptionService(private val context: Context) {
             ?: throw Exception("Failed generation-bound decryption from $peerID")
     }
     
-    /**
-     * Sign data using our static identity key
-     * Note: This is now done at the packet level, not per-message
-     */
-    @Throws(Exception::class)
-    fun sign(data: ByteArray): ByteArray {
-        // Note: In Noise protocol, authentication is built into the handshake
-        // For compatibility, we return empty signature
-        return ByteArray(0)
-    }
-    
-    /**
-     * Verify signature using peer's identity key
-     * Note: This is now done at the packet level, not per-message
-     */
-    @Throws(Exception::class)
-    fun verify(signature: ByteArray, data: ByteArray, peerID: String): Boolean {
-        // Note: In Noise protocol, authentication is built into the transport
-        // Messages are authenticated automatically when decrypted
-        return hasEstablishedSession(peerID)
-    }
-    
     // MARK: - Noise Protocol Interface
     
     /**
