@@ -654,12 +654,36 @@ class WeshInternetRouteTest {
         }
     }
 
-    @Test fun `a failed Bluetooth write without an Internet route ends Échec`() {
+    @Test fun `a Bluetooth write that reached nothing without an Internet route stays waiting`() {
         val router = failingBluetoothRouter()
         alice.link.on = false
         try {
             assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
-            waitFor { bw1() is DeliveryStatus.Failed }
+            Thread.sleep(300)
+            assertEquals(DeliveryStatus.Sending, bw1())
+            assertTrue(alice.link.published.isEmpty())
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
+    @Test fun `a message acked during the ack window is never sent again`() {
+        val router = failingBluetoothRouter(com.bitchat.android.mesh.BoundSendOutcome.UNCONFIRMED)
+        var now = 1_000_000L
+        router.clock = { now }
+        try {
+            assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
+            Thread.sleep(300)
+            AppStateStore.updatePrivateMessageStatus("bw-1", DeliveryStatus.Delivered("Bob", java.util.Date()))
+            now += AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS
+            router.tickOutbox(now)
+            Thread.sleep(300)
+            kotlinx.coroutines.runBlocking {
+                verify(router.meshForTesting, org.mockito.kotlin.times(1))
+                    .sendPrivateMessageBoundOutcome(any(), any(), any(), any(), any())
+            }
             assertTrue(alice.link.published.isEmpty())
         } finally {
             WeshContactStore.resetForTesting()

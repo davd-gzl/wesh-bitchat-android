@@ -239,8 +239,8 @@ class MessageRouter internal constructor(
         when {
             (weshCancelled[conversationID] ?: 0L) != cancelled -> AppStateStore.updatePrivateMessageStatus(entry.messageID,
                 com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
-            !weshInternet().canSend(conversationID) -> AppStateStore.updatePrivateMessageStatus(entry.messageID,
-                com.bitchat.android.model.DeliveryStatus.Failed(WeshPrivateSender.FAILED_WRITE))
+            // Rule 3: no route now, so it waits (« En attente ») until the 24 h TTL.
+            !weshInternet().canSend(conversationID) -> requeueWesh(next, conversationID, epoch, cancelled)
             next.internetRetryAtMs > clock() -> requeueWesh(next, conversationID, epoch, cancelled)
             else -> dispatchWeshInternet(next, conversationID, epoch, since = cancelled)
         }
@@ -296,6 +296,12 @@ class MessageRouter internal constructor(
             retry?.let { requeueWesh(it, conversationID, epoch, cancelled) }
         }
     }
+
+    /** In memory: an ack known here ends any further attempt. */
+    private fun isAcked(conversationID: String, messageID: String): Boolean =
+        AppStateStore.privateMessages.value[conversationID].orEmpty().firstOrNull { it.id == messageID }?.deliveryStatus.let {
+            it is com.bitchat.android.model.DeliveryStatus.Delivered || it is com.bitchat.android.model.DeliveryStatus.Read
+        }
 
     /** Under the router monitor: never after a panic clear, never for a removed or blocked contact. */
     @Synchronized private fun requeueWesh(entry: QueuedMessage, conversationID: String, epoch: Long, cancelled: Long) {
@@ -460,6 +466,9 @@ class MessageRouter internal constructor(
                     iterator.remove()
                     com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(conversationID, entry.messageID,
                         com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
+                } else if (isAcked(conversationID, entry.messageID)) {
+                    // Its ack arrived (rule 4: resend only without one): nothing more to send.
+                    iterator.remove()
                 } else if (entry.notBeforeMs > clock()) {
                     // Inside the ack window of a Bluetooth write that may have left.
                 } else if (sender.canSend(conversationID, mesh)) {
