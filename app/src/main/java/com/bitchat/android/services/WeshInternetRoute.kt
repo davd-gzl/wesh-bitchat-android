@@ -87,7 +87,13 @@ internal class WeshInternetRoute(
             if (content.isBlank() || content.toByteArray().size > 2000) null
             else NostrEmbeddedBitChat.encodePMForNostr(content, messageID, c.noiseHex, myPeerID())
         }?.singleOrNull() ?: return notSent
-        val outcome = runCatching { link.publishConfirmed(wrap) }.getOrDefault(RelayPublishOutcome.UNCONFIRMED)
+        val outcome = try {
+            link.publishConfirmed(wrap)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            RelayPublishOutcome.UNCONFIRMED
+        }
         return Send(outcome, wrap)
     }
 

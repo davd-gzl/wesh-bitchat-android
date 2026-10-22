@@ -208,25 +208,31 @@ class MessageRouter internal constructor(
     private fun dispatchWeshInternet(entry: QueuedMessage, conversationID: String, epoch: Long = weshEpoch.get()) {
         if (epoch != weshEpoch.get() || !weshInFlight.add(entry.messageID)) return
         schedulerScope.launch {
-            try {
+            // Requeued only after leaving the in-flight set: a flush in between could otherwise
+            // take the entry out of the outbox and then refuse to dispatch it.
+            val retry = try {
                 if (epoch != weshEpoch.get()) return@launch
                 val send = weshInternet().sendPrivate(entry.content, conversationID, entry.messageID, entry.giftWrap)
                 if (epoch != weshEpoch.get()) return@launch
                 when (send.outcome) {
-                    RelayPublishOutcome.ACCEPTED ->
+                    RelayPublishOutcome.ACCEPTED -> {
                         AppStateStore.updatePrivateMessageStatus(entry.messageID, com.bitchat.android.model.DeliveryStatus.Sent,
                             com.bitchat.android.model.MessageTransport.INTERNET)
-                    RelayPublishOutcome.NOT_SENT -> requeueWesh(entry, conversationID, epoch)
+                        null
+                    }
+                    // Nothing left: no backoff step, and the signed wrap is kept rather than re-signed.
+                    RelayPublishOutcome.NOT_SENT -> entry.copy(giftWrap = send.giftWrap ?: entry.giftWrap)
                     RelayPublishOutcome.REJECTED, RelayPublishOutcome.UNCONFIRMED -> {
                         val attempts = entry.internetAttempts + 1
-                        requeueWesh(entry.copy(
+                        entry.copy(
                             internetAttempts = attempts,
                             internetRetryAtMs = clock() + AppConstants.Router.weshInternetRetryDelayMs(attempts),
                             giftWrap = send.giftWrap.takeIf { send.outcome == RelayPublishOutcome.UNCONFIRMED }
-                        ), conversationID, epoch)
+                        )
                     }
                 }
             } finally { weshInFlight.remove(entry.messageID) }
+            retry?.let { requeueWesh(it, conversationID, epoch) }
         }
     }
 

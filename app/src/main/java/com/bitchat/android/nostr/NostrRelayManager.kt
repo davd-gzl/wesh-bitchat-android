@@ -348,7 +348,11 @@ class NostrRelayManager internal constructor(
             }
         }
         return try {
-            withTimeoutOrNull(timeoutMs) { state.result.await() } ?: synchronized(lifecycleLock) { state.settle() }
+            withTimeoutOrNull(timeoutMs) { state.result.await() } ?: run {
+                // No-op when an OK landed as the timeout fired: that answer still counts.
+                synchronized(lifecycleLock) { state.result.complete(state.settle()) }
+                state.result.await()
+            }
         } finally {
             synchronized(lifecycleLock) {
                 if (confirmedSends[event.id] === state) confirmedSends.remove(event.id)
