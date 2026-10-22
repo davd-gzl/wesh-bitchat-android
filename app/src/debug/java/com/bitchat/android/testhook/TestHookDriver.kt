@@ -69,6 +69,13 @@ object TestHookDriver {
             "ble" -> setBle(intent.getBooleanExtra("enabled", true))
             "inject_peers" -> injectPeers(intent.getStringExtra("peers"))
             "state" -> state(context)
+            "wesh_identity" -> weshIdentity(context)
+            "wesh_seed_contact" -> weshSeedContact(
+                context,
+                intent.requiredString("noise_key"),
+                intent.getStringExtra("nickname") ?: "Test",
+                intent.requiredString("npub")
+            )
             "clear_results" -> clearResults(context)
             else -> err(cmd, "unknown command: $cmd")
         }
@@ -103,6 +110,27 @@ object TestHookDriver {
             .put("identity_fingerprint", mesh.getIdentityFingerprint())
             .put("noise_public_key", mesh.getStaticNoisePublicKey()?.toHex())
             .put("nickname", AppStateStore.nickname.value)
+    }
+
+    /** My Noise key and npub, for the other side's `wesh_seed_contact`. */
+    private suspend fun weshIdentity(context: Context): JSONObject {
+        com.bitchat.android.services.WeshQrIdentity.ensureKey(context)
+        val npub = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.bitchat.android.nostr.NostrIdentityBridge.getCurrentNostrIdentity(context)?.npub
+        }
+        return ok("wesh_identity")
+            .put("noise_public_key", mesh(context).getStaticNoisePublicKey()?.toHex())
+            .put("npub", npub)
+    }
+
+    /** Enrolls a QR contact with an npub, as a verified QR scan would (debug builds only). */
+    private suspend fun weshSeedContact(context: Context, noiseKey: String, nickname: String, npub: String): JSONObject {
+        val contacts = com.bitchat.android.services.WeshContactStore.get(context)
+        val owned = com.bitchat.android.services.WeshQrIdentity.ownedNpubs(context)
+        return if (WeshDebugContactSeed.seed(contacts, owned, noiseKey, nickname, npub)) {
+            ok("wesh_seed_contact").put("conversation_id",
+                contacts.contacts.value.first { it.noiseHex == noiseKey.lowercase() }.conversationID)
+        } else err("wesh_seed_contact", "refused by the enrollment checks")
     }
 
     private fun setNickname(context: Context, name: String): JSONObject {
