@@ -337,6 +337,49 @@ class NostrRelayStateTest {
         assertEquals(NostrRelayManager.WESH_PINNED_RELAYS.size, attempts.sentEvents().size)
     }
 
+    @Test
+    fun `a send launched before an off and on cycle cannot publish the dropped event`() = runTest {
+        val held = mutableListOf<Runnable>()
+        val manual = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) { held += block }
+        }
+        fun drain(except: Runnable? = null) {
+            while (true) {
+                val next = held.firstOrNull { it !== except } ?: return
+                held.remove(next)
+                next.run()
+            }
+        }
+        val (manager, attempts) = fixture(dispatcher = manual)
+        manager.connect()
+        drain()
+        attempts.forEach(Attempt::open)
+
+        manager.sendEvent(event("delayed-across-off"))
+        val delayedSend = held.single()
+        manager.disconnect()
+        manager.connect()
+        drain(except = delayedSend)
+        attempts.drop(NostrRelayManager.WESH_PINNED_RELAYS.size).forEach(Attempt::open)
+        drain()
+
+        assertEquals(emptyList<String>(), attempts.sentEvents())
+    }
+
+    @Test
+    fun `a socket rejected after off is cancelled, not closed gracefully`() = runTest {
+        lateinit var manager: NostrRelayManager
+        val fixture = fixture {
+            WeshNetworkPolicy.gate = WeshNetworkGate { false }
+            manager.disconnect()
+        }
+        manager = fixture.first
+        manager.connect()
+        runCurrent()
+
+        assertTrue(fixture.second.single().socket.cancelled)
+    }
+
     private fun TestScope.fixture(
         dispatcher: CoroutineDispatcher = UnconfinedTestDispatcher(testScheduler),
         onCreate: (Attempt) -> Unit = {}

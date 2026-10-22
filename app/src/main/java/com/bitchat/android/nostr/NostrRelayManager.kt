@@ -216,9 +216,8 @@ class NostrRelayManager internal constructor(
 
     /**
      * Internet off: disconnect invalidates attempts before tearing sockets down, so late callbacks
-     * are harmless. Queued events are dropped, never flushed at the next on: the router still holds
-     * the message and decides how to resend it. Sockets are cancelled, not closed: a graceful close
-     * would first write the frames OkHttp still holds.
+     * are harmless. Queued events are dropped, never flushed at the next on. Sockets are cancelled,
+     * not closed: a graceful close would first write the frames OkHttp still holds.
      */
     fun disconnect() {
         val sockets = synchronized(lifecycleLock) {
@@ -274,7 +273,7 @@ class NostrRelayManager internal constructor(
             targetRelays.forEach { relayUrl ->
                 val webSocket = connections[relayUrl]
                 if (webSocket != null) {
-                    if (sendToRelay(event, webSocket, relayUrl)) {
+                    if (sendToRelay(event, webSocket, relayUrl, queueId)) {
                         messageQueue.markDelivered(queueId, relayUrl)
                     }
                 }
@@ -641,7 +640,7 @@ class NostrRelayManager internal constructor(
                     true
                 }
             }
-            if (!accepted) webSocket.close(1000, "Stale connection")
+            if (!accepted) webSocket.cancel()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create WebSocket connection")
             synchronized(lifecycleLock) {
@@ -653,12 +652,15 @@ class NostrRelayManager internal constructor(
         }
     }
 
+    /** [queueId] set: send only while that delivery is still queued, so an off that dropped it wins. */
     private fun sendToRelay(
         event: NostrEvent,
         webSocket: WebSocket,
-        relayUrl: String
+        relayUrl: String,
+        queueId: Long? = null
     ): Boolean = synchronized(lifecycleLock) {
         if (!isNetworkActionAllowed() || connections[relayUrl] !== webSocket) return false
+        if (queueId != null && !messageQueue.isPending(queueId, relayUrl)) return false
         try {
             val request = NostrRequest.Event(event)
             val message = gson.toJson(request, NostrRequest::class.java)
@@ -909,7 +911,7 @@ class NostrRelayManager internal constructor(
                     true
                 }
             }
-            if (!accepted) webSocket.close(1000, "Stale connection")
+            if (!accepted) webSocket.cancel()
         }
 
         override fun onMessage(webSocket: WebSocket, text: String): Unit = synchronized(lifecycleLock) {
