@@ -847,6 +847,25 @@ class WeshInternetRouteTest {
         assertEquals(0, kotlinx.coroutines.runBlocking { router.restoreWeshOutbox() })
     }
 
+    @Test fun `two copies of one waiting message merge into the stronger retry state`() {
+        val wrap = NostrEvent(id = "w", pubkey = "p", createdAt = 1, kind = 1059, tags = emptyList(), content = "c", sig = "s")
+        val worked = MessageRouter.QueuedMessage("salut", "Bob", "m-1", enqueuedAtMs = 1_000, internetAttempts = 3,
+            internetRetryAtMs = 50_000, giftWrap = wrap, publications = 3, lastPublishedAtMs = 40_000)
+        val restored = MessageRouter.QueuedMessage("salut", "Bob", "m-1", enqueuedAtMs = 1_000)
+        for (merged in listOf(MessageRouter.strongerRetryState(worked, restored), MessageRouter.strongerRetryState(restored, worked))) {
+            assertEquals(3, merged.internetAttempts)
+            assertEquals(3, merged.publications)
+            assertEquals(50_000L, merged.internetRetryAtMs)
+            assertEquals(40_000L, merged.lastPublishedAtMs)
+            assertEquals(wrap, merged.giftWrap)
+        }
+        // A later attempt that dropped a rejected wrap wins over an older cached one.
+        val rejected = worked.copy(publications = 4, giftWrap = null)
+        assertEquals(null, MessageRouter.strongerRetryState(worked, rejected).giftWrap)
+        // Bluetooth stays allowed unless both copies are rule 4 copies.
+        assertFalse(MessageRouter.strongerRetryState(worked.copy(afterBluetoothWrite = true), restored).afterBluetoothWrite)
+    }
+
     @Test fun `a restored copy racing a requeue keeps the backoff and the publication count`() = withPersistedRouter { router ->
         AppStateStore.updatePrivateMessageStatus(bobConversation, "p-new", DeliveryStatus.Sent)
         var now = System.currentTimeMillis()
@@ -857,7 +876,6 @@ class WeshInternetRouteTest {
         synchronized(router) {
             router.sendPrivate("salut", bobConversation, "Bob", "p-old")
             waitFor { alice.link.published.size == 1 }
-            Thread.sleep(100)
             assertEquals(0, kotlinx.coroutines.runBlocking { router.restoreWeshOutbox() })
         }
         router.settle()

@@ -32,7 +32,7 @@ class MessageRouter internal constructor(
         DROPPED
     }
 
-    private data class QueuedMessage(
+    internal data class QueuedMessage(
         val content: String,
         val nickname: String,
         val messageID: String,
@@ -91,6 +91,23 @@ class MessageRouter internal constructor(
             instance.nostr.senderPeerID = mesh.myPeerID
             instance.startOutboxScheduler()
             return instance
+        }
+
+        /** Two copies of one waiting message: one copy keeping the stronger retry state of both. */
+        internal fun strongerRetryState(a: QueuedMessage, b: QueuedMessage): QueuedMessage {
+            val latest = if (b.publications > a.publications) b else a
+            return latest.copy(
+                enqueuedAtMs = minOf(a.enqueuedAtMs, b.enqueuedAtMs),
+                internetAttempts = maxOf(a.internetAttempts, b.internetAttempts),
+                internetRetryAtMs = maxOf(a.internetRetryAtMs, b.internetRetryAtMs),
+                // The copy that published last decides (it may have dropped a rejected wrap).
+                giftWrap = if (a.publications != b.publications) latest.giftWrap else a.giftWrap ?: b.giftWrap,
+                notBeforeMs = maxOf(a.notBeforeMs, b.notBeforeMs),
+                publications = maxOf(a.publications, b.publications),
+                lastPublishedAtMs = maxOf(a.lastPublishedAtMs, b.lastPublishedAtMs),
+                scheduledRetryAtMs = listOfNotNull(a.scheduledRetryAtMs, b.scheduledRetryAtMs).maxOrNull(),
+                afterBluetoothWrite = a.afterBluetoothWrite && b.afterBluetoothWrite
+            )
         }
 
         internal fun resetForTesting() {
@@ -522,7 +539,7 @@ class MessageRouter internal constructor(
         val queue = outbox[conversationID]
         val index = queue?.indexOfFirst { it.messageID == entry.messageID } ?: -1
         if (queue != null && index >= 0) {
-            queue[index] = strongerRetryState(queue[index], entry)
+            queue[index] = MessageRouter.strongerRetryState(queue[index], entry)
             return true
         }
         enqueue(conversationID, entry)
@@ -534,21 +551,6 @@ class MessageRouter internal constructor(
         return true
     }
 
-    private fun strongerRetryState(a: QueuedMessage, b: QueuedMessage): QueuedMessage {
-        val latest = if (b.publications > a.publications) b else a
-        return latest.copy(
-            enqueuedAtMs = minOf(a.enqueuedAtMs, b.enqueuedAtMs),
-            internetAttempts = maxOf(a.internetAttempts, b.internetAttempts),
-            internetRetryAtMs = maxOf(a.internetRetryAtMs, b.internetRetryAtMs),
-            // The copy that published last decides (it may have dropped a rejected wrap).
-            giftWrap = if (a.publications != b.publications) latest.giftWrap else a.giftWrap ?: b.giftWrap,
-            notBeforeMs = maxOf(a.notBeforeMs, b.notBeforeMs),
-            publications = maxOf(a.publications, b.publications),
-            lastPublishedAtMs = maxOf(a.lastPublishedAtMs, b.lastPublishedAtMs),
-            scheduledRetryAtMs = listOfNotNull(a.scheduledRetryAtMs, b.scheduledRetryAtMs).maxOrNull(),
-            afterBluetoothWrite = a.afterBluetoothWrite && b.afterBluetoothWrite
-        )
-    }
 
     @Synchronized private fun dequeueWesh(conversationID: String, messageID: String): QueuedMessage? {
         val queue = outbox[conversationID] ?: return null
