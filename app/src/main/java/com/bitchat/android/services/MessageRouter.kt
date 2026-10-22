@@ -136,6 +136,7 @@ class MessageRouter internal constructor(
             retryState.clear()
             weshInFlight.clear()
             weshAnnounced.clear()
+            weshCancelled.clear()
         }
         Log.d(TAG, "Cleared all MessageRouter outbox messages and retry state")
     }
@@ -246,8 +247,13 @@ class MessageRouter internal constructor(
     /** Under the router monitor: never after a panic clear, never for a removed or blocked contact. */
     @Synchronized private fun requeueWesh(entry: QueuedMessage, conversationID: String, epoch: Long, cancelled: Long) {
         if (epoch != weshEpoch.get()) return
-        // Deleted, blocked or removed since this attempt started: nothing more leaves.
-        if ((weshCancelled[conversationID] ?: 0L) != cancelled) return
+        // Deleted, blocked or removed since this attempt started: nothing more leaves, and the
+        // message ends « Échec » (a no-op once it is deleted).
+        if ((weshCancelled[conversationID] ?: 0L) != cancelled) {
+            AppStateStore.updatePrivateMessageStatus(entry.messageID,
+                com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
+            return
+        }
         // A retry took over meanwhile (in flight again, or queued): one copy only.
         if (entry.messageID in weshInFlight || outbox[conversationID].orEmpty().any { it.messageID == entry.messageID }) return
         if (WeshPrivateSender(WeshContactStore.get(context)).enrolled(conversationID)) {

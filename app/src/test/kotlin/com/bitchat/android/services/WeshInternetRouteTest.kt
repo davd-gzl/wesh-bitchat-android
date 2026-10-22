@@ -393,6 +393,9 @@ class WeshInternetRouteTest {
             val hold = kotlinx.coroutines.CompletableDeferred<Unit>()
             alice.link.hold = hold
             alice.link.answer = RelayPublishOutcome.UNCONFIRMED
+            AppStateStore.addPrivateMessage(bobConversation, BitchatMessage(id = "del-1", sender = "me", content = "salut",
+                timestamp = java.util.Date(), isPrivate = true, recipientNickname = "Bob",
+                senderPeerID = alice.peerID, deliveryStatus = DeliveryStatus.Sending))
             assertEquals(MessageRouter.RouteResult.NOSTR, router.sendPrivate("salut", bobConversation, "Bob", "del-1"))
             waitFor { alice.link.published.size == 1 }
             router.cancelWeshConversation(bobConversation)
@@ -403,6 +406,9 @@ class WeshInternetRouteTest {
             router.tickOutbox(now)
             Thread.sleep(200)
             assertEquals(1, alice.link.published.size)
+            // Never a false « En attente »: the cancelled attempt ends « Échec ».
+            assertTrue(AppStateStore.privateMessages.value.values.flatten().single { it.id == "del-1" }.deliveryStatus
+                is DeliveryStatus.Failed)
         } finally {
             WeshContactStore.resetForTesting()
             MessageRouter.disableSchedulerForTesting = false
