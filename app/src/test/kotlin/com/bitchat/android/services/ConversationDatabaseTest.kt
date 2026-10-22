@@ -440,16 +440,31 @@ class ConversationDatabaseTest {
         }
     }
 
-    /** Rebuilds private_messages without the v5 column and stamps the file as version 4. */
+    /**
+     * Rebuilds private_messages with the exact version 5 DDL minus the transport column (same
+     * constraints, collation, foreign key and indexes) and stamps the file as version 4.
+     */
     private fun downgradeToVersionFour() {
         context.openOrCreateDatabase(databaseName, Context.MODE_PRIVATE, null).use { db ->
+            fun schema(type: String) = db.rawQuery(
+                "SELECT sql FROM sqlite_master WHERE type = ? AND tbl_name = 'private_messages' AND sql IS NOT NULL",
+                arrayOf(type)
+            ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+            val table = schema("table").single()
+            val indexes = schema("index")
+            val columnLine = Regex(",\\s*transport INTEGER NOT NULL DEFAULT 0")
+            assertTrue(columnLine.containsMatchIn(table))
+            val versionFour = table.replace(columnLine, "").replaceFirst("private_messages", "private_messages_v4")
             val columns = db.rawQuery("PRAGMA table_info(private_messages)", null).use { cursor ->
                 buildList { while (cursor.moveToNext()) add(cursor.getString(1)) }
             }.filterNot { it == "transport" }
             assertEquals(25, columns.size)
-            db.execSQL("CREATE TABLE private_messages_v4 AS SELECT ${columns.joinToString(",")} FROM private_messages")
+            db.execSQL(versionFour)
+            db.execSQL("INSERT INTO private_messages_v4 (${columns.joinToString(",")}) " +
+                "SELECT ${columns.joinToString(",")} FROM private_messages")
             db.execSQL("DROP TABLE private_messages")
             db.execSQL("ALTER TABLE private_messages_v4 RENAME TO private_messages")
+            indexes.forEach(db::execSQL)
             db.execSQL("PRAGMA user_version = 4")
         }
     }
