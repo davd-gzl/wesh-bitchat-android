@@ -847,6 +847,30 @@ class WeshInternetRouteTest {
         assertEquals(0, kotlinx.coroutines.runBlocking { router.restoreWeshOutbox() })
     }
 
+    @Test fun `a restored copy racing a requeue keeps the backoff and the publication count`() = withPersistedRouter { router ->
+        AppStateStore.updatePrivateMessageStatus(bobConversation, "p-new", DeliveryStatus.Sent)
+        var now = System.currentTimeMillis()
+        router.clock = { now }
+        alice.link.answer = RelayPublishOutcome.UNCONFIRMED
+        // Holding the router monitor parks the attempt between leaving the in-flight set and its
+        // requeue: the relaunch restore lands exactly there with a fresh copy.
+        synchronized(router) {
+            router.sendPrivate("salut", bobConversation, "Bob", "p-old")
+            waitFor { alice.link.published.size == 1 && router.weshIdleForTesting }
+            assertEquals(1, kotlinx.coroutines.runBlocking { router.restoreWeshOutbox() })
+        }
+        router.settle()
+        Thread.sleep(200)
+        // The 30 s step of the first failed publication still holds.
+        router.tickOutbox(now)
+        router.settle()
+        Thread.sleep(100)
+        assertEquals(1, alice.link.published.size)
+        now += 30_000
+        router.tickOutbox(now)
+        waitFor { alice.link.published.size == 2 }
+    }
+
     @Test fun `a conversation deleted while the relaunch restore reads the store gets nothing queued`() = withPersistedRouter { router ->
         AppStateStore.releasePrivateConversationHistory(bobConversation)
         kotlinx.coroutines.runBlocking { AppStateStore.awaitConversationPersistence() }

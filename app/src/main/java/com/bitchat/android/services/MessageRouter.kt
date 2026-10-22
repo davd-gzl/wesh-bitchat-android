@@ -370,8 +370,8 @@ class MessageRouter internal constructor(
                 com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
             return
         }
-        // A retry took over meanwhile (in flight again, or queued): one copy only.
-        if (entry.messageID in weshInFlight || outbox[conversationID].orEmpty().any { it.messageID == entry.messageID }) return
+        // A retry took over meanwhile and is in flight: one copy only. A queued copy is merged on enqueue.
+        if (entry.messageID in weshInFlight) return
         if (WeshPrivateSender(WeshContactStore.get(context)).enrolled(conversationID)) {
             enqueueWesh(conversationID, entry, epoch, cancelled)
         } else {
@@ -500,8 +500,14 @@ class MessageRouter internal constructor(
         if (epoch != weshEpoch.get()) return false
         // Deleted or blocked since the send began: nothing is kept.
         if (cancelled != null && (weshCancelled[conversationID] ?: 0L) != cancelled) return false
-        // Already waiting (a restore racing a requeue): one copy only.
-        if (outbox[conversationID].orEmpty().any { it.messageID == entry.messageID }) return true
+        // Already waiting (a retry, or a relaunch restore racing a requeue): one copy, which keeps
+        // the stronger retry state of both, so neither the backoff nor the publication cap resets.
+        val queue = outbox[conversationID]
+        val index = queue?.indexOfFirst { it.messageID == entry.messageID } ?: -1
+        if (queue != null && index >= 0) {
+            queue[index] = strongerRetryState(queue[index], entry)
+            return true
+        }
         enqueue(conversationID, entry)
         // clearAll bumps the epoch before clearing: a clear that raced this enqueue removes it here.
         if (epoch != weshEpoch.get()) {
@@ -509,6 +515,21 @@ class MessageRouter internal constructor(
             return false
         }
         return true
+    }
+
+    private fun strongerRetryState(a: QueuedMessage, b: QueuedMessage): QueuedMessage {
+        val latest = if (b.publications > a.publications) b else a
+        return latest.copy(
+            enqueuedAtMs = minOf(a.enqueuedAtMs, b.enqueuedAtMs),
+            internetAttempts = maxOf(a.internetAttempts, b.internetAttempts),
+            internetRetryAtMs = maxOf(a.internetRetryAtMs, b.internetRetryAtMs),
+            giftWrap = latest.giftWrap ?: a.giftWrap ?: b.giftWrap,
+            notBeforeMs = maxOf(a.notBeforeMs, b.notBeforeMs),
+            publications = maxOf(a.publications, b.publications),
+            lastPublishedAtMs = maxOf(a.lastPublishedAtMs, b.lastPublishedAtMs),
+            scheduledRetryAtMs = listOfNotNull(a.scheduledRetryAtMs, b.scheduledRetryAtMs).maxOrNull(),
+            afterBluetoothWrite = a.afterBluetoothWrite && b.afterBluetoothWrite
+        )
     }
 
     @Synchronized private fun dequeueWesh(conversationID: String, messageID: String): QueuedMessage? {
