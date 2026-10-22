@@ -40,7 +40,6 @@ class ChatViewModelNicknameGenerationTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val announcements = AtomicInteger()
     private val panicInProgress = MutableStateFlow(false)
-    private var policyCommitSucceeds = true
 
     @Before fun setUp() {
         context = ApplicationProvider.getApplicationContext()
@@ -49,14 +48,11 @@ class ChatViewModelNicknameGenerationTest {
         plain = context.getSharedPreferences(plainName, Context.MODE_PRIVATE)
         assertTrue(plain.edit().putString("nickname", ORIGINAL).commit())
         preferences = WeshPreferences(context.getSharedPreferences(policyName, Context.MODE_PRIVATE),
-            Dispatchers.IO, commitEditor = { editor ->
-                if (policyCommitSucceeds) editor.commit() else { editor.apply(); false }
-            }, meetingBackendFactory = {
+            Dispatchers.IO, meetingBackendFactory = {
                 // This nickname fixture owns no meeting-note data or live storage.
                 object : WeshMeetingNoteBackend {
                     override suspend fun load(): String? = null
                     override suspend fun write(text: String) = error("Unexpected meeting-note write in nickname fixture")
-                    override suspend fun erase() = Unit
                 }
             })
         val dataContext = mock<Context>()
@@ -94,37 +90,9 @@ class ChatViewModelNicknameGenerationTest {
         assertEquals(before, snapshot())
     }
 
-    @Test fun `profile callback captured before panic cannot write after verified resume`() = runBlocking {
-        val save = profileSave("Synthetic stale profile")
-        val oldEpoch = preferences.resetEpoch.value
+    @Test fun `fenced policy refuses newly captured profile save even after progress indicator clears`() = runBlocking {
         preferences.fenceForPanic()
         installResetNickname()
-        assertTrue(preferences.clearForPanic())
-        preferences.resumeAfterVerifiedPanic()
-        assertNotEquals(oldEpoch, preferences.resetEpoch.value)
-        val before = snapshot()
-
-        save()
-
-        assertEquals(before, snapshot())
-    }
-
-    @Test fun `fresh profile callback after verified resume changes nickname and announces once`() = runBlocking {
-        preferences.fenceForPanic()
-        installResetNickname()
-        assertTrue(preferences.clearForPanic())
-        preferences.resumeAfterVerifiedPanic()
-
-        profileSave(FRESH)()
-
-        assertEquals(NicknameEffects(FRESH, FRESH, FRESH, 1), snapshot())
-    }
-
-    @Test fun `failed recovery refuses newly captured profile save even after progress indicator clears`() = runBlocking {
-        preferences.fenceForPanic()
-        installResetNickname()
-        policyCommitSucceeds = false
-        assertFalse(preferences.clearForPanic())
         panicInProgress.value = false
         val save = profileSave("Synthetic save during failed recovery")
         val before = snapshot()
@@ -134,7 +102,7 @@ class ChatViewModelNicknameGenerationTest {
         assertEquals(before, snapshot())
     }
 
-    @Test fun `whole completion admission rejects stale effects and permits fresh unchanged nickname completion`() = runBlocking {
+    @Test fun `whole completion admission rejects stale effects while fenced`() = runBlocking {
         val epoch = preferences.resetEpoch.value
         var completions = 0
         val completion = {
@@ -148,18 +116,8 @@ class ChatViewModelNicknameGenerationTest {
         assertFalse(completion())
         assertFalse(preferences.welcomed)
         assertEquals(0, completions)
-        assertTrue(preferences.clearForPanic())
-        preferences.resumeAfterVerifiedPanic()
-        assertFalse(completion())
-        assertFalse(preferences.welcomed)
+        assertFalse(preferences.withCurrentEpoch(preferences.resetEpoch.value) { completions++ })
         assertEquals(0, completions)
-
-        assertTrue(preferences.withCurrentEpoch(preferences.resetEpoch.value) {
-            preferences.welcomed = true
-            completions++
-        })
-        assertTrue(preferences.welcomed)
-        assertEquals(1, completions)
         assertEquals(0, announcements.get())
     }
 
@@ -171,9 +129,6 @@ class ChatViewModelNicknameGenerationTest {
         } catch (actual: IllegalStateException) {
             assertSame(failure, actual)
         }
-        preferences.fenceForPanic()
-        assertTrue(preferences.clearForPanic())
-        preferences.resumeAfterVerifiedPanic()
         profileSave(FRESH)()
         assertEquals(NicknameEffects(FRESH, FRESH, FRESH, 1), snapshot())
     }
@@ -187,8 +142,8 @@ class ChatViewModelNicknameGenerationTest {
         viewModel.setNickname(nickname, expectedEpoch)
     }
 
-    private suspend fun installResetNickname() {
-        assertTrue(savePanicNickname(dataManager, RESET))
+    private fun installResetNickname() {
+        dataManager.saveNickname(RESET)
         state.setNickname(RESET)
     }
 

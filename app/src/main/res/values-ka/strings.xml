@@ -72,19 +72,6 @@
     <string name="about_system">სისტემა</string>
     <string name="about_light">ღია</string>
     <string name="about_dark">მუქი</string>
-    <string name="about_pow">Proof of Work</string>
-    <string name="about_pow_off">PoW გამორთულია</string>
-    <string name="about_pow_on">PoW ჩართულია</string>
-    <string name="about_pow_tip">დაამატეთ Proof of Work geohash შეტყობინებებს სპამის შესამცირებლად.</string>
-    <string name="about_pow_difficulty">სირთულე: %1$d ბიტი (~%2$s)</string>
-    <string name="about_pow_difficulty_attempts">სირთულე %1$d მოითხოვს ~%2$s ჰეშის მცდელობას</string>
-    <string name="about_pow_desc_none">Proof of Work საჭირო არ არის</string>
-    <string name="about_pow_desc_very_low">ძალიან დაბალი – მინიმალური სპამის დაცვა</string>
-    <string name="about_pow_desc_low">დაბალი – საბაზისო დაცვა</string>
-    <string name="about_pow_desc_medium">საშუალო – კარგი დაცვა</string>
-    <string name="about_pow_desc_high">მაღალი – ძლიერი დაცვა</string>
-    <string name="about_pow_desc_very_high">ძალიან მაღალი – შეიძლება გამოიწვიოს დაყოვნება</string>
-    <string name="about_pow_desc_extreme">ექსტრემალური – საჭიროებს დიდ გამოთვლით რესურსს</string>
     <string name="about_network">ქსელი</string>
     <string name="about_tor_off">Tor გამორთულია</string>
     <string name="about_tor_on">Tor ჩართულია</string>
@@ -174,9 +161,7 @@
     <!-- ონბორდინგის ეკრანები -->
     <string name="location_services_required">მდებარეობის სერვისებია საჭირო</string>
     <string name="privacy_first">კონფიდენციალობა პირველია</string>
-    <string name="location_explanation">Wesh არ აკონტროლებს თქვენს მდებარეობას.\n\nმდებარეობის სერვისები საჭიროა Bluetooth სკანირებისა და geohash ჩათის ფუნქციისთვის.</string>
     <string name="location_needs_for">Wesh-ს სჭირდება მდებარეობის სერვისები შემდეგისთვის:</string>
-    <string name="location_needs_bullets">• Bluetooth მოწყობილობების სკანირება\n• mesh ქსელში ახლომდებარე მომხმარებლების აღმოჩენა\n• geohash ჩათის ფუნქცია\n• არც ტრეკინგი, არც მდებარეობის შეგროვება</string>
     <string name="open_location_settings">მდებარეობის პარამეტრების გახსნა</string>
     <string name="check_again">თავიდან შემოწმება</string>
     <string name="location_services_unavailable">მდებარეობის სერვისები მიუწვდომელია</string>
@@ -209,7 +194,6 @@
     <string name="location_tracking_warning">Wesh არ აკონტროლებს თქვენს მდებარეობას</string>
     <string name="nobody_around">არავინ არის ახლოს…</string>
     <string name="you_suffix"> (თქვენ)</string>
-    <string name="pan_zoom_instruction">პანორამირება/ზუმი geohash-ის ასარჩევად</string>
     <string name="select">არჩევა</string>
     <string name="type_a_message_placeholder">შეიყვანეთ შეტყობინება…</string>
     <string name="mention">ხსენება</string>

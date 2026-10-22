@@ -301,7 +301,7 @@ class NostrTransport(
     
     // MARK: - ACK helpers signed by an explicit identity (no embedded recipient peer ID)
     
-    fun sendDeliveryAckGeohash(
+    fun sendDeliveryAckToNostrKey(
         messageID: String,
         toRecipientHex: String,
         fromIdentity: NostrIdentity
@@ -329,12 +329,12 @@ class NostrTransport(
                 }
                 
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to send geohash delivery ack: ${e.message}")
+                Log.e(TAG, "Failed to send delivery ack to Nostr key: ${e.message}")
             }
         }
     }
     
-    fun sendReadReceiptGeohash(
+    fun sendReadReceiptToNostrKey(
         messageID: String,
         toRecipientHex: String,
         fromIdentity: NostrIdentity
@@ -362,7 +362,7 @@ class NostrTransport(
                 }
                 
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to send geohash read receipt: ${e.message}")
+                Log.e(TAG, "Failed to send read receipt to Nostr key: ${e.message}")
             }
         }
     }

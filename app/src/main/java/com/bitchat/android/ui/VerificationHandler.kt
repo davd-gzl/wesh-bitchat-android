@@ -7,7 +7,7 @@ import com.bitchat.android.identity.SecureIdentityStateManager
 import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.noise.NoiseSession
-import com.bitchat.android.nostr.GeohashAliasRegistry
+import com.bitchat.android.nostr.NostrAliasRegistry
 import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.services.VerificationService
 import com.bitchat.android.ui.pave.RemoteNameRule
@@ -265,7 +265,7 @@ class VerificationHandler(
                     favorite?.peerNoisePublicKey?.let { fingerprintFromNoiseBytes(it) }
                 }
                 peerID.startsWith("nostr_") -> {
-                    val pubHex = GeohashAliasRegistry.get(peerID)
+                    val pubHex = NostrAliasRegistry.get(peerID)
                     val noiseKey = pubHex?.let {
                         FavoritesPersistenceService.shared.findNoiseKey(it)
                     }
@@ -276,7 +276,7 @@ class VerificationHandler(
                 }
                 peerID.startsWith("nostr:") -> {
                     val prefix = peerID.removePrefix("nostr:").lowercase()
-                    val pubHex = GeohashAliasRegistry
+                    val pubHex = NostrAliasRegistry
                         .snapshot()
                         .values
                         .firstOrNull { it.lowercase().startsWith(prefix) }

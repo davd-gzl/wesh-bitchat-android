@@ -22,8 +22,6 @@ internal interface WeshDraftBackend {
     fun load(owner: String): Map<String, String>
     fun write(owner: String, drafts: Map<String, String>)
     fun markPanicPending()
-    fun wipe()
-    fun finishVerifiedWipe()
 }
 
 internal class EncryptedWeshDraftBackend(
@@ -131,28 +129,6 @@ internal class EncryptedWeshDraftBackend(
     override fun markPanicPending() {
         commitMarker { writeAtomically(marker, byteArrayOf(1)) }
         check(marker.openRead().use { it.read() == 1 && it.read() == -1 })
-    }
-
-    override fun wipe() {
-        // The marker must be committed before deleting either key or blob. It survives failure.
-        markPanicPending()
-        erase()
-    }
-
-    override fun finishVerifiedWipe() {
-        check(exists(marker))
-        erase()
-        marker.delete()
-        check(!exists(marker))
-    }
-
-    private fun erase() {
-        cipher.destroyKey()
-        data.delete()
-        check(!exists(data))
-        initializedOwner = null
-        baseline = null
-        candidate = null
     }
 
     private fun writeAtomically(file: AtomicFile, bytes: ByteArray) {

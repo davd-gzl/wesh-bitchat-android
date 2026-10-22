@@ -54,10 +54,11 @@ class WeshManifestContractTest {
     }
 
     @Test
-    fun `wifi aware stays off under the Wesh policy and declares no manifest surface`() {
-        // The Wi-Fi permissions above are removed because nothing can switch Wi-Fi Aware on in Wesh.
-        val application = File("src/main/java/com/bitchat/android/BitchatApplication.kt").readText()
-        assertTrue(Regex("""val enabled = !BuildConfig\.WESH_POLICY &&\s+com\.bitchat\.android\.ui\.debug\.DebugPreferenceManager\.getWifiAwareEnabled""").containsMatchIn(application))
+    fun `wifi aware is not in the build and declares no manifest surface`() {
+        // The Wi-Fi permissions above stay removed: the transport and its fixed passphrase are gone.
+        assertFalse(File("src/main/java/com/bitchat/android/wifi-aware").exists())
+        val sources = File("src/main/java").walkTopDown().filter { it.extension == "kt" || it.extension == "java" }
+        assertTrue(sources.none { it.readText().let { text -> "WifiAwareManager" in text || "bitchat_secret" in text } })
         assertFalse(manifest.contains("android.hardware.wifi.aware"))
         assertFalse(manifest.contains("wifiaware"))
         // The Internet mode watches the default network: ACCESS_NETWORK_STATE stays, once, not removed.

@@ -81,7 +81,7 @@ class NostrDirectMessageHandler(
                 val noisePayload = NoisePayload.decode(packet.payload) ?: return@launch
                 val messageTimestamp = Date(rumorTimestamp * 1000L)
                 val convKey = "nostr_${senderPubkey.take(16)}"
-                com.bitchat.android.nostr.GeohashAliasRegistry.put(convKey, senderPubkey)
+                com.bitchat.android.nostr.NostrAliasRegistry.put(convKey, senderPubkey)
 
                 // Account DMs carry no nickname; the conversation list resolves the contact name.
                 val senderNickname = "anon"
@@ -122,7 +122,7 @@ class NostrDirectMessageHandler(
                     if (!admitted) return
                     if (!seenStore.hasDelivered(pm.messageID)) {
                         val nostrTransport = NostrTransport.getInstance(application)
-                        nostrTransport.sendDeliveryAckGeohash(pm.messageID, senderPubkey, recipientIdentity)
+                        nostrTransport.sendDeliveryAckToNostrKey(pm.messageID, senderPubkey, recipientIdentity)
                         seenStore.markDelivered(pm.messageID, receiptToken)
                     }
                     return
@@ -155,13 +155,13 @@ class NostrDirectMessageHandler(
 
                 if (!seenStore.hasDelivered(pm.messageID)) {
                     val nostrTransport = NostrTransport.getInstance(application)
-                    nostrTransport.sendDeliveryAckGeohash(pm.messageID, senderPubkey, recipientIdentity)
+                    nostrTransport.sendDeliveryAckToNostrKey(pm.messageID, senderPubkey, recipientIdentity)
                     seenStore.markDelivered(pm.messageID, receiptToken)
                 }
 
                 if (isViewing && !suppressUnread) {
                     val nostrTransport = NostrTransport.getInstance(application)
-                    nostrTransport.sendReadReceiptGeohash(pm.messageID, senderPubkey, recipientIdentity)
+                    nostrTransport.sendReadReceiptToNostrKey(pm.messageID, senderPubkey, recipientIdentity)
                     seenStore.markReadLocally(pm.messageID, receiptToken)
                     seenStore.markReadReceiptSent(pm.messageID, receiptToken)
                 }

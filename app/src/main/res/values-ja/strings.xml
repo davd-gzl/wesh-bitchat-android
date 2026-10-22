@@ -72,19 +72,6 @@
     <string name="about_system">システム</string>
     <string name="about_light">ライト</string>
     <string name="about_dark">ダーク</string>
-    <string name="about_pow">Proof of Work</string>
-    <string name="about_pow_off">PoW オフ</string>
-    <string name="about_pow_on">PoW オン</string>
-    <string name="about_pow_tip">スパム対策として Geohash メッセージに Proof of Work を追加します。</string>
-    <string name="about_pow_difficulty">難易度: %1$d ビット (~%2$s)</string>
-    <string name="about_pow_difficulty_attempts">難易度 %1$d は約 %2$s 回のハッシュ試行が必要</string>
-    <string name="about_pow_desc_none">Proof of Work は不要</string>
-    <string name="about_pow_desc_very_low">非常に低い – 最小限のスパム対策</string>
-    <string name="about_pow_desc_low">低い – 基本的なスパム対策</string>
-    <string name="about_pow_desc_medium">中 – 良好なスパム対策</string>
-    <string name="about_pow_desc_high">高い – 強力なスパム対策</string>
-    <string name="about_pow_desc_very_high">非常に高い – 遅延が発生する可能性</string>
-    <string name="about_pow_desc_extreme">極めて高い – 相当な計算資源が必要</string>
     <string name="about_network">ネットワーク</string>
     <string name="about_tor_off">Tor オフ</string>
     <string name="about_tor_on">Tor オン</string>
@@ -174,9 +161,7 @@
     <!-- オンボーディング画面 -->
     <string name="location_services_required">位置情報サービスが必要です</string>
     <string name="privacy_first">プライバシー第一</string>
-    <string name="location_explanation">Wesh はあなたの位置情報を追跡しません。\n\n位置情報サービスは、Bluetooth スキャンと geohash チャット機能に必要です。</string>
     <string name="location_needs_for">Wesh が位置情報サービスを必要とする理由:</string>
-    <string name="location_needs_bullets">• Bluetooth デバイスのスキャン\n• メッシュネットワークで近くのユーザーを発見\n• geohash チャット機能\n• 位置情報の追跡や収集は行いません</string>
     <string name="open_location_settings">位置情報の設定を開く</string>
     <string name="check_again">再確認</string>
     <string name="location_services_unavailable">位置情報サービスが利用できません</string>
@@ -209,7 +194,6 @@
     <string name="location_tracking_warning">Wesh はあなたの位置情報を追跡しません</string>
     <string name="nobody_around">誰もいません…</string>
     <string name="you_suffix"> (あなた)</string>
-    <string name="pan_zoom_instruction">パン/ズームして geohash を選択</string>
     <string name="select">選択</string>
     <string name="type_a_message_placeholder">メッセージを入力…</string>
     <string name="mention">メンション</string>

@@ -99,19 +99,6 @@
     <string name="about_system">системний</string>
     <string name="about_light">світлий</string>
     <string name="about_dark">темний</string>
-    <string name="about_pow">підтвердження роботи</string>
-    <string name="about_pow_off">pow вимкнено</string>
-    <string name="about_pow_on">pow увімкнено</string>
-    <string name="about_pow_tip">додає підтвердження роботи до повідомлень геохешу для захисту від спаму.</string>
-    <string name="about_pow_difficulty">складність: %1$d бітів (~%2$s)</string>
-    <string name="about_pow_difficulty_attempts">складність %1$d вимагає ~%2$s спроб хешування</string>
-    <string name="about_pow_desc_none">підтвердження роботи не потрібне</string>
-    <string name="about_pow_desc_very_low">дуже низька - мінімальний захист від спаму</string>
-    <string name="about_pow_desc_low">низька - базовий захист від спаму</string>
-    <string name="about_pow_desc_medium">середня - хороший захист від спаму</string>
-    <string name="about_pow_desc_high">висока - надійний захист від спаму</string>
-    <string name="about_pow_desc_very_high">дуже висока - можливі затримки</string>
-    <string name="about_pow_desc_extreme">екстремальна - потрібні значні обчислення</string>
     <string name="about_network">мережа</string>
     <string name="about_tor_off">tor вимкнено</string>
     <string name="about_tor_on">tor увімкнено</string>
@@ -196,9 +183,7 @@
     <string name="debug_role_client">як клієнт (ми підключаємось)</string>
     <string name="location_services_required">Потрібні служби геолокації</string>
     <string name="privacy_first">Приватність понад усе</string>
-    <string name="location_explanation">Wesh НЕ відстежує вашу локацію.\n\nСлужби геолокації потрібні для сканування Bluetooth та для функції геочатів.</string>
     <string name="location_needs_for">Wesh потребує служб геолокації для:</string>
-    <string name="location_needs_bullets">• Сканування пристроїв Bluetooth\n• Виявлення користувачів поруч у mesh-мережі\n• Функції геочатів\n• Без відстеження чи збору геоданих</string>
     <string name="open_location_settings">Відкрити налаштування геолокації</string>
     <string name="check_again">Перевірити знову</string>
     <string name="location_services_unavailable">Служби геолокації недоступні</string>
@@ -233,7 +218,6 @@
     <string name="location_tracking_warning">Wesh НЕ відстежує вашу локацію</string>
     <string name="nobody_around">нікого немає поруч…</string>
     <string name="you_suffix"> (ви)</string>
-    <string name="pan_zoom_instruction">панорамуйте та масштабуйте, щоб вибрати геохеш</string>
     <string name="select">вибрати</string>
     <string name="type_a_message_placeholder">введіть повідомлення…</string>
     <string name="mention">згадка</string>

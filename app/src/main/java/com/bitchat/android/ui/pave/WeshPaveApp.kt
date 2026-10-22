@@ -247,8 +247,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
     val draft = destination?.let(drafts::get).orEmpty()
     val canSendConversation = if (publicOpen) bluetoothReady else privatePeer != null && revision >= 0 &&
         sessionStates.let { viewModel.weshCanSendPrivate(privatePeer) }
-    val editable = destination != null && draftPersistence != WeshDraftStore.Persistence.WipeRequired &&
-        draftPersistence != WeshDraftStore.Persistence.Wiped
+    val editable = destination != null && draftPersistence != WeshDraftStore.Persistence.WipeRequired
     val persistenceProblem = when (draftPersistence) {
         WeshDraftStore.Persistence.Error -> stringResource(R.string.wesh_pave_fluo_draft_error)
         WeshDraftStore.Persistence.WipeRequired -> stringResource(R.string.wesh_pave_fluo_draft_wipe_required)

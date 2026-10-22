@@ -6,7 +6,6 @@ import android.util.Log
 import com.bitchat.android.identity.SecureIdentityStateManager
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
-import kotlinx.coroutines.CancellationException
 
 /**
  * Persistent store for message IDs we've already acknowledged as delivered, read locally, or
@@ -33,8 +32,6 @@ class SeenMessageStore private constructor(
         private val processReceiptAdmission = SeenReceiptAdmission()
         internal fun captureReceiptToken() = processReceiptAdmission.capture()
         internal fun fenceReceiptAdmissionForPanic() = processReceiptAdmission.fenceForPanic()
-        internal fun resumeReceiptAdmissionAfterVerifiedPanic(token: SeenReceiptAdmission.Token) =
-            processReceiptAdmission.resumeAfterVerifiedPanic(token)
 
         private const val TAG = "SeenMessageStore"
         private const val STORAGE_KEY = "seen_message_store_v1"
@@ -107,33 +104,6 @@ class SeenMessageStore private constructor(
             persist()
         }
     }
-
-    internal fun clearForPanic(expectedPanic: SeenReceiptAdmission.Token): Boolean =
-        synchronized(receiptAdmission.monitor) {
-            if (!receiptAdmission.ownsPanic(expectedPanic)) return@synchronized false
-            receiptAdmission.confirmClear(expectedPanic, false)
-            delivered.clear()
-            locallyRead.clear()
-            readReceiptsSent.clear()
-            val committed = try {
-                secure.clearSecureValuesSynchronously(STORAGE_KEY)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                false
-            }
-            // Always attempt absence readback, including when commit returned false.
-            val absent = try {
-                !secure.hasSecureValue(STORAGE_KEY)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                false
-            }
-            val confirmed = committed && absent
-            receiptAdmission.confirmClear(expectedPanic, confirmed)
-            confirmed
-        }
 
     private fun trim(set: LinkedHashSet<String>) {
         if (set.size <= MAX_IDS) return

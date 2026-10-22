@@ -7,7 +7,6 @@ import android.content.SharedPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -101,7 +100,6 @@ internal class WeshPreferences(
     private val lock = Any()
     private val io = Mutex()
     private var fenced = false
-    private var clearConfirmed = false
     private var meetingRevision = 0L
     private var draftRestored = false
     private var loadAttempt = 0L
@@ -271,7 +269,6 @@ internal class WeshPreferences(
     fun fenceForPanic() {
         synchronized(lock) {
             fenced = true
-            clearConfirmed = false
             _meetingDraft.value = ""
             _savedMeetingNote.value = ""
             draftRestored = false
@@ -280,81 +277,4 @@ internal class WeshPreferences(
             _resetEpoch.value++
         }
     }
-
-    suspend fun clearForPanic(): Boolean {
-        fenceForPanic()
-        val epoch = _resetEpoch.value
-        return withContext(NonCancellable + ioDispatcher) {
-            io.withLock {
-                val erased = try {
-                    val backend = meetingBackend ?: meetingBackendFactory().also { meetingBackend = it }
-                    backend.erase()
-                    true
-                } catch (_: Exception) { false }
-                // Attempt the independent plaintext cleanup even if key/file erasure failed.
-                val preferencesCleared = try {
-                    commitEditor(prefs.edit().clear()) && prefs.all.isEmpty()
-                } catch (_: Exception) { false }
-                synchronized(lock) {
-                    val confirmed = erased && preferencesCleared && fenced && epoch == _resetEpoch.value
-                    clearConfirmed = confirmed
-                    if (confirmed) pendingLegacyRemoval = false
-                    confirmed
-                }
-            }
-        }
-    }
-
-    fun resumeAfterVerifiedPanic() {
-        synchronized(lock) {
-            if (!fenced || !clearConfirmed) return
-            fenced = false
-            clearConfirmed = false
-            _meetingNoteState.value = MeetingNoteState.Unloaded
-            meetingRevision++
-            _resetEpoch.value++
-        }
-    }
-}
-
-/** Preference files of the removed location features, which an older build may have written. */
-internal val LEGACY_FEATURE_PREFERENCES = listOf("geohash_prefs", "geohash_conversation_registry")
-
-/** Deletes every legacy preference file; true only when none is left behind. */
-internal fun deleteLegacyFeaturePreferences(context: Context): Boolean =
-    LEGACY_FEATURE_PREFERENCES
-        .map { name -> runCatching { context.deleteSharedPreferences(name) }.getOrDefault(false) }
-        .all { it }
-
-/** The draft marker must stay pending until every application wipe is confirmed. */
-internal suspend fun resumeAfterWeshPanicWipe(
-    draftsCleared: Boolean,
-    conversationsCleared: Boolean,
-    mediaCleared: Boolean,
-    clearPreferences: suspend () -> Boolean,
-    resume: suspend () -> Boolean,
-    /** Internet off, Tor state deleted and Nostr keys erased. */
-    internetCleared: Boolean = true,
-    /** The removed features' preference files are gone. */
-    legacyStoresCleared: Boolean = true,
-    /** Plain metadata, conversation organization and the fresh nickname were confirmed. */
-    metadataCleared: Boolean = true,
-    /** Seen receipt bookkeeping has completed its panic clear. */
-    seenCleared: Boolean,
-    /** Checked identity and favorites cleanup; never inferred from a fresh key alone. */
-    identityErasureConfirmed: Boolean,
-    /** The previous facade finished its panic-only owner retirement. */
-    meshOwnerRetired: Boolean
-): Boolean {
-    val preferencesCleared = try {
-        clearPreferences()
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (_: Exception) {
-        false
-    }
-    if (!draftsCleared || !conversationsCleared || !mediaCleared || !internetCleared || !legacyStoresCleared ||
-        !metadataCleared || !seenCleared || !identityErasureConfirmed || !preferencesCleared
-    ) return false
-    return resume()
 }

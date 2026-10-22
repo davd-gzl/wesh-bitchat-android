@@ -15,9 +15,7 @@ class WeshRecoveryGateTest {
         gate.requireRecovery()
         assertFalse(gate.allowsTransport(prepared = true))
         assertTrue(gate.recoveryRequired.value)
-        gate.normalPanicCompleted()
         assertFalse(gate.allowsTransport(prepared = false))
-        assertTrue(gate.allowsTransport(prepared = true))
     }
 
     @Test fun `OS accepted recovery does not open the gate or claim completed global panic`() = runTest {

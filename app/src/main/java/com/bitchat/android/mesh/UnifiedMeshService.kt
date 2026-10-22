@@ -5,7 +5,6 @@ import android.util.Log
 import com.bitchat.android.favorites.FavoriteControlMessage
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.noise.NoiseSession
-import com.bitchat.android.wifiaware.WifiAwareController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -18,11 +17,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Feature-facing mesh service that hides local transport selection from the rest of the app.
- *
- * BLE remains the canonical origin for broadcast packets when it is enabled so existing BLE mesh
- * behavior and bridge semantics stay intact. Addressed Noise traffic is routed over whichever
- * local transport already has the peer/session, falling back to a connected transport handshake.
+ * Feature-facing mesh service. Bluetooth LE is Wesh's only local transport; this facade keeps the
+ * delegate wiring, the announcement cadence and the BLE on/off switch out of the rest of the app.
  */
 class UnifiedMeshService(
     private val context: Context,
@@ -48,7 +44,6 @@ class UnifiedMeshService(
 
     fun refreshDelegates() {
         try { bluetooth.delegate = if (delegate != null) this else null } catch (_: Exception) { }
-        try { wifiService()?.delegate = if (delegate != null) this else null } catch (_: Exception) { }
     }
 
     override fun startServices() {
@@ -59,9 +54,6 @@ class UnifiedMeshService(
         } else {
             try { bluetooth.setBleTransportEnabled(false) } catch (_: Exception) { }
         }
-        try { WifiAwareController.startIfPossible() } catch (e: Exception) {
-            Log.w(TAG, "Failed to start Wi-Fi Aware transport: ${e.message}")
-        }
         startAnnouncementScheduler()
         refreshDelegates()
     }
@@ -70,7 +62,6 @@ class UnifiedMeshService(
         announcementJob?.cancel()
         announcementJob = null
         try { bluetooth.stopServices() } catch (_: Exception) { }
-        try { WifiAwareController.stop() } catch (_: Exception) { }
     }
 
     private fun startAnnouncementScheduler() {
@@ -94,10 +85,7 @@ class UnifiedMeshService(
     }
 
     override fun sendMessage(content: String, mentions: List<String>) {
-        when {
-            isBleEnabled() -> bluetooth.sendMessage(content, mentions)
-            else -> wifiService()?.sendMessage(content, mentions)
-        }
+        if (isBleEnabled()) bluetooth.sendMessage(content, mentions)
     }
 
     override fun sendPrivateMessage(
@@ -106,12 +94,8 @@ class UnifiedMeshService(
         recipientNickname: String,
         messageID: String?
     ) {
-        when {
-            isBleReady(recipientPeerID) -> bluetooth.sendPrivateMessage(content, recipientPeerID, recipientNickname, messageID)
-            isWifiReady(recipientPeerID) -> wifiService()?.sendPrivateMessage(content, recipientPeerID, recipientNickname, messageID)
-            isBleConnected(recipientPeerID) || (isBleEnabled() && !isWifiConnected(recipientPeerID)) ->
-                bluetooth.sendPrivateMessage(content, recipientPeerID, recipientNickname, messageID)
-            else -> wifiService()?.sendPrivateMessage(content, recipientPeerID, recipientNickname, messageID)
+        if (isBleConnected(recipientPeerID) || isBleEnabled()) {
+            bluetooth.sendPrivateMessage(content, recipientPeerID, recipientNickname, messageID)
         }
     }
 
@@ -120,10 +104,7 @@ class UnifiedMeshService(
         bluetooth.sendPrivateMessageBound(content, recipientPeerID, expectedKey, messageID, authorized)
 
     override fun sendReadReceipt(messageID: String, recipientPeerID: String, readerNickname: String) {
-        when {
-            isBleReady(recipientPeerID) -> bluetooth.sendReadReceipt(messageID, recipientPeerID, readerNickname)
-            isWifiReady(recipientPeerID) -> wifiService()?.sendReadReceipt(messageID, recipientPeerID, readerNickname)
-        }
+        if (isBleReady(recipientPeerID)) bluetooth.sendReadReceipt(messageID, recipientPeerID, readerNickname)
     }
 
     override fun sendFavoriteNotification(peerID: String, isFavorite: Boolean) {
@@ -140,43 +121,31 @@ class UnifiedMeshService(
     }
 
     override fun sendVerifyChallenge(peerID: String, noiseKeyHex: String, nonceA: ByteArray) {
-        when {
-            isBleReady(peerID) -> bluetooth.sendVerifyChallenge(peerID, noiseKeyHex, nonceA)
-            isWifiReady(peerID) -> wifiService()?.sendVerifyChallenge(peerID, noiseKeyHex, nonceA)
-        }
+        if (isBleReady(peerID)) bluetooth.sendVerifyChallenge(peerID, noiseKeyHex, nonceA)
     }
 
     override fun sendVerifyResponse(peerID: String, noiseKeyHex: String, nonceA: ByteArray) {
-        when {
-            isBleReady(peerID) -> bluetooth.sendVerifyResponse(peerID, noiseKeyHex, nonceA)
-            isWifiReady(peerID) -> wifiService()?.sendVerifyResponse(peerID, noiseKeyHex, nonceA)
-        }
+        if (isBleReady(peerID)) bluetooth.sendVerifyResponse(peerID, noiseKeyHex, nonceA)
     }
 
     override fun sendBroadcastAnnounce() {
         if (isBleEnabled()) {
             try { bluetooth.sendBroadcastAnnounce() } catch (_: Exception) { }
         }
-        try { wifiService()?.sendBroadcastAnnounce() } catch (_: Exception) { }
     }
 
     override fun sendAnnouncementToPeer(peerID: String) {
-        when {
-            isBleConnected(peerID) || (isBleEnabled() && !isWifiConnected(peerID)) -> bluetooth.sendAnnouncementToPeer(peerID)
-            else -> wifiService()?.sendAnnouncementToPeer(peerID)
-        }
+        if (isBleConnected(peerID) || isBleEnabled()) bluetooth.sendAnnouncementToPeer(peerID)
     }
 
     override fun getPeerNicknames(): Map<String, String> {
         val merged = linkedMapOf<String, String>()
-        try { merged.putAll(wifiService()?.getPeerNicknames().orEmpty()) } catch (_: Exception) { }
         try { merged.putAll(bluetooth.getPeerNicknames()) } catch (_: Exception) { }
         return merged
     }
 
     override fun getPeerRSSI(): Map<String, Int> {
         val merged = linkedMapOf<String, Int>()
-        try { merged.putAll(wifiService()?.getPeerRSSI().orEmpty()) } catch (_: Exception) { }
         try { merged.putAll(bluetooth.getPeerRSSI()) } catch (_: Exception) { }
         return merged
     }
@@ -186,47 +155,23 @@ class UnifiedMeshService(
     }
 
     override fun hasEstablishedSession(peerID: String): Boolean {
-        return isBleReady(peerID) || isWifiReady(peerID)
+        return isBleReady(peerID)
     }
 
     override fun getSessionState(peerID: String): NoiseSession.NoiseSessionState {
-        val bleState = try { bluetooth.getSessionState(peerID) } catch (_: Exception) { NoiseSession.NoiseSessionState.Uninitialized }
-        val wifiState = try { wifiService()?.getSessionState(peerID) } catch (_: Exception) { null }
-        return when {
-            bleState is NoiseSession.NoiseSessionState.Established -> bleState
-            wifiState is NoiseSession.NoiseSessionState.Established -> wifiState
-            bleState is NoiseSession.NoiseSessionState.Handshaking -> bleState
-            wifiState is NoiseSession.NoiseSessionState.Handshaking -> wifiState
-            bleState !is NoiseSession.NoiseSessionState.Uninitialized -> bleState
-            wifiState != null -> wifiState
-            else -> bleState
-        }
+        return try { bluetooth.getSessionState(peerID) } catch (_: Exception) { NoiseSession.NoiseSessionState.Uninitialized }
     }
 
     override fun initiateNoiseHandshake(peerID: String) {
-        when {
-            isBleConnected(peerID) -> bluetooth.initiateNoiseHandshake(peerID)
-            isWifiConnected(peerID) -> wifiService()?.initiateNoiseHandshake(peerID)
-            isBleEnabled() -> bluetooth.initiateNoiseHandshake(peerID)
-            else -> wifiService()?.initiateNoiseHandshake(peerID)
-        }
+        if (isBleConnected(peerID) || isBleEnabled()) bluetooth.initiateNoiseHandshake(peerID)
     }
 
     override fun getPeerFingerprint(peerID: String): String? {
         return try { bluetooth.getPeerFingerprint(peerID) } catch (_: Exception) { null }
-            ?: try { wifiService()?.getPeerFingerprint(peerID) } catch (_: Exception) { null }
     }
 
     override fun getPeerInfo(peerID: String): PeerInfo? {
-        val ble = try { bluetooth.getPeerInfo(peerID) } catch (_: Exception) { null }
-        val wifi = try { wifiService()?.getPeerInfo(peerID) } catch (_: Exception) { null }
-        return when {
-            ble?.isConnected == true && hasEstablishedSessionOnBluetooth(peerID) -> ble
-            wifi?.isConnected == true && wifiService()?.hasEstablishedSession(peerID) == true -> wifi
-            ble?.isConnected == true -> ble
-            wifi?.isConnected == true -> wifi
-            else -> ble ?: wifi
-        }
+        return try { bluetooth.getPeerInfo(peerID) } catch (_: Exception) { null }
     }
 
     override fun updatePeerInfo(
@@ -236,17 +181,11 @@ class UnifiedMeshService(
         signingPublicKey: ByteArray,
         isVerified: Boolean
     ): Boolean {
-        val bleUpdated = try {
+        return try {
             bluetooth.updatePeerInfo(peerID, nickname, noisePublicKey, signingPublicKey, isVerified)
         } catch (_: Exception) {
             false
         }
-        val wifiUpdated = try {
-            wifiService()?.updatePeerInfo(peerID, nickname, noisePublicKey, signingPublicKey, isVerified) == true
-        } catch (_: Exception) {
-            false
-        }
-        return bleUpdated || wifiUpdated
     }
 
     override fun getIdentityFingerprint(): String = bluetooth.getIdentityFingerprint()
@@ -255,7 +194,7 @@ class UnifiedMeshService(
         bluetooth.getAuthenticatedRemoteStaticKey(peerID)
 
     override fun getStaticNoisePublicKey(): ByteArray? {
-        return bluetooth.getStaticNoisePublicKey() ?: wifiService()?.getStaticNoisePublicKey()
+        return bluetooth.getStaticNoisePublicKey()
     }
 
     override fun shouldShowEncryptionIcon(peerID: String): Boolean {
@@ -265,19 +204,16 @@ class UnifiedMeshService(
     override fun getEncryptedPeers(): List<String> {
         val encrypted = linkedSetOf<String>()
         try { encrypted.addAll(bluetooth.getEncryptedPeers()) } catch (_: Exception) { }
-        try { encrypted.addAll(wifiService()?.getEncryptedPeers().orEmpty()) } catch (_: Exception) { }
         mergedPeerIDs().filterTo(encrypted) { hasEstablishedSession(it) }
         return encrypted.toList()
     }
 
     override fun getDeviceAddressForPeer(peerID: String): String? {
         return try { bluetooth.getDeviceAddressForPeer(peerID) } catch (_: Exception) { null }
-            ?: try { wifiService()?.getDeviceAddressForPeer(peerID) } catch (_: Exception) { null }
     }
 
     override fun getDeviceAddressToPeerMapping(): Map<String, String> {
         val merged = linkedMapOf<String, String>()
-        try { merged.putAll(wifiService()?.getDeviceAddressToPeerMapping().orEmpty()) } catch (_: Exception) { }
         try { merged.putAll(bluetooth.getDeviceAddressToPeerMapping()) } catch (_: Exception) { }
         return merged
     }
@@ -285,10 +221,6 @@ class UnifiedMeshService(
     override fun printDeviceAddressesForPeers(): String {
         return buildString {
             appendLine(bluetooth.printDeviceAddressesForPeers())
-            wifiService()?.let {
-                appendLine()
-                appendLine(it.printDeviceAddressesForPeers())
-            }
         }
     }
 
@@ -299,21 +231,15 @@ class UnifiedMeshService(
             appendLine("Merged Peers: ${mergedPeerIDs().joinToString(", ")}")
             appendLine()
             appendLine(bluetooth.getDebugStatus())
-            wifiService()?.let {
-                appendLine()
-                appendLine(it.getDebugStatus())
-            }
         }
     }
 
     override fun clearAllInternalData() {
         try { bluetooth.clearAllInternalData() } catch (_: Exception) { }
-        try { wifiService()?.clearAllInternalData() } catch (_: Exception) { }
     }
 
     override fun clearAllEncryptionData() {
         try { bluetooth.clearAllEncryptionData() } catch (_: Exception) { }
-        try { wifiService()?.clearAllEncryptionData() } catch (_: Exception) { }
     }
 
     override fun didReceiveMessage(message: BitchatMessage) {
@@ -348,20 +274,7 @@ class UnifiedMeshService(
         val ids = linkedSetOf<String>()
         try { ids.addAll(com.bitchat.android.services.AppStateStore.peers.value) } catch (_: Exception) { }
         try { ids.addAll(bluetooth.getPeerNicknames().keys) } catch (_: Exception) { }
-        try { ids.addAll(wifiService()?.getPeerNicknames()?.keys.orEmpty()) } catch (_: Exception) { }
         return ids.toList()
-    }
-
-    private fun wifiService(): MeshService? {
-        return try {
-            WifiAwareController.getService()?.also { service ->
-                if (delegate != null && service.delegate !== this) {
-                    service.delegate = this
-                }
-            }
-        } catch (_: Exception) {
-            null
-        }
     }
 
     private fun isBleEnabled(): Boolean {
@@ -376,21 +289,8 @@ class UnifiedMeshService(
         return try { bluetooth.getPeerInfo(peerID)?.isConnected == true } catch (_: Exception) { false }
     }
 
-    private fun isWifiConnected(peerID: String): Boolean {
-        return try { wifiService()?.getPeerInfo(peerID)?.isConnected == true } catch (_: Exception) { false }
-    }
-
     private fun isBleReady(peerID: String): Boolean {
         return isBleConnected(peerID) && hasEstablishedSessionOnBluetooth(peerID)
-    }
-
-    private fun isWifiReady(peerID: String): Boolean {
-        return try {
-            val wifi = wifiService()
-            wifi?.getPeerInfo(peerID)?.isConnected == true && wifi.hasEstablishedSession(peerID)
-        } catch (_: Exception) {
-            false
-        }
     }
 
     private fun hasEstablishedSessionOnBluetooth(peerID: String): Boolean {

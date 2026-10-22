@@ -72,19 +72,6 @@
     <string name="about_system">সিস্টেম</string>
     <string name="about_light">হালকা</string>
     <string name="about_dark">অন্ধকার</string>
-    <string name="about_pow">প্রুফ অফ ওয়ার্ক</string>
-    <string name="about_pow_off">PoW বন্ধ</string>
-    <string name="about_pow_on">PoW চালু</string>
-    <string name="about_pow_tip">স্প্যাম কঠিন করতে জিওহ্যাশ বার্তায় প্রুফ অফ ওয়ার্ক যোগ করুন।</string>
-    <string name="about_pow_difficulty">কঠিনতা: %1$d বিট (~%2$s)</string>
-    <string name="about_pow_difficulty_attempts">কঠিনতা %1$d প্রয়োজন ~%2$s হ্যাশ প্রচেষ্টা</string>
-    <string name="about_pow_desc_none">কোন প্রুফ অফ ওয়ার্ক প্রয়োজন নেই</string>
-    <string name="about_pow_desc_very_low">খুব কম – ন্যূনতম স্প্যাম সুরক্ষা</string>
-    <string name="about_pow_desc_low">কম – মৌলিক স্প্যাম সুরক্ষা</string>
-    <string name="about_pow_desc_medium">মাঝারি – ভাল স্প্যাম সুরক্ষা</string>
-    <string name="about_pow_desc_high">উচ্চ – শক্তিশালী স্প্যাম সুরক্ষা</string>
-    <string name="about_pow_desc_very_high">খুব উচ্চ – বিলম্ব ঘটাতে পারে</string>
-    <string name="about_pow_desc_extreme">চরম – উল্লেখযোগ্য কম্পিউটিং পাওয়ার প্রয়োজন</string>
     <string name="about_network">নেটওয়ার্ক</string>
     <string name="about_tor_off">Tor বন্ধ</string>
     <string name="about_tor_on">Tor চালু</string>
@@ -174,9 +161,7 @@
     <!-- অনবোর্ডিং স্ক্রিন -->
     <string name="location_services_required">অবস্থান সেবা প্রয়োজন</string>
     <string name="privacy_first">গোপনীয়তা প্রথম</string>
-    <string name="location_explanation">Wesh আপনার অবস্থান ট্র্যাক করে না।\n\nব্লুটুথ স্ক্যানিং এবং জিওহ্যাশ চ্যাট বৈশিষ্ট্যের জন্য অবস্থান সেবা প্রয়োজন।</string>
     <string name="location_needs_for">Wesh এর জন্য অবস্থান সেবা প্রয়োজন:</string>
-    <string name="location_needs_bullets">• ব্লুটুথ ডিভাইস স্ক্যানিং\n• মেশ নেটওয়ার্কে কাছাকাছি ব্যবহারকারী আবিষ্কার\n• জিওহ্যাশ চ্যাট বৈশিষ্ট্য\n• কোন ট্র্যাকিং বা অবস্থান সংগ্রহ নেই</string>
     <string name="open_location_settings">অবস্থান সেটিংস খুলুন</string>
     <string name="check_again">আবার পরীক্ষা করুন</string>
     <string name="location_services_unavailable">অবস্থান সেবা অনুপলব্ধ</string>
@@ -209,7 +194,6 @@
     <string name="location_tracking_warning">Wesh আপনার অবস্থান ট্র্যাক করে না</string>
     <string name="nobody_around">কেউ আশেপাশে নেই …</string>
     <string name="you_suffix"> (আপনি)</string>
-    <string name="pan_zoom_instruction">জিওহ্যাশ নির্বাচন করতে প্যান এবং জুম করুন</string>
     <string name="select">নির্বাচন করুন</string>
     <string name="type_a_message_placeholder">বার্তা টাইপ করুন …</string>
     <string name="mention">উল্লেখ</string>

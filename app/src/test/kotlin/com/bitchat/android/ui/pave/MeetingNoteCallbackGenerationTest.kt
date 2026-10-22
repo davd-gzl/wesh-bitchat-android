@@ -28,38 +28,6 @@ import java.util.UUID
 class MeetingNoteCallbackGenerationTest {
     @get:Rule val directory = TemporaryFolder()
 
-    @Test fun `retained edit cannot adopt a new epoch from collected State after verified reset`() = runTest {
-        withStore { preferences, backend ->
-            assertTrue(preferences.loadMeetingNote())
-            val collectedEpoch = mutableStateOf(preferences.resetEpoch.value)
-            var accepted = 0
-            var feedback: String? = "Synthetic fresh feedback"
-            val retainedEdit = meetingNoteEditCallback(preferences, collectedEpoch.value) {
-                accepted++
-                feedback = null
-            }
-            assertTrue(preferences.editMeetingDraft("Synthetic old stored note", collectedEpoch.value))
-            assertTrue(preferences.saveMeetingDraft(collectedEpoch.value))
-            val oldEpoch = collectedEpoch.value
-
-            preferences.fenceForPanic()
-            assertTrue(preferences.clearForPanic())
-            preferences.resumeAfterVerifiedPanic()
-            assertTrue(preferences.loadMeetingNote())
-            assertEquals(MeetingNoteState.Ready, preferences.meetingNoteState.value)
-            collectedEpoch.value = preferences.resetEpoch.value
-            assertNotEquals(oldEpoch, collectedEpoch.value)
-            assertTrue(preferences.editMeetingDraft(FRESH, collectedEpoch.value))
-            assertTrue(preferences.saveMeetingDraft(collectedEpoch.value))
-
-            retainedEdit("Synthetic old callback text")
-
-            assertEquals(NoteEffects(FRESH, FRESH, FRESH, "Synthetic fresh feedback", 0),
-                NoteEffects(preferences.meetingDraft.value, preferences.meetingNote,
-                    backend().load(), feedback, accepted))
-        }
-    }
-
     @Test fun `edit remains refused while fenced even when collected State has advanced`() = runTest {
         withStore { preferences, backend ->
             assertTrue(preferences.loadMeetingNote())
@@ -71,7 +39,6 @@ class MeetingNoteCallbackGenerationTest {
                 feedback = null
             }
             preferences.fenceForPanic()
-            assertTrue(preferences.clearForPanic())
             collectedEpoch.value = preferences.resetEpoch.value
 
             edit("Synthetic refused edit")
@@ -80,33 +47,6 @@ class MeetingNoteCallbackGenerationTest {
                 NoteEffects(preferences.meetingDraft.value, preferences.meetingNote,
                     backend().load(), feedback, accepted))
             assertEquals(MeetingNoteState.Fenced, preferences.meetingNoteState.value)
-        }
-    }
-
-    @Test fun `newly constructed callback in the fresh Ready epoch edits and saves normally`() = runTest {
-        withStore { preferences, backend ->
-            assertTrue(preferences.loadMeetingNote())
-            preferences.fenceForPanic()
-            assertTrue(preferences.clearForPanic())
-            preferences.resumeAfterVerifiedPanic()
-            assertTrue(preferences.loadMeetingNote())
-            val collectedEpoch = mutableStateOf(preferences.resetEpoch.value)
-            var accepted = 0
-            var feedback: String? = "Synthetic previous feedback"
-            val edit = meetingNoteEditCallback(preferences, collectedEpoch.value) {
-                accepted++
-                feedback = null
-            }
-
-            edit(FRESH)
-
-            assertEquals(FRESH, preferences.meetingDraft.value)
-            assertEquals("", preferences.meetingNote)
-            assertEquals(1, accepted)
-            assertNull(feedback)
-            assertTrue(preferences.saveMeetingDraft(collectedEpoch.value))
-            assertEquals(FRESH, backend().load())
-            assertEquals(FRESH, preferences.meetingNote)
         }
     }
 
@@ -124,6 +64,4 @@ class MeetingNoteCallbackGenerationTest {
 
     private data class NoteEffects(val draft: String, val saved: String, val persisted: String?,
         val feedback: String?, val accepted: Int)
-
-    private companion object { const val FRESH = "Synthetic fresh personal note" }
 }

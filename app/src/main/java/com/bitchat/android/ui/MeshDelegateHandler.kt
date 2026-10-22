@@ -195,7 +195,7 @@ class MeshDelegateHandler internal constructor(
      * Check if the content mentions the current user with @username format (simple, no hash suffix)
      */
     private fun checkForMeshMention(content: String, currentNickname: String): Boolean {
-        // Simple mention pattern for mesh: @username (no hash suffix like geohash)
+        // Simple mention pattern for mesh: @username (no hash suffix)
         val mentionPattern = "@([\\p{L}0-9_]+)".toRegex()
 
         return mentionPattern.findAll(content).any { match ->
