@@ -14,13 +14,16 @@
     <!-- Bubbles and delivery -->
     <string name="wesh_pave_delivery_waiting">Waiting</string>
     <string name="wesh_pave_delivery_sent">Sent</string>
-    <string name="wesh_pave_delivery_delivered">Delivered</string>
-    <string name="wesh_pave_delivery_read">Read</string>
+    <string name="wesh_pave_delivery_received">Received</string>
     <string name="wesh_pave_delivery_failed">Failed</string>
     <string name="wesh_pave_failed_retry">Failed · Retry</string>
     <string name="wesh_pave_retry">Retry</string>
-    <string name="wesh_pave_via_internet">Internet</string>
+    <string name="wesh_pave_via_internet">via Internet</string>
     <string name="wesh_pave_via_bluetooth">Bluetooth</string>
+    <!-- Bubble footer only, never in the name position: outside the reserved nickname words. -->
+    <string name="wesh_pave_receipt_delivered">Delivered</string>
+    <string name="wesh_pave_receipt_read">Read</string>
+    <string name="wesh_pave_label_internet">Internet</string>
     <string name="wesh_pave_message_detail">See message status</string>
     <string name="wesh_pave_message_from_you">You</string>
 

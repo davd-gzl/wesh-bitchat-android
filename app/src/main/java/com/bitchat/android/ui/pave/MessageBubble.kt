@@ -40,8 +40,8 @@ fun PaveDelivery.label(): String = stringResource(
     when (this) {
         PaveDelivery.Waiting -> R.string.wesh_pave_delivery_waiting
         PaveDelivery.Sent -> R.string.wesh_pave_delivery_sent
-        PaveDelivery.Delivered -> R.string.wesh_pave_delivery_delivered
-        PaveDelivery.Read -> R.string.wesh_pave_delivery_read
+        PaveDelivery.Delivered -> R.string.wesh_pave_receipt_delivered
+        PaveDelivery.Read -> R.string.wesh_pave_receipt_read
         PaveDelivery.Failed -> R.string.wesh_pave_delivery_failed
     }
 )
@@ -94,7 +94,7 @@ fun MessageBubble(
     val shape = if (own) RoundedCornerShape(r, r, WeshRadius.tail, r) else RoundedCornerShape(r, r, r, WeshRadius.tail)
 
     val you = stringResource(R.string.wesh_pave_message_from_you)
-    val viaInternet = stringResource(R.string.wesh_pave_via_internet)
+    val viaInternet = stringResource(R.string.wesh_pave_label_internet)
     val viaBluetooth = stringResource(R.string.wesh_pave_via_bluetooth)
     val detailLabel = stringResource(R.string.wesh_pave_message_detail)
     val deliveryText = delivery?.takeIf { own }?.label()
