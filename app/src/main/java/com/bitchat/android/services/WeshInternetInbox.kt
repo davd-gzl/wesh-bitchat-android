@@ -150,6 +150,19 @@ internal class WeshInternetOnWatcher(private val onOn: () -> Unit) {
     }
 }
 
+/** Calls [onReconnect] when a relay seen disconnected connects again. */
+internal class WeshRelayReconnectWatcher(private val onReconnect: () -> Unit) {
+    private val connected = HashMap<String, Boolean>()
+    @Synchronized fun apply(relays: List<Pair<String, Boolean>>) {
+        var reconnected = false
+        for ((url, isConnected) in relays) {
+            if (isConnected && connected[url] == false) reconnected = true
+            connected[url] = isConnected
+        }
+        if (reconnected) runCatching(onReconnect)
+    }
+}
+
 internal class WeshInternetSubscription(
     private val myIdentity: () -> NostrIdentity?,
     private val subscribe: (filter: NostrFilter, handler: (NostrEvent) -> Unit) -> Unit,
@@ -183,6 +196,14 @@ internal object WeshInternetReceiver {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
     @Volatile private var inbox: WeshInternetInbox? = null
 
+    /**
+     * Stores an Internet-received message once. The same ID already received (over Bluetooth, or a
+     * rule 4 resend) keeps its single bubble and still counts as delivered, so it is acked again.
+     * Seen IDs outlive an unloaded history; IDs are random UUIDs, so a match is this message.
+     */
+    internal suspend fun deliverOnce(conversationID: String, message: com.bitchat.android.model.BitchatMessage): Boolean =
+        AppStateStore.addPrivateMessageDurably(conversationID, message) || AppStateStore.hasSeenMessage(message.id)
+
     fun start(app: Application): Unit = synchronized(this) {
         if (inbox != null) return
         val contacts = WeshContactStore.get(app)
@@ -193,10 +214,7 @@ internal object WeshInternetReceiver {
             route = WeshInternetRoute(contacts, WeshInternetLink.Live(app)) {
                 com.bitchat.android.nostr.NostrTransport.getInstance(app).senderPeerID
             },
-            deliver = { conversationID, message ->
-                AppStateStore.addPrivateMessageDurably(conversationID, message) ||
-                    AppStateStore.privateMessages.value[conversationID].orEmpty().any { it.id == message.id }
-            },
+            deliver = ::deliverOnce,
             updateStatus = { conversationID, messageID, status ->
                 // Only that contact can reach here, only its own conversation, never a downgrade.
                 AppStateStore.updatePrivateMessageStatus(conversationID, messageID, status,
@@ -223,6 +241,8 @@ internal object WeshInternetReceiver {
             onOff = created::clear
         )
         val announcer = WeshInternetOnWatcher { MessageRouter.tryGetInstance()?.onWeshInternetOn() }
+        val reconnects = WeshRelayReconnectWatcher { MessageRouter.tryGetInstance()?.onWeshInternetReconnected() }
+        scope.launch { relays.relays.collect { list -> reconnects.apply(list.map { it.url to it.isConnected }) } }
         scope.launch {
             WeshInternetMode.get(app).state.collect { state ->
                 subscription.apply(state)

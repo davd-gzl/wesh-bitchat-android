@@ -628,6 +628,271 @@ class WeshInternetRouteTest {
         }
     }
 
+    private fun status(id: String) = AppStateStore.privateMessages.value.values.flatten().single { it.id == id }.deliveryStatus
+
+    private fun MessageRouter.settle() = waitFor { weshIdleForTesting }
+
+    @Test fun `rule 4 - a Bluetooth message without an ack for 20 s is resent over Internet under the same ID`() {
+        val router = failingBluetoothRouter(com.bitchat.android.mesh.BoundSendOutcome.SENT)
+        var now = 1_000_000L
+        router.clock = { now }
+        try {
+            assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
+            waitFor { bw1() == DeliveryStatus.Sent }
+            now += AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS - 1
+            router.tickOutbox(now)
+            router.settle()
+            assertTrue(alice.link.published.isEmpty())
+            now += 1
+            router.tickOutbox(now)
+            waitFor { alice.link.published.size == 1 }
+            assertEquals(WeshInternetInbox.Outcome.STORED,
+                kotlinx.coroutines.runBlocking { bob.inbox.onGiftWrap(alice.link.published.single(), expectedToken = null) })
+            assertEquals("bw-1", bob.stored.single().second.id)
+            // One Bluetooth write only: the resend never goes back over Bluetooth.
+            kotlinx.coroutines.runBlocking {
+                verify(router.meshForTesting, org.mockito.kotlin.times(1)).sendPrivateMessageBoundOutcome(any(), any(), any(), any(), any())
+            }
+        } finally { cleanupRouter() }
+    }
+
+    @Test fun `rule 4 - a Bluetooth message acked in time never goes over Internet`() {
+        val router = failingBluetoothRouter(com.bitchat.android.mesh.BoundSendOutcome.SENT)
+        var now = 1_000_000L
+        router.clock = { now }
+        try {
+            router.sendPrivate("salut", bobConversation, "Bob", "bw-1")
+            waitFor { bw1() == DeliveryStatus.Sent }
+            AppStateStore.updatePrivateMessageStatus(bobConversation, "bw-1", DeliveryStatus.Delivered("Bob", java.util.Date()))
+            now += AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS
+            router.tickOutbox(now)
+            router.settle()
+            Thread.sleep(200)
+            assertTrue(alice.link.published.isEmpty())
+        } finally { cleanupRouter() }
+    }
+
+    @Test fun `rule 4 - with Internet off at the deadline the Bluetooth message stays Envoyé and is not resent later`() {
+        val router = failingBluetoothRouter(com.bitchat.android.mesh.BoundSendOutcome.SENT)
+        var now = 1_000_000L
+        router.clock = { now }
+        alice.link.on = false
+        try {
+            router.sendPrivate("salut", bobConversation, "Bob", "bw-1")
+            waitFor { bw1() == DeliveryStatus.Sent }
+            now += AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS
+            router.tickOutbox(now)
+            router.settle()
+            alice.link.on = true
+            now += 60_000
+            router.tickOutbox(now)
+            router.settle()
+            Thread.sleep(200)
+            assertTrue(alice.link.published.isEmpty())
+            assertEquals(DeliveryStatus.Sent, bw1())
+        } finally { cleanupRouter() }
+    }
+
+    @Test fun `rule 4 - an Internet resend that never reaches a relay ends silently at the TTL, still Envoyé`() {
+        val router = failingBluetoothRouter(com.bitchat.android.mesh.BoundSendOutcome.SENT)
+        val expired = mutableListOf<String>()
+        router.onMessageExpired = { _, id -> expired += id }
+        var now = 1_000_000L
+        router.clock = { now }
+        alice.link.answer = RelayPublishOutcome.UNCONFIRMED
+        try {
+            router.sendPrivate("salut", bobConversation, "Bob", "bw-1")
+            waitFor { bw1() == DeliveryStatus.Sent }
+            // Bob walks away; the Internet copy keeps failing until the 24 h TTL.
+            whenever(router.meshForTesting.getAuthenticatedRemoteStaticKey(ContactIdentityResolver.peerIdForNoiseKey(bobNoise)))
+                .thenReturn(null)
+            now += AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS
+            router.tickOutbox(now)
+            waitFor { alice.link.published.size == 1 }
+            router.settle()
+            now += AppConstants.Router.OUTBOX_MESSAGE_TTL_MS
+            router.tickOutbox(now)
+            router.settle()
+            assertTrue(expired.isEmpty())
+            assertEquals(DeliveryStatus.Sent, bw1())
+        } finally { cleanupRouter() }
+    }
+
+    @Test fun `rule 4 - the Internet copy of a message already received over Bluetooth makes no second bubble`() {
+        AppStateStore.clear()
+        try {
+            val first = BitchatMessage(id = "dup-1", sender = "Alice", content = "salut", timestamp = java.util.Date(),
+                isPrivate = true, senderPeerID = aliceConversation)
+            assertTrue(AppStateStore.addPrivateMessage(aliceConversation, first))
+            assertTrue(kotlinx.coroutines.runBlocking { WeshInternetReceiver.deliverOnce(aliceConversation, first.copy()) })
+            assertEquals(1, AppStateStore.privateMessages.value.values.flatten().count { it.id == "dup-1" })
+        } finally { AppStateStore.clear() }
+    }
+
+    @Test fun `rule 4 - the Internet copy of a message whose history was unloaded is still acknowledged`() {
+        AppStateStore.clear()
+        try {
+            val first = BitchatMessage(id = "dup-2", sender = "Alice", content = "un", timestamp = java.util.Date(1),
+                isPrivate = true, senderPeerID = aliceConversation)
+            assertTrue(AppStateStore.addPrivateMessage(aliceConversation, first))
+            assertTrue(AppStateStore.addPrivateMessage(aliceConversation, first.copy(id = "dup-3", content = "deux",
+                timestamp = java.util.Date(2))))
+            AppStateStore.releasePrivateConversationHistory(aliceConversation)
+            assertTrue(kotlinx.coroutines.runBlocking { WeshInternetReceiver.deliverOnce(aliceConversation, first.copy()) })
+            assertEquals(0, AppStateStore.privateMessages.value.values.flatten().count { it.id == "dup-2" })
+        } finally { AppStateStore.clear() }
+    }
+
+    /** Alice's router with Bob out of Bluetooth range; relays answer [answer]. */
+    private fun internetOnlyRouter(answer: RelayPublishOutcome): MessageRouter {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        AppStateStore.clear()
+        alice.link.answer = answer
+        return MessageRouter(context, mesh, mock()).also { it.weshInternetLink = alice.link }
+    }
+
+    private fun cleanupRouter() {
+        WeshContactStore.resetForTesting()
+        MessageRouter.disableSchedulerForTesting = false
+        AppStateStore.clear()
+    }
+
+    @Test fun `a reconnect retries early only a message last published at least 5 min ago, and keeps its backoff`() {
+        val router = internetOnlyRouter(RelayPublishOutcome.UNCONFIRMED)
+        var now = 1_000_000L
+        router.clock = { now }
+        val start = now
+        fun at(offsetMs: Long) { now = start + offsetMs; router.tickOutbox(now); router.settle() }
+        fun reconnectAt(offsetMs: Long) { now = start + offsetMs; router.onWeshInternetReconnected(); router.settle() }
+        try {
+            router.sendPrivate("salut", bobConversation, "Bob", "e-1")
+            router.settle()
+            // Backoff: 30 s, 1, 2, 4 min after each failure: publications at 0, 0:30, 1:30, 3:30, 7:30.
+            for (offset in listOf(30_000L, 90_000L, 210_000L, 450_000L)) at(offset)
+            assertEquals(5, alice.link.published.size)
+            reconnectAt(450_000L + 4 * 60_000L)  // last publication 4 min ago: no early retry
+            assertEquals(5, alice.link.published.size)
+            reconnectAt(450_000L + 5 * 60_000L)  // 5 min ago: one early retry
+            assertEquals(6, alice.link.published.size)
+            reconnectAt(450_000L + 5 * 60_000L + 30_000L)  // just published: none
+            assertEquals(6, alice.link.published.size)
+            at(450_000L + 8 * 60_000L - 1)  // the backoff step is unchanged: 8 min after 7:30
+            assertEquals(6, alice.link.published.size)
+            at(450_000L + 8 * 60_000L)
+            assertEquals(7, alice.link.published.size)
+        } finally { cleanupRouter() }
+    }
+
+    @Test fun `a flapping link never makes more than 60 publications of one message in its 24 h, then it fails`() {
+        val router = internetOnlyRouter(RelayPublishOutcome.UNCONFIRMED)
+        val expired = mutableListOf<String>()
+        router.onMessageExpired = { _, id -> expired += id }
+        var now = 1_000_000L
+        router.clock = { now }
+        val start = now
+        try {
+            router.sendPrivate("salut", bobConversation, "Bob", "f-1")
+            router.settle()
+            // The relay drops and comes back every minute for a day.
+            while (now - start <= AppConstants.Router.OUTBOX_MESSAGE_TTL_MS) {
+                now += 60_000L
+                router.onWeshInternetReconnected()
+                router.settle()
+                router.tickOutbox(now)
+                router.settle()
+            }
+            assertEquals(AppConstants.Router.WESH_INTERNET_MAX_PUBLICATIONS, alice.link.published.size)
+            assertEquals(listOf("f-1"), expired)
+        } finally { cleanupRouter() }
+    }
+
+    @Test fun `after a relaunch each pending message is published once, then backs off from 30 s`() = withPersistedRouter { router ->
+        val start = System.currentTimeMillis()
+        var now = start
+        router.clock = { now }
+        alice.link.answer = RelayPublishOutcome.UNCONFIRMED
+        val expired = mutableListOf<String>()
+        router.onMessageExpired = { _, id -> expired += id }
+        fun own(id: String, at: Long, status: DeliveryStatus?) = AppStateStore.addPrivateMessage(bobConversation,
+            BitchatMessage(id = id, sender = "me", content = "salut $id", timestamp = java.util.Date(at), isPrivate = true,
+                recipientNickname = "Bob", senderPeerID = alice.peerID, deliveryStatus = status))
+        own("p-stale", now - AppConstants.Router.OUTBOX_MESSAGE_TTL_MS - 1, DeliveryStatus.Sending)
+        own("p-sent", now, DeliveryStatus.Sent)
+        own("p-acked", now, DeliveryStatus.Delivered("Bob", java.util.Date(now)))
+        AppStateStore.addPrivateMessage(bobConversation, BitchatMessage(id = "p-in", sender = "Bob", content = "coucou",
+            timestamp = java.util.Date(now), isPrivate = true, senderPeerID = bobConversation))
+        // The process restarts: the outbox is memory only, the store keeps « En attente ».
+        AppStateStore.releasePrivateConversationHistory(bobConversation)
+        assertEquals(2, kotlinx.coroutines.runBlocking { router.restoreWeshOutbox() })
+        assertEquals(listOf("p-stale"), expired)
+        router.tickOutbox(now)
+        waitFor { alice.link.published.size == 2 }
+        router.settle()
+        val opened = alice.link.published.map { kotlinx.coroutines.runBlocking { bob.inbox.onGiftWrap(it, expectedToken = null) } }
+        assertEquals(listOf("p-new", "p-old"), bob.stored.map { it.second.id }.sorted())
+        assertTrue(opened.all { it == WeshInternetInbox.Outcome.STORED })
+        now = start + 29_999
+        router.tickOutbox(now)
+        router.settle()
+        assertEquals(2, alice.link.published.size)
+        now = start + 30_000
+        router.tickOutbox(now)
+        waitFor { alice.link.published.size == 4 }
+        // Restoring again in the same process adds nothing.
+        assertEquals(0, kotlinx.coroutines.runBlocking { router.restoreWeshOutbox() })
+    }
+
+    @Test fun `only a relay seen down that comes back counts as a reconnect`() {
+        var reconnects = 0
+        val watcher = WeshRelayReconnectWatcher { reconnects++ }
+        watcher.apply(listOf("a" to true, "b" to false))   // first sight: not a reconnect
+        assertEquals(0, reconnects)
+        watcher.apply(listOf("a" to true, "b" to true))    // b came back
+        assertEquals(1, reconnects)
+        watcher.apply(listOf("a" to true, "b" to true))    // no change
+        assertEquals(1, reconnects)
+        watcher.apply(listOf("a" to false, "b" to false))
+        watcher.apply(listOf("a" to true, "b" to true))    // both back at once: one early retry pass
+        assertEquals(2, reconnects)
+    }
+
+    @Test fun `no stored status read crosses an erase`() {
+        AppStateStore.clear()
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val name = "fence-${java.util.UUID.randomUUID()}.db"
+        val repository = ConversationRepository(context = context, dispatcher = executor.asCoroutineDispatcher(),
+            databaseName = name, storageCipher = InMemoryConversationStorageCipher())
+        try {
+            AppStateStore.setConversationRepositoryForTest(repository)
+            AppStateStore.addPrivateMessage(bobConversation, BitchatMessage(id = "e-old", sender = "me", content = "salut",
+                timestamp = java.util.Date(), isPrivate = true, recipientNickname = "Bob",
+                senderPeerID = alice.peerID, deliveryStatus = DeliveryStatus.Sending))
+            kotlinx.coroutines.runBlocking { repository.awaitPendingWrites() }
+            // The store's single thread is busy: the read waits behind it, and the erase lands meanwhile.
+            val gate = java.util.concurrent.CountDownLatch(1)
+            executor.execute { gate.await() }
+            val pending = java.util.concurrent.CompletableFuture.supplyAsync {
+                kotlinx.coroutines.runBlocking { AppStateStore.persistedAck(bobConversation, "e-old") }
+            }
+            Thread.sleep(100)
+            AppStateStore.fencePrivateConversationAdmissionForPanic()
+            gate.countDown()
+            val read = pending.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            assertEquals(AppStateStore.PersistedAck.UNAVAILABLE, read)
+        } finally {
+            AppStateStore.resetPrivateConversationAdmissionForTest()
+            AppStateStore.setConversationRepositoryForTest(null)
+            repository.closeForTest()
+            executor.shutdown()
+            context.deleteDatabase(name)
+            AppStateStore.clear()
+        }
+    }
+
     @Test fun `an attempt skipped while the store is unavailable never clears the in-flight mark of the next one`() {
         val mesh: MeshService = mock()
         whenever(mesh.myPeerID).thenReturn(alice.peerID)
