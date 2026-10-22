@@ -57,10 +57,6 @@ internal class NostrPendingEventQueue(
             .toList()
     }
 
-    fun isPending(queueId: Long, relayUrl: String): Boolean = synchronized(lock) {
-        entries.any { it.queueId == queueId && relayUrl in it.pendingRelayUrls }
-    }
-
     fun markDelivered(queueId: Long, relayUrl: String) {
         synchronized(lock) {
             val iterator = entries.iterator()

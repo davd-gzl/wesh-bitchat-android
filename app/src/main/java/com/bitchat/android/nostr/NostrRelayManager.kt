@@ -122,6 +122,12 @@ class NostrRelayManager internal constructor(
     
     // Bounded per-relay delivery queue for reconnect reliability.
     private val messageQueue = NostrPendingEventQueue(MAX_QUEUED_EVENTS)
+    /**
+     * Bumped under [lifecycleLock] by every off or erase that drops the queue. A send launched
+     * before the bump never writes afterwards; a capacity eviction does not bump it, so it never
+     * cancels a send already launched.
+     */
+    private var dropGeneration = 0L
     
     // Subscription validation timer
     private var subscriptionValidationJob: Job? = null
@@ -221,10 +227,16 @@ class NostrRelayManager internal constructor(
      */
     fun disconnect() {
         val sockets = synchronized(lifecycleLock) {
-            messageQueue.clear()
+            dropQueueLocked()
             disconnectLocked()
         }
         sockets.forEach(WebSocket::cancel)
+    }
+
+    /** Caller holds [lifecycleLock]. */
+    private fun dropQueueLocked() {
+        dropGeneration++
+        messageQueue.clear()
     }
 
     /** Caller holds [lifecycleLock]; socket close is performed after releasing it. */
@@ -261,19 +273,20 @@ class NostrRelayManager internal constructor(
 
         // Under the lifecycle lock: an off that closes the gate cannot clear the queue between
         // this check and the enqueue.
-        val queueId = synchronized(lifecycleLock) {
+        val (queueId, generation) = synchronized(lifecycleLock) {
             if (!isNetworkActionAllowed()) return
-            messageQueue.enqueue(
+            val id = messageQueue.enqueue(
                 event = event,
                 relayUrls = targetRelays
-            )
-        } ?: return
+            ) ?: return
+            id to dropGeneration
+        }
         scope.launch {
             if (!isNetworkActionAllowed()) return@launch
             targetRelays.forEach { relayUrl ->
                 val webSocket = connections[relayUrl]
                 if (webSocket != null) {
-                    if (sendToRelay(event, webSocket, relayUrl, queueId)) {
+                    if (sendToRelay(event, webSocket, relayUrl, generation)) {
                         messageQueue.markDelivered(queueId, relayUrl)
                     }
                 }
@@ -446,8 +459,8 @@ class NostrRelayManager internal constructor(
             messageHandlers.clear()
             subscriptions.clear()
 
-            // Clear any queued messages waiting to be sent
-            messageQueue.clear()
+            // Clear any queued messages waiting to be sent, and fence sends already launched
+            synchronized(lifecycleLock) { dropQueueLocked() }
 
             Log.i(TAG, "Cleared all Nostr subscriptions and routing caches")
         } catch (e: Exception) {
@@ -652,15 +665,15 @@ class NostrRelayManager internal constructor(
         }
     }
 
-    /** [queueId] set: send only while that delivery is still queued, so an off that dropped it wins. */
+    /** [generation] set: send only if no off or erase dropped the queue since the event was queued. */
     private fun sendToRelay(
         event: NostrEvent,
         webSocket: WebSocket,
         relayUrl: String,
-        queueId: Long? = null
+        generation: Long? = null
     ): Boolean = synchronized(lifecycleLock) {
         if (!isNetworkActionAllowed() || connections[relayUrl] !== webSocket) return false
-        if (queueId != null && !messageQueue.isPending(queueId, relayUrl)) return false
+        if (generation != null && generation != dropGeneration) return false
         try {
             val request = NostrRequest.Event(event)
             val message = gson.toJson(request, NostrRequest::class.java)

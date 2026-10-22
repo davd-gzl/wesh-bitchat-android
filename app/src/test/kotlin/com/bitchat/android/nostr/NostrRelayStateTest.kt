@@ -367,6 +367,28 @@ class NostrRelayStateTest {
     }
 
     @Test
+    fun `a send launched before its queue entry is evicted still leaves`() = runTest {
+        val held = mutableListOf<Runnable>()
+        val manual = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) { held += block }
+        }
+        val (manager, attempts) = fixture(dispatcher = manual)
+        manager.connect()
+        while (held.isNotEmpty()) held.removeAt(0).run()
+        attempts.forEach(Attempt::open)
+
+        manager.sendEvent(event("evicted-in-flight"))
+        val firstSend = held.single()
+        // Fill the bounded queue past its capacity: the first entry is evicted, its send is not.
+        repeat(QUEUE_CAPACITY) { manager.sendEvent(event("filler-$it")) }
+        held.remove(firstSend)
+        firstSend.run()
+
+        assertEquals(NostrRelayManager.WESH_PINNED_RELAYS.size,
+            attempts.sentEvents().count { it.contains("evicted-in-flight") })
+    }
+
+    @Test
     fun `a socket rejected after off is cancelled, not closed gracefully`() = runTest {
         lateinit var manager: NostrRelayManager
         val fixture = fixture {
@@ -424,5 +446,6 @@ class NostrRelayStateTest {
 
     companion object {
         private const val RELAY = "wss://relay.damus.io"
+        private const val QUEUE_CAPACITY = 500
     }
 }
