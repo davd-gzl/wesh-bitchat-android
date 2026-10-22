@@ -759,20 +759,21 @@ class WeshInternetRouteTest {
     }
 
     @Test fun `the UI notifier shows on Main, never on the delivering thread, and not after an erase`() {
-        val main = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "test-main") }
+        val mainThread = java.util.concurrent.atomic.AtomicReference<Thread>()
+        val main = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it).also(mainThread::set) }
         val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
         try {
-            val shown = java.util.concurrent.LinkedBlockingQueue<Pair<String, String>>()
+            val shown = java.util.concurrent.LinkedBlockingQueue<Pair<String, Thread>>()
             val notifier = WeshInternetReceiver.postOnMain(scope, main.asCoroutineDispatcher()) { _, message ->
-                shown += message.id to Thread.currentThread().name
+                shown += message.id to Thread.currentThread()
             }
             val message = BitchatMessage(id = "m-1", sender = "Alice", content = "salut", timestamp = java.util.Date(),
                 isPrivate = true, senderPeerID = aliceConversation)
             notifier(aliceConversation, message) { true }
             notifier(aliceConversation, message.copy(id = "m-2")) { false }
             notifier(aliceConversation, message.copy(id = "m-3")) { true }
-            assertEquals("m-1" to "test-main", shown.poll(5, java.util.concurrent.TimeUnit.SECONDS))
-            assertEquals("m-3" to "test-main", shown.poll(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals("m-1" to mainThread.get(), shown.poll(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals("m-3" to mainThread.get(), shown.poll(5, java.util.concurrent.TimeUnit.SECONDS))
             assertTrue(shown.isEmpty())
         } finally {
             scope.cancel()
