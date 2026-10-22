@@ -116,7 +116,7 @@ class MessageRouter internal constructor(
     internal var clock: () -> Long = { System.currentTimeMillis() }
 
     // Called with the messageID of queued messages that expired or were evicted
-    var onMessageExpired: ((String) -> Unit)? = null
+    var onMessageExpired: ((conversationID: String, messageID: String) -> Unit)? = null
 
     init {
         startOutboxScheduler()
@@ -216,7 +216,7 @@ class MessageRouter internal constructor(
                 if (epoch != weshEpoch.get()) return@launch
                 when (send.outcome) {
                     RelayPublishOutcome.ACCEPTED -> {
-                        AppStateStore.updatePrivateMessageStatus(entry.messageID, com.bitchat.android.model.DeliveryStatus.Sent,
+                        AppStateStore.updatePrivateMessageStatus(conversationID, entry.messageID, com.bitchat.android.model.DeliveryStatus.Sent,
                             com.bitchat.android.model.MessageTransport.INTERNET)
                         null
                     }
@@ -242,7 +242,7 @@ class MessageRouter internal constructor(
         if (WeshPrivateSender(WeshContactStore.get(context)).enrolled(conversationID)) {
             enqueueWesh(conversationID, entry, epoch)
         } else {
-            AppStateStore.updatePrivateMessageStatus(entry.messageID,
+            AppStateStore.updatePrivateMessageStatus(conversationID, entry.messageID,
                 com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
         }
     }
@@ -297,7 +297,7 @@ class MessageRouter internal constructor(
 
     @Synchronized fun cancelWeshConversation(conversationID: String) {
         outbox.remove(conversationID)?.forEach { entry ->
-            AppStateStore.updatePrivateMessageStatus(entry.messageID, com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré"))
+            AppStateStore.updatePrivateMessageStatus(conversationID, entry.messageID, com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré"))
         }
         retryState.remove(conversationID)
     }
@@ -378,7 +378,7 @@ class MessageRouter internal constructor(
                 val sender = WeshPrivateSender(WeshContactStore.get(context))
                 if (!sender.enrolled(conversationID)) {
                     iterator.remove()
-                    com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(entry.messageID,
+                    com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(conversationID, entry.messageID,
                         com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
                 } else if (sender.canSend(conversationID, mesh)) {
                     dispatchWesh(entry.content, conversationID, entry.messageID, epoch)
@@ -417,12 +417,12 @@ class MessageRouter internal constructor(
         while (queue.size > OUTBOX_MAX_PER_PEER) {
             val evicted = queue.removeAt(0)
             Log.w(TAG, "Outbox full for ${conversationID.take(16)}…; evicting oldest msg_id=${evicted.messageID.take(8)}…")
-            notifyExpired(evicted.messageID)
+            notifyExpired(conversationID, evicted.messageID)
         }
     }
 
-    private fun notifyExpired(messageID: String) {
-        try { onMessageExpired?.invoke(messageID) } catch (_: Exception) { }
+    private fun notifyExpired(conversationID: String, messageID: String) {
+        try { onMessageExpired?.invoke(conversationID, messageID) } catch (_: Exception) { }
     }
 
     /**
@@ -512,7 +512,7 @@ class MessageRouter internal constructor(
             if (nowMs - entry.enqueuedAtMs > OUTBOX_MESSAGE_TTL_MS) {
                 Log.w(TAG, "Expiring queued PM for ${conversationID.take(16)}… msg_id=${entry.messageID.take(8)}…")
                 iterator.remove()
-                notifyExpired(entry.messageID)
+                notifyExpired(conversationID, entry.messageID)
             }
         }
         if (queued.isEmpty()) {

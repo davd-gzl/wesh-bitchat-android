@@ -194,18 +194,36 @@ class ConversationRepository internal constructor(
         false
     }
 
+    /** Bound to [conversationID]: the database ignores a message of another conversation. */
     fun updateDeliveryStatus(
+        conversationID: String,
         messageID: String,
         status: DeliveryStatus,
-        transport: MessageTransport? = null,
-        conversationID: String? = null
+        transport: MessageTransport? = null
     ) {
         enqueueMutation {
             try {
-                database.updateDeliveryStatus(messageID, status, transport, conversationID)
+                database.updateDeliveryStatus(conversationID, messageID, status, transport)
             } catch (error: Exception) {
                 Log.e(TAG, "Unable to persist delivery status: ${error.message}")
             }
+        }
+    }
+
+    /** Waits for the bound update; true only when the message exists in [conversationID]. */
+    internal suspend fun updateDeliveryStatusAndWait(
+        conversationID: String,
+        messageID: String,
+        status: DeliveryStatus,
+        transport: MessageTransport?,
+        expectedGeneration: Long = captureWriteGeneration()
+    ): Boolean = withContext(dispatcher) {
+        if (expectedGeneration != captureWriteGeneration()) return@withContext false
+        try {
+            database.updateDeliveryStatus(conversationID, messageID, status, transport)
+        } catch (error: Exception) {
+            Log.e(TAG, "Unable to persist delivery status: ${error.message}")
+            false
         }
     }
 
@@ -873,16 +891,16 @@ internal class ConversationDatabase(
     }
 
     /**
-     * [transport] is recorded only when [status] is applied: a refused downgrade changes nothing.
-     * [conversationID] set (an ack from an authenticated peer): applied only to a message of that
-     * conversation or one of its aliases.
+     * Applies [status] to [messageID] only when it belongs to [conversationID] or one of its
+     * aliases; returns whether it does. [transport] is recorded only when [status] is applied: a
+     * refused downgrade changes nothing.
      */
     fun updateDeliveryStatus(
+        conversationID: String,
         messageID: String,
         status: DeliveryStatus,
-        transport: MessageTransport? = null,
-        conversationID: String? = null
-    ) {
+        transport: MessageTransport? = null
+    ): Boolean {
         val db = writableDatabase
         var found = false
         var owner: String? = null
@@ -902,22 +920,21 @@ internal class ConversationDatabase(
             }
         }
 
-        if (!found) return
-        if (conversationID != null &&
-            !resolveStoredConversationLocked(db, conversationID).equals(owner, ignoreCase = true)
-        ) return
+        if (!found) return false
+        if (!resolveStoredConversationLocked(db, conversationID).equals(owner, ignoreCase = true)) return false
         val mayReplace = when {
             status is DeliveryStatus.Failed ->
                 existing !is DeliveryStatus.Delivered && existing !is DeliveryStatus.Read
             existing is DeliveryStatus.Failed -> true
             else -> statusPriority(status) >= statusPriority(existing)
         }
-        if (!mayReplace) return
+        // Matched: the message is in that conversation, even when the status is not an upgrade.
+        if (!mayReplace) return true
         db.inTransaction {
             val current = rawQuery(
                 "SELECT ${MESSAGE_COLUMNS.joinToString(",")} " +
-                    "FROM private_messages WHERE message_id = ?",
-                arrayOf(messageID)
+                    "FROM private_messages WHERE message_id = ? AND conversation_id = ?",
+                arrayOf(messageID, owner)
             ).use { cursor ->
                 if (cursor.moveToFirst()) cursor.toMessage() else null
             } ?: return@inTransaction
@@ -931,10 +948,11 @@ internal class ConversationDatabase(
                     )
                     if (transport != null) put("transport", transport.asColumn())
                 },
-                "message_id = ?",
-                arrayOf(messageID)
+                "message_id = ? AND conversation_id = ?",
+                arrayOf(messageID, owner)
             )
         }
+        return true
     }
 
     fun markRead(messageID: String) {

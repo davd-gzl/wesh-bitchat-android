@@ -70,11 +70,11 @@ internal class NostrBackgroundEventProcessor(
         directMessageHandler.onGiftWrap(event, identity)
     }
 
-    private fun updateDeliveryStatus(messageId: String, status: DeliveryStatus) {
-        messageManager.updateMessageDeliveryStatus(messageId, status)
-        // The headless state may not yet contain a just-sent UI message. Update the process store
-        // unconditionally so a delivery/read receipt can never be lost during Activity handoff.
-        AppStateStore.updatePrivateMessageStatus(messageId, status)
+    private fun updateDeliveryStatus(conversationID: String, messageId: String, status: DeliveryStatus) {
+        // Bound to the conversation of the sender the seal authenticated, never by ID alone.
+        if (AppStateStore.updatePrivateMessageStatus(conversationID, messageId, status)) {
+            messageManager.updateMessageDeliveryStatus(messageId, status)
+        }
     }
 
     private fun refreshBlockLists() {

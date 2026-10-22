@@ -250,9 +250,9 @@ class MessageManager(private val state: ChatState) {
         }
         
         if (updated) {
+            // UI mirror only: the store was already updated through its conversation-bound API, and
+            // never by message ID alone.
             state.setPrivateChats(updatedPrivateChats)
-            // Keep process-wide store in sync to prevent snapshot overwrites resetting status
-            try { com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(messageID, status) } catch (_: Exception) { }
         }
         
         // Update in main messages

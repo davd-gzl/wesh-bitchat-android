@@ -133,7 +133,7 @@ class IncomingMessageAdmissionTest {
         )
 
         val delivered = DeliveryStatus.Delivered(to = "alice", at = Date(3L))
-        AppStateStore.updatePrivateMessageStatus(older.id, delivered)
+        AppStateStore.updatePrivateMessageStatus("peer-a", older.id, delivered)
         runBlocking { repository.awaitPendingWrites() }
 
         val snapshot = runBlocking {
