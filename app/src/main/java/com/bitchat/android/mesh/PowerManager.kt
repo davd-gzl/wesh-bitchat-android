@@ -49,15 +49,6 @@ class PowerManager private constructor(context: Context) : LifecycleEventObserve
         val maxConnections: Int = 8
     )
 
-    data class WifiAwareSchedule(
-        val tcpKeepAliveMs: Long,
-        val discoveryKeepAliveMs: Long,
-        val connectionMaintenanceMs: Long,
-        val discoveryIdleRefreshMs: Long,
-        val discoverySessionRefreshMinMs: Long,
-        val discoveryStaleMs: Long
-    )
-
     data class NostrSchedule(
         val presenceHeartbeatMinMs: Long,
         val presenceHeartbeatMaxMs: Long,
@@ -72,7 +63,6 @@ class PowerManager private constructor(context: Context) : LifecycleEventObserve
         val hasDirectPeers: Boolean,
         val ble: BleSchedule,
         val meshAnnouncementIntervalMs: Long,
-        val wifiAware: WifiAwareSchedule,
         val nostr: NostrSchedule
     )
 
@@ -344,23 +334,6 @@ internal object PowerProfileResolver {
             else -> 30_000L
         }
 
-        val wifi = when {
-            isBackground && batteryBand == PowerManager.BatteryBand.NORMAL ->
-                wifi(10, 60, 60, 5, 5, 10)
-            isBackground && batteryBand == PowerManager.BatteryBand.LOW ->
-                wifi(20, 120, 120, 10, 10, 15)
-            isBackground ->
-                wifi(30, 180, 180, 15, 15, 20)
-            mode == PowerManager.PowerMode.PERFORMANCE ->
-                PowerManager.WifiAwareSchedule(2_000L, 20_000L, 15_000L, 120_000L, 90_000L, 300_000L)
-            mode == PowerManager.PowerMode.BALANCED ->
-                PowerManager.WifiAwareSchedule(5_000L, 30_000L, 30_000L, 180_000L, 120_000L, 300_000L)
-            mode == PowerManager.PowerMode.POWER_SAVER ->
-                PowerManager.WifiAwareSchedule(10_000L, 60_000L, 60_000L, 300_000L, 180_000L, 600_000L)
-            else ->
-                PowerManager.WifiAwareSchedule(15_000L, 90_000L, 90_000L, 600_000L, 300_000L, 900_000L)
-        }
-
         val nostr = when {
             isBackground && batteryBand == PowerManager.BatteryBand.NORMAL ->
                 PowerManager.NostrSchedule(300_000L, 330_000L, 300_000L)
@@ -384,24 +357,7 @@ internal object PowerProfileResolver {
             hasDirectPeers = hasDirectPeers,
             ble = ble,
             meshAnnouncementIntervalMs = announcementInterval,
-            wifiAware = wifi,
             nostr = nostr
         )
     }
-
-    private fun wifi(
-        tcpSeconds: Long,
-        discoverySeconds: Long,
-        maintenanceSeconds: Long,
-        idleMinutes: Long,
-        minRefreshMinutes: Long,
-        staleMinutes: Long
-    ) = PowerManager.WifiAwareSchedule(
-        tcpKeepAliveMs = tcpSeconds * 1_000L,
-        discoveryKeepAliveMs = discoverySeconds * 1_000L,
-        connectionMaintenanceMs = maintenanceSeconds * 1_000L,
-        discoveryIdleRefreshMs = idleMinutes * 60_000L,
-        discoverySessionRefreshMinMs = minRefreshMinutes * 60_000L,
-        discoveryStaleMs = staleMinutes * 60_000L
-    )
 }

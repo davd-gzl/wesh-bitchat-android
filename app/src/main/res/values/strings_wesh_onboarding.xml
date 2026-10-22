@@ -9,7 +9,6 @@
     <string name="wesh_permissions_critical_denied_footer">Grant them in the Android settings to use Wesh.</string>
     <string name="wesh_permission_bluetooth">Bluetooth / nearby devices</string>
     <string name="wesh_permission_legacy_location">Location permission for Bluetooth scanning on older Android</string>
-    <string name="wesh_permission_wifi">Nearby Wi-Fi devices</string>
     <string name="wesh_permission_notifications">Notifications</string>
     <string name="wesh_onboarding_bluetooth_off_title">Turn on Bluetooth</string>
     <string name="wesh_onboarding_bluetooth_off_body">Bluetooth connects you to people nearby, even without Internet. Turn it on to continue.</string>

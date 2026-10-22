@@ -199,7 +199,6 @@
   <string name="cd_checking_battery_optimization">Checking Battery Optimization</string>
   <string name="cd_not_supported_battery_optimization">Battery Optimization Not Supported</string>
   <string name="cd_bluetooth">Bluetooth</string>
-  <string name="cd_direct_wifi_aware" tools:ignore="MissingTranslation">Direct Wi-Fi Aware</string>
   <string name="cd_direct_bluetooth" tools:ignore="MissingTranslation">Direct Bluetooth</string>
   <string name="cd_routed_mesh" tools:ignore="MissingTranslation">Routed mesh</string>
   <string name="cd_unread_message">Unread message</string>

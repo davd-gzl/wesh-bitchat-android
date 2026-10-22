@@ -1264,10 +1264,7 @@ class ChatViewModel(
         weshPreferences.fenceForPanic()
         com.bitchat.android.net.WeshInternetMode.get(getApplication()).fenceForPanic()
         com.bitchat.android.services.AppStateStore.fencePrivateConversationAdmissionForPanic()
-        PanicResetCoordinator.stopTransports(
-            { meshService.setBleTransportEnabled(false) },
-            { com.bitchat.android.wifiaware.WifiAwareController.stop() }
-        )
+        PanicResetCoordinator.stopTransports({ meshService.setBleTransportEnabled(false) })
         val app = getApplication<Application>()
         val draftEpoch = weshDraftStore.epoch
         PanicResetCoordinator.launchPanic(viewModelScope) {

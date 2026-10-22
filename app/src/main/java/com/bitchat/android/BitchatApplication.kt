@@ -63,12 +63,6 @@ class BitchatApplication : Application() {
         // Initialize debug preference manager (persists debug toggles)
         try { com.bitchat.android.ui.debug.DebugPreferenceManager.init(this) } catch (_: Exception) { }
 
-        // Initialize Wi‑Fi Aware controller with persisted default
-        try {
-            val enabled = !BuildConfig.WESH_POLICY && com.bitchat.android.ui.debug.DebugPreferenceManager.getWifiAwareEnabled(false)
-            com.bitchat.android.wifiaware.WifiAwareController.initialize(this, enabled)
-        } catch (_: Exception) { }
-
         // Initialize the Nostr alias registry for persistence
         try {
             com.bitchat.android.nostr.GeohashAliasRegistry.initialize(this)
