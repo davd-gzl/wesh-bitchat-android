@@ -13,6 +13,7 @@ import com.bitchat.android.nostr.NostrIdentity
 import com.bitchat.android.nostr.NostrProtocol
 import com.bitchat.android.nostr.RelayPublishOutcome
 import com.bitchat.android.util.AppConstants
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -669,30 +670,52 @@ class WeshInternetRouteTest {
         }
     }
 
-    @Test fun `a message that may have left is not resent while its history is unloaded`() {
-        val router = failingBluetoothRouter(com.bitchat.android.mesh.BoundSendOutcome.UNCONFIRMED)
-        var now = 1_000_000L
-        router.clock = { now }
+    /** Alice's router with a real conversation database; Bob is out of Bluetooth range. */
+    private fun withPersistedRouter(body: (MessageRouter) -> Unit) {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        AppStateStore.clear()
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val name = "ack-${java.util.UUID.randomUUID()}.db"
+        val repository = ConversationRepository(context = context, dispatcher = executor.asCoroutineDispatcher(),
+            databaseName = name, storageCipher = InMemoryConversationStorageCipher())
         try {
-            AppStateStore.addPrivateMessage(bobConversation, BitchatMessage(id = "bw-2", sender = "me", content = "plus tard",
-                timestamp = java.util.Date(), isPrivate = true, recipientNickname = "Bob",
-                senderPeerID = alice.peerID, deliveryStatus = DeliveryStatus.Sending))
-            assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
-            Thread.sleep(300)
-            // The chat is closed: bw-1's status (maybe acked meanwhile) is no longer known here.
-            AppStateStore.releasePrivateConversationHistory(bobConversation)
-            assertTrue(AppStateStore.privateMessages.value.values.flatten().none { it.id == "bw-1" })
-            whenever(router.meshForTesting.getAuthenticatedRemoteStaticKey(ContactIdentityResolver.peerIdForNoiseKey(bobNoise)))
-                .thenReturn(null)
-            now += AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS
-            router.tickOutbox(now)
-            Thread.sleep(300)
-            assertTrue(alice.link.published.isEmpty())
+            AppStateStore.setConversationRepositoryForTest(repository)
+            for (id in listOf("p-old", "p-new")) {
+                AppStateStore.addPrivateMessage(bobConversation, BitchatMessage(id = id, sender = "me", content = "salut",
+                    timestamp = java.util.Date(), isPrivate = true, recipientNickname = "Bob",
+                    senderPeerID = alice.peerID, deliveryStatus = DeliveryStatus.Sending))
+            }
+            body(MessageRouter(context, mesh, mock()).also { it.weshInternetLink = alice.link })
+            kotlinx.coroutines.runBlocking { repository.awaitPendingWrites() }
         } finally {
+            AppStateStore.setConversationRepositoryForTest(null)
+            repository.closeForTest()
+            executor.shutdown()
+            context.deleteDatabase(name)
             WeshContactStore.resetForTesting()
             MessageRouter.disableSchedulerForTesting = false
             AppStateStore.clear()
         }
+    }
+
+    @Test fun `with the conversation unloaded, a persisted Distribué stops the Internet resend`() = withPersistedRouter { router ->
+        AppStateStore.updatePrivateMessageStatus("p-old", DeliveryStatus.Delivered("Bob", java.util.Date()))
+        AppStateStore.releasePrivateConversationHistory(bobConversation)
+        assertTrue(AppStateStore.privateMessages.value.values.flatten().none { it.id == "p-old" })
+        assertEquals(MessageRouter.RouteResult.NOSTR, router.sendPrivate("salut", bobConversation, "Bob", "p-old"))
+        Thread.sleep(400)
+        assertTrue(alice.link.published.isEmpty())
+    }
+
+    @Test fun `with the conversation unloaded, a persisted Envoyé is resent over Internet`() = withPersistedRouter { router ->
+        AppStateStore.updatePrivateMessageStatus("p-old", DeliveryStatus.Sent)
+        AppStateStore.releasePrivateConversationHistory(bobConversation)
+        assertEquals(MessageRouter.RouteResult.NOSTR, router.sendPrivate("salut", bobConversation, "Bob", "p-old"))
+        waitFor { alice.link.published.size == 1 }
     }
 
     @Test fun `a message acked during the ack window is never sent again`() {

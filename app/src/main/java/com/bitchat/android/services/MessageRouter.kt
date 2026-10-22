@@ -270,6 +270,13 @@ class MessageRouter internal constructor(
             // take the entry out of the outbox and then refuse to dispatch it.
             val retry = try {
                 if (epoch != weshEpoch.get()) return@launch
+                // Internet only (Bluetooth resends are always allowed, receivers deduplicate): the
+                // stored status decides. Acked or deleted: stop. Store unavailable: next tick.
+                when (AppStateStore.persistedAck(conversationID, entry.messageID)) {
+                    AppStateStore.PersistedAck.ACKED, AppStateStore.PersistedAck.GONE -> return@launch
+                    AppStateStore.PersistedAck.UNAVAILABLE -> return@launch requeueAfterSkip(entry, conversationID, epoch, cancelled)
+                    AppStateStore.PersistedAck.PENDING -> Unit
+                }
                 // Re-checked right before the publish: a delete, block or erase since then wins.
                 val stillWanted = { epoch == weshEpoch.get() && (weshCancelled[conversationID] ?: 0L) == cancelled }
                 val send = weshInternet().sendPrivate(entry.content, conversationID, entry.messageID, entry.giftWrap,
@@ -311,6 +318,12 @@ class MessageRouter internal constructor(
     }
 
     private fun isAcked(conversationID: String, messageID: String): Boolean = ackState(conversationID, messageID) == AckState.ACKED
+
+    /** Skips this attempt only: the entry goes back unchanged and the next tick tries again. */
+    private fun requeueAfterSkip(entry: QueuedMessage, conversationID: String, epoch: Long, cancelled: Long) {
+        weshInFlight.remove(entry.messageID)
+        requeueWesh(entry, conversationID, epoch, cancelled)
+    }
 
     /** Under the router monitor: never after a panic clear, never for a removed or blocked contact. */
     @Synchronized private fun requeueWesh(entry: QueuedMessage, conversationID: String, epoch: Long, cancelled: Long) {
@@ -480,9 +493,6 @@ class MessageRouter internal constructor(
                     iterator.remove()
                 } else if (entry.notBeforeMs > clock()) {
                     // Inside the ack window of a Bluetooth write that may have left.
-                } else if (entry.notBeforeMs != 0L && ackState(conversationID, entry.messageID) == AckState.UNKNOWN) {
-                    // It may have left and its ack cannot be checked (history unloaded): no resend.
-                    // It stays until the TTL, whose « Échec » never replaces a stored « Distribué ».
                 } else if (sender.canSend(conversationID, mesh)) {
                     // Bluetooth first whenever the contact is in range again, same message ID.
                     dispatchWesh(entry, conversationID, epoch, weshCancelled[conversationID] ?: 0L)
