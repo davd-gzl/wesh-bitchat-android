@@ -982,7 +982,7 @@ class BluetoothMeshService(
     suspend fun sendPrivateMessageBoundOutcome(content: String, recipientPeerID: String, expectedKey: ByteArray,
         messageID: String, authorized: () -> Boolean): BoundSendOutcome = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         if (content.isBlank() || content.toByteArray().size > 2000 || expectedKey.size != 32) return@withContext BoundSendOutcome.NOT_SENT
-        if (!authorized()) return@withContext BoundSendOutcome.AUTH_FAILED
+        if (!authorized()) return@withContext BoundSendOutcome.NOT_SENT
         val session = encryptionService.getAuthenticatedSession(recipientPeerID) ?: return@withContext BoundSendOutcome.NOT_SENT
         if (!session.remoteStaticKey.contentEquals(expectedKey)) return@withContext BoundSendOutcome.AUTH_FAILED
         val sessionStillValid = { authorized() && encryptionService.getAuthenticatedSession(recipientPeerID) == session }
@@ -992,7 +992,7 @@ class BluetoothMeshService(
             val payload = com.bitchat.android.model.NoisePayload(com.bitchat.android.model.NoisePayloadType.PRIVATE_MESSAGE, encoded)
             // encryptForSession atomically refuses a replacement generation, even for the same alias.
             val encrypted = encryptionService.encryptForSession(payload.encode(), recipientPeerID, session)
-            if (!authorized()) return@withContext BoundSendOutcome.AUTH_FAILED
+            if (!authorized()) return@withContext BoundSendOutcome.NOT_SENT
             val packet = BitchatPacket(version = 1u, type = MessageType.NOISE_ENCRYPTED.value,
                 senderID = hexStringToByteArray(myPeerID), recipientID = hexStringToByteArray(recipientPeerID),
                 timestamp = System.currentTimeMillis().toULong(), payload = encrypted, signature = null, ttl = MAX_TTL)
@@ -1000,8 +1000,8 @@ class BluetoothMeshService(
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            // Before any write: a refused encryption means the session changed under us.
-            if (sessionStillValid()) BoundSendOutcome.NOT_SENT else BoundSendOutcome.AUTH_FAILED
+            // Before any write (the broadcast reports its own failures): nothing left.
+            BoundSendOutcome.NOT_SENT
         }
     }
 

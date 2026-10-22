@@ -41,7 +41,9 @@ class WeshInternetRouteTest {
         val published = CopyOnWriteArrayList<NostrEvent>()
         /** What the relays answer to a confirmed publish. */
         @Volatile var answer = RelayPublishOutcome.ACCEPTED
-        override fun isOn() = on
+        /** Runs inside every isOn() call, to land a change at a precise point of a send. */
+        @Volatile var onIsOn: (() -> Unit)? = null
+        override fun isOn() = on.also { onIsOn?.invoke() }
         override fun myIdentity() = identity
         override fun publish(event: NostrEvent) { published += event }
         /** Set to hold a confirmed publish in flight until completed. */
@@ -541,12 +543,45 @@ class WeshInternetRouteTest {
         }
     }
 
-    @Test fun `a Bluetooth write that may have left stays waiting and never goes over Internet`() {
+    @Test fun `a Bluetooth write that may have left waits for its ack, then goes over Internet once Bob is gone`() {
         val router = failingBluetoothRouter(com.bitchat.android.mesh.BoundSendOutcome.UNCONFIRMED)
+        var now = 1_000_000L
+        router.clock = { now }
         try {
             assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
             Thread.sleep(300)
+            router.tickOutbox(now)
+            Thread.sleep(200)
             assertEquals(DeliveryStatus.Sending, bw1())
+            assertTrue(alice.link.published.isEmpty())
+            // Ack window over, Bob out of range: the same message ID goes over Internet.
+            whenever(router.meshForTesting.getAuthenticatedRemoteStaticKey(ContactIdentityResolver.peerIdForNoiseKey(bobNoise)))
+                .thenReturn(null)
+            now += AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS
+            router.tickOutbox(now)
+            waitFor { bw1() == DeliveryStatus.Sent }
+            assertEquals(1, alice.link.published.size)
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
+    @Test fun `a peer that walks away mid-write sends over Internet, a changed key never does`() {
+        val router = failingBluetoothRouter()
+        val bobPeer = ContactIdentityResolver.peerIdForNoiseKey(bobNoise)
+        try {
+            // The transport reports nothing sent while the key now proven in range is another one.
+            kotlinx.coroutines.runBlocking {
+                whenever(router.meshForTesting.sendPrivateMessageBoundOutcome(any(), any(), any(), any(), any())).thenAnswer {
+                    whenever(router.meshForTesting.getAuthenticatedRemoteStaticKey(bobPeer)).thenReturn(ByteArray(32) { 7 })
+                    com.bitchat.android.mesh.BoundSendOutcome.NOT_SENT
+                }
+            }
+            assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
+            waitFor { bw1() is DeliveryStatus.Failed }
+            Thread.sleep(200)
             assertTrue(alice.link.published.isEmpty())
         } finally {
             WeshContactStore.resetForTesting()
@@ -563,6 +598,56 @@ class WeshInternetRouteTest {
             Thread.sleep(200)
             assertTrue(alice.link.published.isEmpty())
         } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
+    @Test fun `a contact back in Bluetooth range gets the waiting message over Bluetooth`() {
+        val router = failingBluetoothRouter()
+        var now = 1_000_000L
+        router.clock = { now }
+        try {
+            alice.link.answer = RelayPublishOutcome.UNCONFIRMED
+            assertEquals(MessageRouter.RouteResult.MESH, router.sendPrivate("salut", bobConversation, "Bob", "bw-1"))
+            waitFor { alice.link.published.size == 1 }
+            Thread.sleep(100)
+            kotlinx.coroutines.runBlocking {
+                whenever(router.meshForTesting.sendPrivateMessageBoundOutcome(any(), any(), any(), any(), any()))
+                    .thenReturn(com.bitchat.android.mesh.BoundSendOutcome.SENT)
+            }
+            router.tickOutbox(now)
+            waitFor { bw1() == DeliveryStatus.Sent }
+            assertEquals(1, alice.link.published.size)
+        } finally {
+            WeshContactStore.resetForTesting()
+            MessageRouter.disableSchedulerForTesting = false
+            AppStateStore.clear()
+        }
+    }
+
+    @Test fun `a block during an in-flight Internet send keeps it off the relays`() {
+        val mesh: MeshService = mock()
+        whenever(mesh.myPeerID).thenReturn(alice.peerID)
+        ContactDirectory.initialize(context) { mesh }
+        WeshContactStore.installForTesting(alice.contacts)
+        MessageRouter.disableSchedulerForTesting = true
+        AppStateStore.clear()
+        val router = MessageRouter(context, mesh, mock())
+        router.weshInternetLink = alice.link
+        AppStateStore.addPrivateMessage(bobConversation, BitchatMessage(id = "bl-1", sender = "me", content = "salut",
+            timestamp = java.util.Date(), isPrivate = true, recipientNickname = "Bob",
+            senderPeerID = alice.peerID, deliveryStatus = DeliveryStatus.Sending))
+        try {
+            var calls = 0
+            // The routing check passes; the block lands while the send is being prepared.
+            alice.link.onIsOn = { if (++calls == 2) router.cancelWeshConversation(bobConversation) }
+            assertEquals(MessageRouter.RouteResult.NOSTR, router.sendPrivate("salut", bobConversation, "Bob", "bl-1"))
+            Thread.sleep(300)
+            assertTrue(alice.link.published.isEmpty())
+        } finally {
+            alice.link.onIsOn = null
             WeshContactStore.resetForTesting()
             MessageRouter.disableSchedulerForTesting = false
             AppStateStore.clear()

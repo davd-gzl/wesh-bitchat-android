@@ -18,8 +18,10 @@ class BoundSendOutcomeTest {
     }
 
     @Test
-    fun `a session or key that no longer matches wins over everything`() {
-        assertEquals(BoundSendOutcome.AUTH_FAILED, BoundSendOutcome.afterFragment(0, accepted = false, stillAuthorized = false))
-        assertEquals(BoundSendOutcome.AUTH_FAILED, BoundSendOutcome.afterFragment(1, accepted = true, stillAuthorized = false))
+    fun `a session lost mid-send is no identity change, only the caller decides that`() {
+        assertEquals(BoundSendOutcome.NOT_SENT, BoundSendOutcome.afterFragment(0, accepted = false, stillAuthorized = false))
+        assertEquals(BoundSendOutcome.UNCONFIRMED, BoundSendOutcome.afterFragment(1, accepted = true, stillAuthorized = false))
+        assertEquals(BoundSendOutcome.NOT_SENT, BoundSendOutcome.beforeFragment(0))
+        assertEquals(BoundSendOutcome.UNCONFIRMED, BoundSendOutcome.beforeFragment(2))
     }
 }

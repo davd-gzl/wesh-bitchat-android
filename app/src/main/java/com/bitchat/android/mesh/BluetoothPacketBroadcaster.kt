@@ -198,7 +198,7 @@ class BluetoothPacketBroadcaster(
         characteristic: BluetoothGattCharacteristic?, authorized: () -> Boolean): BoundSendOutcome {
         val packets = fragmentingSender.packetsForTransport(routed) ?: return BoundSendOutcome.NOT_SENT
         for ((index, packet) in packets.withIndex()) {
-            if (!authorized()) return BoundSendOutcome.AUTH_FAILED
+            if (!authorized()) return BoundSendOutcome.beforeFragment(index)
             val accepted = CompletableDeferred<Boolean>()
             val result: Boolean? = try {
                 kotlinx.coroutines.withTimeoutOrNull(5_000) {

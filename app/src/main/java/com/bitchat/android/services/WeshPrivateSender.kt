@@ -43,11 +43,24 @@ internal class WeshPrivateSender(private val contacts: WeshContactStore) {
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            BoundSendOutcome.UNCONFIRMED
-        } ?: BoundSendOutcome.UNCONFIRMED
-        if (outcome == BoundSendOutcome.SENT) AppStateStore.updatePrivateMessageStatus(conversationID, messageID, DeliveryStatus.Sent, MessageTransport.BLUETOOTH)
-        return outcome
+            // Raised before the radio write (store, directory): nothing left.
+            BoundSendOutcome.NOT_SENT
+        } ?: BoundSendOutcome.NOT_SENT
+        if (outcome == BoundSendOutcome.SENT) {
+            AppStateStore.updatePrivateMessageStatus(conversationID, messageID, DeliveryStatus.Sent, MessageTransport.BLUETOOTH)
+            return outcome
+        }
+        // Not sent or maybe sent: an identity change (removed, blocked, another proven key) makes
+        // it AUTH_FAILED; a peer that simply walked away keeps the transport's answer.
+        return if (identityChanged(conversationID, mesh)) BoundSendOutcome.AUTH_FAILED else outcome
     }
+
+    private fun identityChanged(conversationID: String, mesh: MeshService): Boolean = runCatching {
+        val contact = contacts.contact(conversationID) ?: return@runCatching true
+        if (contacts.isBlocked(contact.key)) return@runCatching true
+        val live = ContactDirectory.resolve(conversationID).meshPeerID ?: return@runCatching false
+        mesh.getAuthenticatedRemoteStaticKey(live)?.let { !it.contentEquals(contact.key) } ?: false
+    }.getOrDefault(true)
 
     companion object {
         const val FAILED_WRITE = "Connexion ou identité indisponible. Réessayez après vérification."

@@ -43,8 +43,8 @@ class MessageRouter internal constructor(
         val internetRetryAtMs: Long = 0L,
         /** Signed gift wrap of an unconfirmed attempt, republished unchanged; memory only. */
         val giftWrap: com.bitchat.android.nostr.NostrEvent? = null,
-        /** Its Bluetooth write failed: from now on it goes over Internet only. */
-        val internetOnly: Boolean = false
+        /** A Bluetooth write that may have left waits this long for its ack before any retry. */
+        val notBeforeMs: Long = 0L
     )
 
     private data class ConversationRetry(
@@ -168,18 +168,21 @@ class MessageRouter internal constructor(
             if (!sender.enrolled(conversationID) || content.isBlank() || content.toByteArray().size > 2000) return RouteResult.DROPPED
             // A retry of a waiting message replaces its queued copy: one message, one route. It
             // keeps its 24 h deadline, its backoff count and its signed wrap.
+            // Under the monitor cancelWeshConversation bumps it with: a delete or block from here on
+            // stops every route of this send.
+            val cancelled = synchronized(this) { weshCancelled[conversationID] ?: 0L }
             val previous = dequeueWesh(conversationID, messageID)
             val queued = QueuedMessage(content, recipientNickname, messageID, previous?.enqueuedAtMs ?: clock(),
                 internetAttempts = previous?.internetAttempts ?: 0, giftWrap = previous?.giftWrap)
             if (sender.canSend(conversationID, mesh)) {
-                dispatchWesh(queued, conversationID, epoch)
+                dispatchWesh(queued, conversationID, epoch, cancelled)
                 return RouteResult.MESH
             }
             if (weshInternet().canSend(conversationID)) {
-                dispatchWeshInternet(queued, conversationID, epoch)
+                dispatchWeshInternet(queued, conversationID, epoch, since = cancelled)
                 return RouteResult.NOSTR
             }
-            return if (enqueueWesh(conversationID, queued, epoch)) RouteResult.QUEUED else RouteResult.DROPPED
+            return if (enqueueWesh(conversationID, queued, epoch, cancelled)) RouteResult.QUEUED else RouteResult.DROPPED
         }
 
         val hasMesh = meshTarget?.let { isConnected(mesh, it) } == true
@@ -201,11 +204,9 @@ class MessageRouter internal constructor(
     }
 
     /** [entry] carries the message's deadline, backoff and signed wrap through a failed write. */
-    private fun dispatchWesh(entry: QueuedMessage, conversationID: String, epoch: Long = weshEpoch.get()) {
+    private fun dispatchWesh(entry: QueuedMessage, conversationID: String, epoch: Long, cancelled: Long) {
         val messageID = entry.messageID
         if (epoch != weshEpoch.get() || !weshInFlight.add(messageID)) return
-        // Captured at the write: a delete or block during it stops any Internet fallback.
-        val cancelled = weshCancelled[conversationID] ?: 0L
         schedulerScope.launch {
             val outcome = try {
                 if (epoch != weshEpoch.get()) return@launch
@@ -215,8 +216,11 @@ class MessageRouter internal constructor(
                 com.bitchat.android.mesh.BoundSendOutcome.SENT -> Unit
                 // Nothing reached the radio: another route may take it.
                 com.bitchat.android.mesh.BoundSendOutcome.NOT_SENT -> afterFailedBluetoothWrite(entry, conversationID, epoch, cancelled)
-                // Some bytes may have left: it stays « En attente », under the same ID, for the ack.
-                com.bitchat.android.mesh.BoundSendOutcome.UNCONFIRMED -> Unit
+                // Some bytes may have left: « En attente » under the same ID; after the ack window
+                // (rule 4) it is retried, over Bluetooth if in range, else Internet; receivers dedup.
+                com.bitchat.android.mesh.BoundSendOutcome.UNCONFIRMED -> requeueWesh(
+                    entry.copy(notBeforeMs = clock() + AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS),
+                    conversationID, epoch, cancelled)
                 // The session or key no longer matches: never elsewhere.
                 com.bitchat.android.mesh.BoundSendOutcome.AUTH_FAILED -> AppStateStore.updatePrivateMessageStatus(messageID,
                     com.bitchat.android.model.DeliveryStatus.Failed(WeshPrivateSender.FAILED_WRITE))
@@ -231,7 +235,7 @@ class MessageRouter internal constructor(
      */
     private fun afterFailedBluetoothWrite(entry: QueuedMessage, conversationID: String, epoch: Long, cancelled: Long) {
         if (epoch != weshEpoch.get()) return
-        val next = entry.copy(internetOnly = true)
+        val next = entry
         when {
             (weshCancelled[conversationID] ?: 0L) != cancelled -> AppStateStore.updatePrivateMessageStatus(entry.messageID,
                 com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
@@ -251,18 +255,25 @@ class MessageRouter internal constructor(
         entry: QueuedMessage,
         conversationID: String,
         epoch: Long = weshEpoch.get(),
-        /** Cancel generation captured earlier (at a Bluetooth write): a cancel since then stops this send. */
-        since: Long? = null
+        /** Cancel generation captured when the send began: a cancel since then stops it. */
+        since: Long
     ) {
-        val cancelled = weshCancelled[conversationID] ?: 0L
-        if (since != null && since != cancelled) return
+        val cancelled = since
+        if ((weshCancelled[conversationID] ?: 0L) != since) {
+            AppStateStore.updatePrivateMessageStatus(entry.messageID,
+                com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
+            return
+        }
         if (epoch != weshEpoch.get() || !weshInFlight.add(entry.messageID)) return
         schedulerScope.launch {
             // Requeued only after leaving the in-flight set: a flush in between could otherwise
             // take the entry out of the outbox and then refuse to dispatch it.
             val retry = try {
                 if (epoch != weshEpoch.get()) return@launch
-                val send = weshInternet().sendPrivate(entry.content, conversationID, entry.messageID, entry.giftWrap)
+                // Re-checked right before the publish: a delete, block or erase since then wins.
+                val stillWanted = { epoch == weshEpoch.get() && (weshCancelled[conversationID] ?: 0L) == cancelled }
+                val send = weshInternet().sendPrivate(entry.content, conversationID, entry.messageID, entry.giftWrap,
+                    allowed = stillWanted)
                 if (epoch != weshEpoch.get()) return@launch
                 when (send.outcome) {
                     RelayPublishOutcome.ACCEPTED -> {
@@ -299,7 +310,7 @@ class MessageRouter internal constructor(
         // A retry took over meanwhile (in flight again, or queued): one copy only.
         if (entry.messageID in weshInFlight || outbox[conversationID].orEmpty().any { it.messageID == entry.messageID }) return
         if (WeshPrivateSender(WeshContactStore.get(context)).enrolled(conversationID)) {
-            enqueueWesh(conversationID, entry, epoch)
+            enqueueWesh(conversationID, entry, epoch, cancelled)
         } else {
             AppStateStore.updatePrivateMessageStatus(conversationID, entry.messageID,
                 com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
@@ -343,8 +354,10 @@ class MessageRouter internal constructor(
     }
 
     /** Queues only if no panic happened since [epoch]; false means nothing is kept. */
-    @Synchronized private fun enqueueWesh(conversationID: String, entry: QueuedMessage, epoch: Long): Boolean {
+    @Synchronized private fun enqueueWesh(conversationID: String, entry: QueuedMessage, epoch: Long, cancelled: Long? = null): Boolean {
         if (epoch != weshEpoch.get()) return false
+        // Deleted or blocked since the send began: nothing is kept.
+        if (cancelled != null && (weshCancelled[conversationID] ?: 0L) != cancelled) return false
         enqueue(conversationID, entry)
         // clearAll bumps the epoch before clearing: a clear that raced this enqueue removes it here.
         if (epoch != weshEpoch.get()) {
@@ -447,12 +460,15 @@ class MessageRouter internal constructor(
                     iterator.remove()
                     com.bitchat.android.services.AppStateStore.updatePrivateMessageStatus(conversationID, entry.messageID,
                         com.bitchat.android.model.DeliveryStatus.Failed("Contact retiré ou bloqué"))
-                } else if (!entry.internetOnly && sender.canSend(conversationID, mesh)) {
-                    dispatchWesh(entry, conversationID, epoch)
+                } else if (entry.notBeforeMs > clock()) {
+                    // Inside the ack window of a Bluetooth write that may have left.
+                } else if (sender.canSend(conversationID, mesh)) {
+                    // Bluetooth first whenever the contact is in range again, same message ID.
+                    dispatchWesh(entry, conversationID, epoch, weshCancelled[conversationID] ?: 0L)
                     iterator.remove()
                 } else if (entry.internetRetryAtMs <= clock() && weshInternet().canSend(conversationID)) {
                     iterator.remove()
-                    dispatchWeshInternet(entry, conversationID, epoch)
+                    dispatchWeshInternet(entry, conversationID, epoch, since = weshCancelled[conversationID] ?: 0L)
                 }
                 continue
             }

@@ -13,14 +13,18 @@ enum class BoundSendOutcome {
 
     companion object {
         /**
-         * Outcome after fragment [index] got [accepted] (null: timeout or error), with the
-         * authorization re-checked afterwards; null means carry on with the next fragment.
+         * Outcome after fragment [index] got [accepted] (null: timeout or error), with the session
+         * re-checked afterwards; null means carry on. A session lost mid-send is not an identity
+         * change: before any byte it is [NOT_SENT], after some bytes [UNCONFIRMED]. Only the
+         * caller, which knows the enrolled key, decides [AUTH_FAILED].
          */
         fun afterFragment(index: Int, accepted: Boolean?, stillAuthorized: Boolean): BoundSendOutcome? = when {
-            !stillAuthorized -> AUTH_FAILED
-            accepted == true -> null
+            accepted == true -> if (stillAuthorized) null else UNCONFIRMED
             index == 0 && accepted == false -> NOT_SENT
             else -> UNCONFIRMED
         }
+
+        /** The session check failed before fragment [index] was handed over. */
+        fun beforeFragment(index: Int): BoundSendOutcome = if (index == 0) NOT_SENT else UNCONFIRMED
     }
 }
