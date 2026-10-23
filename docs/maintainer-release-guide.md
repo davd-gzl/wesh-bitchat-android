@@ -1,6 +1,6 @@
 # Android maintainer release guide
 
-This is the operational runbook for publishing a Bitchat Android release to
+This is the operational runbook for publishing a Wesh Android release to
 GitHub and Google Play. Follow it from top to bottom for every release.
 
 The central rule is:
@@ -58,9 +58,9 @@ The maintainer needs:
 
 - permission to push a release tag and create GitHub Releases;
 - a GitHub CLI login authorized for
-  `permissionlesstech/bitchat-android`;
+  `samouraiworld/wesh-bitchat-android`;
 - Play Console permission to create and promote releases for
-  `com.bitchat.droid`; and
+  `org.samouraiworld.wesh.android`; and
 - access to the project's release approval record.
 
 Check the GitHub login:
@@ -139,7 +139,7 @@ git log -1 --oneline
 Set shell variables for the rest of the release:
 
 ```bash
-export REPOSITORY=permissionlesstech/bitchat-android
+export REPOSITORY=samouraiworld/wesh-bitchat-android
 export TAG=vX.Y.Z
 export VERSION_CODE=NN
 export RELEASE_DIR="release-${TAG#v}"
@@ -160,7 +160,7 @@ Stop if either `test` command fails.
 Create a signed annotated tag on the approved commit:
 
 ```bash
-git tag -s "$TAG" -m "Bitchat Android $TAG"
+git tag -s "$TAG" -m "Wesh Android $TAG"
 git tag -v "$TAG"
 git push origin "$TAG"
 ```
@@ -424,7 +424,7 @@ local paths, or device/user identifiers to this directory.
 Create a local release-notes file. At minimum it must contain:
 
 ```markdown
-## Bitchat Android vX.Y.Z
+## Wesh Android vX.Y.Z
 
 - Version code: NN
 - Source tag: vX.Y.Z
@@ -453,7 +453,7 @@ gh release create "$TAG" "$RELEASE_DIR"/* \
   --repo "$REPOSITORY" \
   --verify-tag \
   --draft \
-  --title "Bitchat Android $TAG" \
+  --title "Wesh Android $TAG" \
   --notes-file "release-notes-$TAG.md"
 ```
 
@@ -471,7 +471,7 @@ Keep it as a draft until the Play internal-track checks below pass.
 
 ## 9. Upload and test the AABs in Google Play
 
-1. Open Play Console and select `com.bitchat.droid`.
+1. Open Play Console and select `org.samouraiworld.wesh.android`.
 2. Open **Test and release > Testing > Internal testing**.
 3. Create a new release.
 4. Upload exactly:

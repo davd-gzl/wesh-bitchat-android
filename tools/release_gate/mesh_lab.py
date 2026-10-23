@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """ADB-driven mesh test orchestrator for two (or more) live devices.
 
-Drives the debug-only TestHookReceiver in the app
-(intent action: com.bitchat.droid.TEST_HOOK) to perform mesh operations:
+Drives the debug-only TestHookReceiver in the app. The receiver deliberately
+keeps its historical intent action (`com.bitchat.droid.TEST_HOOK`); ADB package
+operations use Wesh's installed application ID. It performs mesh operations:
 peer scanning, connect, Noise handshake, DMs, broadcast,
 announce, and raw packet injection.
 
@@ -35,6 +36,8 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from tools.release_gate.android_lab import APPLICATION_ID, find_adb, run_adb
 
+# This action is an explicit debug receiver contract, not the installed package
+# name. Keep it aligned with app/src/debug/AndroidManifest.xml and the receiver.
 TEST_HOOK_ACTION = "com.bitchat.droid.TEST_HOOK"
 TEST_HOOK_COMPONENT = f"{APPLICATION_ID}/com.bitchat.android.testhook.TestHookReceiver"
 RESULTS_DIR = "cache/testhook/results"

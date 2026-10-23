@@ -6,7 +6,7 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-from tools.release_gate import android_lab
+from tools.release_gate import android_lab, mesh_lab
 from tools.release_gate.release_gate import (
     GateError,
     append_trace_event,
@@ -25,6 +25,7 @@ from tools.release_gate.release_gate import (
 
 COMMIT = "1" * 40
 TOOL_DIRECTORY = Path(__file__).parent
+REPOSITORY_ROOT = TOOL_DIRECTORY.parents[1]
 
 
 def valid_matrix():
@@ -322,11 +323,11 @@ class ReleaseGateTest(unittest.TestCase):
             [
                 mock.call(
                     "ephemeral-selector",
-                    ["shell", "am", "force-stop", "com.bitchat.droid"],
+                    ["shell", "am", "force-stop", android_lab.APPLICATION_ID],
                 ),
                 mock.call(
                     "ephemeral-selector",
-                    ["shell", "pm", "clear", "com.bitchat.droid"],
+                    ["shell", "pm", "clear", android_lab.APPLICATION_ID],
                 ),
             ],
             run_adb.call_args_list,
@@ -339,7 +340,7 @@ class ReleaseGateTest(unittest.TestCase):
             "TOTAL 2048",
             "7",
             "11",
-            "WakeLock com.bitchat.droid\nWakeLock another.package",
+            f"WakeLock {android_lab.APPLICATION_ID}\nWakeLock another.package",
             "level: 73",
         ]
         metrics = android_lab.collect_resource_snapshot("ephemeral-selector")
@@ -357,10 +358,64 @@ class ReleaseGateTest(unittest.TestCase):
         self.assertEqual(
             mock.call(
                 "ephemeral-selector",
-                ["shell", "pidof", "com.bitchat.droid"],
+                ["shell", "pidof", android_lab.APPLICATION_ID],
             ),
             run_adb.call_args_list[0],
         )
+
+    def test_release_tools_keep_wesh_identity_and_debug_hook_contract_aligned(self):
+        gradle = (REPOSITORY_ROOT / "app" / "build.gradle.kts").read_text(
+            encoding="utf-8"
+        )
+        debug_manifest = (
+            REPOSITORY_ROOT / "app" / "src" / "debug" / "AndroidManifest.xml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            f'applicationId = "{android_lab.APPLICATION_ID}"',
+            gradle,
+        )
+        self.assertEqual(
+            "org.samouraiworld.wesh.android",
+            android_lab.APPLICATION_ID,
+        )
+        self.assertTrue(
+            mesh_lab.TEST_HOOK_COMPONENT.startswith(
+                f"{android_lab.APPLICATION_ID}/"
+            )
+        )
+        self.assertIn(
+            f'<action android:name="{mesh_lab.TEST_HOOK_ACTION}" />',
+            debug_manifest,
+        )
+
+    def test_release_defaults_target_the_wesh_repository_and_package(self):
+        verifier = (
+            REPOSITORY_ROOT
+            / "tools"
+            / "reproducible-builds"
+            / "verify-github-release.sh"
+        ).read_text(encoding="utf-8")
+        release_docs = [
+            (REPOSITORY_ROOT / "docs" / "maintainer-release-guide.md").read_text(
+                encoding="utf-8"
+            ),
+            (REPOSITORY_ROOT / "docs" / "reproducible-builds.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+
+        self.assertIn(
+            'REPOSITORY="${WESH_GITHUB_REPOSITORY:-'
+            '${BITCHAT_GITHUB_REPOSITORY:-samouraiworld/wesh-bitchat-android}}"',
+            verifier,
+        )
+        self.assertNotIn("permissionlesstech/bitchat-android", verifier)
+        for document in release_docs:
+            self.assertIn("samouraiworld/wesh-bitchat-android", document)
+            self.assertIn("org.samouraiworld.wesh.android", document)
+            self.assertNotIn("permissionlesstech/bitchat-android", document)
+            self.assertNotIn("com.bitchat.droid", document)
 
 
 if __name__ == "__main__":
