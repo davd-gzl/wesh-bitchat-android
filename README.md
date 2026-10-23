@@ -36,10 +36,11 @@ this candidate.
   translatable resource keys** have exact name parity, and the application
   locale configuration exposes only `en` and `fr`.
 - The four vendored Arti libraries implement authenticated local SOCKS and
-  destination-based circuit isolation. Reconnects to one normalized DNS host
-  can reuse its session token, while distinct destination hosts cannot share a
-  circuit. This is source, native and automated-test evidence, not a claim that
-  Tor or relay behavior has been qualified on a physical phone.
+  destination-based circuit isolation. Within one Arti session, reconnects to
+  the same normalized DNS host reuse the same isolation token and may reuse
+  circuits, while distinct hosts receive different isolation tokens and cannot
+  share circuits. This is source, native and automated-test evidence, not a
+  claim that Tor or relay behavior has been qualified on a physical phone.
 
 Physical Android/iOS Mesh Lab, background and battery behavior, TalkBack,
 real-device 16 KiB page-size behavior, upgrade through the intended distribution
