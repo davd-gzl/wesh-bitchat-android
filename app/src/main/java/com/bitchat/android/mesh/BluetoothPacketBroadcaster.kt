@@ -431,8 +431,9 @@ class BluetoothPacketBroadcaster(
             Log.d(TAG, "Source Routing: First hop $firstHop not connected. Falling back to standard broadcast logic.")
         }
         
-        if (packet.recipientID != SpecialRecipients.BROADCAST) {
-            val recipientID = packet.recipientID?.toHexString() ?: ""
+        val directRecipient = packet.recipientID
+        if (directRecipient != null && !directRecipient.contentEquals(SpecialRecipients.BROADCAST)) {
+            val recipientID = directRecipient.toHexString()
 
             // Try to find the recipient in server connections (subscribedDevices)
             val targetDevice = connectionTracker.getSubscribedDevices()

@@ -733,6 +733,8 @@ class WeshInternetRouteTest {
         try {
             router.sendPrivate("salut", bobConversation, "Bob", "bw-1")
             waitFor { bw1() == DeliveryStatus.Sent }
+            router.settle()
+            waitFor { router.hasPendingBluetoothFallbackForTesting("bw-1") }
             now += AppConstants.Router.WESH_BLUETOOTH_ACK_TIMEOUT_MS
             router.tickOutbox(now)
             router.settle()

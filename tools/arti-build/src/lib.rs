@@ -1,16 +1,17 @@
-use jni::JNIEnv;
-use jni::objects::{JClass, JString, JObject, GlobalRef};
+use jni::objects::{GlobalRef, JClass, JObject, JString};
 use jni::sys::{jint, jlong, jstring};
+use jni::JNIEnv;
 use jni::JavaVM;
 
-use arti_client::TorClient;
 use arti_client::config::TorClientConfigBuilder;
+use arti_client::{IsolationToken, StreamPrefs, TorClient};
 use tor_rtcompat::PreferredRuntime;
 
-use std::sync::{Arc, Mutex};
-use std::path::PathBuf;
-use std::time::Duration;
 use anyhow::Result;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 // ============================================================================
 // Global State
@@ -20,7 +21,38 @@ use anyhow::Result;
 struct Session {
     runtime: tokio::runtime::Runtime,
     client: Arc<TorClient<PreferredRuntime>>,
+    isolation: Arc<DestinationIsolation>,
     socks_task: Option<tokio::task::JoinHandle<()>>,
+}
+
+/// Per-Arti-session circuit-isolation groups. Every normalized destination host gets one stable
+/// token, so reconnects to one relay may reuse circuits while distinct relays never share one.
+/// The whole registry is dropped with the session and is therefore reset on every restart.
+struct DestinationIsolation {
+    tokens: Mutex<HashMap<String, IsolationToken>>,
+}
+
+impl DestinationIsolation {
+    fn new() -> Self {
+        Self {
+            tokens: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Fail closed if the registry cannot be used. There is deliberately no unisolated token.
+    fn token_for(&self, normalized_host: &str) -> Result<IsolationToken> {
+        let mut tokens = self
+            .tokens
+            .lock()
+            .map_err(|_| anyhow::anyhow!("destination isolation registry unavailable"))?;
+        if !tokens.contains_key(normalized_host) && tokens.len() >= MAX_DESTINATION_ISOLATION_GROUPS
+        {
+            return Err(anyhow::anyhow!("destination isolation registry full"));
+        }
+        Ok(*tokens
+            .entry(normalized_host.to_owned())
+            .or_insert_with(IsolationToken::new))
+    }
 }
 
 /// The current session, if any. A new start or a stop always replaces it.
@@ -50,6 +82,10 @@ const MAX_SOCKS_CONNECTIONS: usize = 64;
 /// authenticate cannot take the places of authenticated ones.
 const MAX_SOCKS_HANDSHAKES: usize = 16;
 
+/// Bound the per-session relay registry. Exceeding it is refused rather than routed without
+/// isolation or allowed to grow native memory without limit.
+const MAX_DESTINATION_ISOLATION_GROUPS: usize = 256;
+
 /// Pause after a failed accept (for example out of file descriptors) before accepting again.
 const ACCEPT_RETRY: Duration = Duration::from_millis(500);
 
@@ -60,10 +96,16 @@ const REFUSAL_LOG_INTERVAL: Duration = Duration::from_secs(1);
 /// which ends every Arti background task (circuits, guards, directory fetches). False when the
 /// runtime did not finish in time.
 fn teardown(session: Session) -> bool {
-    let Session { runtime, client, socks_task } = session;
+    let Session {
+        runtime,
+        client,
+        isolation,
+        socks_task,
+    } = session;
     if let Some(task) = socks_task {
         task.abort();
     }
+    drop(isolation);
     {
         let _context = runtime.enter();
         drop(client);
@@ -100,7 +142,7 @@ fn send_log_to_java(message: String) {
                     callback.as_obj(),
                     "onLogLine",
                     "(Ljava/lang/String;)V",
-                    &[(&jmessage).into()]
+                    &[(&jmessage).into()],
                 );
             }
         }
@@ -141,8 +183,13 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_getVersion(
         }
     }
 
-    let version = format!("Arti {} (custom build with rustls)", env!("CARGO_PKG_VERSION"));
-    let output = env.new_string(version).expect("Couldn't create java string!");
+    let version = format!(
+        "Arti {} (custom build with rustls)",
+        env!("CARGO_PKG_VERSION")
+    );
+    let output = env
+        .new_string(version)
+        .expect("Couldn't create java string!");
     output.into_raw()
 }
 
@@ -214,7 +261,10 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
         note_teardown(teardown(session));
     }
     if SESSION.is_unclean() {
-        log_error!("A Tor runtime did not stop within {:?}; not starting", SHUTDOWN_TIMEOUT);
+        log_error!(
+            "A Tor runtime did not stop within {:?}; not starting",
+            SHUTDOWN_TIMEOUT
+        );
         return -5;
     }
     if start.is_cancelled() {
@@ -248,8 +298,7 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
         log_info!("State dir: {:?}", state_dir);
 
         // Create config with Android-specific directories
-        let config = TorClientConfigBuilder::from_directories(state_dir, cache_dir)
-            .build()?;
+        let config = TorClientConfigBuilder::from_directories(state_dir, cache_dir).build()?;
 
         // Create client with Android-specific config
         let client = TorClient::create_bootstrapped(config).await?;
@@ -268,7 +317,12 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_initialize(
     // once the runtime below is gone.
     match outcome {
         Some(Ok(client)) => {
-            let session = Session { runtime, client: Arc::new(client), socks_task: None };
+            let session = Session {
+                runtime,
+                client: Arc::new(client),
+                isolation: Arc::new(DestinationIsolation::new()),
+                socks_task: None,
+            };
             match start.install(session) {
                 Ok(()) => {
                     log_info!("Arti client created successfully");
@@ -316,7 +370,8 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_startSocksProxyWithAuth(
 
     let username: Option<String> = env.get_string(&username).ok().map(Into::into);
     let password: Option<String> = env.get_string(&password).ok().map(Into::into);
-    let credentials = match username.zip(password)
+    let credentials = match username
+        .zip(password)
         .and_then(|(u, p)| socks_auth::Credentials::new(u.into_bytes(), p.into_bytes()))
     {
         Some(c) => Arc::new(c),
@@ -336,7 +391,10 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_startSocksProxyWithAuth(
             handle.abort();
         }
 
-        let listener = match session.runtime.block_on(tokio::net::TcpListener::bind(&addr)) {
+        let listener = match session
+            .runtime
+            .block_on(tokio::net::TcpListener::bind(&addr))
+        {
             Ok(l) => {
                 log_info!("SOCKS proxy bound to {}", addr);
                 l
@@ -348,6 +406,7 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_startSocksProxyWithAuth(
         };
 
         let client = Arc::clone(&session.client);
+        let isolation = Arc::clone(&session.isolation);
         let addr = addr.clone();
         // Now spawn the background task with the already-bound listener
         let handle = session.runtime.spawn(async move {
@@ -373,19 +432,35 @@ pub extern "C" fn Java_org_torproject_arti_ArtiNative_startSocksProxyWithAuth(
                         let Ok(handshake) = Arc::clone(&handshakes).try_acquire_owned() else {
                             drop(stream);
                             refused += 1;
-                            if last_refusal_log.map_or(true, |t| t.elapsed() >= REFUSAL_LOG_INTERVAL) {
-                                log_error!("SOCKS: {} connections refused, too many handshakes", refused);
+                            if last_refusal_log
+                                .map_or(true, |t| t.elapsed() >= REFUSAL_LOG_INTERVAL)
+                            {
+                                log_error!(
+                                    "SOCKS: {} connections refused, too many handshakes",
+                                    refused
+                                );
                                 refused = 0;
                                 last_refusal_log = Some(std::time::Instant::now());
                             }
                             continue;
                         };
                         let client_clone = Arc::clone(&client);
+                        let isolation = Arc::clone(&isolation);
                         let credentials = Arc::clone(&credentials);
                         let slots = Arc::clone(&slots);
 
                         tokio::spawn(async move {
-                            if let Err(e) = handle_socks_connection(id, stream, client_clone, credentials, handshake, slots).await {
+                            if let Err(e) = handle_socks_connection(
+                                id,
+                                stream,
+                                client_clone,
+                                isolation,
+                                credentials,
+                                handshake,
+                                slots,
+                            )
+                            .await
+                            {
                                 log_error!("SOCKS connection {}: {}", id, e);
                             }
                         });
@@ -423,6 +498,7 @@ async fn handle_socks_connection(
     id: u64,
     mut stream: tokio::net::TcpStream,
     client: Arc<TorClient<PreferredRuntime>>,
+    isolation: Arc<DestinationIsolation>,
     credentials: Arc<socks_auth::Credentials>,
     handshake: tokio::sync::OwnedSemaphorePermit,
     slots: Arc<tokio::sync::Semaphore>,
@@ -430,27 +506,53 @@ async fn handle_socks_connection(
     use tokio::io::AsyncWriteExt;
 
     // A client that stalls before its request never holds a handshake place for long.
-    let (target_host, target_port) =
-        match tokio::time::timeout(SOCKS_HANDSHAKE_TIMEOUT, socks_handshake(&mut stream, &credentials)).await {
-            Ok(target) => target?,
-            Err(_) => return Err(anyhow::anyhow!("SOCKS handshake timed out")),
-        };
+    let (target_host, target_port) = match tokio::time::timeout(
+        SOCKS_HANDSHAKE_TIMEOUT,
+        socks_handshake(&mut stream, &credentials),
+    )
+    .await
+    {
+        Ok(target) => target?,
+        Err(_) => return Err(anyhow::anyhow!("SOCKS handshake timed out")),
+    };
     drop(handshake);
 
     let Ok(_slot) = slots.try_acquire_owned() else {
         // General failure: the client may retry once a connection closes.
-        stream.write_all(&[0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
+        stream
+            .write_all(&[0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+            .await?;
         return Err(anyhow::anyhow!("SOCKS connection limit reached"));
     };
 
     log_info!("SOCKS connection {}: CONNECT", id);
 
+    // Reconnects to one normalized relay share a token; distinct relays can never share a circuit.
+    // Registry failure is fatal: never fall back to an unisolated or direct connection.
+    let isolation_token = match isolation.token_for(&target_host) {
+        Ok(token) => token,
+        Err(error) => {
+            stream
+                .write_all(&[0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+                .await?;
+            return Err(error);
+        }
+    };
+    let mut prefs = StreamPrefs::new();
+    prefs.set_isolation(isolation_token);
+
     // Establish Tor connection. The Arti error may name the destination, so it is not logged.
-    let tor_stream = match client.connect((target_host.as_str(), target_port)).await {
+    // `connect_with_prefs` is the only outbound path in this proxy; failure stays fail-closed.
+    let tor_stream = match client
+        .connect_with_prefs((target_host.as_str(), target_port), &prefs)
+        .await
+    {
         Ok(s) => s,
         Err(_) => {
             // Send SOCKS5 error: general failure
-            stream.write_all(&[0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
+            stream
+                .write_all(&[0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+                .await?;
             return Err(anyhow::anyhow!("Failed to connect through Tor"));
         }
     };
@@ -458,19 +560,17 @@ async fn handle_socks_connection(
     log_info!("SOCKS connection {}: Tor stream established", id);
 
     // Send SOCKS5 success response
-    stream.write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
+    stream
+        .write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+        .await?;
 
     // Bidirectional data forwarding
     let (mut client_read, mut client_write) = stream.split();
     let (mut tor_read, mut tor_write) = tor_stream.split();
 
-    let client_to_tor = async {
-        tokio::io::copy(&mut client_read, &mut tor_write).await
-    };
+    let client_to_tor = async { tokio::io::copy(&mut client_read, &mut tor_write).await };
 
-    let tor_to_client = async {
-        tokio::io::copy(&mut tor_read, &mut client_write).await
-    };
+    let tor_to_client = async { tokio::io::copy(&mut tor_read, &mut client_write).await };
 
     // Run both directions concurrently, exit when either completes
     tokio::select! {
@@ -492,10 +592,13 @@ async fn handle_socks_connection(
 }
 
 /// Greeting, username/password authentication and CONNECT request; returns the target.
-async fn socks_handshake(
-    stream: &mut tokio::net::TcpStream,
+async fn socks_handshake<S>(
+    stream: &mut S,
     credentials: &socks_auth::Credentials,
-) -> Result<(String, u16)> {
+) -> Result<(String, u16)>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     // Greeting: VER NMETHODS METHODS. Only username/password is accepted, so another app
@@ -517,7 +620,10 @@ async fn socks_handshake(
     let mut auth_head = [0u8; 2];
     stream.read_exact(&mut auth_head).await?;
     if auth_head[0] != 0x01 {
-        return Err(anyhow::anyhow!("Unsupported SOCKS auth version: {}", auth_head[0]));
+        return Err(anyhow::anyhow!(
+            "Unsupported SOCKS auth version: {}",
+            auth_head[0]
+        ));
     }
     let mut user = vec![0u8; auth_head[1] as usize];
     stream.read_exact(&mut user).await?;
@@ -526,75 +632,78 @@ async fn socks_handshake(
     let mut pass = vec![0u8; pass_len[0] as usize];
     stream.read_exact(&mut pass).await?;
     let accepted = credentials.accepts(&user, &pass);
-    stream.write_all(&[0x01, if accepted { 0x00 } else { 0x01 }]).await?;
+    stream
+        .write_all(&[0x01, if accepted { 0x00 } else { 0x01 }])
+        .await?;
     if !accepted {
         return Err(anyhow::anyhow!("SOCKS authentication failed"));
     }
 
-    let mut buf = [0u8; 512];
+    socks_request(stream).await
+}
 
-    // Read request
-    let n = stream.read(&mut buf).await?;
-    if n < 10 {
-        return Err(anyhow::anyhow!("Invalid SOCKS request"));
-    }
+/// Read one SOCKS5 CONNECT request without assuming any TCP packet boundaries.
+/// Only domain-name targets are accepted: IP literals would create aliases for one relay and
+/// invite callers to resolve names outside Tor before reaching this proxy.
+async fn socks_request<S>(stream: &mut S) -> Result<(String, u16)>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    // Parse SOCKS5 request: VER(1) CMD(1) RSV(1) ATYP(1) DST.ADDR DST.PORT(2)
-    let version = buf[0];
-    let cmd = buf[1];
-    let atyp = buf[3];
+    let mut header = [0u8; 4];
+    stream.read_exact(&mut header).await?;
+    let [version, cmd, reserved, atyp] = header;
 
-    if version != 0x05 {
+    if version != 0x05 || reserved != 0x00 {
         return Err(anyhow::anyhow!("Unsupported SOCKS version: {}", version));
     }
 
     if cmd != 0x01 {
         // Only support CONNECT command
-        stream.write_all(&[0x05, 0x07, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
+        stream
+            .write_all(&[0x05, 0x07, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+            .await?;
         return Err(anyhow::anyhow!("Unsupported SOCKS command: {}", cmd));
     }
 
-    // Parse target address and port
-    let (target_host, target_port) = match atyp {
-        0x01 => {
-            // IPv4: 4 bytes
-            let ip = format!("{}.{}.{}.{}", buf[4], buf[5], buf[6], buf[7]);
-            let port = u16::from_be_bytes([buf[8], buf[9]]);
-            (ip, port)
-        }
+    match atyp {
         0x03 => {
-            // Domain name: length byte + domain
-            let len = buf[4] as usize;
-            if n < 5 + len + 2 {
-                return Err(anyhow::anyhow!("Invalid domain name length"));
-            }
-            let Some(domain) = socks_auth::domain(&buf[5..5 + len]) else {
-                stream.write_all(&[0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
+            let mut length = [0u8; 1];
+            stream.read_exact(&mut length).await?;
+            let mut domain = vec![0u8; length[0] as usize];
+            stream.read_exact(&mut domain).await?;
+            let mut port = [0u8; 2];
+            stream.read_exact(&mut port).await?;
+            let Some(domain) = socks_auth::normalized_domain(&domain) else {
+                stream
+                    .write_all(&[0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+                    .await?;
                 return Err(anyhow::anyhow!("Invalid domain name"));
             };
-            let port = u16::from_be_bytes([buf[5 + len], buf[5 + len + 1]]);
-            (domain, port)
-        }
-        0x04 => {
-            // IPv6: 16 bytes + 2 bytes port = 22 bytes total
-            if n < 22 {
-                stream.write_all(&[0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
-                return Err(anyhow::anyhow!("Truncated IPv6 request"));
+            let port = u16::from_be_bytes(port);
+            if port == 0 {
+                stream
+                    .write_all(&[0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+                    .await?;
+                return Err(anyhow::anyhow!("Port zero is not allowed"));
             }
-            let ip = format!(
-                "{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}",
-                buf[4], buf[5], buf[6], buf[7], buf[8], buf[9], buf[10], buf[11],
-                buf[12], buf[13], buf[14], buf[15], buf[16], buf[17], buf[18], buf[19]
-            );
-            let port = u16::from_be_bytes([buf[20], buf[21]]);
-            (ip, port)
+            Ok((domain, port))
+        }
+        // Refuse IPv4 and IPv6, including textual IP aliases sent as domain names below.
+        0x01 | 0x04 => {
+            stream
+                .write_all(&[0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+                .await?;
+            Err(anyhow::anyhow!("IP address targets are not allowed"))
         }
         _ => {
-            stream.write_all(&[0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
-            return Err(anyhow::anyhow!("Unsupported address type: {}", atyp));
+            stream
+                .write_all(&[0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+                .await?;
+            Err(anyhow::anyhow!("Unsupported address type: {}", atyp))
         }
-    };
-    Ok((target_host, target_port))
+    }
 }
 
 /// Stop Arti: cancels a bootstrap in progress, then drops the client and shuts its runtime
@@ -602,10 +711,7 @@ async fn socks_handshake(
 /// next initialize() builds a new client with new guards. Returns -5 when a runtime did not
 /// stop in time, now or earlier in this process: Tor work may still run.
 #[no_mangle]
-pub extern "C" fn Java_org_torproject_arti_ArtiNative_stop(
-    _env: JNIEnv,
-    _class: JClass,
-) -> jint {
+pub extern "C" fn Java_org_torproject_arti_ArtiNative_stop(_env: JNIEnv, _class: JClass) -> jint {
     log_info!("AMEx: state changed to Stopping");
     log_info!("Stopping Arti...");
 
@@ -649,8 +755,14 @@ mod android_logger {
         unsafe {
             let tag = CString::new("ArtiNative").unwrap();
             // A NUL byte (from a peer-supplied host name, say) must never panic across JNI.
-            let Ok(text) = CString::new(message.replace('\0', "\\0")) else { return };
-            __android_log_write(ANDROID_LOG_INFO, tag.as_ptr() as *const c_char, text.as_ptr() as *const c_char);
+            let Ok(text) = CString::new(message.replace('\0', "\\0")) else {
+                return;
+            };
+            __android_log_write(
+                ANDROID_LOG_INFO,
+                tag.as_ptr() as *const c_char,
+                text.as_ptr() as *const c_char,
+            );
         }
     }
 }
@@ -682,7 +794,12 @@ mod lifecycle {
     impl<R> Lifecycle<R> {
         pub const fn new() -> Self {
             Self {
-                inner: Mutex::new(Inner { generation: 0, busy: false, current: None, unclean: false }),
+                inner: Mutex::new(Inner {
+                    generation: 0,
+                    busy: false,
+                    current: None,
+                    unclean: false,
+                }),
                 changed: Condvar::new(),
             }
         }
@@ -691,9 +808,15 @@ mod lifecycle {
             self.inner.lock().unwrap_or_else(PoisonError::into_inner)
         }
 
-        fn wait_idle<'a>(&'a self, mut inner: MutexGuard<'a, Inner<R>>) -> MutexGuard<'a, Inner<R>> {
+        fn wait_idle<'a>(
+            &'a self,
+            mut inner: MutexGuard<'a, Inner<R>>,
+        ) -> MutexGuard<'a, Inner<R>> {
             while inner.busy {
-                inner = self.changed.wait(inner).unwrap_or_else(PoisonError::into_inner);
+                inner = self
+                    .changed
+                    .wait(inner)
+                    .unwrap_or_else(PoisonError::into_inner);
             }
             inner
         }
@@ -715,7 +838,13 @@ mod lifecycle {
             let mut inner = self.wait_idle(self.lock());
             inner.busy = true;
             let previous = inner.current.take();
-            (Start { owner: self, generation }, previous)
+            (
+                Start {
+                    owner: self,
+                    generation,
+                },
+                previous,
+            )
         }
 
         pub fn mark_unclean(&self) {
@@ -733,7 +862,10 @@ mod lifecycle {
             let mut inner = self.wait_idle(inner);
             inner.busy = true;
             let current = inner.current.take();
-            Stop { owner: self, current }
+            Stop {
+                owner: self,
+                current,
+            }
         }
 
         /// Runs `f` on the current session; None when there is none.
@@ -810,7 +942,10 @@ mod lifecycle {
             assert_eq!(life.with_current(|s| *s), None);
 
             let (start, previous) = life.begin_start(life.generation());
-            assert!(previous.is_none(), "the stopped session is never handed to the next start");
+            assert!(
+                previous.is_none(),
+                "the stopped session is never handed to the next start"
+            );
             assert!(!start.is_cancelled());
             assert!(start.install(2).is_ok());
             drop(start);
@@ -850,10 +985,17 @@ mod lifecycle {
             started_rx.recv().unwrap();
             let began = Instant::now();
             let mut stop = life.begin_stop();
-            assert!(began.elapsed() < Duration::from_secs(2), "stop waited for the whole bootstrap");
+            assert!(
+                began.elapsed() < Duration::from_secs(2),
+                "stop waited for the whole bootstrap"
+            );
             assert_eq!(stop.take(), None);
             drop(stop);
-            assert_eq!(worker.join().unwrap(), Err(7), "a cancelled start must hand its session back");
+            assert_eq!(
+                worker.join().unwrap(),
+                Err(7),
+                "a cancelled start must hand its session back"
+            );
             assert_eq!(life.with_current(|s| *s), None);
         }
 
@@ -876,7 +1018,10 @@ mod lifecycle {
             };
             started_rx.recv().unwrap();
             let stop = life.begin_stop();
-            assert!(torn_down_rx.try_recv().is_ok(), "stop returned before the start released its runtime");
+            assert!(
+                torn_down_rx.try_recv().is_ok(),
+                "stop returned before the start released its runtime"
+            );
             drop(stop);
             worker.join().unwrap();
         }
@@ -926,7 +1071,10 @@ mod lifecycle {
                 thread::sleep(Duration::from_millis(5));
                 let began = Instant::now();
                 drop(life.begin_stop());
-                assert!(began.elapsed() < Duration::from_secs(1), "the stop waited for B's bootstrap");
+                assert!(
+                    began.elapsed() < Duration::from_secs(1),
+                    "the stop waited for B's bootstrap"
+                );
                 a.join().unwrap();
                 assert!(b.join().unwrap(), "a queued start escaped the stop");
             }
@@ -986,7 +1134,9 @@ mod deadline {
 
         #[test]
         fn late_work_is_reported() {
-            assert!(!finishes_within(Duration::from_millis(50), || std::thread::sleep(Duration::from_millis(500))));
+            assert!(!finishes_within(Duration::from_millis(50), || {
+                std::thread::sleep(Duration::from_millis(500))
+            }));
         }
     }
 }
@@ -1001,7 +1151,11 @@ mod socks_auth {
 
     /// Username/password (RFC 1929) is the only method accepted.
     pub fn choose_method(offered: &[u8]) -> u8 {
-        if offered.contains(&USER_PASS) { USER_PASS } else { NO_ACCEPTABLE }
+        if offered.contains(&USER_PASS) {
+            USER_PASS
+        } else {
+            NO_ACCEPTABLE
+        }
     }
 
     /// Compares without stopping at the first difference.
@@ -1030,10 +1184,33 @@ mod socks_auth {
         }
     }
 
-    /// A requested host name: nonempty UTF-8 without NUL, or None and the request is refused.
-    pub fn domain(bytes: &[u8]) -> Option<String> {
+    /// Normalize one DNS destination for both Tor and circuit isolation. IDNA conversion belongs
+    /// to the caller; this boundary accepts only canonicalizable ASCII DNS names, never IP text.
+    pub fn normalized_domain(bytes: &[u8]) -> Option<String> {
         let name = std::str::from_utf8(bytes).ok()?;
-        (!name.is_empty() && !name.contains('\0')).then(|| name.to_owned())
+        let without_root = name.strip_suffix('.').unwrap_or(name);
+        if without_root.is_empty()
+            || without_root.len() > 253
+            || without_root.parse::<std::net::IpAddr>().is_ok()
+        {
+            return None;
+        }
+        let normalized = without_root.to_ascii_lowercase();
+        let valid_labels = normalized.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        });
+        let last_label = normalized.rsplit('.').next()?;
+        let has_letter = last_label.bytes().any(|byte| byte.is_ascii_alphabetic());
+        let is_hex_number = last_label.strip_prefix("0x").is_some_and(|digits| {
+            !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_hexdigit())
+        });
+        (valid_labels && has_letter && !is_hex_number).then_some(normalized)
     }
 
     #[cfg(test)]
@@ -1050,7 +1227,8 @@ mod socks_auth {
 
         #[test]
         fn only_the_exact_credentials_are_accepted() {
-            let c = Credentials::new(b"synthetic-user".to_vec(), b"synthetic-pass".to_vec()).unwrap();
+            let c =
+                Credentials::new(b"synthetic-user".to_vec(), b"synthetic-pass".to_vec()).unwrap();
             assert!(c.accepts(b"synthetic-user", b"synthetic-pass"));
             assert!(!c.accepts(b"synthetic-user", b"synthetic-pas"));
             assert!(!c.accepts(b"synthetic-user", b"synthetic-pass!"));
@@ -1059,11 +1237,29 @@ mod socks_auth {
         }
 
         #[test]
-        fn host_names_with_nul_or_invalid_utf8_are_refused() {
-            assert_eq!(domain(b"example.onion").as_deref(), Some("example.onion"));
-            assert_eq!(domain(b"exa\0mple.org"), None);
-            assert_eq!(domain(b""), None);
-            assert_eq!(domain(&[0xff, 0xfe]), None);
+        fn domains_are_normalized_without_aliases() {
+            assert_eq!(
+                normalized_domain(b"Relay.Example.COM.").as_deref(),
+                Some("relay.example.com")
+            );
+            assert_eq!(
+                normalized_domain(b"example.onion").as_deref(),
+                Some("example.onion")
+            );
+            assert_eq!(normalized_domain(b"example.com.."), None);
+            assert_eq!(normalized_domain(b"exa\0mple.org"), None);
+            assert_eq!(normalized_domain(b"-relay.example"), None);
+            assert_eq!(normalized_domain(b"relay-.example"), None);
+            assert_eq!(normalized_domain(b"relay..example"), None);
+            assert_eq!(normalized_domain(b"127.0.0.1"), None);
+            assert_eq!(normalized_domain(b"127.1"), None);
+            assert_eq!(normalized_domain(b"2130706433"), None);
+            assert_eq!(normalized_domain(b"0x7f.0.0.1"), None);
+            assert_eq!(normalized_domain(b"relay.123"), None);
+            assert_eq!(normalized_domain(b"relay.0x7f"), None);
+            assert_eq!(normalized_domain(b"2001:db8::1"), None);
+            assert_eq!(normalized_domain(b""), None);
+            assert_eq!(normalized_domain(&[0xff, 0xfe]), None);
         }
 
         #[test]
@@ -1073,5 +1269,158 @@ mod socks_auth {
             assert!(Credentials::new(vec![b'u'; 256], b"p".to_vec()).is_none());
             assert!(Credentials::new(vec![b'u'; 255], vec![b'p'; 255]).is_some());
         }
+    }
+}
+
+#[cfg(test)]
+mod socks_isolation_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    async fn write_fragmented(stream: &mut tokio::io::DuplexStream, bytes: &[u8]) {
+        for byte in bytes {
+            stream.write_all(&[*byte]).await.unwrap();
+            tokio::task::yield_now().await;
+        }
+    }
+
+    #[test]
+    fn one_normalized_host_reuses_one_token_and_hosts_are_separated() {
+        let registry = DestinationIsolation::new();
+        let first = registry.token_for("relay.example").unwrap();
+        let again = registry.token_for("relay.example").unwrap();
+        let other = registry.token_for("other.example").unwrap();
+        assert_eq!(first, again);
+        assert_ne!(first, other);
+    }
+
+    #[test]
+    fn a_new_session_gets_a_fresh_token_registry() {
+        let first = DestinationIsolation::new()
+            .token_for("relay.example")
+            .unwrap();
+        let after_restart = DestinationIsolation::new()
+            .token_for("relay.example")
+            .unwrap();
+        assert_ne!(first, after_restart);
+    }
+
+    #[test]
+    fn an_unavailable_registry_fails_closed() {
+        let registry = Arc::new(DestinationIsolation::new());
+        let poison = Arc::clone(&registry);
+        let _ = std::thread::spawn(move || {
+            let _guard = poison.tokens.lock().unwrap();
+            panic!("synthetic registry failure");
+        })
+        .join();
+        assert!(registry.token_for("relay.example").is_err());
+    }
+
+    #[test]
+    fn a_full_registry_fails_closed() {
+        let registry = DestinationIsolation::new();
+        for index in 0..MAX_DESTINATION_ISOLATION_GROUPS {
+            registry
+                .token_for(&format!("relay-{index}.example"))
+                .unwrap();
+        }
+        assert!(registry.token_for("overflow.example").is_err());
+        assert!(registry.token_for("relay-0.example").is_ok());
+    }
+
+    #[tokio::test]
+    async fn fragmented_greeting_auth_and_domain_request_are_read_exactly() {
+        let credentials =
+            socks_auth::Credentials::new(b"synthetic-user".to_vec(), b"synthetic-pass".to_vec())
+                .unwrap();
+        let (mut client, mut server) = tokio::io::duplex(256);
+        let parser = tokio::spawn(async move { socks_handshake(&mut server, &credentials).await });
+
+        write_fragmented(&mut client, &[0x05, 0x01, 0x02]).await;
+        let mut method = [0u8; 2];
+        client.read_exact(&mut method).await.unwrap();
+        assert_eq!(method, [0x05, 0x02]);
+
+        let mut auth = vec![0x01, 14];
+        auth.extend_from_slice(b"synthetic-user");
+        auth.push(14);
+        auth.extend_from_slice(b"synthetic-pass");
+        write_fragmented(&mut client, &auth).await;
+        let mut accepted = [0u8; 2];
+        client.read_exact(&mut accepted).await.unwrap();
+        assert_eq!(accepted, [0x01, 0x00]);
+
+        let host = b"Relay.Example.";
+        let mut request = vec![0x05, 0x01, 0x00, 0x03, host.len() as u8];
+        request.extend_from_slice(host);
+        request.extend_from_slice(&443u16.to_be_bytes());
+        write_fragmented(&mut client, &request).await;
+
+        let target = parser.await.unwrap().unwrap();
+        assert_eq!(target, ("relay.example".to_owned(), 443));
+    }
+
+    #[tokio::test]
+    async fn ip_address_types_are_refused_without_reading_or_resolving_them() {
+        for atyp in [0x01, 0x04] {
+            let (mut client, mut server) = tokio::io::duplex(32);
+            let parser = tokio::spawn(async move { socks_request(&mut server).await });
+            client.write_all(&[0x05, 0x01, 0x00, atyp]).await.unwrap();
+            let mut response = [0u8; 10];
+            client.read_exact(&mut response).await.unwrap();
+            assert_eq!(response[1], 0x08);
+            assert!(parser.await.unwrap().is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn textual_ip_and_invalid_domain_sizes_are_refused() {
+        for host in [
+            b"127.0.0.1".as_slice(),
+            b"127.1".as_slice(),
+            b"2130706433".as_slice(),
+            b"0x7f.0.0.1".as_slice(),
+            b"2001:db8::1".as_slice(),
+            &[b'a'; 64],
+        ] {
+            let (mut client, mut server) = tokio::io::duplex(128);
+            let parser = tokio::spawn(async move { socks_request(&mut server).await });
+            let mut request = vec![0x05, 0x01, 0x00, 0x03, host.len() as u8];
+            request.extend_from_slice(host);
+            request.extend_from_slice(&443u16.to_be_bytes());
+            client.write_all(&request).await.unwrap();
+            let mut response = [0u8; 10];
+            client.read_exact(&mut response).await.unwrap();
+            assert_eq!(response[1], 0x01);
+            assert!(parser.await.unwrap().is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn port_zero_is_refused_before_connecting() {
+        let (mut client, mut server) = tokio::io::duplex(64);
+        let parser = tokio::spawn(async move { socks_request(&mut server).await });
+        let host = b"relay.example";
+        let mut request = vec![0x05, 0x01, 0x00, 0x03, host.len() as u8];
+        request.extend_from_slice(host);
+        request.extend_from_slice(&0u16.to_be_bytes());
+        client.write_all(&request).await.unwrap();
+        let mut response = [0u8; 10];
+        client.read_exact(&mut response).await.unwrap();
+        assert_eq!(response[1], 0x01);
+        assert!(parser.await.unwrap().is_err());
+    }
+
+    #[tokio::test]
+    async fn truncated_domain_request_is_rejected() {
+        let (mut client, mut server) = tokio::io::duplex(32);
+        let parser = tokio::spawn(async move { socks_request(&mut server).await });
+        client
+            .write_all(&[0x05, 0x01, 0x00, 0x03, 0x05, b'a', b'b'])
+            .await
+            .unwrap();
+        client.shutdown().await.unwrap();
+        assert!(parser.await.unwrap().is_err());
     }
 }

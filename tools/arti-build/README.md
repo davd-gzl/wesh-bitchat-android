@@ -71,13 +71,35 @@ an APK reaches or that a previously built library includes the patch.
 
 The locked graph still includes `rsa 0.9.10`, affected by
 [RUSTSEC-2023-0071](https://rustsec.org/advisories/RUSTSEC-2023-0071.html),
-which has no published compatible fix. Its private-key operation reachability
-through this wrapper has not been established. `bincode 2.0.1` and
-`paste 1.0.15` also carry unmaintained warnings. Do not describe this native
-graph as free of advisories or waive the remaining RSA finding. Wesh disables
-its Internet routes, but that does not remove the packaged native dependency.
-Distribution remains gated on a documented resolution or risk decision; a
-local development candidate does not authorize a store or pilot upload.
+which has no published compatible fix. Generic RSA private-key parsing code is
+linked through Arti and key manager dependencies. The unified `tor-keymgr`
+feature and the default client's `state/keystore` also remain present; this
+build does not claim that the key manager or keystore is disabled. `bincode
+2.0.1` and `paste 1.0.15` also carry unmaintained warnings. Do not describe
+this native graph as free of advisories. Wesh disabling its Internet routes
+does not remove the packaged native dependencies.
+
+### Beta 103 conditional RSA risk acceptance
+
+RUSTSEC-2023-0071 remains open; the Beta 103 decision is a conditional risk
+acceptance, not a fix or an advisory ignore. Static review of this exact
+client-only candidate found only the six documented JNI exports. Arti creates
+client channels with `keymgr=None`, rustls uses no client authentication, and
+no wrapper, bootstrap, or connect path was found that reaches RSA private-key
+generation, parsing, signing, or decryption. The observed Tor client paths use
+RSA public-key verification only. This finding is about absence of a reachable
+private-key operation sink in the reviewed runtime surface, not absence of
+linked private-key code or a keystore.
+
+The acceptance applies only to Beta 103 while the build remains client-only,
+with no relay, onion-service service, X.509 signing, JNI key-manager access, or
+provisioned RSA private keys. Any change to that surface, the JNI exports, the
+wrapper, Arti features, or the dependency graph reopens a stop-ship review.
+Before final packaging, repeat the hash, export, linked-code, and dependency
+checks on all four Android libraries and record the result in release evidence.
+Post-beta hardening must patch or fork the client default so its keystore is
+explicitly disabled, or refactor the feature graph to remove unused key-manager
+and RSA-private functionality, followed by a clean four-ABI rebuild.
 
 Audit the exact lock before rebuilding, using a current advisory database:
 
@@ -108,7 +130,12 @@ The wrapper exports the native methods used by `ArtiNative`:
 - `startSocksProxyWithAuth`: SOCKS5 on `127.0.0.1:<port>`, RFC 1929
   username/password only, with per-start credentials; 3 s for the greeting,
   authentication and request, at most 16 connections in that handshake and 64
-  authenticated connections at a time; logs never name a destination
+  authenticated connections at a time; CONNECT accepts only validated DNS
+  names, reads every request field across arbitrary TCP fragmentation, and
+  rejects IPv4/IPv6 targets and textual IP literals; logs never name a
+  destination. Each normalized destination host has a stable
+  `IsolationToken` used through `connect_with_prefs`, distinct hosts cannot
+  share a circuit, and stopping Arti discards the complete token registry
 - `stop`: cancels a bootstrap in progress, drops the client and shuts its
   runtime down; when it returns `0` no Tor task remains and the data directory
   can be deleted. It returns `-5` when a runtime did not stop within 3 s, now

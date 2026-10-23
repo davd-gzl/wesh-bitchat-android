@@ -7,6 +7,8 @@ import android.bluetooth.BluetoothGattCharacteristic
 import com.bitchat.android.model.RoutedPacket
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.protocol.MessageType
+import com.bitchat.android.protocol.SpecialRecipients
+import com.bitchat.android.util.toHexString
 import kotlinx.coroutines.*
 import org.junit.*
 import org.junit.Assert.*
@@ -76,5 +78,51 @@ class WeshBluetoothHandoffTest {
         whenever(tracker.getConnectedDevices()).thenAnswer { allowed = false; links }
         assertFalse(withTimeout(5_000) { broadcaster.broadcastPacketAndAwaitAcceptance(packet(2000), null, null) { allowed } })
         verify(gatt, never()).writeCharacteristic(any())
+    }
+
+    @Test fun `a copied broadcast recipient reaches every peer instead of taking a unicast early return`() = runBlocking<Unit> {
+        val reserved = tracker.getConnectedDevices().getValue(address)
+        val secondAddress = "second-synthetic-link"
+        val secondPeerID = "2222333344445555"
+        val secondGatt: BluetoothGatt = mock()
+        val secondCharacteristic = BluetoothGattCharacteristic(
+            java.util.UUID.fromString("00000000-0000-4000-8000-000000000002"),
+            BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
+            BluetoothGattCharacteristic.PERMISSION_WRITE
+        )
+        val secondDevice: BluetoothDevice = mock()
+        whenever(secondDevice.address).thenReturn(secondAddress)
+        val second = BluetoothConnectionTracker.DeviceConnection(
+            secondDevice,
+            secondGatt,
+            secondCharacteristic,
+            isClient = true,
+            peerID = secondPeerID,
+            linkID = "second-synthetic-generation"
+        )
+        whenever(tracker.getConnectedDevices()).thenReturn(linkedMapOf(address to reserved, secondAddress to second))
+        whenever(tracker.getDeviceConnection(secondAddress)).thenReturn(second)
+        tracker.addressPeerMap[address] = SpecialRecipients.BROADCAST.toHexString()
+        tracker.addressPeerMap[secondAddress] = secondPeerID
+        whenever(gatt.writeCharacteristic(any())).thenAnswer {
+            broadcaster.onGattClientWriteComplete(address, "synthetic-generation", BluetoothGatt.GATT_SUCCESS)
+            true
+        }
+        whenever(secondGatt.writeCharacteristic(any())).thenAnswer {
+            broadcaster.onGattClientWriteComplete(secondAddress, "second-synthetic-generation", BluetoothGatt.GATT_SUCCESS)
+            true
+        }
+
+        val copiedBroadcast = SpecialRecipients.BROADCAST.copyOf()
+        assertNotSame(SpecialRecipients.BROADCAST, copiedBroadcast)
+        assertArrayEquals(SpecialRecipients.BROADCAST, copiedBroadcast)
+        val unicastFixture = packet(32)
+        val broadcast = unicastFixture.copy(packet = unicastFixture.packet.copy(recipientID = copiedBroadcast))
+
+        assertTrue(withTimeout(5_000) {
+            broadcaster.broadcastPacketAndAwaitAcceptance(broadcast, null, null) { true }
+        })
+        verify(gatt, times(1)).writeCharacteristic(any())
+        verify(secondGatt, times(1)).writeCharacteristic(any())
     }
 }
