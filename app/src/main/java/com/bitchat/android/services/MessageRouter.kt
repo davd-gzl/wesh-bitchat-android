@@ -536,7 +536,13 @@ class MessageRouter internal constructor(
         return restored
     }
 
-    internal val weshIdleForTesting: Boolean get() = weshInFlight.isEmpty()
+    /** Acquires the outbox monitor so tests cannot observe the remove-then-requeue transition. */
+    internal val weshIdleForTesting: Boolean get() = synchronized(this) { weshInFlight.isEmpty() }
+
+    /** Test-only visibility for the Rule 4 handoff from a completed Bluetooth write to its timer. */
+    internal fun hasPendingBluetoothFallbackForTesting(messageID: String): Boolean = synchronized(this) {
+        outbox.values.any { queue -> queue.any { it.messageID == messageID && it.afterBluetoothWrite } }
+    }
 
     /** Queues only if no panic happened since [epoch]; false means nothing is kept. */
     @Synchronized private fun enqueueWesh(conversationID: String, entry: QueuedMessage, epoch: Long, cancelled: Long? = null): Boolean {

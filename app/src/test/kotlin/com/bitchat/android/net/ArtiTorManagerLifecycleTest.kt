@@ -287,9 +287,10 @@ class ArtiTorManagerLifecycleTest {
         manager.applyMode(app, TorMode.ON)
         assertNotNull(manager.currentSocksAddress())
         manager.applyMode(app, TorMode.OFF)
-        assertTrue(atStop.isNotEmpty())
-        assertTrue("no client may reach a port being torn down", atStop.all { it.first == null })
-        assertTrue("the blocking native stop never runs on the caller thread", atStop.none { it.second == caller })
+        val stopped = synchronized(atStop) { atStop.toList() }
+        assertTrue("native stop must complete before Internet off returns", stopped.isNotEmpty())
+        assertTrue("no client may reach a port being torn down", stopped.all { it.first == null })
+        assertTrue("the blocking native stop never runs on the caller thread", stopped.none { it.second == caller })
         assertFullyOff()
     }
 
