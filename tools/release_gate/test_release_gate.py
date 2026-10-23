@@ -6,7 +6,7 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-from tools.release_gate import android_lab
+from tools.release_gate import android_lab, mesh_lab
 from tools.release_gate.release_gate import (
     GateError,
     append_trace_event,
@@ -25,6 +25,7 @@ from tools.release_gate.release_gate import (
 
 COMMIT = "1" * 40
 TOOL_DIRECTORY = Path(__file__).parent
+REPOSITORY_ROOT = TOOL_DIRECTORY.parents[1]
 
 
 def valid_matrix():
@@ -322,11 +323,11 @@ class ReleaseGateTest(unittest.TestCase):
             [
                 mock.call(
                     "ephemeral-selector",
-                    ["shell", "am", "force-stop", "com.bitchat.droid"],
+                    ["shell", "am", "force-stop", android_lab.APPLICATION_ID],
                 ),
                 mock.call(
                     "ephemeral-selector",
-                    ["shell", "pm", "clear", "com.bitchat.droid"],
+                    ["shell", "pm", "clear", android_lab.APPLICATION_ID],
                 ),
             ],
             run_adb.call_args_list,
@@ -339,7 +340,7 @@ class ReleaseGateTest(unittest.TestCase):
             "TOTAL 2048",
             "7",
             "11",
-            "WakeLock com.bitchat.droid\nWakeLock another.package",
+            f"WakeLock {android_lab.APPLICATION_ID}\nWakeLock another.package",
             "level: 73",
         ]
         metrics = android_lab.collect_resource_snapshot("ephemeral-selector")
@@ -357,9 +358,123 @@ class ReleaseGateTest(unittest.TestCase):
         self.assertEqual(
             mock.call(
                 "ephemeral-selector",
-                ["shell", "pidof", "com.bitchat.droid"],
+                ["shell", "pidof", android_lab.APPLICATION_ID],
             ),
             run_adb.call_args_list[0],
+        )
+
+    def test_release_tools_keep_wesh_identity_and_debug_hook_contract_aligned(self):
+        gradle = (REPOSITORY_ROOT / "app" / "build.gradle.kts").read_text(
+            encoding="utf-8"
+        )
+        debug_manifest = (
+            REPOSITORY_ROOT / "app" / "src" / "debug" / "AndroidManifest.xml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            f'applicationId = "{android_lab.APPLICATION_ID}"',
+            gradle,
+        )
+        self.assertEqual(
+            "org.samouraiworld.wesh.android",
+            android_lab.APPLICATION_ID,
+        )
+        self.assertTrue(
+            mesh_lab.TEST_HOOK_COMPONENT.startswith(
+                f"{android_lab.APPLICATION_ID}/"
+            )
+        )
+        self.assertIn(
+            f'<action android:name="{mesh_lab.TEST_HOOK_ACTION}" />',
+            debug_manifest,
+        )
+
+        operator_examples = [
+            (
+                REPOSITORY_ROOT
+                / "app"
+                / "src"
+                / "debug"
+                / "java"
+                / "com"
+                / "bitchat"
+                / "android"
+                / "testhook"
+                / "TestHookReceiver.kt"
+            ).read_text(encoding="utf-8"),
+            (
+                REPOSITORY_ROOT
+                / ".agents"
+                / "skills"
+                / "android-ui-visual-review"
+                / "references"
+                / "fixture-recipes.md"
+            ).read_text(encoding="utf-8"),
+            (REPOSITORY_ROOT / "docs" / "release-gate-runbook.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+        for example in operator_examples:
+            self.assertIn(android_lab.APPLICATION_ID, example)
+            self.assertNotIn("run-as com.bitchat.droid", example)
+        self.assertIn(mesh_lab.TEST_HOOK_ACTION, operator_examples[0])
+        self.assertIn(mesh_lab.TEST_HOOK_ACTION, operator_examples[1])
+
+    def test_release_defaults_target_the_wesh_repository_and_package(self):
+        verifier = (
+            REPOSITORY_ROOT
+            / "tools"
+            / "reproducible-builds"
+            / "verify-github-release.sh"
+        ).read_text(encoding="utf-8")
+        release_docs = [
+            (REPOSITORY_ROOT / "docs" / "maintainer-release-guide.md").read_text(
+                encoding="utf-8"
+            ),
+            (REPOSITORY_ROOT / "docs" / "reproducible-builds.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+
+        self.assertIn(
+            'REPOSITORY="${WESH_GITHUB_REPOSITORY:-'
+            '${BITCHAT_GITHUB_REPOSITORY:-samouraiworld/wesh-bitchat-android}}"',
+            verifier,
+        )
+        self.assertNotIn("permissionlesstech/bitchat-android", verifier)
+        for document in release_docs:
+            self.assertIn("samouraiworld/wesh-bitchat-android", document)
+            self.assertIn("org.samouraiworld.wesh.android", document)
+            self.assertNotIn("permissionlesstech/bitchat-android", document)
+            self.assertNotIn("com.bitchat.droid", document)
+
+        repository_templates = [
+            REPOSITORY_ROOT / ".github" / "DISCUSSION_TEMPLATE" / "question.yml",
+            REPOSITORY_ROOT / ".github" / "ISSUE_TEMPLATE" / "bug_report.yml",
+            REPOSITORY_ROOT / ".github" / "ISSUE_TEMPLATE" / "feature_request.yml",
+            REPOSITORY_ROOT / ".github" / "pull_request_template.md",
+        ]
+        for template in repository_templates:
+            contents = template.read_text(encoding="utf-8")
+            self.assertIn("samouraiworld/wesh-bitchat-android", contents)
+            self.assertNotIn("permissionlesstech/bitchat-android", contents)
+
+        readme = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("[Wesh Android release guide]", readme)
+        self.assertIn("[Wesh reproducible-build guide]", readme)
+        self.assertNotIn("[Upstream release guide]", readme)
+        self.assertNotIn("[Upstream reproducible-build guide]", readme)
+
+        workflow = (
+            REPOSITORY_ROOT / ".github" / "workflows" / "android-build.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "python3 -m unittest tools.release_gate.test_release_gate",
+            workflow,
+        )
+        self.assertIn(
+            "bash -n tools/reproducible-builds/verify-github-release.sh",
+            workflow,
         )
 
 

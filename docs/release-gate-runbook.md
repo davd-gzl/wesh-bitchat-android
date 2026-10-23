@@ -336,7 +336,7 @@ are no file, voice or push-to-talk commands or scenarios.
   FragmentManager` shows commands, results, decrypt failures, and fragment
   rejects in real time.
 - Results also persist on-device at
-  `run-as com.bitchat.droid cat cache/testhook/results/<id>.json`.
+  `run-as org.samouraiworld.wesh.android cat cache/testhook/results/<id>.json`.
 
 Unlike the release gate, this harness is a development aid: it prints raw
 diagnostics and does not produce a privacy-checked approval bundle.

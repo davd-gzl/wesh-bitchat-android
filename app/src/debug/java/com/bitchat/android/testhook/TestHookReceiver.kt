@@ -17,7 +17,7 @@ import java.io.File
  *     --es cmd <command> --es id <cmd-id> [command extras...]
  *
  * Result is written to cache/testhook/results/<id>.json and logged under tag TestHook:
- *   adb shell run-as com.bitchat.droid cat cache/testhook/results/<id>.json
+ *   adb shell run-as org.samouraiworld.wesh.android cat cache/testhook/results/<id>.json
  */
 class TestHookReceiver : BroadcastReceiver() {
 

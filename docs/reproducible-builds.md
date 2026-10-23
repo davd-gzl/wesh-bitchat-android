@@ -1,6 +1,6 @@
 # Reproducible builds
 
-Bitchat's canonical release build produces byte-for-byte reproducible unsigned
+Wesh Android's canonical release build produces byte-for-byte reproducible unsigned
 phone APKs and Android App Bundles (AABs). CI builds the release
 twice in independent jobs and exposes a verified release artifact only when
 every canonical byte matches.
@@ -9,6 +9,11 @@ Signing remains local: no keystore or signing password is stored in or exposed
 to GitHub Actions. Anyone can reproduce the unsigned artifacts; maintainers
 download the verified CI output, sign the selected GitHub APKs and Play upload
 AABs locally, then manually publish those exact files.
+
+The `bitchat-android-*` artifact filenames and `BITCHAT_*` environment
+variables are retained as compatibility contracts with the inherited build
+pipeline. Operational repository and package checks target
+`samouraiworld/wesh-bitchat-android` and `org.samouraiworld.wesh.android`.
 
 Maintainers should use the complete
 [Android maintainer release guide](maintainer-release-guide.md) for the
@@ -64,8 +69,8 @@ Android and Gradle images and dependencies. R8's single-threaded deterministic
 mode can exceed an 8 GiB Docker memory limit while optimizing the phone app.
 
 ```bash
-git clone https://github.com/permissionlesstech/bitchat-android.git
-cd bitchat-android
+git clone https://github.com/samouraiworld/wesh-bitchat-android.git
+cd wesh-bitchat-android
 git checkout vX.Y.Z
 tools/reproducible-builds/build-in-container.sh \
   .reproducible-build/local-vX.Y.Z
@@ -151,7 +156,7 @@ GitHub's manual equivalents are:
 gh release download vX.Y.Z
 sha256sum -c BITCHAT_SHA256SUMS
 gh attestation verify bitchat-android-universal-unsigned.apk \
-  --repo permissionlesstech/bitchat-android
+  --repo samouraiworld/wesh-bitchat-android
 ```
 
 ## Verify a Google Play release
@@ -189,7 +194,7 @@ GitHub universal APK or to a locally built APK. Use this procedure instead:
    ```
 
    The signer SHA-256 must equal the Play Console app-signing certificate.
-4. Confirm package name `com.bitchat.droid`, version code, version name, and
+4. Confirm package name `org.samouraiworld.wesh.android`, version code, version name, and
    manifest/security configuration with Android's `apkanalyzer` or `aapt2`.
 5. Recreate Google's split-generation behavior from the reproduced AAB with the
    same `bundletool` version and a saved device specification:

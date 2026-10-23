@@ -146,8 +146,8 @@ authorization to publish this candidate.
 
 - [Upstream Android repository](https://github.com/permissionlesstech/bitchat-android)
 - [Upstream iOS repository](https://github.com/permissionlesstech/bitchat)
-- [Upstream release guide](docs/maintainer-release-guide.md)
-- [Upstream reproducible-build guide](docs/reproducible-builds.md)
+- [Wesh Android release guide](docs/maintainer-release-guide.md)
+- [Wesh reproducible-build guide](docs/reproducible-builds.md)
 
 The checked-in [LICENSE.md](LICENSE.md) is GPLv3. The upstream public-domain
 claim conflicts with that file, as recorded in the historical baseline.

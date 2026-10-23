@@ -6,7 +6,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TAG="${1:?usage: verify-github-release.sh TAG [--no-rebuild]}"
 MODE="${2:-}"
-REPOSITORY="${BITCHAT_GITHUB_REPOSITORY:-permissionlesstech/bitchat-android}"
+# Prefer the Wesh-specific override while retaining the historical environment
+# variable as a compatibility fallback for existing verifier automation.
+REPOSITORY="${WESH_GITHUB_REPOSITORY:-${BITCHAT_GITHUB_REPOSITORY:-samouraiworld/wesh-bitchat-android}}"
 TEMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEMP_DIR"' EXIT
 

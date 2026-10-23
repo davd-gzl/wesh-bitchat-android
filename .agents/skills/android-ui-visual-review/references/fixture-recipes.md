@@ -28,7 +28,7 @@ The receiver accepts:
 
 ```sh
 adb -s "$ANDROID_REVIEW_SERIAL" shell am broadcast \
-  -n com.bitchat.droid/com.bitchat.android.testhook.TestHookReceiver \
+  -n org.samouraiworld.wesh.android/com.bitchat.android.testhook.TestHookReceiver \
   -a com.bitchat.droid.TEST_HOOK \
   --es cmd "<command>" \
   --es id "<unique-result-id>"
@@ -37,7 +37,7 @@ adb -s "$ANDROID_REVIEW_SERIAL" shell am broadcast \
 Read the result rather than trusting broadcast delivery:
 
 ```sh
-adb -s "$ANDROID_REVIEW_SERIAL" shell run-as com.bitchat.droid \
+adb -s "$ANDROID_REVIEW_SERIAL" shell run-as org.samouraiworld.wesh.android \
   cat "cache/testhook/results/<unique-result-id>.json"
 ```
 
