@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+<resources>
     <!-- Wesh startup, recovery and verification copy: English by default, French in values-fr. -->
     <string name="wesh_startup_reset_title">Réinitialiser l’identité ?</string>
     <string name="wesh_startup_reset_body">Votre identité ne peut pas être lue sur ce téléphone. Réinitialiser efface toutes les données de Wesh : identité, contacts, messages, brouillons et réglages. Une nouvelle identité sera créée et vos contacts devront être vérifiés à nouveau.</string>

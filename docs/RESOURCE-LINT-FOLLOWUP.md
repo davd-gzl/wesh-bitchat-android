@@ -1,5 +1,9 @@
 # Android resource lint follow-up
 
+> Historical note: this document records the earlier inherited multilingual
+> resource pass. Wesh now intentionally ships and exposes English and French;
+> the lint gate and locale contract enforce that maintained product scope.
+
 This bounded pass changes resource metadata, redundant resource variants and
 typography. It preserves every locale, every base resource name and all format
 argument signatures. No natural-language translations, lint suppressions or

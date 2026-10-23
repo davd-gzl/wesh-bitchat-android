@@ -126,7 +126,6 @@
 
     <!-- Debug / Diagnostics -->
     <string name="debug_tools">outils de debug</string>
-    <string name="debug_tools_desc">outils développeur pour diagnostic et contrôle</string>
     <string name="debug_verbose_logging">journalisation verbeuse</string>
     <string name="debug_bluetooth_roles">rôles Bluetooth</string>
     <string name="debug_gatt_server">serveur GATT</string>
@@ -152,7 +151,6 @@
     <string name="debug_relays_window_fmt">dernières 10s : %1$d • 1m : %2$d • 15m : %3$d</string>
     <string name="debug_derived_p_fmt">P dérivé : %1$s • nb max estimé : %2$s</string>
     <string name="debug_direct_suffix"> • direct</string>
-    <string name="debug_question_mark">?</string>
     <string name="debug_role_server">en tant que serveur (nous hébergeons)</string>
     <string name="debug_role_client">en tant que client (nous nous connectons)</string>
 
@@ -181,7 +179,6 @@
     <string name="battery_optimization_disabled_title">optimisation de la batterie désactivée</string>
     <string name="continue_btn">Continuer</string>
     <string name="initializing_mesh_network">Initialisation du réseau mesh</string>
-    <string name="dot">.</string>
     <string name="setting_up_bluetooth">Configuration du mesh Bluetooth…</string>
     <string name="should_take_seconds">Cela ne devrait prendre que quelques secondes</string>
     <string name="setup_not_complete">Configuration incomplète</string>
@@ -237,7 +234,6 @@
         <item quantity="other">%d personnes</item>
     </plurals>
 
-  <string name="dismiss">fermer</string>
     <string name="bluetooth_recommended">Bluetooth recommandé</string>
     <string name="mesh_service_notification_content">Mesh actif — %1$d pairs</string>
 
@@ -276,49 +272,14 @@
   <string name="verify_success_title">Vérifié</string>
   <string name="verify_success_body">Vous avez vérifié %1$s</string>
   <string name="verify_success_system_message">vérifié %1$s</string>
-    <string name="cd_open_about">Ouvrir À propos</string>
     <string name="about_language">Langue</string>
     <string name="about_app_language">Langue de l’appli</string>
     <string name="about_system_default">Langue du système</string>
     <string name="about_select_language">Choisir la langue</string>
-    <string name="about_tagline">Se retrouver, même hors ligne</string>
-    <string name="cd_privacy_protected">Confidentialité des messages</string>
 
     <!-- Traductions françaises des ressources communes -->
     <string name="mesh_service_channel_name">Service du réseau maillé en arrière-plan</string>
     <string name="mesh_service_channel_desc">Maintient le réseau maillé Bluetooth actif en arrière-plan</string>
-    <string name="cd_favorite">Favori</string>
-    <string name="cd_favorited_you">Vous figurez dans ses favoris</string>
-    <string name="conversations">Conversations</string>
-    <string name="offline_not_in_mesh">Hors ligne · absent du réseau maillé</string>
-    <string name="offline_reachable_via_nostr">Hors du réseau maillé · Nostr disponible</string>
-    <string name="delete">Supprimer</string>
-    <string name="delete_conversation_action">Supprimer la conversation</string>
-    <string name="delete_conversation_title">Supprimer la conversation ?</string>
-    <string name="delete_conversation_message">Supprimer de cet appareil votre conversation avec %1$s ?</string>
-    <string name="search_conversations">Rechercher des conversations</string>
-    <string name="clear">Effacer</string>
-    <string name="loading_conversations">Chargement des conversations privées…</string>
-    <string name="conversation_storage_error">Impossible de charger les conversations privées</string>
-    <string name="no_conversations_yet">Les conversations privées apparaîtront ici</string>
-    <string name="no_conversation_results">Aucune conversation correspondante</string>
-    <string name="online_conversations">EN LIGNE</string>
-    <string name="offline_conversations">HORS LIGNE</string>
-    <string name="mark_read">Marquer comme lu</string>
-    <string name="mark_unread">Marquer comme non lu</string>
-    <string name="pin_conversation">Épingler la conversation</string>
-    <string name="unpin_conversation">Désépingler la conversation</string>
-    <string name="mute_conversation">Désactiver les notifications de la conversation</string>
-    <string name="unmute_conversation">Réactiver les notifications de la conversation</string>
-    <string name="conversation_actions">Actions de la conversation</string>
-    <string name="conversation_unread_count">%1$d messages non lus</string>
-    <string name="conversation_read">Lu</string>
-    <string name="conversation_draft_preview">Brouillon : %1$s</string>
-    <string name="conversation_you_preview">Vous : %1$s</string>
-    <string name="conversation_delete_failed">Impossible de supprimer la conversation</string>
-    <string name="conversation_deleted">Conversation avec %1$s supprimée</string>
-    <string name="undo">Annuler</string>
-    <string name="conversation_restore_failed">Impossible de restaurer la conversation</string>
     <string name="notification_reply">Répondre</string>
     <string name="notification_mark_read">Marquer comme lu</string>
     <string name="notification_private_message">Nouveau message privé</string>
@@ -326,41 +287,7 @@
     <string name="notification_channel_direct_messages">Messages privés</string>
     <string name="notification_channel_direct_messages_description">Notifications des messages privés des autres utilisateurs</string>
     <string name="you">Vous</string>
-    <string name="about_tab_info">Informations</string>
-    <string name="about_tab_settings">Réglages</string>
-    <string name="about_how_to_use_heading">Mode d’emploi</string>
-    <string name="about_howto_nickname">Touchez votre pseudonyme pour le modifier</string>
-    <string name="about_howto_mention">Saisissez @ pour mentionner quelqu’un</string>
-    <string name="about_section_about">À propos</string>
-    <string name="about_section_theme">Thème</string>
-    <string name="about_section_settings">Réglages</string>
-    <string name="about_no_tracking_title">Confidentialité des connexions</string>
-    <string name="about_no_tracking_desc">La messagerie sur le réseau maillé local ne nécessite pas de compte. Les canaux en ligne utilisent des relais publics sur internet.</string>
-    <string name="about_ephemeral_title">Identité éphémère</string>
-    <string name="about_ephemeral_desc">Un nouvel identifiant de pair est généré régulièrement.</string>
-    <string name="about_panic_desc">Touchez trois fois le logo pour demander l’effacement de toutes les données de l’application.</string>
-    <string name="about_tor_title">Réseau Tor</string>
-    <string name="about_difficulty">Difficulté</string>
-    <string name="about_difficulty_value">%1$d bits • %2$s</string>
-    <string name="about_tor_connected">Connecté (%1$d%%)</string>
-    <string name="about_tor_disconnected">Déconnecté</string>
-    <string name="chat_ui_matrix">Matrice</string>
-    <string name="chat_ui_bubbles">Bulles</string>
     <string name="cd_direct_bluetooth">Connexion directe Bluetooth</string>
     <string name="cd_routed_mesh">Acheminement par le réseau maillé</string>
     <string name="notification_action_quit_bitchat">Quitter Wesh</string>
-    <string name="about_background_title">Fonctionner en arrière-plan</string>
-    <string name="about_background_desc">Maintenir le réseau maillé actif quand l’application est fermée (service au premier plan)</string>
-    <string name="location_bluetooth_wifi_subtitle">Bluetooth • Wi-Fi • %1$s</string>
-    <string name="action_private_message_title">Écrire à %1$s</string>
-    <string name="action_private_message_subtitle">Envoyer un message privé</string>
-    <string name="people_count_title">Personnes (%1$d)</string>
-    <string name="section_people">Personnes</string>
-    <string name="mesh_title">Réseau maillé</string>
-    <string name="debug_verbose_hint">Journalise les arrivées et départs des pairs, le sens des connexions, l’acheminement des paquets et les relais</string>
-    <string name="debug_roles_hint">Activer ou désactiver les rôles ; leur désactivation ferme toutes les connexions</string>
-    <string name="debug_rssi_fmt">RSSI : %1$s</string>
-    <string name="tor_not_available_in_this_build">Tor n’est pas disponible dans cette version</string>
-    <string name="checking">Vérification…</string>
-    <string name="apk_not_ready_please_prepare_it_first">L’APK n’est pas prêt. Préparez-le d’abord.</string>
 </resources>

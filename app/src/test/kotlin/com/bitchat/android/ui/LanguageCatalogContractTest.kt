@@ -9,7 +9,7 @@ class LanguageCatalogContractTest {
     private val resourcesDirectory = File("src/main/res")
 
     @Test
-    fun `locale config contains every shipped locale exactly once`() {
+    fun `locale config exposes exactly English and French`() {
         val shippedLanguageTags = resourcesDirectory
             .listFiles()
             .orEmpty()
@@ -22,12 +22,8 @@ class LanguageCatalogContractTest {
             .map { match -> match.groupValues[1] }
             .toList()
 
-        assertEquals(
-            "Locale configuration must not contain duplicate entries",
-            configuredLanguageTags.toSet().size,
-            configuredLanguageTags.size,
-        )
-        assertEquals(shippedLanguageTags, configuredLanguageTags.toSet())
+        assertEquals(listOf("en", "fr"), configuredLanguageTags)
+        assertEquals(setOf("fr"), shippedLanguageTags)
     }
 
     @Test
@@ -55,6 +51,26 @@ class LanguageCatalogContractTest {
                     )
                 }
             }
+    }
+
+    @Test
+    fun `translation errors are neither suppressed nor allowed to pass lint`() {
+        val missingTranslationSuppressions = resourcesDirectory
+            .walkTopDown()
+            .filter(File::isFile)
+            .filter { it.extension == "xml" }
+            .filter { "MissingTranslation" in it.readText() }
+            .map { it.relativeTo(resourcesDirectory).path }
+            .toList()
+
+        assertTrue(
+            "MissingTranslation must be fixed within the EN/FR product scope, not suppressed: $missingTranslationSuppressions",
+            missingTranslationSuppressions.isEmpty(),
+        )
+        assertTrue(
+            "Lint errors must fail the build",
+            "abortOnError = true" in File("build.gradle.kts").readText(),
+        )
     }
 
     private fun String.toLanguageTagOrNull(): String? {
