@@ -389,6 +389,37 @@ class ReleaseGateTest(unittest.TestCase):
             debug_manifest,
         )
 
+        operator_examples = [
+            (
+                REPOSITORY_ROOT
+                / "app"
+                / "src"
+                / "debug"
+                / "java"
+                / "com"
+                / "bitchat"
+                / "android"
+                / "testhook"
+                / "TestHookReceiver.kt"
+            ).read_text(encoding="utf-8"),
+            (
+                REPOSITORY_ROOT
+                / ".agents"
+                / "skills"
+                / "android-ui-visual-review"
+                / "references"
+                / "fixture-recipes.md"
+            ).read_text(encoding="utf-8"),
+            (REPOSITORY_ROOT / "docs" / "release-gate-runbook.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+        for example in operator_examples:
+            self.assertIn(android_lab.APPLICATION_ID, example)
+            self.assertNotIn("run-as com.bitchat.droid", example)
+        self.assertIn(mesh_lab.TEST_HOOK_ACTION, operator_examples[0])
+        self.assertIn(mesh_lab.TEST_HOOK_ACTION, operator_examples[1])
+
     def test_release_defaults_target_the_wesh_repository_and_package(self):
         verifier = (
             REPOSITORY_ROOT
@@ -416,6 +447,35 @@ class ReleaseGateTest(unittest.TestCase):
             self.assertIn("org.samouraiworld.wesh.android", document)
             self.assertNotIn("permissionlesstech/bitchat-android", document)
             self.assertNotIn("com.bitchat.droid", document)
+
+        repository_templates = [
+            REPOSITORY_ROOT / ".github" / "DISCUSSION_TEMPLATE" / "question.yml",
+            REPOSITORY_ROOT / ".github" / "ISSUE_TEMPLATE" / "bug_report.yml",
+            REPOSITORY_ROOT / ".github" / "ISSUE_TEMPLATE" / "feature_request.yml",
+            REPOSITORY_ROOT / ".github" / "pull_request_template.md",
+        ]
+        for template in repository_templates:
+            contents = template.read_text(encoding="utf-8")
+            self.assertIn("samouraiworld/wesh-bitchat-android", contents)
+            self.assertNotIn("permissionlesstech/bitchat-android", contents)
+
+        readme = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("[Wesh Android release guide]", readme)
+        self.assertIn("[Wesh reproducible-build guide]", readme)
+        self.assertNotIn("[Upstream release guide]", readme)
+        self.assertNotIn("[Upstream reproducible-build guide]", readme)
+
+        workflow = (
+            REPOSITORY_ROOT / ".github" / "workflows" / "android-build.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "python3 -m unittest tools.release_gate.test_release_gate",
+            workflow,
+        )
+        self.assertIn(
+            "bash -n tools/reproducible-builds/verify-github-release.sh",
+            workflow,
+        )
 
 
 if __name__ == "__main__":
