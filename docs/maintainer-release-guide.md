@@ -24,7 +24,7 @@ For the technical trust model and third-party verification instructions, see
 | Create tag | Maintainer machine | Signed `vX.Y.Z` tag |
 | Build twice | GitHub Actions | Two identical unsigned APK/AAB builds |
 | Promote build | GitHub Actions | Attested `verified-unsigned-release` artifact |
-| Sign | Maintainer machine | Four installable APKs and two Play upload AABs |
+| Sign | Maintainer machine | Three installable APKs and one Play upload AAB |
 | Test Play build | Play Console internal track | Play-generated APKs tested before public rollout |
 | Prepare release | Maintainer machine and GitHub draft | Checksummed public release assets |
 | Publish | GitHub Releases and Play Console | Public GitHub release and promoted Play rollout |
@@ -38,8 +38,8 @@ These are four separate signing identities:
 2. **GitHub APK signature**: lets Android install and update the APKs published
    on GitHub. Use the existing GitHub release key. Its certificate SHA-256 must
    match `BITCHAT_GITHUB_RELEASE_CERT_SHA256` in `gradle.properties`.
-3. **Play upload signature**: the maintainer signs both AABs with the Play
-   upload key so Play will accept them.
+3. **Play upload signature**: the maintainer signs the Play upload AAB with the
+   upload key so Play will accept it.
 4. **Play app signature**: Google generates device APKs and signs them with the
    separate Play app-signing key.
 
@@ -332,7 +332,7 @@ If the helper stops after creating any signed file, do not continue or overwrite
 files manually. Start again in a new directory downloaded from the same
 successful workflow run.
 
-## 6. Sign the Google Play AABs locally
+## 6. Sign the Google Play AAB locally
 
 Set the pinned JDK and Play upload-key locations, then load the passwords:
 
@@ -366,8 +366,8 @@ This is the only file to upload to Play Console:
 release-X.Y.Z/bitchat-android-play-upload.aab
 ```
 
-Do not upload an APK or either `*-release-unsigned.aab` to Play. Do not open
-Android Studio and rebuild the bundles.
+Do not upload an APK or the `*-release-unsigned.aab` to Play. Do not open
+Android Studio and rebuild the bundle.
 
 Remove passwords from the environment after both signing steps:
 
@@ -389,7 +389,7 @@ tools/reproducible-builds/prepare-github-release.sh "$RELEASE_DIR"
 The helper verifies all checksums and renames the public build information and
 checksum manifests. It refuses missing or pre-existing release files.
 
-The final GitHub Release must contain all 17 files below:
+The final GitHub Release must contain all 13 files below:
 
 | Asset | Signed? | Why it is published |
 |---|---:|---|
@@ -432,7 +432,7 @@ Create a local release-notes file. At minimum it must contain:
 - Play upload certificate SHA-256: FINGERPRINT
 - Play app-signing certificate SHA-256: FINGERPRINT
 
-Checksums, canonical unsigned APK/AAB inputs, the exact Play upload AABs, and
+Checksums, canonical unsigned APK/AAB inputs, the exact Play upload AAB, and
 build information are attached. See `docs/reproducible-builds.md` for public
 verification instructions.
 
@@ -469,7 +469,7 @@ gh release view "$TAG" --repo "$REPOSITORY" --web
 
 Keep it as a draft until the Play internal-track checks below pass.
 
-## 9. Upload and test the AABs in Google Play
+## 9. Upload and test the AAB in Google Play
 
 1. Open Play Console and select `org.samouraiworld.wesh.android`.
 2. Open **Test and release > Testing > Internal testing**.
@@ -498,7 +498,7 @@ APKs will not be byte-identical to the GitHub APKs. That is expected.
 
 ## 10. Publish GitHub and promote Play
 
-After both Play test builds pass and the GitHub draft has all 17 assets:
+After the Play test build passes and the GitHub draft has all 13 assets:
 
 ```bash
 gh release edit "$TAG" \
@@ -533,7 +533,7 @@ tools/reproducible-builds/verify-github-release.sh "$TAG"
 Also verify:
 
 - the GitHub release is marked **Latest**;
-- the four signed APKs install and show the expected version;
+- the three signed APKs install and show the expected version;
 - the Play listing shows the intended production version and rollout state;
 - a Play-installed build is signed by the app-signing certificate recorded in
   the release notes; and
@@ -567,7 +567,7 @@ Also verify:
 - [ ] Checksums, source commit, and attestations verified
 - [ ] GitHub APKs signed locally with the pinned certificate
 - [ ] Phone Play AAB signed locally with the registered upload key
-- [ ] `BITCHAT_SHA256SUMS` verifies all 17 release assets
+- [ ] `BITCHAT_SHA256SUMS` verifies all 13 release assets
 - [ ] GitHub draft created with certificate fingerprints and all assets
 - [ ] Exact signed phone AAB uploaded to and tested on its track
 - [ ] GitHub Release published

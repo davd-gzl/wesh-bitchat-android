@@ -9,79 +9,45 @@ Wesh V1 combines a public local Bluetooth mesh conversation with private
 contacts verified by scanning each other’s live QR code. Public messages can be
 read, relayed and retained by mesh participants. Private identity verification
 is local to this phone; a successful local handoff does not prove remote receipt
-or reading. The Wesh shell disables Internet, geographic and Wi-Fi Aware routes.
-It does not turn packaged upstream dependencies into absent code.
+or reading. Geographic and Wi-Fi Aware routes remain disabled. Internet is off
+by default and becomes available only after the user accepts the disclosure and
+turns it on; supported Internet traffic must then use the embedded Tor client.
+These product gates do not turn packaged upstream dependencies into absent code.
 
 The app uses the system typeface, a polished silver / pure black interface and
 an isolated application ID, `org.samouraiworld.wesh.android`. It does not replace
 an upstream BitChat installation. MeshCore and Meshtastic adapters are long-term
 roadmap exploration outside V1.
 
-## Current development candidate
+## Current Beta 3 candidate
 
-Candidate **0.1.0 (42)** was built from runtime source
-`8a5516eb4286a6df97d8790e0cdac8cb2aedc13c`.
+The checked-in phone app declares **1.0.0 (103)**. `:app` is the repository's
+only Gradle product module; there is no separate Wear build or Wear release in
+this candidate.
 
-Wesh now prepares encrypted preferences and persisted crypto identity on IO,
-with a process-owned initializing / ready / failed state and explicit retry.
-Unreadable, partial or incorrectly sized stored keys do not become replacement
-identities. Checked persistence fences prevent a failed commit from being
-accepted just because its values entered memory. Bluetooth / unified service
-construction stays on Main and receives prepared crypto directly. The latest
-bounded pending route survives Activity state restoration and waits for secure
-startup plus onboarding; QR review and per-send authorization remain in force.
-Foreground-service promotion precedes suspension, and an ineligible sticky
-restart stops without waiting for the keystore. See the
-[startup verification and limits](docs/validation/STARTUP-PREPARATION.md).
+- The complete phone JVM collection passes: **1,380 tests in 180 suites**, with
+  no failure, error or skip.
+- Strict phone lint passes with `abortOnError = true` and
+  `checkReleaseBuilds = true`. Its current report contains **0 errors, 0 fatals,
+  268 warnings and 9 informational notes (`Hint`)**. The checked baseline contains
+  **12 historical warnings**. Neither the report nor the baseline contains a
+  `MissingTranslation` or `MissingQuantity` issue.
+- English and French are the maintained product locales. Their **531
+  translatable resource keys** have exact name parity, and the application
+  locale configuration exposes only `en` and `fr`.
+- The four vendored Arti libraries implement authenticated local SOCKS and
+  destination-based circuit isolation. Reconnects to one normalized DNS host
+  can reuse its session token, while distinct destination hosts cannot share a
+  circuit. This is source, native and automated-test evidence, not a claim that
+  Tor or relay behavior has been qualified on a physical phone.
 
-Image export now uses an explicit document destination on API 26–28 and the
-Downloads API on API 29+, performs storage work on IO, and reports actual copy /
-publication failure. It adds no broad storage permission. This does not qualify
-all inherited image formats or physical providers.
-
-- App debug build and its full JVM collection passed: **684 passed, 3 inherited
-  skips (687 total)**. The final global invocation reused the Wear build,
-  **224 successful JVM cases** and lint results with unchanged shared inputs;
-  their actual execution also passed in the preceding complete run. Wear
-  remains an inherited module outside the Wesh V1 product scope.
-- The four Arti libraries and both checksum manifests remain unchanged and
-  byte-identical between the earlier two clean builds in the same pinned
-  environment. Independent review checked ELF/JNI/source correspondence.
-- The final universal APK passed package, label, version, existing debug-signer
-  and ZIP alignment checks. All 20 native ZIP entries are stored uncompressed;
-  all LOAD segments in its 10 packaged 64-bit libraries meet 16 KiB alignment.
-  This does not qualify a physical 16 KiB device.
-- App lint reports **304 errors, 321 warnings and 19 hints**; Wear reports
-  **37 errors, 52 warnings and 10 hints**. Compared with candidate 41, the
-  unsupported Downloads API error is removed. Each module has three new
-  UseKtx style warnings and two old ones removed (net +1); explicit editor
-  commits preserve their checked Boolean result. No new error, suppression,
-  baseline or privileged permission was added. The inherited
-  `abortOnError = false` remains; task success is not lint clean.
-
-The known isolated API 35 emulator accepted the upgrade and its installed APK
-hash matched the verified candidate exactly. Three CLI cold launches reported
-Activity first-frame TotalTime values of **8.136 / 4.149 / 7.884 seconds**. The
-same process stayed alive for 15 seconds after each, with no fatal observed in
-its bounded crash buffer and no new ANR exit record in the targeted before /
-after comparison. These are Activity/loading observations: secure-runtime
-readiness, completed onboarding, actual conversations, GUI and TalkBack were
-not independently observed. They are not phone performance or full ANR tests.
-The headless emulator was then shut down cleanly.
-
-An earlier GUI emulator process exited with code 139 before candidate 42 was
-installed; its cause is not established and cannot be attributed to the app.
-Candidate 41's initial app ANR and one launch observed at roughly 28 seconds
-remain historical limitations, with no causal resolution inferred from this
-candidate's different first screen. The disposable earlier instrumented probe
-was incomplete and is not a performance baseline. Candidate 40 / 41 artifacts
-and provisional candidate-42 source checks remain preserved separately locally.
-
-This is a local development candidate. Store publication, pilot distribution,
-regulatory classification and tester invitations require their own decisions.
-Physical BLE interoperability, multi-hop delivery, background / battery behavior,
-full GUI accessibility, TalkBack audio and service deadlines remain unqualified.
-Raw APKs, exact artifact hashes, command logs and detailed provenance stay local.
+Physical Android/iOS Mesh Lab, background and battery behavior, TalkBack,
+real-device 16 KiB page-size behavior, upgrade through the intended distribution
+channel and Play-installed Beta 3 are **NOT RUN** for this candidate. They remain
+release gates; automated tests and reproducible artifacts do not substitute for
+them. Store publication, public rollout and regulatory classification therefore
+remain unqualified. Raw APKs, artifact hashes, command logs and detailed
+provenance stay local.
 
 ## Build and test
 
@@ -103,9 +69,12 @@ rejected. Follow the [native rebuild guide](tools/arti-build/README.md), includi
 two clean native builds and comparison of all four outputs.
 
 The native lock patches rustls to 0.23.46 and rustls-webpki to 0.103.15. It still
-contains RSA RUSTSEC-2023-0071 and unmaintained bincode / paste warnings. Keep
-this gate explicit: disabled Internet routes and a fixed TLS library do not
-establish private-RSA reachability or an advisory-free native graph.
+contains `rsa 0.9.10` affected by RUSTSEC-2023-0071 and unmaintained bincode /
+paste warnings. Beta 103 carries a conditional, client-only risk acceptance
+after review found no reachable private-RSA operation in the six exported JNI
+paths. This is not a fix, an advisory ignore, removal of linked RSA code or an
+advisory-free native graph. Any JNI, Arti-feature, relay/onion-service,
+key-manager or dependency-graph change reopens the stop-ship review.
 
 ## Identity parser and interoperability evidence
 

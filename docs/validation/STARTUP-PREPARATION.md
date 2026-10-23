@@ -1,5 +1,9 @@
 # Android startup verification — candidate 0.1.0 (42)
 
+> Historical evidence: this document is frozen to candidate 0.1.0 (42). It is
+> not the status report for Beta 3 / 1.0.0 (103). See the repository README for
+> the current automated results and outstanding physical-device gates.
+
 Runtime source `8a5516eb4286a6df97d8790e0cdac8cb2aedc13c` is frozen and locally
 built/checked. Its follow-up documentation does not change the artifact's source.
 Candidate 41 and its APK remain historical reference evidence; its initial ANR
