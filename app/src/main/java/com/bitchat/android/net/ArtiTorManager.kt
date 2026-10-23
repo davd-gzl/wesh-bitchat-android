@@ -43,7 +43,10 @@ class ArtiTorManager internal constructor(
     },
     private val stopTimeoutMs: Long = STOP_TIMEOUT_MS,
     private val appScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
-    private val modeFlow: StateFlow<TorMode> = TorPreferenceManager.modeFlow
+    private val modeFlow: StateFlow<TorMode> = TorPreferenceManager.modeFlow,
+    private val completePendingWipe: (Application) -> Boolean = { app ->
+        ArtiTorControl.completePendingWipe(app)
+    }
 ) {
     enum class TorState {
         OFF,
@@ -367,7 +370,7 @@ class ArtiTorManager internal constructor(
                         // Single chokepoint: Arti never starts over state a failed panic left behind,
                         // nor while a wipe is deleting it.
                         if (info.guardianproject.arti.ArtiWipeLatch.isWiping() ||
-                            !ArtiTorControl.completePendingWipe(application)
+                            !completePendingWipe(application)
                         ) {
                             Log.w(TAG, "applyMode: ON refused, Arti state wipe pending")
                             desiredMode = TorMode.OFF
@@ -423,7 +426,7 @@ class ArtiTorManager internal constructor(
     }
 
     private suspend fun startArtiCounted(application: Application, useDelay: Boolean) {
-        if (info.guardianproject.arti.ArtiWipeLatch.isWiping() || !ArtiTorControl.completePendingWipe(application)) {
+        if (info.guardianproject.arti.ArtiWipeLatch.isWiping() || !completePendingWipe(application)) {
             _statusFlow.update { it.copy(running = false, state = TorState.ERROR) }
             TorPreferenceManager.set(application, TorMode.OFF, commit = true)
             return

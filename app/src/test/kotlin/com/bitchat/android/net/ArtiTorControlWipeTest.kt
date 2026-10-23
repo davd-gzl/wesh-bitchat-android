@@ -179,19 +179,15 @@ class ArtiTorControlWipeTest {
     }
 
     @Test fun `the manager refuses to start Arti while the wipe cannot complete`() = runBlocking {
-        File(arti, "state/synthetic-guards.json").writeText("{}")
         ArtiTorControl.pendingMarker(app).createNewFile()
-        val locked = File(arti, "state")
-        assertTrue(locked.setWritable(false))
-        try {
-            TorPreferenceManager.set(app, TorMode.ON)
-            ArtiTorManager.getInstance().applyMode(app, TorMode.ON)
-            assertEquals(TorMode.OFF, TorPreferenceManager.get(app))
-            assertEquals(TorMode.OFF, ArtiTorManager.getInstance().statusFlow.value.mode)
-            assertTrue(File(arti, "state/synthetic-guards.json").exists())
-        } finally {
-            locked.setWritable(true)
-        }
+        val manager = ArtiTorManager(completePendingWipe = { false })
+
+        TorPreferenceManager.set(app, TorMode.ON)
+        manager.applyMode(app, TorMode.ON)
+
+        assertEquals(TorMode.OFF, TorPreferenceManager.get(app))
+        assertEquals(TorMode.OFF, manager.statusFlow.value.mode)
+        assertTrue(File(arti, "state/synthetic-guards.json").exists())
         assertTrue(ArtiTorControl.completePendingWipe(app))
     }
 }
