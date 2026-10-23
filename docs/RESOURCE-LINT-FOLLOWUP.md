@@ -2,7 +2,9 @@
 
 > Historical note: this document records the earlier inherited multilingual
 > resource pass. Wesh now intentionally ships and exposes English and French;
-> the lint gate and locale contract enforce that maintained product scope.
+> the strict lint gate and locale contract enforce that maintained product
+> scope. The figures below are historical and are not the current Beta 3 lint
+> totals; see the repository README for the current result.
 
 This bounded pass changes resource metadata, redundant resource variants and
 typography. It preserves every locale, every base resource name and all format

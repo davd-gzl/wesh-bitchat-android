@@ -1,14 +1,14 @@
 # Reproducible builds
 
-Wesh Android's canonical release build produces byte-for-byte reproducible unsigned
-phone APKs and Android App Bundles (AABs). CI builds the release
+Wesh Android's canonical release build produces byte-for-byte reproducible
+unsigned phone APKs and one unsigned Android App Bundle (AAB). CI builds the release
 twice in independent jobs and exposes a verified release artifact only when
 every canonical byte matches.
 
 Signing remains local: no keystore or signing password is stored in or exposed
 to GitHub Actions. Anyone can reproduce the unsigned artifacts; maintainers
-download the verified CI output, sign the selected GitHub APKs and Play upload
-AABs locally, then manually publish those exact files.
+download the verified CI output, sign the selected GitHub APKs and the Play
+upload AAB locally, then manually publish those exact files.
 
 The `bitchat-android-*` artifact filenames and `BITCHAT_*` environment
 variables are retained as compatibility contracts with the inherited build
@@ -113,13 +113,14 @@ tools/reproducible-builds/verify-github-release.sh vX.Y.Z
 
 That command:
 
-1. downloads all release APKs, AABs, build information, and checksum files;
+1. downloads all release APKs, the unsigned and Play-upload AABs, build
+   information, and checksum files;
 2. verifies the canonical unsigned build's GitHub artifact-attestation subjects
    against this repository;
 3. verifies `BITCHAT_SHA256SUMS`;
 4. checks that the local source commit is the release commit;
 5. rebuilds in the pinned container; and
-6. byte-compares every unsigned APK, both unsigned AABs, build information, and
+6. byte-compares every unsigned APK, the unsigned AAB, build information, and
    the unsigned checksum manifest.
 
 To verify the published checksums and attestations without rebuilding:

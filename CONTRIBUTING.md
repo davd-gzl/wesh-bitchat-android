@@ -51,17 +51,18 @@ cryptographic algorithms to silence this gate.
 ```
 
 Record exact source revision, candidate version, command result, test totals and
-skips. Compare lint diagnostics with the captured baseline and inspect any
-changed-line issue. The inherited configuration uses `abortOnError = false`: a successful task
-exit is not a lint-clean result. Report outstanding error diagnostics and do
-not disable checks to hide them.
+skips. Lint is a strict gate: keep `abortOnError = true` and
+`checkReleaseBuilds = true`, compare diagnostics with the checked baseline and
+inspect every changed-line issue. The current baseline contains 12 historical
+warnings; do not expand it or disable checks to hide new findings.
 
-Triage the debt in separate reviewable batches: first permission checks,
-API-level guards and receiver flags; then translations / plural forms; then
-Compose correctness and unused resources. Validate each permission change on
-its supported OS branches and keep localization changes separate from routing
-or cryptographic behavior. Do not treat inherited diagnostics as fixed by a
-new dependency build.
+English and French are the maintained product locales. Keep exact resource-key
+parity between the base `values` files and `values-fr`, validate every
+localized format-argument contract, and keep `locales_config.xml` limited to
+`en` and `fr` unless a separately reviewed translation adds a complete locale.
+Both active lint output and the baseline must remain at zero
+`MissingTranslation` and zero `MissingQuantity`. Keep localization changes
+separate from routing or cryptographic behavior.
 
 Keep binary verification parsing unsigned and bounded before copying bytes.
 Reject malformed sizes, unexpected tags and trailing fields. Preserve the
