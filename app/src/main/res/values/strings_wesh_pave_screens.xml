@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+<resources>
     <!-- Pavé screens: Exchange, Welcome, Connection, Settings -->
     <string name="wesh_pave_exchange_title">Exchange</string>
     <string name="wesh_pave_exchange_intro">Show your code and scan theirs, at the same time. Face to face only.</string>

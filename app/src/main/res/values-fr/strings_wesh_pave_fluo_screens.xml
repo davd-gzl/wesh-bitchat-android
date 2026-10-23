@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+<resources>
     <!-- Pavé Fluo: Accueil -->
     <string name="wesh_pave_home_settings">Réglages</string>
     <string name="wesh_pave_home_private">Privé</string>
