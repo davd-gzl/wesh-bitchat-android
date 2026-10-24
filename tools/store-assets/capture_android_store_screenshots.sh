@@ -33,6 +33,11 @@ if [[ "$size_line" != *"1080x1920"* ]]; then
   exit 3
 fi
 
+# A fresh emulator otherwise draws Android's immersive-mode tutorial over the
+# first captures. A store screenshot with system coaching is invalid, so make
+# the isolated emulator acknowledge it before the app is launched.
+adb -s "$serial" shell settings put secure immersive_mode_confirmations confirmed >/dev/null
+
 ./gradlew :app:assembleStoreScreenshot
 apk="app/build/outputs/apk/storeScreenshot/app-universal-storeScreenshot.apk"
 if [[ ! -f "$apk" ]]; then

@@ -94,6 +94,25 @@ class StoreScreenshotContractTest {
         assertOpaqueRgbaPng(File("../store-assets/play/icon-512.png"), 512, 512)
         assertOpaqueRgbaPng(File("../store-assets/play/fr-FR/feature-graphic.png"), 1024, 500)
         assertOpaqueRgbaPng(File("../store-assets/play/en-US/feature-graphic.png"), 1024, 500)
+        val scenes = listOf("home", "public", "private", "exchange", "settings", "connection", "about")
+        listOf("fr-FR", "en-US").forEach { locale ->
+            scenes.forEachIndexed { index, scene ->
+                val filename = "${(index + 1).toString().padStart(2, '0')}-$scene.png"
+                assertOpaqueRgbaPng(
+                    File("../store-assets/play/$locale/phoneScreenshots/$filename"),
+                    1080,
+                    1920,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `capture acknowledges Android system coaching before taking screenshots`() {
+        val script = File("../tools/store-assets/capture_android_store_screenshots.sh").readText()
+        val acknowledgement = "settings put secure immersive_mode_confirmations confirmed"
+        assertTrue(script.contains(acknowledgement))
+        assertTrue(script.indexOf(acknowledgement) < script.indexOf("exec-out screencap"))
     }
 
     @Test
