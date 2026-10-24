@@ -81,6 +81,7 @@
     <string name="wesh_pave_about_source">Code source</string>
     <string name="wesh_pave_about_licenses">Licences et mentions</string>
     <string name="wesh_pave_about_donate">Faire un don</string>
+    <string name="wesh_pave_about_privacy">Confidentialité</string>
     <string name="wesh_pave_about_terms">Conditions d’utilisation</string>
     <string name="wesh_pave_opens_browser">S’ouvre dans le navigateur</string>
     <string name="wesh_pave_licenses_title">Licences</string>
