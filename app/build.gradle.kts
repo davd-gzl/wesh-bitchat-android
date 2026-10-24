@@ -37,6 +37,10 @@ android {
         // Whether the Internet opt-in can be turned on at all. Sockets still need the runtime
         // toggle (WeshNetworkPolicy.allowsNetwork()), which defaults off and needs the disclosure.
         buildConfigField("boolean", "WESH_INTERNET_AVAILABLE", "true")
+        // True only for the isolated, debug-signed store-capture variant. Product code never
+        // uses this to weaken the secure-window policy; the capture activity lives exclusively
+        // in src/storeScreenshot and is absent from release artifacts.
+        buildConfigField("boolean", "STORE_SCREENSHOT_MODE", "false")
         versionCode = 104
         versionName = "1.0.0"
         buildConfigField(
@@ -64,6 +68,15 @@ android {
                 // Include x86_64 for emulator support during development
                 abiFilters += listOf("arm64-v8a", "x86_64", "armeabi-v7a", "x86")
             }
+        }
+        create("storeScreenshot") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".storecapture"
+            versionNameSuffix = "-storecapture"
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = true
+            matchingFallbacks += listOf("debug")
+            buildConfigField("boolean", "STORE_SCREENSHOT_MODE", "true")
         }
         release {
             isMinifyEnabled = true

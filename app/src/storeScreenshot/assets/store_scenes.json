@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "synthetic": true,
+  "provenance": "hand-authored deterministic store fixtures; no user or device data",
+  "sceneOrder": ["home", "public", "private", "exchange", "settings", "connection", "about"],
+  "fr": {
+    "self": "Mésange 14",
+    "contact": "Luciole 08",
+    "secondContact": "Tilleul 27",
+    "homePublic": "On se retrouve près du panneau jaune.",
+    "homePrivate": "Bien reçu, j’arrive.",
+    "publicIncoming": "Je capte trois téléphones autour de moi.",
+    "publicOutgoing": "Parfait, le salon local fonctionne.",
+    "privateIncoming": "Tu reçois ce message sans réseau mobile ?",
+    "privateOutgoing": "Oui, directement en Bluetooth.",
+    "meeting": "Panneau jaune, 18 h"
+  },
+  "en": {
+    "self": "Mésange 14",
+    "contact": "Luciole 08",
+    "secondContact": "Tilleul 27",
+    "homePublic": "Meet by the yellow sign.",
+    "homePrivate": "Got it, I’m coming.",
+    "publicIncoming": "I can see three phones nearby.",
+    "publicOutgoing": "Perfect, the local room works.",
+    "privateIncoming": "Did this arrive without a mobile network?",
+    "privateOutgoing": "Yes, directly over Bluetooth.",
+    "meeting": "Yellow sign, 6 PM"
+  }
+}

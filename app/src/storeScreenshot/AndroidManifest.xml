@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Store capture is an isolated, synthetic-only APK. It has no data-bearing device, network,
+         camera, Bluetooth, boot, storage, or location permission. -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.CAMERA"
+        tools:ignore="PermissionImpliesUnsupportedChromeOsHardware"
+        tools:node="remove" />
+    <uses-permission android:name="android.permission.VIBRATE" tools:node="remove" />
+    <uses-permission android:name="${applicationId}.permission.FORCE_FINISH" tools:node="remove" />
+    <permission android:name="${applicationId}.permission.FORCE_FINISH" tools:node="remove" />
+
+    <application
+        android:name=".store.StoreCaptureApplication"
+        android:label="Wesh Store Capture"
+        tools:replace="android:name,android:label">
+        <activity android:name=".MainActivity" tools:node="remove" />
+        <!-- Kept disabled so lint can validate foreground-service call sites without making the
+             product runtime reachable from this synthetic-only application. -->
+        <service
+            android:name=".service.MeshForegroundService"
+            android:enabled="false"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+        <receiver android:name=".service.ConversationNotificationReceiver" tools:node="remove" />
+        <receiver android:name=".service.BootCompletedReceiver" tools:node="remove" />
+
+        <activity
+            android:name=".store.StoreScreenshotActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.BitchatAndroid">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
