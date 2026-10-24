@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -135,11 +136,12 @@ fun SettingsRow(title: String, value: String?, onClick: () -> Unit, modifier: Mo
     }
 }
 
-/** À propos: source code, licenses, donations, terms. */
+/** À propos: source code, licenses, donations, privacy policy, terms. */
 @Composable
 fun AboutScreen(versionName: String, onBack: () -> Unit, onOpenLicenses: () -> Unit, modifier: Modifier = Modifier) {
     val c = WeshPave.colors
     val uri = LocalUriHandler.current
+    val privacyUrl = WeshLinks.privacyUrl(LocalConfiguration.current.locales[0].language)
     Column(
         modifier
             .fillMaxSize()
@@ -159,6 +161,8 @@ fun AboutScreen(versionName: String, onBack: () -> Unit, onOpenLicenses: () -> U
         SettingsRow(stringResource(R.string.wesh_pave_about_licenses), null, onOpenLicenses)
         HorizontalDivider(thickness = WeshStroke.s1, color = c.line)
         SettingsRow(stringResource(R.string.wesh_pave_about_donate), null, { uri.openUri(WeshLinks.DONATIONS_URL) }, external = true)
+        HorizontalDivider(thickness = WeshStroke.s1, color = c.line)
+        SettingsRow(stringResource(R.string.wesh_pave_about_privacy), null, { uri.openUri(privacyUrl) }, external = true)
         HorizontalDivider(thickness = WeshStroke.s1, color = c.line)
         SettingsRow(stringResource(R.string.wesh_pave_about_terms), null, { uri.openUri(WeshLinks.TERMS_URL) }, external = true)
     }
