@@ -113,6 +113,12 @@ class StoreScreenshotContractTest {
         val acknowledgement = "settings put secure immersive_mode_confirmations confirmed"
         assertTrue(script.contains(acknowledgement))
         assertTrue(script.indexOf(acknowledgement) < script.indexOf("exec-out screencap"))
+        assertTrue(script.contains("command clock -e hhmm 0941"))
+        assertTrue(script.contains("command exit"))
+        assertTrue(captureActivity.contains("background(WeshPave.colors.bg)"))
+        assertTrue(captureActivity.contains("background(WeshPave.colors.surfaceRaised)"))
+        assertTrue(captureActivity.contains("isAppearanceLightStatusBars = scene == \"public\""))
+        assertTrue(captureActivity.contains("isAppearanceLightNavigationBars = false"))
     }
 
     @Test
