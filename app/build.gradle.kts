@@ -130,7 +130,16 @@ android {
         }
     }
     lint {
-        baseline = file("lint-baseline.xml")
+        // The capture manifest intentionally removes notification/foreground-service components.
+        // Shared product classes are still compiled but unreachable in that isolated APK, so its
+        // dedicated baseline contains only those four dead-code incidents. Every other variant
+        // keeps the product baseline and permissions/service lint coverage.
+        val storeScreenshotOnly = gradle.startParameter.taskNames.any {
+            it.substringAfterLast(':') == "lintStoreScreenshot"
+        }
+        baseline = file(
+            if (storeScreenshotOnly) "lint-store-screenshot-baseline.xml" else "lint-baseline.xml"
+        )
         abortOnError = true
         checkReleaseBuilds = true
     }

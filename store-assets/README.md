@@ -27,11 +27,10 @@ python3 tools/store-assets/verify_store_assets.py
 The `storeScreenshot` build type is debug-signed, uses the `.storecapture` application ID suffix,
 and loads only `app/src/storeScreenshot/assets/store_scenes.json`. Its dedicated Application does
 not initialize identity, mesh, Bluetooth, or Internet. Its manifest removes all data-bearing
-device/network permissions and removes or disables the product runtime components. The inert
-notification/foreground-service declarations remain only so Android lint can check the shared
-source; the disabled service cannot run and the capture Activity never requests notification
-permission. Release still applies `FLAG_SECURE`; only the source-set-exclusive capture Activity
-can clear it.
+device/network permissions, notification and foreground-service permissions, AndroidX's generated
+receiver permission, and every product runtime component. Release still applies `FLAG_SECURE`;
+only the source-set-exclusive capture Activity can clear it. The merged-manifest gate fails if any
+permission or product runtime component reaches the capture APK.
 
 The seven deterministic scenes are, in upload order:
 
@@ -45,6 +44,13 @@ The seven deterministic scenes are, in upload order:
 
 Capture is deliberately restricted to a dedicated 1080 x 1920 emulator. The script refuses a
 physical device and strips ancillary PNG metadata before writing 14 localized screenshots.
+
+Build the isolated APK and validate the manifest produced by Android's merger before capture:
+
+```sh
+./gradlew assembleStoreScreenshot
+python3 tools/store-assets/verify_store_manifest.py
+```
 
 ```sh
 ANDROID_STORE_CAPTURE_SERIAL=emulator-5554 tools/store-assets/capture_android_store_screenshots.sh

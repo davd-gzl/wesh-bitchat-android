@@ -41,17 +41,27 @@ class StoreScreenshotContractTest {
     fun `capture app cannot activate product runtime or sensitive permissions`() {
         assertTrue(captureManifest.contains("StoreCaptureApplication"))
         assertTrue(captureManifest.contains("<activity android:name=\".MainActivity\" tools:node=\"remove\""))
-        assertTrue(captureManifest.contains("android:name=\".service.MeshForegroundService\""))
-        assertTrue(captureManifest.contains("android:enabled=\"false\""))
+        assertTrue(
+            Regex("<service\\s+android:name=\"\\.service\\.MeshForegroundService\"\\s+tools:node=\"remove\"\\s*/>")
+                .containsMatchIn(captureManifest)
+        )
         listOf(
             "android.permission.INTERNET",
             "android.permission.BLUETOOTH_SCAN",
             "android.permission.ACCESS_FINE_LOCATION",
             "android.permission.CAMERA",
             "android.permission.RECEIVE_BOOT_COMPLETED",
+            "android.permission.POST_NOTIFICATIONS",
+            "android.permission.FOREGROUND_SERVICE",
+            "android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE",
         ).forEach { permission ->
             assertTrue("$permission must be removed", Regex("android:name=\"$permission\"[^>]+tools:node=\"remove\"").containsMatchIn(captureManifest))
         }
+        assertTrue(
+            captureManifest.contains(
+                "android:name=\"${'$'}{applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION\""
+            )
+        )
     }
 
     @Test

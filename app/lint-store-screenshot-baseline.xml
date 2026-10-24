@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The storeScreenshot APK has no product runtime components or permissions. These four call sites
+  remain compiled from the shared main source set but are unreachable from StoreCaptureApplication.
+  tools/store-assets/verify_store_manifest.py fails closed if that isolation changes.
+-->
+<issues format="6" by="lint" type="baseline" client="gradle" dependencies="false" name="AGP" variant="all">
+    <issue
+        id="NotificationPermission"
+        message="When targeting Android 13 or higher, posting a permission requires holding the POST_NOTIFICATIONS permission">
+        <location file="src/main/java/com/bitchat/android/ui/NotificationManager.kt" line="720" />
+    </issue>
+    <issue
+        id="NotificationPermission"
+        message="When targeting Android 13 or higher, posting a permission requires holding the POST_NOTIFICATIONS permission">
+        <location file="src/main/java/com/bitchat/android/service/PeerAvailabilityNotifier.kt" line="273" />
+    </issue>
+    <issue
+        id="ForegroundServiceType"
+        message="To call Service.startForeground(), the &lt;service&gt; element of manifest file must have the foregroundServiceType attribute specified">
+        <location file="src/main/java/com/bitchat/android/service/MeshForegroundService.kt" line="373" />
+    </issue>
+    <issue
+        id="ForegroundServiceType"
+        message="To call Service.startForeground(), the &lt;service&gt; element of manifest file must have the foregroundServiceType attribute specified">
+        <location file="src/main/java/com/bitchat/android/service/MeshForegroundService.kt" line="375" />
+    </issue>
+</issues>
