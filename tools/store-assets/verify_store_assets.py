@@ -64,6 +64,26 @@ def verify_sources() -> None:
             raise SystemExit(f"{source.relative_to(ROOT)}: stale BIT vector remains")
 
 
+def verify_phone_screenshots() -> None:
+    for locale in ("fr-FR", "en-US"):
+        relative_root = Path("store-assets/play") / locale / "phoneScreenshots"
+        expected = {
+            relative_root / f"{index:02d}-{scene}.png"
+            for index, scene in enumerate(SCENES, start=1)
+        }
+        actual = set((ROOT / relative_root).glob("*.png"))
+        actual_relative = {path.relative_to(ROOT) for path in actual}
+        if actual_relative != expected:
+            missing = sorted(str(path) for path in expected - actual_relative)
+            unexpected = sorted(str(path) for path in actual_relative - expected)
+            raise SystemExit(
+                f"{relative_root}: expected exactly seven canonical screenshots; "
+                f"missing={missing}, unexpected={unexpected}"
+            )
+        for relative in sorted(expected):
+            verify_png(str(relative), (1080, 1920), opaque=True)
+
+
 def main() -> None:
     subprocess.run([sys.executable, str(Path(__file__).with_name("generate_store_assets.py")), "--check"], cwd=ROOT, check=True)
     verify_png("store-assets/play/icon-512.png", (512, 512), opaque=True)
@@ -71,7 +91,8 @@ def main() -> None:
     verify_png("store-assets/play/en-US/feature-graphic.png", (1024, 500), opaque=True)
     verify_fixtures()
     verify_sources()
-    print("store assets, Wesh launcher sources, and synthetic fixtures verified")
+    verify_phone_screenshots()
+    print("store assets, phone screenshots, Wesh launcher sources, and synthetic fixtures verified")
 
 
 if __name__ == "__main__":

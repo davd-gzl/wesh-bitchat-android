@@ -33,6 +33,17 @@ if [[ "$size_line" != *"1080x1920"* ]]; then
   exit 3
 fi
 
+# A fresh emulator otherwise draws Android's immersive-mode tutorial over the
+# first captures. A store screenshot with system coaching is invalid, so make
+# the isolated emulator acknowledge it before the app is launched.
+adb -s "$serial" shell settings put secure immersive_mode_confirmations confirmed >/dev/null
+adb -s "$serial" shell settings put global sysui_demo_allowed 1 >/dev/null
+adb -s "$serial" shell am broadcast -a com.android.systemui.demo -e command enter >/dev/null
+adb -s "$serial" shell am broadcast -a com.android.systemui.demo -e command clock -e hhmm 0941 >/dev/null
+adb -s "$serial" shell am broadcast -a com.android.systemui.demo -e command battery -e level 100 -e plugged false >/dev/null
+adb -s "$serial" shell am broadcast -a com.android.systemui.demo -e command network -e wifi show -e level 4 -e mobile hide >/dev/null
+adb -s "$serial" shell am broadcast -a com.android.systemui.demo -e command notifications -e visible false >/dev/null
+
 ./gradlew :app:assembleStoreScreenshot
 apk="app/build/outputs/apk/storeScreenshot/app-universal-storeScreenshot.apk"
 if [[ ! -f "$apk" ]]; then
@@ -45,7 +56,7 @@ activity_name="com.bitchat.android.store.StoreScreenshotActivity"
 adb -s "$serial" install -r "$apk" >/dev/null
 
 temporary_dir="$(mktemp -d)"
-trap 'rm -rf "$temporary_dir"' EXIT
+trap 'adb -s "$serial" shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true; rm -rf "$temporary_dir"' EXIT
 scenes=(home public private exchange settings connection about)
 
 for language in fr en; do

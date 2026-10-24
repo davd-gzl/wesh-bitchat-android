@@ -7,6 +7,11 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -30,6 +35,7 @@ import com.bitchat.android.ui.pave.PrivateChatScreen
 import com.bitchat.android.ui.pave.PublicRoomScreen
 import com.bitchat.android.ui.pave.SettingsScreen
 import com.bitchat.android.ui.pave.WeshAppearance
+import com.bitchat.android.ui.pave.WeshPave
 import com.bitchat.android.ui.pave.WeshPaveTheme
 import com.bitchat.android.ui.pave.WeshThemeId
 import java.util.Locale
@@ -52,12 +58,15 @@ class StoreScreenshotActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowInsetsControllerCompat(window, window.decorView).hide(
+        val language = normalizedLanguage(intent.getStringExtra(EXTRA_LANGUAGE))
+        val scene = intent.getStringExtra(EXTRA_SCENE).takeIf { it in SCENES } ?: SCENES.first()
+        val insetsController = WindowInsetsControllerCompat(window, window.decorView)
+        insetsController.isAppearanceLightStatusBars = scene == "public"
+        insetsController.isAppearanceLightNavigationBars = false
+        insetsController.hide(
             WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars(),
         )
 
-        val language = normalizedLanguage(intent.getStringExtra(EXTRA_LANGUAGE))
-        val scene = intent.getStringExtra(EXTRA_SCENE).takeIf { it in SCENES } ?: SCENES.first()
         val fixture = StoreFixture.load(this, language)
         setContent {
             WeshPaveTheme(WeshThemeId.Nuit) {
@@ -192,17 +201,27 @@ private fun StoreScene(scene: String, f: StoreFixture) {
             onOpen = {},
             autoStartOnBoot = true,
             onAutoStartOnBoot = {},
+            modifier = Modifier
+                .background(WeshPave.colors.bg)
+                .systemBarsPadding(),
         )
 
-        "connection" -> ConnexionSheetContent(
-            bluetooth = PaveBluetoothInfo(on = true, phonesInRange = 3),
-            internet = FakeWeshInternetModeState(
-                enabled = true,
-                status = PaveInternetStatus.On(relays = 2),
-                disclosureAccepted = true,
-            ),
-            onClose = {},
-        )
+        "connection" -> Box(
+            Modifier
+                .fillMaxSize()
+                .background(WeshPave.colors.surfaceRaised)
+                .systemBarsPadding(),
+        ) {
+            ConnexionSheetContent(
+                bluetooth = PaveBluetoothInfo(on = true, phonesInRange = 3),
+                internet = FakeWeshInternetModeState(
+                    enabled = true,
+                    status = PaveInternetStatus.On(relays = 2),
+                    disclosureAccepted = true,
+                ),
+                onClose = {},
+            )
+        }
 
         "about" -> AboutScreen(versionName = "1.0.0", onBack = {}, onOpenLicenses = {})
     }
