@@ -16,11 +16,18 @@ digest before rendering anything. It produces:
 
 The adaptive XML launchers use the same W geometry. The prior BIT vectors are not retained.
 
+The PNG rasterizer and encoder are intentionally not run with the host Python. Both local and CI
+use the same `linux/amd64` container, whose Python base is digest-pinned and whose Pillow version is
+pinned in `requirements.txt`. The bundled Archivo and Geist files are the only fonts used.
+
 ```sh
-python3 -m pip install -r tools/store-assets/requirements.txt
-python3 tools/store-assets/generate_store_assets.py
-python3 tools/store-assets/verify_store_assets.py
+tools/store-assets/generate_store_assets.sh
+tools/store-assets/verify_store_assets.sh
 ```
+
+`generate_store_assets.py` is an internal container entry point. Running it directly on macOS or
+another host is unsupported because native rasterizer and zlib implementations can differ while
+producing visually equivalent pixels or PNG streams.
 
 ## Synthetic screenshots
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail closed when a generated store asset or synthetic fixture drifts."""
+"""Fail closed when a canonical-container asset or synthetic fixture drifts."""
 
 from __future__ import annotations
 

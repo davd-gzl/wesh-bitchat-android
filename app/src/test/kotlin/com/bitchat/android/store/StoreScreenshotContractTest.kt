@@ -96,6 +96,21 @@ class StoreScreenshotContractTest {
         assertOpaqueRgbaPng(File("../store-assets/play/en-US/feature-graphic.png"), 1024, 500)
     }
 
+    @Test
+    fun `asset generation uses one digest pinned Linux renderer in local and CI`() {
+        val dockerfile = File("../tools/store-assets/Dockerfile").readText()
+        val runner = File("../tools/store-assets/run_in_container.sh").readText()
+        val verifier = File("../tools/store-assets/verify_store_assets.sh").readText()
+        val workflow = File("../.github/workflows/android-build.yml").readText()
+        assertTrue(dockerfile.contains("python:3.12.12-slim-bookworm@sha256:"))
+        assertTrue(dockerfile.contains("PIL.__version__ == \"12.2.0\""))
+        assertTrue(runner.contains("--platform linux/amd64"))
+        assertTrue(runner.contains("--network none"))
+        assertTrue(verifier.contains("run_in_container.sh"))
+        assertTrue(workflow.contains("run: tools/store-assets/verify_store_assets.sh"))
+        assertFalse(workflow.contains("run: python3 tools/store-assets/verify_store_assets.py"))
+    }
+
     private fun assertOpaqueRgbaPng(file: File, width: Int, height: Int) {
         val chunks = mutableListOf<String>()
         var ihdr: ByteArray? = null

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate deterministic Wesh launcher and Google Play assets from the canonical SVG geometry."""
+"""Render Wesh assets inside the pinned canonical Linux toolchain."""
 
 from __future__ import annotations
 
