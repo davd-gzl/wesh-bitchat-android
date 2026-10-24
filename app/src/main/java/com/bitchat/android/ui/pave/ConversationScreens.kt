@@ -28,12 +28,17 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -47,11 +52,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.bitchat.android.R
 import java.util.Locale
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import kotlinx.coroutines.delay
 
 /** A message row as the conversation screens draw it. Remote names are sanitized by [MessageBubble]. */
@@ -275,9 +275,9 @@ private fun MessageList(
         contentPadding = PaddingValues(horizontal = WeshSpace.gutter, vertical = WeshSpace.s3),
         verticalArrangement = Arrangement.spacedBy(WeshSpace.s2, Alignment.Bottom),
     ) {
-        if (messages.isEmpty() && loading) item(key = "loading") { DelayedSpinner() }
-        else if (messages.isEmpty()) item(key = "empty") {
-            Text(empty, style = WeshType.body, color = c.inkMuted, modifier = Modifier.fillMaxWidth())
+        if (messages.isEmpty()) {
+            if (loading) item(key = "loading") { DelayedSpinner() }
+            else item(key = "empty") { Text(empty, style = WeshType.body, color = c.inkMuted, modifier = Modifier.fillMaxWidth()) }
         }
         items(messages, key = { it.id }) { m ->
             MessageBubble(

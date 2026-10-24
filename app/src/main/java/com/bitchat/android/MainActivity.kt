@@ -39,8 +39,10 @@ import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.OrientationAwareActivity
 import com.bitchat.android.ui.theme.BitchatTheme
 import com.bitchat.android.services.VerificationService
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 class MainActivity : OrientationAwareActivity() {
 
@@ -549,7 +551,7 @@ class MainActivity : OrientationAwareActivity() {
         }
     }
 
-    private var bluetoothOffCheck: kotlinx.coroutines.Job? = null
+    private var bluetoothOffCheck: Job? = null
 
     /**
      * Shows the Bluetooth page only if Bluetooth stays off: some tablets turn it off on every
@@ -559,8 +561,7 @@ class MainActivity : OrientationAwareActivity() {
         if (bluetoothOffCheck?.isActive == true) return
         bluetoothOffCheck = lifecycleScope.launch {
             delay(BLUETOOTH_OFF_GRACE_MS)
-            var waited = 0L
-            while (bluetoothTurningOn() && waited < BLUETOOTH_TURNING_ON_MAX_MS) { delay(500); waited += 500 }
+            withTimeoutOrNull(BLUETOOTH_TURNING_ON_MAX_MS) { while (bluetoothStatusManager.isBluetoothTurningOn()) delay(500) }
             val status = bluetoothStatusManager.checkBluetoothStatus()
             mainViewModel.updateBluetoothStatus(status)
             if (status != BluetoothStatus.ENABLED) {
@@ -569,11 +570,6 @@ class MainActivity : OrientationAwareActivity() {
             }
         }
     }
-
-    private fun bluetoothTurningOn(): Boolean = try {
-        (getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter?.state) ==
-            android.bluetooth.BluetoothAdapter.STATE_TURNING_ON
-    } catch (_: SecurityException) { false }
     
     private fun handleOnboardingComplete() {
         // After permissions are granted, re-check Bluetooth, Location, and Battery Optimization status

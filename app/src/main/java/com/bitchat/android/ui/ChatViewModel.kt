@@ -345,7 +345,6 @@ class ChatViewModel(
     val peerNicknames: StateFlow<Map<String, String>> = state.peerNicknames
     val peerRSSI: StateFlow<Map<String, Int>> = state.peerRSSI
     val peerDirect: StateFlow<Map<String, Boolean>> = state.peerDirect
-    val showAppInfo: StateFlow<Boolean> = state.showAppInfo
     val showMeshPeerList: StateFlow<Boolean> = state.showMeshPeerList
     val privateChatSheetPeer: StateFlow<String?> = state.privateChatSheetPeer
     val showVerificationSheet: StateFlow<Boolean> = state.showVerificationSheet
@@ -1341,12 +1340,6 @@ class ChatViewModel(
         }
     }
 
-    // MARK: - Navigation Management
-    
-    fun showAppInfo() {
-        state.setShowAppInfo(true)
-    }
-    
     // MARK: - Canonical peer identities
 
     /**

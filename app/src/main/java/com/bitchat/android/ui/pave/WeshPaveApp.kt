@@ -289,6 +289,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
     }
 
     val privatePeer = selectedPrivate
+    val privateLoading = privatePeer == null && opening != null
     val publicOpen = route == PaveRoute.Public
     val destination = if (publicOpen) "public" else viewModel.weshDraftDestination(privatePeer)
     val draft = destination?.let(drafts::get).orEmpty()
@@ -308,7 +309,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
         blockedReason = persistenceProblem ?: when {
             canSendConversation -> null
             publicOpen -> stringResource(R.string.wesh_pave_fluo_bluetooth_needed)
-            privatePeer == null && opening != null -> null
+            privateLoading -> null
             else -> stringResource(R.string.wesh_pave_fluo_private_needs_qr)
         },
         feedback = feedback,
@@ -372,7 +373,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                         internetPill = paveHomeInternetPill(internet.available, internetEnabled, internetStatus),
                     ),
                     onOpenPublicRoom = { viewModel.endPrivateChat(); go(PaveRoute.Public) },
-                    onOpenContact = { id -> openPrivate(id) },
+                    onOpenContact = ::openPrivate,
                     onOpenRequests = { go(PaveRoute.Requests) },
                     onExchange = { go(PaveRoute.Exchange) },
                     onOpenSettings = { go(PaveRoute.Settings) },
@@ -436,7 +437,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                     onRetry = { id -> privatePeer?.let { viewModel.retryWeshPrivate(it, id) } },
                     onBack = { go(PaveRoute.Home) },
                     onOpenContact = { contactActionsOpen = true },
-                    loading = privatePeer == null && opening != null,
+                    loading = privateLoading,
                 )
             }
             PaveRoute.Requests -> RequestsScreen(
@@ -454,9 +455,7 @@ private fun PaveNavHost(viewModel: ChatViewModel, appearance: WeshAppearance, on
                 onDismiss = { id -> requests.firstOrNull { (it.fingerprint ?: it.peerID) == id }?.let(viewModel::weshDismissRequest) },
                 onBlock = { id -> requestToBlock = requests.firstOrNull { (it.fingerprint ?: it.peerID) == id } },
             )
-            PaveRoute.Exchange -> ExchangeRoute(viewModel, nickname, onClose = { go(PaveRoute.Home) }, onOpenChat = { conversationID ->
-                openPrivate(conversationID)
-            })
+            PaveRoute.Exchange -> ExchangeRoute(viewModel, nickname, onClose = { go(PaveRoute.Home) }, onOpenChat = ::openPrivate)
             PaveRoute.Settings -> {
                 var autoStartOnBoot by remember { mutableStateOf(MeshServicePreferences.isAutoStartEnabled()) }
                 SettingsScreen(

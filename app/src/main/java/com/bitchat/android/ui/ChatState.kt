@@ -76,9 +76,6 @@ class ChatState(
     // peerIDToPublicKeyFingerprint REMOVED - fingerprints now handled centrally in PeerManager
     
     // Navigation state
-    private val _showAppInfo = MutableStateFlow<Boolean>(false)
-    val showAppInfo: StateFlow<Boolean> = _showAppInfo.asStateFlow()
-
     private val _showMeshPeerList = MutableStateFlow(false)
     val showMeshPeerList: StateFlow<Boolean> = _showMeshPeerList.asStateFlow()
 
@@ -182,10 +179,6 @@ class ChatState(
         _peerDirect.value = direct
     }
     
-    fun setShowAppInfo(show: Boolean) {
-        _showAppInfo.value = show
-    }
-
     fun setShowVerificationSheet(show: Boolean) {
         _showVerificationSheet.value = show
     }

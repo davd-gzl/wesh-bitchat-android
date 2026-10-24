@@ -186,7 +186,8 @@ fun OnboardingFlow(
 
     // From Bluetooth, back returns to the nickname, when the flow started there.
     val canGoBack = step == OnboardingStep.Bluetooth && start == OnboardingStart.Welcome
-    BackHandler(canGoBack) { step = OnboardingStep.Welcome }
+    val goBack = { step = OnboardingStep.Welcome }
+    BackHandler(canGoBack, onBack = goBack)
 
     Box(modifier.fillMaxSize().background(WeshPave.colors.bg).systemBarsPadding().imePadding()) {
         when (step) {
@@ -199,7 +200,7 @@ fun OnboardingFlow(
             OnboardingStep.Bluetooth -> BluetoothStep(
                 legacyLocation = sdkInt < Build.VERSION_CODES.S,
                 refusal = refusal,
-                onBack = if (canGoBack) ({ step = OnboardingStep.Welcome }) else null,
+                onBack = goBack.takeIf { canGoBack },
                 onContinue = request,
                 onOpenSettings = {
                     context.startActivity(
@@ -338,38 +339,38 @@ private fun BluetoothStep(
     val c = WeshPave.colors
     // Back sits where PaveHeader puts it on other screens, above the scrolling content.
     Column(Modifier.fillMaxSize()) {
-    if (onBack != null) {
-        PaveIconButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.wesh_pave_back), onBack,
-            Modifier.padding(start = WeshSpace.s1, top = WeshSpace.s2))
-    }
-    Column(
-        Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
-            .padding(horizontal = WeshSpace.gutter, vertical = WeshSpace.s8),
-        verticalArrangement = Arrangement.spacedBy(WeshSpace.s4),
-    ) {
-        Icon(Icons.Rounded.Sensors, contentDescription = null, tint = c.success, modifier = Modifier.size(48.dp))
-        Text(stringResource(R.string.wesh_pave_bt_title), style = WeshType.title, color = c.ink, modifier = Modifier.semantics { heading() })
-        Text(stringResource(R.string.wesh_pave_bt_body), style = WeshType.body, color = c.ink)
-        if (legacyLocation) {
-            Text(stringResource(R.string.wesh_pave_bt_ask_legacy), style = WeshType.body, color = c.ink)
-            Text(stringResource(R.string.wesh_pave_bt_legacy_no_gps), style = WeshType.body, color = c.ink)
-        } else {
-            Text(stringResource(R.string.wesh_pave_bt_ask), style = WeshType.body, color = c.ink)
-            Text(stringResource(R.string.wesh_pave_bt_no_location), style = WeshType.body, color = c.ink)
+        if (onBack != null) {
+            PaveIconButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.wesh_pave_back), onBack,
+                Modifier.padding(start = WeshSpace.s1, top = WeshSpace.s2))
         }
-        Spacer(Modifier.weight(1f))
-        if (refusal != BluetoothRefusal.None) {
-            Text(
-                stringResource(if (refusal == BluetoothRefusal.Permanent) R.string.wesh_pave_fluo_bt_required else R.string.wesh_pave_bt_denied),
-                style = WeshType.body,
-                color = c.warning,
-            )
+        Column(
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(horizontal = WeshSpace.gutter, vertical = WeshSpace.s8),
+            verticalArrangement = Arrangement.spacedBy(WeshSpace.s4),
+        ) {
+            Icon(Icons.Rounded.Sensors, contentDescription = null, tint = c.success, modifier = Modifier.size(48.dp))
+            Text(stringResource(R.string.wesh_pave_bt_title), style = WeshType.title, color = c.ink, modifier = Modifier.semantics { heading() })
+            Text(stringResource(R.string.wesh_pave_bt_body), style = WeshType.body, color = c.ink)
+            if (legacyLocation) {
+                Text(stringResource(R.string.wesh_pave_bt_ask_legacy), style = WeshType.body, color = c.ink)
+                Text(stringResource(R.string.wesh_pave_bt_legacy_no_gps), style = WeshType.body, color = c.ink)
+            } else {
+                Text(stringResource(R.string.wesh_pave_bt_ask), style = WeshType.body, color = c.ink)
+                Text(stringResource(R.string.wesh_pave_bt_no_location), style = WeshType.body, color = c.ink)
+            }
+            Spacer(Modifier.weight(1f))
+            if (refusal != BluetoothRefusal.None) {
+                Text(
+                    stringResource(if (refusal == BluetoothRefusal.Permanent) R.string.wesh_pave_fluo_bt_required else R.string.wesh_pave_bt_denied),
+                    style = WeshType.body,
+                    color = c.warning,
+                )
+            }
+            when (bluetoothStepAction(refusal)) {
+                BluetoothStepAction.Ask -> PrimaryButton(stringResource(R.string.wesh_pave_continue), onContinue)
+                BluetoothStepAction.OpenSettings -> PrimaryButton(stringResource(R.string.wesh_pave_open_settings), onOpenSettings)
+            }
         }
-        when (bluetoothStepAction(refusal)) {
-            BluetoothStepAction.Ask -> PrimaryButton(stringResource(R.string.wesh_pave_continue), onContinue)
-            BluetoothStepAction.OpenSettings -> PrimaryButton(stringResource(R.string.wesh_pave_open_settings), onOpenSettings)
-        }
-    }
     }
 }
 

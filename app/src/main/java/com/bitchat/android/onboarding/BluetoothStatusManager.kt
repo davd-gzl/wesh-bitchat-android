@@ -89,6 +89,11 @@ class BluetoothStatusManager(
         }
     }
 
+    /** True while the adapter is coming back on (permission-safe). */
+    fun isBluetoothTurningOn(): Boolean = try {
+        bluetoothAdapter?.state == BluetoothAdapter.STATE_TURNING_ON
+    } catch (_: SecurityException) { false }
+
     /**
      * Check Bluetooth status and handle accordingly (permission-safe)
      * This should be called on every app startup
